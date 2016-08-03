@@ -2,26 +2,38 @@ package main
 
 import (
 	"fmt"
-	"gopkg.in/alecthomas/kingpin.v2"
 	"os"
 	"reflect"
+
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 const tsPacketSize = 188
 
+var (
+	filename *string
+	dHeader  *bool
+	dPayload *bool
+	dAf      *bool
+	dPsi     *bool
+	npt      *bool
+)
+
 func main() {
-	filename := kingpin.Arg("input", "Input file name.").Required().String()
-	dHeader := kingpin.Flag("dumpTsHeader", "").Bool()
-	dPaylod := kingpin.Flag("dumpTsPayload", "").Bool()
-	dAf := kingpin.Flag("dumpAdaptationField", "").Bool()
-	dPsi := kingpin.Flag("dumpPsi", "").Bool()
-	npt := kingpin.Flag("notPrintTimestamp", "").Short('n').Bool()
+	filename = kingpin.Arg("input", "Input file name.").Required().String()
+	dHeader = kingpin.Flag("dumpTsHeader", "").Bool()
+	dPayload = kingpin.Flag("dumpTsPayload", "").Bool()
+	dAf = kingpin.Flag("dumpAdaptationField", "").Bool()
+	dPsi = kingpin.Flag("dumpPsi", "").Bool()
+	npt = kingpin.Flag("notPrintTimestamp", "").Short('n').Bool()
 	kingpin.Parse()
-	fmt.Printf("npt: %t\n", *npt)
-	ParseTsFile(*filename, *dHeader, *dPaylod, *dAf, *dPsi, *npt)
+
+	if err := ParseTsFile(*filename); err != nil {
+
+	}
 }
 
-func ParseTsFile(filename string, dHeader bool, dPayload bool, dAf bool, dPsi bool, npt bool) error {
+func ParseTsFile(filename string) error {
 	file, err := os.Open(filename)
 	if err != nil {
 		return fmt.Errorf("File open error: %s", err)
@@ -44,7 +56,7 @@ func ParseTsFile(filename string, dHeader bool, dPayload bool, dAf bool, dPsi bo
 			return fmt.Errorf("File seek error: %s", err)
 		}
 
-		err = BufferingPsi(file, &pos, dHeader, dPayload, dAf, dPsi, npt)
+		err = BufferingMpegPacket(file, &pos)
 		if err != nil {
 			return fmt.Errorf("TS parse error: %s", err)
 		}
@@ -56,17 +68,17 @@ func ParseTsFile(filename string, dHeader bool, dPayload bool, dAf bool, dPsi bo
 }
 
 func FindPat(data []byte) (int64, error) {
-	for i := 0; i+188*2 <= len(data); i += 188 {
+	for i := 0; i+188*2 <= len(data)-1; i++ {
 		if data[i] == 0x47 && data[i+188] == 0x47 && data[i+188*2] == 0x47 {
 			if (data[i+1]&0x5F) == 0x40 && data[i+2] == 0x00 {
 				return int64(i), nil
 			}
 		}
 	}
-	return 0, fmt.Errorf("")
+	return 0, fmt.Errorf("Cannot find pat")
 }
 
-func BufferingPsi(file *os.File, pos *int64, dHeader bool, dPayload bool, dAf bool, dPsi bool, npt bool) error {
+func BufferingMpegPacket(file *os.File, pos *int64) error {
 	tsBuffer := make([]byte, tsPacketSize)
 	var pmtPid uint16
 	var pat *Pat
@@ -88,12 +100,12 @@ func BufferingPsi(file *os.File, pos *int64, dHeader bool, dPayload bool, dAf bo
 			break
 		}
 
-		tsPacket := NewTsPacket(*pos, &prevPcr, dAf, npt)
+		tsPacket := NewTsPacket(*pos, &prevPcr)
 		tsPacket.Parse(tsBuffer)
-		if dHeader {
+		if *dHeader {
 			tsPacket.DumpTsHeader()
 		}
-		if dPayload {
+		if *dPayload {
 			tsPacket.DumpTsHeader()
 		}
 
@@ -121,7 +133,7 @@ func BufferingPsi(file *os.File, pos *int64, dHeader bool, dPayload bool, dAf bo
 			} else if prevMpegPacket != nil && !isParsedPsi && reflect.TypeOf(prevMpegPacket) == reflect.TypeOf(pat) {
 				pat.Append(buf[1 : 1+buf[0]]) // read until pointer_field
 				pat.Parse()
-				if dPsi {
+				if *dPsi {
 					pat.Dump()
 				}
 				pmtPid = pat.PmtPid()
@@ -133,7 +145,7 @@ func BufferingPsi(file *os.File, pos *int64, dHeader bool, dPayload bool, dAf bo
 			} else if prevMpegPacket != nil && !isParsedPsi && reflect.TypeOf(prevMpegPacket) == reflect.TypeOf(pmt) {
 				pmt.Append(buf[1 : 1+buf[0]]) // read until pointer_field
 				pmt.Parse()
-				if dPsi {
+				if *dPsi {
 					pmt.Dump()
 				}
 				pcrPid = pmt.PcrPid()
@@ -143,7 +155,6 @@ func BufferingPsi(file *os.File, pos *int64, dHeader bool, dPayload bool, dAf bo
 					pesMap[val.elementaryPid] = NewPes()
 				}
 				if newPes, exits := pesMap[pid]; exits {
-					newPes.notPrintTimestamp = npt
 					newPes.pid = pid
 					newPes.pos = *pos
 					newPes.SetCyclicValue(tsPacket.CyclicValue())
@@ -155,7 +166,6 @@ func BufferingPsi(file *os.File, pos *int64, dHeader bool, dPayload bool, dAf bo
 				mpegPacket.Parse()
 				pesMap[pid] = NewPes()
 				if newPes, exits := pesMap[pid]; exits {
-					newPes.notPrintTimestamp = npt
 					newPes.pid = pid
 					newPes.pos = *pos
 					newPes.SetCyclicValue(tsPacket.CyclicValue())

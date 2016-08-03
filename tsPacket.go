@@ -7,13 +7,11 @@ import (
 const tsHeaderSize = 4
 
 type TsPacket struct {
-	pos int64
+	pos     int64
 	prevPcr *uint64
-	bAf bool
-	notPrintTimestamp bool
-	data                         []byte
-	body                         []byte
-	
+	data    []byte
+	body    []byte
+
 	sync_byte                    uint8
 	transport_error_indicator    uint8
 	payload_unit_start_indicator uint8
@@ -26,39 +24,59 @@ type TsPacket struct {
 	adaptationField AdaptationField
 }
 
-func NewTsPacket(pos int64, prevPcr *uint64, bAf bool, notPrintTimestamp bool) *TsPacket {
+func NewTsPacket(pos int64, prevPcr *uint64) *TsPacket {
 	tp := new(TsPacket)
 	tp.pos = pos
 	tp.prevPcr = prevPcr
-	tp.bAf = bAf
-	tp.notPrintTimestamp = notPrintTimestamp
 	tp.data = make([]byte, tsPacketSize)
 	return tp
 }
 
-func (this *TsPacket) HasAf() bool { return this.adaptation_field_control == 2 || this.adaptation_field_control == 3 }
+func (this *TsPacket) HasAf() bool {
+	return this.adaptation_field_control == 2 || this.adaptation_field_control == 3
+}
 func (this *TsPacket) Pcr() uint64 { return this.adaptationField.Pcr() }
 
 func (this *TsPacket) Parse(buf []byte) error {
 	copy(this.data, buf[:tsPacketSize])
-	
+
 	bb := new(BitBuffer)
 	bb.Set(this.data)
-	
+
 	var err error
-	if this.sync_byte, err = bb.PeekUint8(8); err != nil { return err }
-	if this.transport_error_indicator, err = bb.PeekUint8(1); err != nil { return err }
-	if this.payload_unit_start_indicator, err = bb.PeekUint8(1); err != nil { return err }
-	if this.transport_priority, err = bb.PeekUint8(1); err != nil { return err }
-	if this.pid, err = bb.PeekUint16(13); err != nil { return err }
-	if this.transport_scrambling_control, err = bb.PeekUint8(2); err != nil { return err }
-	if this.adaptation_field_control, err = bb.PeekUint8(2); err != nil { return err }
-	if this.cyclicValue, err = bb.PeekUint8(4); err != nil { return err }
+	if this.sync_byte, err = bb.PeekUint8(8); err != nil {
+		return err
+	}
+	if this.transport_error_indicator, err = bb.PeekUint8(1); err != nil {
+		return err
+	}
+	if this.payload_unit_start_indicator, err = bb.PeekUint8(1); err != nil {
+		return err
+	}
+	if this.transport_priority, err = bb.PeekUint8(1); err != nil {
+		return err
+	}
+	if this.pid, err = bb.PeekUint16(13); err != nil {
+		return err
+	}
+	if this.transport_scrambling_control, err = bb.PeekUint8(2); err != nil {
+		return err
+	}
+	if this.adaptation_field_control, err = bb.PeekUint8(2); err != nil {
+		return err
+	}
+	if this.cyclicValue, err = bb.PeekUint8(4); err != nil {
+		return err
+	}
 
 	var afLength uint8
 	if this.adaptation_field_control == 2 || this.adaptation_field_control == 3 {
-		if afLength, err = this.adaptationField.Parse(this.data[tsHeaderSize:], this.pos, this.prevPcr, this.notPrintTimestamp); err != nil { return err }
-		if this.bAf { this.adaptationField.Dump() }
+		if afLength, err = this.adaptationField.Parse(this.data[tsHeaderSize:], this.pos, this.prevPcr); err != nil {
+			return err
+		}
+		if *dAf {
+			this.adaptationField.Dump()
+		}
 	}
 	if this.adaptation_field_control == 1 {
 		this.body = this.data[tsHeaderSize:]
@@ -73,10 +91,12 @@ func (this *TsPacket) Body() []byte {
 	return this.body
 }
 
-func (this *TsPacket) PayloadUnitStartIndicator() bool { return this.payload_unit_start_indicator == 0x1 }
-func (this *TsPacket) Pid() uint16                     { return this.pid }
-func (this *TsPacket) AdaptationFieldControl() uint8   { return this.adaptation_field_control }
-func (this *TsPacket) CyclicValue() uint8              { return this.cyclicValue }
+func (this *TsPacket) PayloadUnitStartIndicator() bool {
+	return this.payload_unit_start_indicator == 0x1
+}
+func (this *TsPacket) Pid() uint16                   { return this.pid }
+func (this *TsPacket) AdaptationFieldControl() uint8 { return this.adaptation_field_control }
+func (this *TsPacket) CyclicValue() uint8            { return this.cyclicValue }
 
 func (this *TsPacket) DumpTsHeader() {
 	fmt.Printf("===============================================================\n")
