@@ -1,18 +1,21 @@
-package main
+package tsparser
 
 import (
 	"fmt"
+
+	"github.com/small-teton/MpegTsAnalyzer/bitbuffer"
 )
 
+// Pes Packetized Elementary Stream.
 type Pes struct {
-	pid         uint16
-	cyclicValue uint8
-	buf         []byte
-	pos         int64
-	prevPcr     uint64
-	nextPcr     uint64
-	prevPcrPos  int64
-	nextPcrPos  int64
+	pid               uint16
+	continuityCounter uint8
+	buf               []byte
+	pos               int64
+	prevPcr           uint64
+	nextPcr           uint64
+	prevPcrPos        int64
+	nextPcrPos        int64
 	notPrintTimestamp bool
 
 	packetStartCodePrefix            uint32
@@ -59,82 +62,88 @@ type Pes struct {
 	data []byte
 }
 
+// NewPes create new PES instance
 func NewPes() *Pes {
 	pes := new(Pes)
 	pes.buf = make([]byte, 0, 65536)
 	return pes
 }
 
-func (this *Pes) CyclicValue() uint8               { return this.cyclicValue }
-func (this *Pes) SetCyclicValue(cyclicValue uint8) { this.cyclicValue = cyclicValue }
+// ContinuityCounter return current continuity_counter of TsPacket.
+func (p *Pes) ContinuityCounter() uint8 { return p.continuityCounter }
 
-func (this *Pes) Append(buf []byte) {
-	this.buf = append(this.buf, buf...)
+// SetContinuityCounter set current continuity_counter of TsPacket.
+func (p *Pes) SetContinuityCounter(continuityCounter uint8) { p.continuityCounter = continuityCounter }
+
+// Append append ts payload data for buffer.
+func (p *Pes) Append(buf []byte) {
+	p.buf = append(p.buf, buf...)
 }
 
-func (this *Pes) Parse() error {
-	bb := new(BitBuffer)
-	bb.Set(this.buf)
+// Parse PES header.
+func (p *Pes) Parse() error {
+	bb := new(bitbuffer.BitBuffer)
+	bb.Set(p.buf)
 
 	var err error
-	if this.packetStartCodePrefix, err = bb.PeekUint32(24); err != nil {
+	if p.packetStartCodePrefix, err = bb.PeekUint32(24); err != nil {
 		return err
 	}
-	if this.streamID, err = bb.PeekUint8(8); err != nil {
+	if p.streamID, err = bb.PeekUint8(8); err != nil {
 		return err
 	}
-	if this.pesPacketLength, err = bb.PeekUint16(16); err != nil {
+	if p.pesPacketLength, err = bb.PeekUint16(16); err != nil {
 		return err
 	}
-	switch this.streamID {
+	switch p.streamID {
 	case 0xBC, 0xBF, 0xF0, 0xF1, 0xFF, 0xF2, 0xF8:
-		this.data = this.buf[6 : 6+this.pesPacketLength]
+		p.data = p.buf[6 : 6+p.pesPacketLength]
 		return nil
 	}
 	if err = bb.Skip(2); err != nil {
 		return err
 	} // '10'
-	if this.pesScramblingControl, err = bb.PeekUint8(2); err != nil {
+	if p.pesScramblingControl, err = bb.PeekUint8(2); err != nil {
 		return err
 	}
-	if this.pesPriority, err = bb.PeekUint8(1); err != nil {
+	if p.pesPriority, err = bb.PeekUint8(1); err != nil {
 		return err
 	}
-	if this.dataAlignmentIndicator, err = bb.PeekUint8(1); err != nil {
+	if p.dataAlignmentIndicator, err = bb.PeekUint8(1); err != nil {
 		return err
 	}
-	if this.copyright, err = bb.PeekUint8(1); err != nil {
+	if p.copyright, err = bb.PeekUint8(1); err != nil {
 		return err
 	}
-	if this.originalOrCopy, err = bb.PeekUint8(1); err != nil {
+	if p.originalOrCopy, err = bb.PeekUint8(1); err != nil {
 		return err
 	}
-	if this.ptsDtsFlags, err = bb.PeekUint8(2); err != nil {
+	if p.ptsDtsFlags, err = bb.PeekUint8(2); err != nil {
 		return err
 	}
-	if this.escrFlag, err = bb.PeekUint8(1); err != nil {
+	if p.escrFlag, err = bb.PeekUint8(1); err != nil {
 		return err
 	}
-	if this.esRateFlag, err = bb.PeekUint8(1); err != nil {
+	if p.esRateFlag, err = bb.PeekUint8(1); err != nil {
 		return err
 	}
-	if this.dsmTrickModeFlag, err = bb.PeekUint8(1); err != nil {
+	if p.dsmTrickModeFlag, err = bb.PeekUint8(1); err != nil {
 		return err
 	}
-	if this.additionalCopyIntoFlag, err = bb.PeekUint8(1); err != nil {
+	if p.additionalCopyIntoFlag, err = bb.PeekUint8(1); err != nil {
 		return err
 	}
-	if this.pesCrcFlag, err = bb.PeekUint8(1); err != nil {
+	if p.pesCrcFlag, err = bb.PeekUint8(1); err != nil {
 		return err
 	}
-	if this.pesExtentionFlag, err = bb.PeekUint8(1); err != nil {
+	if p.pesExtentionFlag, err = bb.PeekUint8(1); err != nil {
 		return err
 	}
-	if this.pesHeaderDataLength, err = bb.PeekUint8(8); err != nil {
+	if p.pesHeaderDataLength, err = bb.PeekUint8(8); err != nil {
 		return err
 	}
 
-	if this.ptsDtsFlags == 2 {
+	if p.ptsDtsFlags == 2 {
 		if err = bb.Skip(4); err != nil {
 			return err
 		} // '0011'
@@ -142,29 +151,29 @@ func (this *Pes) Parse() error {
 		if first, err = bb.PeekUint64(3); err != nil {
 			return err
 		}
-		this.pts = first << 30
+		p.pts = first << 30
 		if err = bb.Skip(1); err != nil {
 			return err
 		} // marker_bit
 		if second, err = bb.PeekUint64(15); err != nil {
 			return err
 		}
-		this.pts |= second << 15
+		p.pts |= second << 15
 		if err = bb.Skip(1); err != nil {
 			return err
 		} // marker_bit
 		if third, err = bb.PeekUint64(15); err != nil {
 			return err
 		}
-		this.pts |= third
+		p.pts |= third
 		if err = bb.Skip(1); err != nil {
 			return err
 		} // marker_bit
-		if this.pid == 0x31 {
-			fmt.Printf("0x%08x PTS: 0x%08x[%012fms] (pid=0x%02x)\n", this.pos, this.pts, float32(this.pts)/90, this.pid)
+		if p.pid == 0x31 {
+			fmt.Printf("0x%08x PTS: 0x%08x[%012fms] (pid=0x%02x)\n", p.pos, p.pts, float32(p.pts)/90, p.pid)
 		}
 	}
-	if this.ptsDtsFlags == 3 {
+	if p.ptsDtsFlags == 3 {
 		if err = bb.Skip(4); err != nil {
 			return err
 		} // '0011'
@@ -172,21 +181,21 @@ func (this *Pes) Parse() error {
 		if first, err = bb.PeekUint64(3); err != nil {
 			return err
 		}
-		this.pts = first << 30
+		p.pts = first << 30
 		if err = bb.Skip(1); err != nil {
 			return err
 		} // marker_bit
 		if second, err = bb.PeekUint64(15); err != nil {
 			return err
 		}
-		this.pts |= second << 15
+		p.pts |= second << 15
 		if err = bb.Skip(1); err != nil {
 			return err
 		} // marker_bit
 		if third, err = bb.PeekUint64(15); err != nil {
 			return err
 		}
-		this.pts |= third
+		p.pts |= third
 		if err = bb.Skip(1); err != nil {
 			return err
 		} // marker_bit
@@ -196,33 +205,26 @@ func (this *Pes) Parse() error {
 		if first, err = bb.PeekUint64(3); err != nil {
 			return err
 		}
-		this.dts = first << 30
+		p.dts = first << 30
 		if err = bb.Skip(1); err != nil {
 			return err
 		} // marker_bit
 		if second, err = bb.PeekUint64(15); err != nil {
 			return err
 		}
-		this.dts |= second << 15
+		p.dts |= second << 15
 		if err = bb.Skip(1); err != nil {
 			return err
 		} // marker_bit
 		if third, err = bb.PeekUint64(15); err != nil {
 			return err
 		}
-		this.dts |= third
+		p.dts |= third
 		if err = bb.Skip(1); err != nil {
 			return err
 		} // marker_bit
-		if !this.notPrintTimestamp {
-			fmt.Printf("0x%08x PTS: 0x%08x[%012fms] (pid:0x%02x)\n", this.pos, this.pts, float32(this.pts)/90, this.pid)
-			prevPcr := float32(this.prevPcr) / 300 / 90
-			nextPcr := float32(this.nextPcr) / 300 / 90
-			pcrDelay := float32(this.dts)/90 - (prevPcr + (nextPcr-prevPcr)*(float32(this.pos-this.prevPcrPos)/float32(this.nextPcrPos-this.prevPcrPos)))
-			fmt.Printf("0x%08x DTS: 0x%08x[%012fms] (pid:0x%02x) (delay:%fms)\n", this.pos, this.dts, float32(this.dts)/90, this.pid, pcrDelay)
-		}
 	}
-	if this.escrFlag == 1 {
+	if p.escrFlag == 1 {
 		if err = bb.Skip(2); err != nil {
 			return err
 		} // reserved
@@ -230,50 +232,50 @@ func (this *Pes) Parse() error {
 		if first, err = bb.PeekUint64(3); err != nil {
 			return err
 		}
-		this.escrBase = first << 30
+		p.escrBase = first << 30
 		if err = bb.Skip(1); err != nil {
 			return err
 		} // marker_bit
 		if second, err = bb.PeekUint64(15); err != nil {
 			return err
 		}
-		this.escrBase |= second << 15
+		p.escrBase |= second << 15
 		if err = bb.Skip(1); err != nil {
 			return err
 		} // marker_bit
 		if third, err = bb.PeekUint64(15); err != nil {
 			return err
 		}
-		this.escrBase |= third
+		p.escrBase |= third
 	}
-	if this.esRateFlag == 1 {
+	if p.esRateFlag == 1 {
 		if err = bb.Skip(1); err != nil {
 			return err
 		} // marker_bit
-		if this.esRate, err = bb.PeekUint32(22); err != nil {
+		if p.esRate, err = bb.PeekUint32(22); err != nil {
 			return err
 		}
 		if bb.Skip(1); err != nil {
 			return err
 		} // marker_bit
 	}
-	if this.dsmTrickModeFlag == 1 {
-		if this.trickModeControl, err = bb.PeekUint8(3); err != nil {
+	if p.dsmTrickModeFlag == 1 {
+		if p.trickModeControl, err = bb.PeekUint8(3); err != nil {
 			return err
 		}
-		switch this.trickModeControl {
+		switch p.trickModeControl {
 		case 0x00, 0x03: // fast_forward, freeze_frame
-			if this.fieldID, err = bb.PeekUint8(2); err != nil {
+			if p.fieldID, err = bb.PeekUint8(2); err != nil {
 				return err
 			}
-			if this.intraSliceRefresh, err = bb.PeekUint8(1); err != nil {
+			if p.intraSliceRefresh, err = bb.PeekUint8(1); err != nil {
 				return err
 			}
-			if this.frequencyTruncation, err = bb.PeekUint8(2); err != nil {
+			if p.frequencyTruncation, err = bb.PeekUint8(2); err != nil {
 				return err
 			}
 		case 0x01: // slow_motion, slow_reverse
-			if this.repCntrl, err = bb.PeekUint8(5); err != nil {
+			if p.repCntrl, err = bb.PeekUint8(5); err != nil {
 				return err
 			}
 		default:
@@ -282,22 +284,34 @@ func (this *Pes) Parse() error {
 			} // reserved
 		}
 	}
-	if this.additionalCopyIntoFlag == 1 {
+	if p.additionalCopyIntoFlag == 1 {
 		if err = bb.Skip(1); err != nil {
 			return err
 		} // marker_bit
-		if this.additionalCopyInfo, err = bb.PeekUint8(7); err != nil {
+		if p.additionalCopyInfo, err = bb.PeekUint8(7); err != nil {
 			return err
 		}
 	}
-	if this.pesCrcFlag == 1 {
-		if this.previousPesPacketCrc, err = bb.PeekUint16(16); err != nil {
+	if p.pesCrcFlag == 1 {
+		if p.previousPesPacketCrc, err = bb.PeekUint16(16); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (this *Pes) Dump() {
+// DumpTimestamp dump PTS and DTS
+func (p *Pes) DumpTimestamp() {
+	if p.ptsDtsFlags == 3 {
+		fmt.Printf("0x%08x PTS: 0x%08x[%012fms] (pid:0x%02x)\n", p.pos, p.pts, float32(p.pts)/90, p.pid)
+		prevPcr := float32(p.prevPcr) / 300 / 90
+		nextPcr := float32(p.nextPcr) / 300 / 90
+		pcrDelay := float32(p.dts)/90 - (prevPcr + (nextPcr-prevPcr)*(float32(p.pos-p.prevPcrPos)/float32(p.nextPcrPos-p.prevPcrPos)))
+		fmt.Printf("0x%08x DTS: 0x%08x[%012fms] (pid:0x%02x) (delay:%fms)\n", p.pos, p.dts, float32(p.dts)/90, p.pid, pcrDelay)
+	}
+}
+
+// Dump PES header detail.
+func (p *Pes) Dump() {
 
 }

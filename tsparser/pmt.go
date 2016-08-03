@@ -1,13 +1,16 @@
-package main
+package tsparser
 
 import (
 	"fmt"
+
+	"github.com/small-teton/MpegTsAnalyzer/bitbuffer"
 )
 
+// Pmt Progran Map Table
 type Pmt struct {
-	startFlag   bool
-	cyclicValue uint8
-	buf         []byte
+	startFlag         bool
+	continuityCounter uint8
+	buf               []byte
 
 	tableID                uint8
 	sectionSyntaxIndicator uint8
@@ -23,35 +26,45 @@ type Pmt struct {
 	crc32                  uint32
 }
 
+// ProgramInfo Program info
 type ProgramInfo struct {
 	streamType    uint8
 	elementaryPid uint16
 	esInfoLength  uint16
 }
 
+// NewPmt create new PMT instance
 func NewPmt() *Pmt {
 	return new(Pmt)
 }
 
-func (this *Pmt) CyclicValue() uint8               { return this.cyclicValue }
-func (this *Pmt) SetCyclicValue(cyclicValue uint8) { this.cyclicValue = cyclicValue }
+// ContinuityCounter return current continuity_counter of TsPacket.
+func (p *Pmt) ContinuityCounter() uint8 { return p.continuityCounter }
 
-func (this *Pmt) PcrPid() uint16              { return this.pcrPid }
-func (this *Pmt) ProgramInfos() []ProgramInfo { return this.programInfos }
+// SetContinuityCounter set current continuity_counter of TsPacket.
+func (p *Pmt) SetContinuityCounter(continuityCounter uint8) { p.continuityCounter = continuityCounter }
 
-func (this *Pmt) Append(buf []byte) {
-	this.buf = append(this.buf, buf...)
+// PcrPid return PCR_PID.
+func (p *Pmt) PcrPid() uint16 { return p.pcrPid }
+
+// ProgramInfos return ProgramInfos.
+func (p *Pmt) ProgramInfos() []ProgramInfo { return p.programInfos }
+
+// Append append ts payload data for buffer.
+func (p *Pmt) Append(buf []byte) {
+	p.buf = append(p.buf, buf...)
 }
 
-func (this *Pmt) Parse() error {
-	bb := new(BitBuffer)
-	bb.Set(this.buf)
+// Parse PMT data.
+func (p *Pmt) Parse() error {
+	bb := new(bitbuffer.BitBuffer)
+	bb.Set(p.buf)
 
 	var err error
-	if this.tableID, err = bb.PeekUint8(8); err != nil {
+	if p.tableID, err = bb.PeekUint8(8); err != nil {
 		return err
 	}
-	if this.sectionSyntaxIndicator, err = bb.PeekUint8(1); err != nil {
+	if p.sectionSyntaxIndicator, err = bb.PeekUint8(1); err != nil {
 		return err
 	}
 	if err := bb.Skip(1); err != nil {
@@ -60,43 +73,43 @@ func (this *Pmt) Parse() error {
 	if err := bb.Skip(2); err != nil {
 		return err
 	} // reserved
-	if this.sectionLength, err = bb.PeekUint16(12); err != nil {
+	if p.sectionLength, err = bb.PeekUint16(12); err != nil {
 		return err
 	}
-	if this.programNumber, err = bb.PeekUint16(16); err != nil {
+	if p.programNumber, err = bb.PeekUint16(16); err != nil {
 		return err
 	}
 	if err := bb.Skip(2); err != nil {
 		return err
 	} // reserved
-	if this.versionNumber, err = bb.PeekUint8(5); err != nil {
+	if p.versionNumber, err = bb.PeekUint8(5); err != nil {
 		return err
 	}
-	if this.currentNextIndicator, err = bb.PeekUint8(1); err != nil {
+	if p.currentNextIndicator, err = bb.PeekUint8(1); err != nil {
 		return err
 	}
-	if this.sectionNumber, err = bb.PeekUint8(8); err != nil {
+	if p.sectionNumber, err = bb.PeekUint8(8); err != nil {
 		return err
 	}
-	if this.lastSectionNumber, err = bb.PeekUint8(8); err != nil {
+	if p.lastSectionNumber, err = bb.PeekUint8(8); err != nil {
 		return err
 	}
 	if err := bb.Skip(3); err != nil {
 		return err
 	} // reserved
-	if this.pcrPid, err = bb.PeekUint16(13); err != nil {
+	if p.pcrPid, err = bb.PeekUint16(13); err != nil {
 		return err
 	}
 	if err := bb.Skip(4); err != nil {
 		return err
 	} // reserved
-	if this.programInfoLength, err = bb.PeekUint16(12); err != nil {
+	if p.programInfoLength, err = bb.PeekUint16(12); err != nil {
 		return err
 	}
-	if err := bb.Skip(8 * this.programInfoLength); err != nil {
+	if err := bb.Skip(8 * p.programInfoLength); err != nil {
 		return err
 	}
-	remainLength := int32(this.sectionLength - 9 - 4)
+	remainLength := int32(p.sectionLength - 9 - 4)
 	for remainLength > 0 {
 		var info ProgramInfo
 		if info.streamType, err = bb.PeekUint8(8); err != nil {
@@ -118,30 +131,31 @@ func (this *Pmt) Parse() error {
 			return err
 		}
 		remainLength = remainLength - 5 - int32(info.esInfoLength)
-		this.programInfos = append(this.programInfos, info)
+		p.programInfos = append(p.programInfos, info)
 	}
-	if this.crc32, err = bb.PeekUint32(32); err != nil {
+	if p.crc32, err = bb.PeekUint32(32); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (this *Pmt) Dump() {
+// Dump PMT detail.
+func (p *Pmt) Dump() {
 	fmt.Printf("\n===========================================\n")
 	fmt.Printf(" PMT")
 	fmt.Printf("\n===========================================\n")
-	fmt.Printf("PMT : table_id			: 0x%x\n", this.tableID)
-	fmt.Printf("PMT : section_syntax_indicator	: %d\n", this.sectionSyntaxIndicator)
-	fmt.Printf("PMT : section_length		: %d\n", this.sectionLength)
-	fmt.Printf("PMT : program_number		: %d\n", this.programNumber)
-	fmt.Printf("PMT : version_number		: %d\n", this.versionNumber)
-	fmt.Printf("PMT : current_next_indicator	: %d\n", this.currentNextIndicator)
-	fmt.Printf("PMT : section_number		: %d\n", this.sectionNumber)
-	fmt.Printf("PMT : last_section_number	: %d\n", this.lastSectionNumber)
-	fmt.Printf("PMT : PCR_PID			: 0x%x\n", this.pcrPid)
-	fmt.Printf("PMT : program_info_length	: %d\n", this.programInfoLength)
-	for _, val := range this.programInfos {
+	fmt.Printf("PMT : table_id			: 0x%x\n", p.tableID)
+	fmt.Printf("PMT : section_syntax_indicator	: %d\n", p.sectionSyntaxIndicator)
+	fmt.Printf("PMT : section_length		: %d\n", p.sectionLength)
+	fmt.Printf("PMT : program_number		: %d\n", p.programNumber)
+	fmt.Printf("PMT : version_number		: %d\n", p.versionNumber)
+	fmt.Printf("PMT : current_next_indicator	: %d\n", p.currentNextIndicator)
+	fmt.Printf("PMT : section_number		: %d\n", p.sectionNumber)
+	fmt.Printf("PMT : last_section_number	: %d\n", p.lastSectionNumber)
+	fmt.Printf("PMT : PCR_PID			: 0x%x\n", p.pcrPid)
+	fmt.Printf("PMT : program_info_length	: %d\n", p.programInfoLength)
+	for _, val := range p.programInfos {
 		var streamType string
 		switch val.streamType {
 		case 0x00:
@@ -212,5 +226,5 @@ func (this *Pmt) Dump() {
 		fmt.Printf("PMT : Program Info : stream_type	: 0x%02x (%s)\n", val.streamType, streamType)
 		fmt.Printf("PMT : Program Info : elementary_PID	: 0x%x\n", val.elementaryPid)
 	}
-	fmt.Printf("PMT : CRC_32			: %x\n", this.crc32)
+	fmt.Printf("PMT : CRC_32			: %x\n", p.crc32)
 }
