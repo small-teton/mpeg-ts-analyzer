@@ -39,7 +39,7 @@ func NewAdaptationField() *AdaptationField { return new(AdaptationField) }
 func (this *AdaptationField) PcrFlag() bool { return this.pcrFlag == 1 }
 func (this *AdaptationField) Pcr() uint64   { return this.pcr }
 
-func (this *AdaptationField) Parse(buf []byte, pos int64, prevPcr *uint64, npt bool) (uint8, error) {
+func (this *AdaptationField) Parse(buf []byte, pos int64, prevPcr *uint64) (uint8, error) {
 	bb := new(BitBuffer)
 	bb.Set(buf)
 
@@ -88,7 +88,7 @@ func (this *AdaptationField) Parse(buf []byte, pos int64, prevPcr *uint64, npt b
 		this.pcr = pcrBase*300 + pcrExt
 		pcrMilisec := float64(this.pcr) / 300 / 90
 		pcrInterval := float64(this.pcr-*prevPcr) / 300 / 90
-		if !npt {
+		if !*npt {
 			fmt.Printf("0x%08x PCR: 0x%08x[%012fms] (Interval:%012fms)\n", pos, this.pcr, pcrMilisec, pcrInterval)
 		}
 		*prevPcr = this.pcr

@@ -1,9 +1,5 @@
 package main
 
-import (
-	
-)
-
 type MpegPacket interface {
 	CyclicValue() uint8
 	SetCyclicValue(cyclicValue uint8)
