@@ -3,4 +3,4 @@ machine:
     Asia/Tokyo
 test:
   override:
-    - go test -bench . -benchmem
+    - go test ./...
