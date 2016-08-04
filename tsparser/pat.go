@@ -112,6 +112,11 @@ func (p *Pat) Parse() error {
 	if p.crc32, err = bb.PeekUint32(32); err != nil {
 		return err
 	}
+
+	if p.crc32 != crc32(p.buf[0:3+p.sectionLength-4]) {
+		return fmt.Errorf("PAT CRC32 is invalidate")
+	}
+
 	return nil
 }
 

@@ -137,24 +137,15 @@ func (p *Pmt) Parse() error {
 		return err
 	}
 
+	if p.crc32 != crc32(p.buf[0:3+p.sectionLength-4]) {
+		return fmt.Errorf("PAT CRC32 is invalidate")
+	}
+
 	return nil
 }
 
-// Dump PMT detail.
-func (p *Pmt) Dump() {
-	fmt.Printf("\n===========================================\n")
-	fmt.Printf(" PMT")
-	fmt.Printf("\n===========================================\n")
-	fmt.Printf("PMT : table_id			: 0x%x\n", p.tableID)
-	fmt.Printf("PMT : section_syntax_indicator	: %d\n", p.sectionSyntaxIndicator)
-	fmt.Printf("PMT : section_length		: %d\n", p.sectionLength)
-	fmt.Printf("PMT : program_number		: %d\n", p.programNumber)
-	fmt.Printf("PMT : version_number		: %d\n", p.versionNumber)
-	fmt.Printf("PMT : current_next_indicator	: %d\n", p.currentNextIndicator)
-	fmt.Printf("PMT : section_number		: %d\n", p.sectionNumber)
-	fmt.Printf("PMT : last_section_number	: %d\n", p.lastSectionNumber)
-	fmt.Printf("PMT : PCR_PID			: 0x%x\n", p.pcrPid)
-	fmt.Printf("PMT : program_info_length	: %d\n", p.programInfoLength)
+// DumpProgramInfos Dump Program info
+func (p *Pmt) DumpProgramInfos() {
 	for _, val := range p.programInfos {
 		var streamType string
 		switch val.streamType {
@@ -223,8 +214,25 @@ func (p *Pmt) Dump() {
 				streamType = "user private"
 			}
 		}
-		fmt.Printf("PMT : Program Info : stream_type	: 0x%02x (%s)\n", val.streamType, streamType)
-		fmt.Printf("PMT : Program Info : elementary_PID	: 0x%x\n", val.elementaryPid)
+		fmt.Printf("PMT : Program Info : elementary_PID	: 0x%02x, stream_type : 0x%02x (%s)\n", val.elementaryPid, val.streamType, streamType)
 	}
+}
+
+// Dump PMT detail.
+func (p *Pmt) Dump() {
+	fmt.Printf("\n===========================================\n")
+	fmt.Printf(" PMT")
+	fmt.Printf("\n===========================================\n")
+	fmt.Printf("PMT : table_id			: 0x%x\n", p.tableID)
+	fmt.Printf("PMT : section_syntax_indicator	: %d\n", p.sectionSyntaxIndicator)
+	fmt.Printf("PMT : section_length		: %d\n", p.sectionLength)
+	fmt.Printf("PMT : program_number		: %d\n", p.programNumber)
+	fmt.Printf("PMT : version_number		: %d\n", p.versionNumber)
+	fmt.Printf("PMT : current_next_indicator	: %d\n", p.currentNextIndicator)
+	fmt.Printf("PMT : section_number		: %d\n", p.sectionNumber)
+	fmt.Printf("PMT : last_section_number	: %d\n", p.lastSectionNumber)
+	fmt.Printf("PMT : PCR_PID			: 0x%x\n", p.pcrPid)
+	fmt.Printf("PMT : program_info_length	: %d\n", p.programInfoLength)
+	p.DumpProgramInfos()
 	fmt.Printf("PMT : CRC_32			: %x\n", p.crc32)
 }
