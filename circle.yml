@@ -1,12 +1,7 @@
 machine:
   timezone:
     Asia/Tokyo
-
-dependencies:
-  override:
-    - git clone https://github.com/small-teton/MpegTsAnalyzer.git
-    
 test:
   override:
-    - cd MpegTsAnalyzer
+    - cd src/github.com/small-teton/MpegTsAnalyzer
     - go test -bench . -benchmem
