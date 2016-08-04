@@ -1,3 +1,5 @@
 *.mpg
+*.m2t
+*.m2ts
 .vscode
 debug

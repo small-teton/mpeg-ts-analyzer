@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/small-teton/MpegTsAnalyzer/bitbuffer"
+	"github.com/small-teton/MpegTsAnalyzer/options"
 )
 
 // AdaptationField adaptation_field data.
@@ -40,7 +41,9 @@ type AdaptationField struct {
 }
 
 // NewAdaptationField create new adaptation_field instance.
-func NewAdaptationField() *AdaptationField { return new(AdaptationField) }
+func NewAdaptationField(options options.Options) *AdaptationField {
+	return new(AdaptationField)
+}
 
 // PcrFlag return this adaptation_field PCR_flag.
 func (af *AdaptationField) PcrFlag() bool { return af.pcrFlag == 1 }

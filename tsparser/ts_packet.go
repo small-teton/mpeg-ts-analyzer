@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/small-teton/MpegTsAnalyzer/bitbuffer"
+	"github.com/small-teton/MpegTsAnalyzer/options"
 )
 
 const tsHeaderSize = 4
@@ -12,6 +13,7 @@ const tsHeaderSize = 4
 type TsPacket struct {
 	pos     int64
 	prevPcr *uint64
+	options options.Options
 	data    []byte
 	payload []byte
 
@@ -28,11 +30,13 @@ type TsPacket struct {
 }
 
 // NewTsPacket create new TsPacket instance.
-func NewTsPacket(pos int64, prevPcr *uint64) *TsPacket {
+func NewTsPacket(buf []byte, pos int64, prevPcr *uint64, options options.Options) *TsPacket {
 	tp := new(TsPacket)
 	tp.pos = pos
 	tp.prevPcr = prevPcr
+	tp.options = options
 	tp.data = make([]byte, tsPacketSize)
+	copy(tp.data, buf[:tsPacketSize])
 	return tp
 }
 
@@ -45,8 +49,7 @@ func (tp *TsPacket) HasAf() bool {
 func (tp *TsPacket) Pcr() uint64 { return tp.adaptationField.Pcr() }
 
 // Parse parse TsPacket header.
-func (tp *TsPacket) Parse(buf []byte, dAf bool) error {
-	copy(tp.data, buf[:tsPacketSize])
+func (tp *TsPacket) Parse() error {
 
 	bb := new(bitbuffer.BitBuffer)
 	bb.Set(tp.data)
@@ -82,7 +85,10 @@ func (tp *TsPacket) Parse(buf []byte, dAf bool) error {
 		if afLength, err = tp.adaptationField.Parse(tp.data[tsHeaderSize:], tp.pos, tp.prevPcr); err != nil {
 			return err
 		}
-		if dAf {
+		if tp.adaptationField.PcrFlag() {
+			tp.adaptationField.DumpPcr()
+		}
+		if tp.options.DumpAdaptationField() {
 			tp.adaptationField.Dump()
 		}
 	}

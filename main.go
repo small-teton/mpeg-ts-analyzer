@@ -4,65 +4,91 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/small-teton/MpegTsAnalyzer/options"
 	"github.com/small-teton/MpegTsAnalyzer/tsparser"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 const tsPacketSize = 188
 
-var (
-	filename *string
-	dHeader  *bool
-	dPayload *bool
-	dAf      *bool
-	dPsi     *bool
-	ndt      *bool
-)
-
 func main() {
-	filename = kingpin.Arg("input", "Input file name.").Required().String()
-	dHeader = kingpin.Flag("dump-ts-header", "").Bool()
-	dPayload = kingpin.Flag("dump-ts-payload", "").Bool()
-	dAf = kingpin.Flag("dump-adaptation-field", "").Bool()
-	dPsi = kingpin.Flag("dump-psi", "").Bool()
-	ndt = kingpin.Flag("not-dump-timestamp", "").Short('n').Bool()
+	var options options.Options
+	filename := kingpin.Arg("input", "Input file name.").Required().String()
+	options.SetDumpHeader(*kingpin.Flag("dump-ts-header", "").Bool())
+	options.SetDumpPayload(*kingpin.Flag("dump-ts-payload", "").Bool())
+	options.SetDumpAdaptationField(*kingpin.Flag("dump-adaptation-field", "").Bool())
+	options.SetDumpPsi(*kingpin.Flag("dump-psi", "").Bool())
+	options.SetNotDumpTimestamp(*kingpin.Flag("not-dump-timestamp", "").Short('n').Bool())
 	kingpin.Parse()
 
-	if err := parseTsFile(*filename); err != nil {
+	if err := parseTsFile(*filename, options); err != nil {
 
 	}
 }
 
-func parseTsFile(filename string) error {
+func parseTsFile(filename string, options options.Options) error {
 	file, err := os.Open(filename)
 	if err != nil {
-		return fmt.Errorf("File open error: %s", err)
+		return fmt.Errorf("File open error: %s %s", filename, err)
 	}
+	fmt.Println("Input file: ", filename)
 
+	pat := tsparser.NewPat()
+	pmt := tsparser.NewPmt()
+
+	const patPid = 0x0
 	const bufSize = 65536
+	var pos int64
 	buf := make([]byte, bufSize)
 	for {
 		size, err := file.Read(buf)
 		if err != nil {
 			return fmt.Errorf("File read error: %s", err)
 		}
-		pos, err := findPat(buf)
-		if err != nil {
+		if pos, err = findPat(buf); err != nil {
 			continue
 		}
 
-		_, err = file.Seek(pos, 0)
-		if err != nil {
+		if _, err = file.Seek(pos, 0); err != nil {
 			return fmt.Errorf("File seek error: %s", err)
 		}
 
-		err = tsparser.BufferingMpegPacket(file, &pos, *dHeader, *dPayload, *dPsi, *dAf, *ndt)
+		// Parse PAT
+		err = tsparser.BufferPsi(file, &pos, patPid, pat, options)
+		err = pat.Parse()
+		if err != nil {
+			continue
+		}
+		pmtPid := pat.PmtPid()
+
+		if _, err = file.Seek(pos, 0); err != nil {
+			return fmt.Errorf("File seek error: %s", err)
+		}
+		fmt.Printf("Detected PAT: PMT pid = 0x%02x\n", pmtPid)
+
+		// Parse PMT
+		err = tsparser.BufferPsi(file, &pos, pmtPid, pmt, options)
+		err = pmt.Parse()
+		if err != nil {
+			continue
+		}
+		programs := pmt.ProgramInfos()
+		pcrPid := pmt.PcrPid()
+
+		if _, err = file.Seek(pos, 0); err != nil {
+			return fmt.Errorf("File seek error: %s", err)
+		}
+		fmt.Println("Detected PMT")
+		pmt.DumpProgramInfos()
+
+		err = tsparser.BufferPes(file, &pos, pcrPid, programs, options)
 		if err != nil {
 			return fmt.Errorf("TS parse error: %s", err)
 		}
 		if size < bufSize {
 			break
 		}
+		pos += bufSize
 	}
 	return nil
 }
