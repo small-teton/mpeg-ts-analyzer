@@ -3,5 +3,4 @@ machine:
     Asia/Tokyo
 test:
   override:
-    - cd src/github.com/small-teton/MpegTsAnalyzer
     - go test -bench . -benchmem
