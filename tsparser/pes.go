@@ -16,7 +16,6 @@ type Pes struct {
 	nextPcr           uint64
 	prevPcrPos        int64
 	nextPcrPos        int64
-	notPrintTimestamp bool
 
 	packetStartCodePrefix            uint32
 	streamID                         uint8
