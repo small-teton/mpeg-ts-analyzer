@@ -113,7 +113,7 @@ func (p *Pat) Parse() error {
 		return err
 	}
 
-	if p.crc32 != crc32(p.buf[0:3+p.sectionLength-4]) {
+	if len(p.buf) >= int(3+p.sectionLength-4) && p.crc32 != crc32(p.buf[0:3+p.sectionLength-4]) {
 		return fmt.Errorf("PAT CRC32 is invalidate")
 	}
 

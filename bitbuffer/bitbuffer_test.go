@@ -1,8 +1,6 @@
 package bitbuffer
 
-import (
-	"testing"
-)
+import "testing"
 
 func TestSet(t *testing.T) {
 	data := []byte{0xc2, 0x93, 0x70, 0x16}
