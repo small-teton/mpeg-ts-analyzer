@@ -14,7 +14,7 @@ type TsPacket struct {
 	pos     int64
 	prevPcr *uint64
 	options options.Options
-	data    []byte
+	buf     []byte
 	payload []byte
 
 	syncByte                   uint8
@@ -26,18 +26,26 @@ type TsPacket struct {
 	adaptationFieldControl     uint8
 	continuityCounter          uint8
 
-	adaptationField AdaptationField
+	adaptationField *AdaptationField
 }
 
 // NewTsPacket create new TsPacket instance.
-func NewTsPacket(buf []byte, pos int64, prevPcr *uint64, options options.Options) *TsPacket {
+func NewTsPacket() *TsPacket {
 	tp := new(TsPacket)
+	tp.buf = make([]byte, 0, tsPacketSize)
+	return tp
+}
+
+// Initialize Set Params for TsPacket
+func (tp *TsPacket) Initialize(pos int64, prevPcr *uint64, options options.Options) {
 	tp.pos = pos
 	tp.prevPcr = prevPcr
 	tp.options = options
-	tp.data = make([]byte, tsPacketSize)
-	copy(tp.data, buf[:tsPacketSize])
-	return tp
+}
+
+// Append append ts payload data for buffer.
+func (tp *TsPacket) Append(buf []byte) {
+	tp.buf = append(tp.buf, buf...)
 }
 
 // HasAf return whether this TsPacket has adaptation_field.
@@ -50,9 +58,11 @@ func (tp *TsPacket) Pcr() uint64 { return tp.adaptationField.Pcr() }
 
 // Parse parse TsPacket header.
 func (tp *TsPacket) Parse() error {
-
+	if len(tp.buf) < 188 {
+		return fmt.Errorf("Buffer is short of length: %d", len(tp.buf))
+	}
 	bb := new(bitbuffer.BitBuffer)
-	bb.Set(tp.data)
+	bb.Set(tp.buf)
 
 	var err error
 	if tp.syncByte, err = bb.PeekUint8(8); err != nil {
@@ -82,7 +92,10 @@ func (tp *TsPacket) Parse() error {
 
 	var afLength uint8
 	if tp.adaptationFieldControl == 2 || tp.adaptationFieldControl == 3 {
-		if afLength, err = tp.adaptationField.Parse(tp.data[tsHeaderSize:], tp.pos, tp.prevPcr); err != nil {
+		tp.adaptationField.Initialize(tp.pos, tp.prevPcr, tp.options)
+		tp.adaptationField = NewAdaptationField()
+		tp.adaptationField.Append(tp.Payload())
+		if afLength, err = tp.adaptationField.Parse(); err != nil {
 			return err
 		}
 		if tp.adaptationField.PcrFlag() {
@@ -93,10 +106,10 @@ func (tp *TsPacket) Parse() error {
 		}
 	}
 	if tp.adaptationFieldControl == 1 {
-		tp.payload = tp.data[tsHeaderSize:]
+		tp.payload = tp.buf[tsHeaderSize:]
 	}
 	if tp.adaptationFieldControl == 3 {
-		tp.payload = tp.data[tsHeaderSize+afLength+1:]
+		tp.payload = tp.buf[tsHeaderSize+afLength+1:]
 	}
 	return nil
 }
@@ -107,14 +120,10 @@ func (tp *TsPacket) Payload() []byte {
 }
 
 // PayloadUnitStartIndicator return this TsPacket payload_unit_start_indicator.
-func (tp *TsPacket) PayloadUnitStartIndicator() bool {
-	return tp.payloadUnitStartIndicator == 0x1
-}
+func (tp *TsPacket) PayloadUnitStartIndicator() bool { return tp.payloadUnitStartIndicator == 0x1 }
 
 // Pid return this TsPacket pid.
 func (tp *TsPacket) Pid() uint16 { return tp.pid }
-
-// PayloadUnitStartIndicator return this TsPacket payload_unit_start_indicator.
 
 // ContinuityCounter return this TsPacket payload_unit_start_indicator.
 func (tp *TsPacket) ContinuityCounter() uint8 { return tp.continuityCounter }
@@ -140,7 +149,7 @@ func (tp *TsPacket) DumpData() {
 	fmt.Printf("===============================================================\n")
 	fmt.Printf(" Dump TS Data\n")
 	fmt.Printf("===============================================================\n")
-	for i, val := range tp.data {
+	for i, val := range tp.buf {
 		if (i%20 == 0) || (i == 0) {
 			fmt.Printf("\n%2d: ", (i+1)/20+1)
 		}

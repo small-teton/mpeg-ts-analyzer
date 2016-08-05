@@ -37,7 +37,9 @@ func BufferPsi(file *os.File, pos *int64, pid uint16, mpegPacket MpegPacket, opt
 			break
 		}
 
-		tsPacket := NewTsPacket(tsBuffer, *pos, &prevPcr, options)
+		tsPacket := NewTsPacket()
+		tsPacket.Initialize(*pos, &prevPcr, options)
+		tsPacket.Append(tsBuffer)
 		tsPacket.Parse()
 		if tsPacket.Pid() != pid {
 			continue
@@ -89,7 +91,9 @@ func BufferPes(file *os.File, pos *int64, pcrPid uint16, programInfos []ProgramI
 		}
 
 		tmpPrevPcr := prevPcr
-		tsPacket := NewTsPacket(tsBuffer, *pos, &prevPcr, options)
+		tsPacket := NewTsPacket()
+		tsPacket.Initialize(*pos, &prevPcr, options)
+		tsPacket.Append(tsBuffer)
 		tsPacket.Parse()
 		pid := tsPacket.Pid()
 		pes, exist := pesMap[pid]

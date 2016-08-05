@@ -10,8 +10,10 @@ import (
 // AdaptationField adaptation_field data.
 type AdaptationField struct {
 	pcr     uint64
-	prevPcr uint64
+	prevPcr *uint64
 	pos     int64
+	options options.Options
+	buf     []byte
 
 	adaptationFieldLength                  uint8
 	discontinuityIndicator                 uint8
@@ -41,8 +43,18 @@ type AdaptationField struct {
 }
 
 // NewAdaptationField create new adaptation_field instance.
-func NewAdaptationField(options options.Options) *AdaptationField {
-	return new(AdaptationField)
+func NewAdaptationField() *AdaptationField { return new(AdaptationField) }
+
+// Initialize Set Params for TsPacket
+func (af *AdaptationField) Initialize(pos int64, prevPcr *uint64, options options.Options) {
+	af.pos = pos
+	af.prevPcr = prevPcr
+	af.options = options
+}
+
+// Append append adaptation_field data for buffer.
+func (af *AdaptationField) Append(buf []byte) {
+	af.buf = append(af.buf, buf...)
 }
 
 // PcrFlag return this adaptation_field PCR_flag.
@@ -52,10 +64,9 @@ func (af *AdaptationField) PcrFlag() bool { return af.pcrFlag == 1 }
 func (af *AdaptationField) Pcr() uint64 { return af.pcr }
 
 // Parse parse adaptation_field data.
-func (af *AdaptationField) Parse(buf []byte, pos int64, prevPcr *uint64) (uint8, error) {
-	af.pos = pos
+func (af *AdaptationField) Parse() (uint8, error) {
 	bb := new(bitbuffer.BitBuffer)
-	bb.Set(buf)
+	bb.Set(af.buf)
 
 	var err error
 	if af.adaptationFieldLength, err = bb.PeekUint8(8); err != nil {
@@ -100,8 +111,9 @@ func (af *AdaptationField) Parse(buf []byte, pos int64, prevPcr *uint64) (uint8,
 		pcrBase := af.programClockReferenceBase
 		pcrExt := uint64(af.programClockReferenceExtension)
 		af.pcr = pcrBase*300 + pcrExt
-		af.prevPcr = *prevPcr
-		*prevPcr = af.pcr
+		if af.prevPcr != nil {
+			*(af.prevPcr) = af.pcr
+		}
 	}
 	if af.oPcrFlag == 1 {
 		if af.originalProgramClockReferenceBase, err = bb.PeekUint64(33); err != nil {
@@ -198,7 +210,7 @@ func (af *AdaptationField) Parse(buf []byte, pos int64, prevPcr *uint64) (uint8,
 func (af *AdaptationField) DumpPcr() {
 	if af.pcrFlag == 1 {
 		pcrMilisec := float64(af.pcr) / 300 / 90
-		pcrInterval := float64(af.pcr-af.prevPcr) / 300 / 90
+		pcrInterval := float64(af.pcr-*af.prevPcr) / 300 / 90
 		fmt.Printf("0x%08x PCR: 0x%08x[%012fms] (Interval:%012fms)\n", af.pos, af.pcr, pcrMilisec, pcrInterval)
 	}
 }

@@ -22,7 +22,7 @@ func main() {
 	kingpin.Parse()
 
 	if err := parseTsFile(*filename, options); err != nil {
-
+		os.Exit(1)
 	}
 }
 

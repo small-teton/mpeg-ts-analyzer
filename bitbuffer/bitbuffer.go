@@ -32,11 +32,19 @@ func (b *BitBuffer) PeekUint8(length uint16) (uint8, error) {
 	index := b.pos / 8
 	offset := b.pos % 8
 
-	firstByte := uint16(b.buf[index])
-	firstByte <<= 8
-	secondByte := uint16(b.buf[index+1])
-	buf := firstByte | secondByte
-	buf >>= (16 - offset - length)
+	var firstByte, secondByte, buf uint16
+	if uint16(len(b.buf)*8)-b.pos <= 8 {
+		firstByte = 0x0
+		secondByte = uint16(b.buf[index])
+		buf = firstByte | secondByte
+		buf >>= (8 - offset - length)
+	} else {
+		firstByte = uint16(b.buf[index])
+		firstByte <<= 8
+		secondByte = uint16(b.buf[index+1])
+		buf = firstByte | secondByte
+		buf >>= (16 - offset - length)
+	}
 	var digit uint16 = 1
 	var mask uint16
 	for i := uint16(0); i < length; i++ {
@@ -50,27 +58,16 @@ func (b *BitBuffer) PeekUint8(length uint16) (uint8, error) {
 // PeekUint16 return type uint16
 func (b *BitBuffer) PeekUint16(length uint16) (uint16, error) {
 	if length > 16 || (b.pos+length) > uint16(len(b.buf)*8) {
-		return 0, fmt.Errorf("Length(%d) is out of range(0-16)", length)
+		return 0, fmt.Errorf("Length(%d) is out of range(0-16)%d %d", length, b.pos, len(b.buf)*8)
 	}
 
-	index := b.pos / 8
-	offset := b.pos % 8
-
-	firstByte := uint32(b.buf[index])
-	firstByte <<= 16
-	secondByte := uint32(b.buf[index+1])
-	secondByte <<= 8
-	thirdByte := uint32(b.buf[index+2])
-	buf := firstByte | secondByte | thirdByte
-	buf >>= (24 - offset - length)
-	var digit uint32 = 1
-	var mask uint32
-	for i := uint16(0); i < length; i++ {
-		mask += digit
-		digit *= 2
+	if length <= 8 {
+		val, err := b.PeekUint8(length)
+		return uint16(val), err
 	}
-	b.pos += length
-	return uint16(buf & mask), nil
+	first8, err := b.PeekUint8(8)
+	second8, err := b.PeekUint8(length - 8)
+	return uint16(first8)<<(length-8) | uint16(second8), err
 }
 
 // PeekUint32 return type uint32
@@ -82,6 +79,10 @@ func (b *BitBuffer) PeekUint32(length uint16) (uint32, error) {
 	if length <= 16 {
 		val, err := b.PeekUint16(length)
 		return uint32(val), err
+	} else if length-16 <= 8 {
+		first16, err := b.PeekUint16(16)
+		second8, err := b.PeekUint8(length - 16)
+		return uint32(first16)<<(length-16) | uint32(second8), err
 	}
 	first16, err := b.PeekUint16(16)
 	second16, err := b.PeekUint16(length - 16)
@@ -97,6 +98,14 @@ func (b *BitBuffer) PeekUint64(length uint16) (uint64, error) {
 	if length <= 32 {
 		val, err := b.PeekUint32(length)
 		return uint64(val), err
+	} else if length-32 <= 8 {
+		first32, err := b.PeekUint32(32)
+		second8, err := b.PeekUint8(length - 32)
+		return uint64(first32)<<(length-32) | uint64(second8), err
+	} else if length-32 <= 16 {
+		first32, err := b.PeekUint32(32)
+		second16, err := b.PeekUint16(length - 16)
+		return uint64(first32)<<(length-32) | uint64(second16), err
 	}
 	first32, err := b.PeekUint32(32)
 	second32, err := b.PeekUint32(length - 32)
