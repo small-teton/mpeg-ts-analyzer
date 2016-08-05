@@ -14,11 +14,11 @@ const tsPacketSize = 188
 func main() {
 	var options options.Options
 	filename := kingpin.Arg("input", "Input file name.").Required().String()
-	options.SetDumpHeader(*kingpin.Flag("dump-ts-header", "Dump TS packet header.").Bool())
-	options.SetDumpPayload(*kingpin.Flag("dump-ts-payload", "Dump TS packet payload binary.").Bool())
-	options.SetDumpAdaptationField(*kingpin.Flag("dump-adaptation-field", "Dump TS packet adaptation_field detail.").Bool())
-	options.SetDumpPsi(*kingpin.Flag("dump-psi", "Dump PSI(PAT/PMT) detail.").Bool())
-	options.SetNotDumpTimestamp(*kingpin.Flag("not-dump-timestamp", "Not Dump PCR/PTS/DTS timestamps.").Short('n').Bool())
+	options.SetDumpHeader(*kingpin.Flag("dump-ts-header", "").Bool())
+	options.SetDumpPayload(*kingpin.Flag("dump-ts-payload", "").Bool())
+	options.SetDumpAdaptationField(*kingpin.Flag("dump-adaptation-field", "").Bool())
+	options.SetDumpPsi(*kingpin.Flag("dump-psi", "").Bool())
+	options.SetNotDumpTimestamp(*kingpin.Flag("not-dump-timestamp", "").Short('n').Bool())
 	kingpin.Parse()
 
 	if err := parseTsFile(*filename, options); err != nil {
