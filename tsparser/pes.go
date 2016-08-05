@@ -30,7 +30,7 @@ type Pes struct {
 	escrFlag                         uint8
 	esRateFlag                       uint8
 	dsmTrickModeFlag                 uint8
-	additionalCopyIntoFlag           uint8
+	additionalCopyInfoFlag           uint8
 	pesCrcFlag                       uint8
 	pesExtentionFlag                 uint8
 	pesHeaderDataLength              uint8
@@ -130,7 +130,7 @@ func (p *Pes) Parse() error {
 	if p.dsmTrickModeFlag, err = bb.PeekUint8(1); err != nil {
 		return err
 	}
-	if p.additionalCopyIntoFlag, err = bb.PeekUint8(1); err != nil {
+	if p.additionalCopyInfoFlag, err = bb.PeekUint8(1); err != nil {
 		return err
 	}
 	if p.pesCrcFlag, err = bb.PeekUint8(1); err != nil {
@@ -281,7 +281,7 @@ func (p *Pes) Parse() error {
 			} // reserved
 		}
 	}
-	if p.additionalCopyIntoFlag == 1 {
+	if p.additionalCopyInfoFlag == 1 {
 		if err = bb.Skip(1); err != nil {
 			return err
 		} // marker_bit
