@@ -12,7 +12,6 @@ const tsHeaderSize = 4
 // TsPacket is mpeg2-ts packet. It has fixed size(188byte).
 type TsPacket struct {
 	pos     int64
-	prevPcr *uint64
 	options options.Options
 	buf     []byte
 	payload []byte
@@ -33,14 +32,26 @@ type TsPacket struct {
 func NewTsPacket() *TsPacket {
 	tp := new(TsPacket)
 	tp.buf = make([]byte, 0, tsPacketSize)
+	tp.adaptationField = NewAdaptationField()
 	return tp
 }
 
 // Initialize Set Params for TsPacket
-func (tp *TsPacket) Initialize(pos int64, prevPcr *uint64, options options.Options) {
+func (tp *TsPacket) Initialize(pos int64, options options.Options) {
 	tp.pos = pos
-	tp.prevPcr = prevPcr
 	tp.options = options
+
+	tp.buf = tp.buf[0:0]
+	tp.payload = tp.buf[0:0]
+	tp.syncByte = 0
+	tp.transportErrorIndicator = 0
+	tp.payloadUnitStartIndicator = 0
+	tp.transportPriority = 0
+	tp.pid = 0
+	tp.transportScramblingControl = 0
+	tp.adaptationFieldControl = 0
+	tp.continuityCounter = 0
+	tp.adaptationField.Initialize(tp.pos, tp.options)
 }
 
 // Append append ts payload data for buffer.
@@ -92,14 +103,10 @@ func (tp *TsPacket) Parse() error {
 
 	var afLength uint8
 	if tp.adaptationFieldControl == 2 || tp.adaptationFieldControl == 3 {
-		tp.adaptationField.Initialize(tp.pos, tp.prevPcr, tp.options)
-		tp.adaptationField = NewAdaptationField()
-		tp.adaptationField.Append(tp.Payload())
+		tp.adaptationField.Initialize(tp.pos, tp.options)
+		tp.adaptationField.Append(tp.buf[tsHeaderSize:])
 		if afLength, err = tp.adaptationField.Parse(); err != nil {
 			return err
-		}
-		if tp.adaptationField.PcrFlag() {
-			tp.adaptationField.DumpPcr()
 		}
 		if tp.options.DumpAdaptationField() {
 			tp.adaptationField.Dump()

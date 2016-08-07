@@ -24,7 +24,7 @@ const tsPacketSize = 188
 func BufferPsi(file *os.File, pos *int64, pid uint16, mpegPacket MpegPacket, options options.Options) error {
 	tsBuffer := make([]byte, tsPacketSize)
 	isBuffering := false
-	var prevPcr uint64
+	tsPacket := NewTsPacket()
 
 	for {
 		size, err := file.Read(tsBuffer)
@@ -37,8 +37,7 @@ func BufferPsi(file *os.File, pos *int64, pid uint16, mpegPacket MpegPacket, opt
 			break
 		}
 
-		tsPacket := NewTsPacket()
-		tsPacket.Initialize(*pos, &prevPcr, options)
+		tsPacket.Initialize(*pos, options)
 		tsPacket.Append(tsBuffer)
 		tsPacket.Parse()
 		if tsPacket.Pid() != pid {
@@ -69,7 +68,6 @@ func BufferPsi(file *os.File, pos *int64, pid uint16, mpegPacket MpegPacket, opt
 // BufferPes buffer PSI data from TS payload
 func BufferPes(file *os.File, pos *int64, pcrPid uint16, programInfos []ProgramInfo, options options.Options) error {
 	tsBuffer := make([]byte, tsPacketSize)
-	var prevPcr uint64
 	pesMap := make(map[uint16]*Pes)
 	for _, val := range programInfos {
 		pesMap[val.elementaryPid] = nil
@@ -78,6 +76,7 @@ func BufferPes(file *os.File, pos *int64, pcrPid uint16, programInfos []ProgramI
 	var lastPcrPos int64
 	var maxDelay float64
 	var maxPcrInterval float64
+	tsPacket := NewTsPacket()
 
 	for {
 		size, err := file.Read(tsBuffer)
@@ -90,17 +89,18 @@ func BufferPes(file *os.File, pos *int64, pcrPid uint16, programInfos []ProgramI
 			break
 		}
 
-		tmpPrevPcr := prevPcr
-		tsPacket := NewTsPacket()
-		tsPacket.Initialize(*pos, &prevPcr, options)
+		tsPacket.Initialize(*pos, options)
 		tsPacket.Append(tsBuffer)
 		tsPacket.Parse()
 		pid := tsPacket.Pid()
 		pes, exist := pesMap[pid]
 		if tsPacket.HasAf() && tsPacket.adaptationField.PcrFlag() && pcrPid != 0 && pid == pcrPid {
+			if !options.NotDumpTimestamp() {
+				tsPacket.adaptationField.DumpPcr(lastPcr)
+			}
+			maxPcrInterval = math.Max(maxPcrInterval, float64(tsPacket.Pcr()-lastPcr))
 			lastPcr = tsPacket.Pcr()
 			lastPcrPos = *pos
-			maxPcrInterval = math.Max(maxPcrInterval, float64(lastPcr-tmpPrevPcr))
 		}
 		if !exist {
 			*pos += int64(size)
@@ -114,19 +114,17 @@ func BufferPes(file *os.File, pos *int64, pcrPid uint16, programInfos []ProgramI
 					pcrDelay := pes.DumpTimestamp()
 					maxDelay = math.Max(maxDelay, pcrDelay)
 				}
+			} else {
+				pes = NewPes()
+				pesMap[pid] = pes
 			}
-			pesMap[pid] = NewPes()
-			newPes, _ := pesMap[pid]
-			newPes.pid = pid
-			newPes.pos = *pos
-			newPes.SetContinuityCounter(tsPacket.ContinuityCounter())
-			newPes.prevPcr = lastPcr
-			newPes.prevPcrPos = lastPcrPos
-			newPes.Append(tsPacket.Payload()) // read until pointer_field
+			pes.Initialize(pid, *pos, lastPcr, lastPcrPos)
+			pes.SetContinuityCounter(tsPacket.ContinuityCounter())
+			pes.Append(tsPacket.Payload()) // read until pointer_field
 
 		} else if tsPacket.ContinuityCounter() == (pes.ContinuityCounter()+1) || (tsPacket.ContinuityCounter() == 0x0 && pes.ContinuityCounter() == 0xF) {
 			pes.SetContinuityCounter(tsPacket.ContinuityCounter())
-			if tsPacket.HasAf() && tsPacket.adaptationField.PcrFlag() && pcrPid != 0 && pid == pcrPid {
+			if pes.nextPcr == 0 && lastPcr > pes.prevPcr {
 				pes.nextPcr = lastPcr
 				pes.nextPcrPos = lastPcrPos
 			}
