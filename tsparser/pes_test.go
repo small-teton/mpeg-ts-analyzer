@@ -12,6 +12,40 @@ func TestNewPes(t *testing.T) {
 	}
 }
 
+func TestPesInitialize(t *testing.T) {
+	p1 := NewPes()
+	p1.Initialize(1, 2, 3, 4)
+
+	if p1.pid != 1 {
+		t.Errorf("actual: 1, But got %s", p1.pid)
+	}
+	if p1.pos != 2 {
+		t.Errorf("actual: 2, But got %s", p1.pos)
+	}
+	if p1.prevPcr != 3 {
+		t.Errorf("actual: 3, But got %s", p1.prevPcr)
+	}
+	if p1.prevPcrPos != 4 {
+		t.Errorf("actual: 4, But got %s", p1.prevPcrPos)
+	}
+
+	data := []byte{
+		0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x84, 0xC0, 0x0A, 0x31, 0x00, 0x01, 0xC7, 0x3F, 0x11, 0x00,
+		0x01, 0xAF, 0xC9, 0x00, 0x00, 0x00, 0x01, 0x09, 0x10, 0x00, 0x00, 0x00, 0x01, 0x67, 0x4D, 0x40,
+		0x1F, 0x96, 0x56, 0x05, 0xA1, 0xED, 0x82, 0xA8, 0x40, 0x00, 0x00, 0xFA, 0x40, 0x00, 0x3A, 0x98,
+	}
+	p2 := NewPes()
+	p2.Append(data)
+	if err := p2.Parse(); err != nil {
+		t.Errorf("Parse error: %s", err)
+	}
+	p2.Initialize(1, 2, 3, 4)
+
+	if !reflect.DeepEqual(p1, p2) {
+		t.Errorf("Failed Initialize. Different in p1 and p2")
+	}
+}
+
 func TestPesContinuityCounter(t *testing.T) {
 	pes := NewPes()
 
