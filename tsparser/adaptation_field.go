@@ -29,7 +29,7 @@ type AdaptationField struct {
 	originalProgramClockReferenceExtension uint16
 	spliceCountdown                        uint8
 	transportPrivateDataLength             uint8
-	privateDataByte                        []uint8
+	privateDataByte                        []byte
 	adaptationFieldExtensionLength         uint8
 	ltwFlag                                uint8
 	piecewiseRateFlag                      uint8
@@ -42,7 +42,12 @@ type AdaptationField struct {
 }
 
 // NewAdaptationField create new adaptation_field instance.
-func NewAdaptationField() *AdaptationField { return new(AdaptationField) }
+func NewAdaptationField() *AdaptationField {
+	af := new(AdaptationField)
+	af.buf = make([]byte, 0, tsPacketSize)
+	af.privateDataByte = make([]byte, 0, tsPacketSize)
+	return af
+}
 
 // Initialize Set Params for TsPacket
 func (af *AdaptationField) Initialize(pos int64, options options.Options) {
@@ -58,6 +63,7 @@ func (af *AdaptationField) Initialize(pos int64, options options.Options) {
 	af.pcrFlag = 0
 	af.oPcrFlag = 0
 	af.splicingPointFlag = 0
+	af.transportPrivateDataFlag = 0
 	af.adaptationFieldExtensionFlag = 0
 	af.programClockReferenceBase = 0
 	af.programClockReferenceExtension = 0
