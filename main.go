@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/small-teton/MpegTsAnalyzer/options"
@@ -42,7 +43,9 @@ func parseTsFile(filename string, options options.Options) error {
 	buf := make([]byte, bufSize)
 	for {
 		size, err := file.Read(buf)
-		if err != nil {
+		if err == io.EOF {
+			break
+		} else if err != nil {
 			return fmt.Errorf("File read error: %s", err)
 		}
 		if pos, err = findPat(buf); err != nil {
