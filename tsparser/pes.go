@@ -16,7 +16,6 @@ type Pes struct {
 	nextPcr           uint64
 	prevPcrPos        int64
 	nextPcrPos        int64
-	notPrintTimestamp bool
 
 	packetStartCodePrefix            uint32
 	streamID                         uint8
@@ -30,7 +29,7 @@ type Pes struct {
 	escrFlag                         uint8
 	esRateFlag                       uint8
 	dsmTrickModeFlag                 uint8
-	additionalCopyIntoFlag           uint8
+	additionalCopyInfoFlag           uint8
 	pesCrcFlag                       uint8
 	pesExtentionFlag                 uint8
 	pesHeaderDataLength              uint8
@@ -67,6 +66,59 @@ func NewPes() *Pes {
 	pes := new(Pes)
 	pes.buf = make([]byte, 0, 65536)
 	return pes
+}
+
+// Initialize Set Params for PES
+func (p *Pes) Initialize(pid uint16, pos int64, prevPcr uint64, prevPcrPos int64) {
+	p.pid = pid
+	p.continuityCounter = 0
+	p.buf = p.buf[0:0]
+	p.pos = pos
+	p.prevPcr = prevPcr
+	p.nextPcr = 0
+	p.prevPcrPos = prevPcrPos
+	p.nextPcrPos = 0
+
+	p.packetStartCodePrefix = 0
+	p.streamID = 0
+	p.pesPacketLength = 0
+	p.pesScramblingControl = 0
+	p.pesPriority = 0
+	p.dataAlignmentIndicator = 0
+	p.copyright = 0
+	p.originalOrCopy = 0
+	p.ptsDtsFlags = 0
+	p.escrFlag = 0
+	p.esRateFlag = 0
+	p.dsmTrickModeFlag = 0
+	p.additionalCopyInfoFlag = 0
+	p.pesCrcFlag = 0
+	p.pesExtentionFlag = 0
+	p.pesHeaderDataLength = 0
+	p.pts = 0
+	p.dts = 0
+	p.escr = 0
+	p.escrBase = 0
+	p.escrExtention = 0
+	p.esRate = 0
+	p.trickModeControl = 0
+	p.fieldID = 0
+	p.intraSliceRefresh = 0
+	p.frequencyTruncation = 0
+	p.repCntrl = 0
+	p.additionalCopyInfo = 0
+	p.previousPesPacketCrc = 0
+	p.pesPrivateDataFlag = 0
+	p.packHeaderFieldFlag = 0
+	p.programPacketSequenceCounterFlag = 0
+	p.pStdBufferFlag = 0
+	p.pesExtentionFlag2 = 0
+	p.programPacketSequenceCounter = 0
+	p.mpeg1Mpeg2Identifer = 0
+	p.originalStuffLength = 0
+	p.pStdBufferScale = 0
+	p.pStdBufferSize = 0
+	p.pesExtentionFieldLength = 0
 }
 
 // ContinuityCounter return current continuity_counter of TsPacket.
@@ -130,7 +182,7 @@ func (p *Pes) Parse() error {
 	if p.dsmTrickModeFlag, err = bb.PeekUint8(1); err != nil {
 		return err
 	}
-	if p.additionalCopyIntoFlag, err = bb.PeekUint8(1); err != nil {
+	if p.additionalCopyInfoFlag, err = bb.PeekUint8(1); err != nil {
 		return err
 	}
 	if p.pesCrcFlag, err = bb.PeekUint8(1); err != nil {
@@ -281,7 +333,7 @@ func (p *Pes) Parse() error {
 			} // reserved
 		}
 	}
-	if p.additionalCopyIntoFlag == 1 {
+	if p.additionalCopyInfoFlag == 1 {
 		if err = bb.Skip(1); err != nil {
 			return err
 		} // marker_bit

@@ -10,7 +10,6 @@ import (
 // AdaptationField adaptation_field data.
 type AdaptationField struct {
 	pcr     uint64
-	prevPcr *uint64
 	pos     int64
 	options options.Options
 	buf     []byte
@@ -30,7 +29,7 @@ type AdaptationField struct {
 	originalProgramClockReferenceExtension uint16
 	spliceCountdown                        uint8
 	transportPrivateDataLength             uint8
-	privateDataByte                        []uint8
+	privateDataByte                        []byte
 	adaptationFieldExtensionLength         uint8
 	ltwFlag                                uint8
 	piecewiseRateFlag                      uint8
@@ -43,13 +42,45 @@ type AdaptationField struct {
 }
 
 // NewAdaptationField create new adaptation_field instance.
-func NewAdaptationField() *AdaptationField { return new(AdaptationField) }
+func NewAdaptationField() *AdaptationField {
+	af := new(AdaptationField)
+	af.buf = make([]byte, 0, tsPacketSize)
+	af.privateDataByte = make([]byte, 0, tsPacketSize)
+	return af
+}
 
 // Initialize Set Params for TsPacket
-func (af *AdaptationField) Initialize(pos int64, prevPcr *uint64, options options.Options) {
+func (af *AdaptationField) Initialize(pos int64, options options.Options) {
+	af.pcr = 0
 	af.pos = pos
-	af.prevPcr = prevPcr
 	af.options = options
+	af.buf = af.buf[0:0]
+
+	af.adaptationFieldLength = 0
+	af.discontinuityIndicator = 0
+	af.randomAccessIndicator = 0
+	af.elementaryStreamPriorityIndicator = 0
+	af.pcrFlag = 0
+	af.oPcrFlag = 0
+	af.splicingPointFlag = 0
+	af.transportPrivateDataFlag = 0
+	af.adaptationFieldExtensionFlag = 0
+	af.programClockReferenceBase = 0
+	af.programClockReferenceExtension = 0
+	af.originalProgramClockReferenceBase = 0
+	af.originalProgramClockReferenceExtension = 0
+	af.spliceCountdown = 0
+	af.transportPrivateDataLength = 0
+	af.privateDataByte = af.privateDataByte[0:0]
+	af.adaptationFieldExtensionLength = 0
+	af.ltwFlag = 0
+	af.piecewiseRateFlag = 0
+	af.seamlessSpliceFlag = 0
+	af.ltwValidFlag = 0
+	af.ltwOffset = 0
+	af.piecewiseRate = 0
+	af.spliceType = 0
+	af.dtsNextAu = 0
 }
 
 // Append append adaptation_field data for buffer.
@@ -111,9 +142,6 @@ func (af *AdaptationField) Parse() (uint8, error) {
 		pcrBase := af.programClockReferenceBase
 		pcrExt := uint64(af.programClockReferenceExtension)
 		af.pcr = pcrBase*300 + pcrExt
-		if af.prevPcr != nil {
-			*(af.prevPcr) = af.pcr
-		}
 	}
 	if af.oPcrFlag == 1 {
 		if af.originalProgramClockReferenceBase, err = bb.PeekUint64(33); err != nil {
@@ -207,10 +235,10 @@ func (af *AdaptationField) Parse() (uint8, error) {
 }
 
 // DumpPcr print PCR.
-func (af *AdaptationField) DumpPcr() {
+func (af *AdaptationField) DumpPcr(prevPcr uint64) {
 	if af.pcrFlag == 1 {
 		pcrMilisec := float64(af.pcr) / 300 / 90
-		pcrInterval := float64(af.pcr-*af.prevPcr) / 300 / 90
+		pcrInterval := float64(af.pcr-prevPcr) / 300 / 90
 		fmt.Printf("0x%08x PCR: 0x%08x[%012fms] (Interval:%012fms)\n", af.pos, af.pcr, pcrMilisec, pcrInterval)
 	}
 }

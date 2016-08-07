@@ -14,21 +14,30 @@ func TestNewAdaptationField(t *testing.T) {
 	}
 }
 
-func TestAdaptationFieldnitialize(t *testing.T) {
-	var prevPcr uint64 = 0x1FFFFFFF
+func TestAdaptationFieldInitialize(t *testing.T) {
 	var options options.Options
 	options.SetDumpHeader(true)
-	af := NewAdaptationField()
-	af.Initialize(1, &prevPcr, options)
+	af1 := NewAdaptationField()
+	af1.Initialize(1, options)
 
-	if af.pos != 1 {
-		t.Errorf("actual: 1, But got %s", af.pos)
+	if af1.pos != 1 {
+		t.Errorf("actual: 1, But got %s", af1.pos)
 	}
-	if *af.prevPcr != 0x1FFFFFFF {
-		t.Errorf("actual: 0x1FFFFFFF, But got %s", *af.prevPcr)
-	}
-	if !af.options.DumpHeader() {
+	if !af1.options.DumpHeader() {
 		t.Errorf("actual: true, But got false")
+	}
+
+	data := []byte{0x07, 0x70, 0x00, 0x00, 0x00, 0x42, 0x7E, 0x6F}
+
+	af2 := NewAdaptationField()
+	af2.Append(data)
+	if len, err := af2.Parse(); len != 7 || err != nil {
+		t.Errorf("Parse error: %s", err)
+	}
+	af2.Initialize(1, options)
+
+	if !reflect.DeepEqual(af1, af2) {
+		t.Errorf("Failed Initialize. Different in af1 and af2")
 	}
 }
 
