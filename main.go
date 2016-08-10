@@ -32,7 +32,6 @@ func parseTsFile(filename string, options options.Options) error {
 	if err != nil {
 		return fmt.Errorf("File open error: %s %s", filename, err)
 	}
-	defer file.Close()
 	fmt.Println("Input file: ", filename)
 
 	pat := tsparser.NewPat()
