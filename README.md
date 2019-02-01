@@ -18,7 +18,7 @@ Flags:
       --dump-ts-payload        Dump TS packet payload binary.
       --dump-adaptation-field  Dump TS packet adaptation_field detail.
       --dump-psi               Dump PSI(PAT/PMT) detail.
-  -n, --not-dump-timestamp     Not Dump PCR/PTS/DTS timestamps.
+  -t, --dump-timestamp         Dump PCR/PTS/DTS timestamps.
 
 Args:
   <input>  Input file name.
