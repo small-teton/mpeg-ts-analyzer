@@ -66,17 +66,33 @@ func TestDumpPsi(t *testing.T) {
 	}
 }
 
-func TestNotDumpTimestamp(t *testing.T) {
+func TestDumpPesHeader(t *testing.T) {
 	options := new(Options)
 
-	options.notDumpTimestamp = true
-	retVal := options.NotDumpTimestamp()
+	options.dumpPesHeader = true
+	retVal := options.DumpPesHeader()
 	if retVal != true {
 		t.Errorf("actual: true, But got %d", retVal)
 	}
 
-	options.notDumpTimestamp = false
-	retVal = options.NotDumpTimestamp()
+	options.dumpPesHeader = false
+	retVal = options.DumpPesHeader()
+	if retVal != false {
+		t.Errorf("actual: false, But got %d", retVal)
+	}
+}
+
+func TestNotDumpTimestamp(t *testing.T) {
+	options := new(Options)
+
+	options.dumpTimestamp = true
+	retVal := options.DumpTimestamp()
+	if retVal != true {
+		t.Errorf("actual: true, But got %d", retVal)
+	}
+
+	options.dumpTimestamp = false
+	retVal = options.DumpTimestamp()
 	if retVal != false {
 		t.Errorf("actual: false, But got %d", retVal)
 	}
@@ -146,16 +162,32 @@ func TestSetDumpPsi(t *testing.T) {
 	}
 }
 
-func TestnotDumpTimestamp(t *testing.T) {
+func TestSetDumpPesHeader(t *testing.T) {
 	options := new(Options)
 
-	options.SetNotDumpTimestamp(true)
+	options.SetDumpPesHeader(true)
+	retVal := options.dumpPesHeader
+	if retVal != true {
+		t.Errorf("actual: true, But got %d", retVal)
+	}
+
+	options.SetDumpPesHeader(false)
+	retVal = options.dumpPesHeader
+	if retVal != false {
+		t.Errorf("actual: false, But got %d", retVal)
+	}
+}
+
+func TestDumpTimestamp(t *testing.T) {
+	options := new(Options)
+
+	options.SetDumpTimestamp(true)
 	retVal := options.notDumpTimestamp
 	if retVal != true {
 		t.Errorf("actual: true, But got %d", retVal)
 	}
 
-	options.SetNotDumpTimestamp(false)
+	options.SetDumpTimestamp(false)
 	retVal = options.notDumpTimestamp
 	if retVal != false {
 		t.Errorf("actual: false, But got %d", retVal)
