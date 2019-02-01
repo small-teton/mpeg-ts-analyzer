@@ -2,7 +2,6 @@ package tsparser
 
 import (
 	"fmt"
-
 	"github.com/small-teton/MpegTsAnalyzer/bitbuffer"
 )
 
@@ -359,7 +358,7 @@ func (p *Pes) DumpTimestamp() float64 {
 		fmt.Printf("0x%08x PTS: 0x%08x[%012fms] (pid:0x%02x) (delay:%fms)\n", p.pos, p.pts, float32(p.pts)/90, p.pid, pcrDelay)
 	}
 	if p.ptsDtsFlags == 3 {
-		fmt.Printf("0x%08x PTS: 0x%08x[%012fms] (pid:0x%02x)\n", p.pos, p.pts, float32(p.pts)/90, p.pid)
+		//fmt.Printf("0x%08x PTS: 0x%08x[%012fms] (pid:0x%02x)\n", p.pos, p.pts, float32(p.pts)/90, p.pid)
 		prevPcr := float32(p.prevPcr) / 300 / 90
 		nextPcr := float32(p.nextPcr) / 300 / 90
 		pcrDelay = float32(p.dts)/90 - (prevPcr + (nextPcr-prevPcr)*(float32(p.pos-p.prevPcrPos)/float32(p.nextPcrPos-p.prevPcrPos)))
@@ -369,6 +368,48 @@ func (p *Pes) DumpTimestamp() float64 {
 }
 
 // Dump PES header detail.
-func (p *Pes) Dump() {
-
+func (p *Pes) DumpHeader() {
+	fmt.Printf("\n===========================================\n")
+	fmt.Printf(" PES")
+	fmt.Printf("\n===========================================\n")
+	fmt.Printf("PES : packet_start_code_prefix			: %d\n", p.packetStartCodePrefix)
+    fmt.Printf("PES : stream_id					: %d\n", p.streamID)
+    fmt.Printf("PES : pes_packet_length				: %d\n", p.pesPacketLength)
+    fmt.Printf("PES : pes_scrambling_control			: %d\n", p.pesScramblingControl)
+    fmt.Printf("PES : pes_priority				: %d\n", p.pesPriority)
+    fmt.Printf("PES : data_alignment_indicator			: %d\n", p.dataAlignmentIndicator)
+    fmt.Printf("PES : copyright					: %d\n", p.copyright)
+    fmt.Printf("PES : original_or_copy				: %d\n", p.originalOrCopy)
+    fmt.Printf("PES : pts_dts_flags				: %d\n", p.ptsDtsFlags)
+    fmt.Printf("PES : escr_flag					: %d\n", p.escrFlag)
+    fmt.Printf("PES : es_rate_flag				: %d\n", p.esRateFlag)
+    fmt.Printf("PES : dsm_trick_mode_flag			: %d\n", p.dsmTrickModeFlag)
+    fmt.Printf("PES : additional_copy_info_flag			: %d\n", p.additionalCopyInfoFlag)
+    fmt.Printf("PES : pes_crc_flag				: %d\n", p.pesCrcFlag)
+    fmt.Printf("PES : pes_extention_flag			: %d\n", p.pesExtentionFlag)
+    fmt.Printf("PES : pes_header_data_length			: %d\n", p.pesHeaderDataLength)
+    fmt.Printf("PES : pts					: %d\n", p.pts)
+    fmt.Printf("PES : dts					: %d\n", p.dts)
+    fmt.Printf("PES : escr					: %d\n", p.escr)
+    fmt.Printf("PES : escr_base					: %d\n", p.escrBase)
+    fmt.Printf("PES : escr_extention				: %d\n", p.escrExtention)
+    fmt.Printf("PES : es_rate					: %d\n", p.esRate)
+    fmt.Printf("PES : trick_mode_control			: %d\n", p.trickModeControl)
+    fmt.Printf("PES : field_id					: %d\n", p.fieldID)
+    fmt.Printf("PES : intra_slice_refresh			: %d\n", p.intraSliceRefresh)
+    fmt.Printf("PES : frequency_truncation			: %d\n", p.frequencyTruncation)
+    fmt.Printf("PES : rep_cntrl					: %d\n", p.repCntrl)
+    fmt.Printf("PES : additional_copy_info			: %d\n", p.additionalCopyInfo)
+    fmt.Printf("PES : previous_pes_packet_crc			: %d\n", p.previousPesPacketCrc)
+    fmt.Printf("PES : pes_private_data_flag			: %d\n", p.pesPrivateDataFlag)
+    fmt.Printf("PES : pack_header_field_flag			: %d\n", p.packHeaderFieldFlag)
+    fmt.Printf("PES : program_packet_sequence_counter_flag	: %d\n", p.programPacketSequenceCounterFlag)
+    fmt.Printf("PES : p-std_buffer_flag				: %d\n", p.pStdBufferFlag)
+    fmt.Printf("PES : pes_extention_flag2			: %d\n", p.pesExtentionFlag2)
+    fmt.Printf("PES : program_packet_sequence_counter		: %d\n", p.programPacketSequenceCounter)
+    fmt.Printf("PES : mpeg1_mpeg2_identifer			: %d\n", p.mpeg1Mpeg2Identifer)
+    fmt.Printf("PES : original_stuff_length			: %d\n", p.originalStuffLength)
+    fmt.Printf("PES : p-std_buffer_scale			: %d\n", p.pStdBufferScale)
+    fmt.Printf("PES : p-std_buffer_size				: %d\n", p.pStdBufferSize)
+    fmt.Printf("PES : pes_extention_field_length		: %d\n", p.pesExtentionFieldLength)
 }
