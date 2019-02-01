@@ -13,12 +13,12 @@ import (
 const tsPacketSize = 188
 
 var (
-	dumpHeader = kingpin.Flag("dump-ts-header", "Dump TS packet header.").Bool()
-	dumpPayload = kingpin.Flag("dump-ts-payload", "Dump TS packet payload binary.").Bool()
+	dumpHeader          = kingpin.Flag("dump-ts-header", "Dump TS packet header.").Bool()
+	dumpPayload         = kingpin.Flag("dump-ts-payload", "Dump TS packet payload binary.").Bool()
 	dumpAdaptationField = kingpin.Flag("dump-adaptation-field", "Dump TS packet adaptation_field detail.").Bool()
-	dumpPsi = kingpin.Flag("dump-psi", "Dump PSI(PAT/PMT) detail.").Bool()
-	dumpPesHeader = kingpin.Flag("dump-pes-header", "Dump PES packet header detail.").Bool()
-	dumpTimestamp = kingpin.Flag("dump-timestamp", "Dump PCR/PTS/DTS timestamps.").Short('t').Bool()
+	dumpPsi             = kingpin.Flag("dump-psi", "Dump PSI(PAT/PMT) detail.").Bool()
+	dumpPesHeader       = kingpin.Flag("dump-pes-header", "Dump PES packet header detail.").Bool()
+	dumpTimestamp       = kingpin.Flag("dump-timestamp", "Dump PCR/PTS/DTS timestamps.").Short('t').Bool()
 )
 
 func main() {
