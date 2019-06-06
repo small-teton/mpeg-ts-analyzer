@@ -17,16 +17,16 @@ func TestPesInitialize(t *testing.T) {
 	p1.Initialize(1, 2, 3, 4)
 
 	if p1.pid != 1 {
-		t.Errorf("actual: 1, But got %s", p1.pid)
+		t.Errorf("actual: 1, But got %d", p1.pid)
 	}
 	if p1.pos != 2 {
-		t.Errorf("actual: 2, But got %s", p1.pos)
+		t.Errorf("actual: 2, But got %d", p1.pos)
 	}
 	if p1.prevPcr != 3 {
-		t.Errorf("actual: 3, But got %s", p1.prevPcr)
+		t.Errorf("actual: 3, But got %d", p1.prevPcr)
 	}
 	if p1.prevPcrPos != 4 {
-		t.Errorf("actual: 4, But got %s", p1.prevPcrPos)
+		t.Errorf("actual: 4, But got %d", p1.prevPcrPos)
 	}
 
 	data := []byte{
