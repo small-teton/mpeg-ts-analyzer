@@ -12,15 +12,26 @@ import (
 
 const tsPacketSize = 188
 
+var (
+	dumpHeader          = kingpin.Flag("dump-ts-header", "Dump TS packet header.").Bool()
+	dumpPayload         = kingpin.Flag("dump-ts-payload", "Dump TS packet payload binary.").Bool()
+	dumpAdaptationField = kingpin.Flag("dump-adaptation-field", "Dump TS packet adaptation_field detail.").Bool()
+	dumpPsi             = kingpin.Flag("dump-psi", "Dump PSI(PAT/PMT) detail.").Bool()
+	dumpPesHeader       = kingpin.Flag("dump-pes-header", "Dump PES packet header detail.").Bool()
+	dumpTimestamp       = kingpin.Flag("dump-timestamp", "Dump PCR/PTS/DTS timestamps.").Short('t').Bool()
+)
+
 func main() {
-	var options options.Options
 	filename := kingpin.Arg("input", "Input file name.").Required().String()
-	options.SetDumpHeader(*kingpin.Flag("dump-ts-header", "Dump TS packet header.").Bool())
-	options.SetDumpPayload(*kingpin.Flag("dump-ts-payload", "Dump TS packet payload binary.").Bool())
-	options.SetDumpAdaptationField(*kingpin.Flag("dump-adaptation-field", "Dump TS packet adaptation_field detail.").Bool())
-	options.SetDumpPsi(*kingpin.Flag("dump-psi", "Dump PSI(PAT/PMT) detail.").Bool())
-	options.SetNotDumpTimestamp(*kingpin.Flag("not-dump-timestamp", "Not Dump PCR/PTS/DTS timestamps.").Short('n').Bool())
 	kingpin.Parse()
+
+	var options options.Options
+	options.SetDumpHeader(*dumpHeader)
+	options.SetDumpPayload(*dumpPayload)
+	options.SetDumpAdaptationField(*dumpAdaptationField)
+	options.SetDumpPsi(*dumpPsi)
+	options.SetDumpPesHeader(*dumpPesHeader)
+	options.SetDumpTimestamp(*dumpTimestamp)
 
 	if err := parseTsFile(*filename, options); err != nil {
 		os.Exit(1)
@@ -68,6 +79,9 @@ func parseTsFile(filename string, options options.Options) error {
 			return fmt.Errorf("File seek error: %s", err)
 		}
 		fmt.Printf("Detected PAT: PMT pid = 0x%02x\n", pmtPid)
+		if options.DumpPsi() {
+			pat.Dump()
+		}
 
 		// Parse PMT
 		err = tsparser.BufferPsi(file, &pos, pmtPid, pmt, options)
@@ -82,7 +96,11 @@ func parseTsFile(filename string, options options.Options) error {
 			return fmt.Errorf("File seek error: %s", err)
 		}
 		fmt.Println("Detected PMT")
-		pmt.DumpProgramInfos()
+		if options.DumpPsi() {
+			pmt.Dump()
+		} else {
+			pmt.DumpProgramInfos()
+		}
 
 		err = tsparser.BufferPes(file, &pos, pcrPid, programs, options)
 		if err != nil {
