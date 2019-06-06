@@ -7,7 +7,7 @@ type Options struct {
 	dumpAdaptationField bool
 	dumpPsi             bool
 	dumpPesHeader       bool
-	dumpTimestamp    bool
+	dumpTimestamp    	bool
 }
 
 // DumpHeader return flag data "--dump-ts-header"
