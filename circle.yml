@@ -1,6 +1,13 @@
-machine:
-  timezone:
-    Asia/Tokyo
-test:
-  override:
-    - go test ./...
+version: 2
+jobs:
+  build:
+    working_directory: /home/circleci/go/src/github.com/small-teton/MpegTsAnalyzer
+    environment:
+      GOPATH: /home/circleci/go
+    docker:
+    - image: circleci/golang:1.11
+    steps:
+      - run: echo 'export PATH=${GOPATH}/bin/:${PATH}' >> $BASH_ENV
+      - checkout
+      - run: go get -t -d -v ./...
+      - run: go test -v -race ./...

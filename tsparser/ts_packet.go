@@ -118,6 +118,14 @@ func (tp *TsPacket) Parse() error {
 	if tp.adaptationFieldControl == 3 {
 		tp.payload = tp.buf[tsHeaderSize+afLength+1:]
 	}
+
+	if tp.options.DumpHeader() {
+		tp.DumpHeader()
+	}
+	if tp.options.DumpPayload() {
+		tp.DumpPayload()
+	}
+
 	return nil
 }
 
@@ -152,7 +160,7 @@ func (tp *TsPacket) DumpHeader() {
 }
 
 // DumpData print this TsPacket payload binary.
-func (tp *TsPacket) DumpData() {
+func (tp *TsPacket) DumpPayload() {
 	fmt.Printf("===============================================================\n")
 	fmt.Printf(" Dump TS Data\n")
 	fmt.Printf("===============================================================\n")
