@@ -245,6 +245,9 @@ func (af *AdaptationField) DumpPcr(prevPcr uint64) {
 
 // Dump adaptation_field detail.
 func (af *AdaptationField) Dump() {
+	fmt.Printf("\n===========================================\n")
+	fmt.Printf(" Adaptation Field")
+	fmt.Printf("\n===========================================\n")
 	fmt.Printf("Adaptation Field : adaptation_field_length			: %d\n", af.adaptationFieldLength)
 	if af.adaptationFieldLength <= 0 {
 		return
