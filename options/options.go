@@ -43,5 +43,5 @@ func (o *Options) SetDumpPsi(v bool) { o.dumpPsi = v }
 // SetDumpPesHeader set value to "--dump-pes-header"
 func (o *Options) SetDumpPesHeader(v bool) { o.dumpPesHeader = v }
 
-// SetNotDumpTimestamp set value to "--not-dump-timestamp"
+// SetDumpTimestamp set value to "--dump-timestamp"
 func (o *Options) SetDumpTimestamp(v bool) { o.dumpTimestamp = v }
