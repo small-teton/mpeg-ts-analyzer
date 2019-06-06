@@ -21,7 +21,7 @@ func TestTsPacketInitialize(t *testing.T) {
 	tp1.Initialize(1, options)
 
 	if tp1.pos != 1 {
-		t.Errorf("actual: 1, But got %s", tp1.pos)
+		t.Errorf("actual: 1, But got %d", tp1.pos)
 	}
 	if !tp1.options.DumpHeader() {
 		t.Errorf("actual: true, But got false")
