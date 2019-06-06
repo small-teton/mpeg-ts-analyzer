@@ -21,7 +21,7 @@ func TestAdaptationFieldInitialize(t *testing.T) {
 	af1.Initialize(1, options)
 
 	if af1.pos != 1 {
-		t.Errorf("actual: 1, But got %s", af1.pos)
+		t.Errorf("actual: 1, But got %d", af1.pos)
 	}
 	if !af1.options.DumpHeader() {
 		t.Errorf("actual: true, But got false")
