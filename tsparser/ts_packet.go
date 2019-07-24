@@ -156,7 +156,7 @@ func (tp *TsPacket) DumpHeader() {
 
 	fmt.Printf("transport_scrambling_control	: %x\n", tp.transportScramblingControl)
 	fmt.Printf("adaptation_field_control	: %x\n", tp.adaptationFieldControl)
-	fmt.Printf("continuity_counter			: %x\n", tp.continuityCounter)
+	fmt.Printf("continuity_counter		: %x\n", tp.continuityCounter)
 }
 
 // DumpData print this TsPacket payload binary.
