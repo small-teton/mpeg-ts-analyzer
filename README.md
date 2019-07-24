@@ -45,43 +45,43 @@ Input file:  ColorBar_4Mbps_1280x720_2997p.m2t
 ===============================================================
  TS Header
 ===============================================================
-transport_error_indicator       : 0
-payload_unit_start_indicator    : 1
-transport_priority              : 1
-pid                             : 0x0
-transport_scrambling_control    : 0
-adaptation_field_control        : 1
-continuity_counter                      : 0
+transport_error_indicator	: 0
+payload_unit_start_indicator	: 1
+transport_priority		: 1
+pid				: 0x0
+transport_scrambling_control	: 0
+adaptation_field_control	: 1
+continuity_counter		: 0
 ===============================================================
  TS Header
 ===============================================================
-transport_error_indicator       : 0
-payload_unit_start_indicator    : 1
-transport_priority              : 1
-pid                             : 0x100
-transport_scrambling_control    : 0
-adaptation_field_control        : 1
-continuity_counter                      : 0
+transport_error_indicator	: 0
+payload_unit_start_indicator	: 1
+transport_priority		: 1
+pid				: 0x100
+transport_scrambling_control	: 0
+adaptation_field_control	: 1
+continuity_counter		: 0
 ===============================================================
  TS Header
 ===============================================================
-transport_error_indicator       : 0
-payload_unit_start_indicator    : 0
-transport_priority              : 0
-pid                             : 0x101
-transport_scrambling_control    : 0
-adaptation_field_control        : 2
-continuity_counter                      : 0
+transport_error_indicator	: 0
+payload_unit_start_indicator	: 0
+transport_priority		: 0
+pid				: 0x101
+transport_scrambling_control	: 0
+adaptation_field_control	: 2
+continuity_counter		: 0
 ===============================================================
  TS Header
 ===============================================================
-transport_error_indicator       : 0
-payload_unit_start_indicator    : 1
-transport_priority              : 0
-pid                             : 0x200
-transport_scrambling_control    : 0
-adaptation_field_control        : 1
-continuity_counter                      : 0
+transport_error_indicator	: 0
+payload_unit_start_indicator	: 1
+transport_priority		: 0
+pid				: 0x200
+transport_scrambling_control	: 0
+adaptation_field_control	: 1
+continuity_counter		: 0
 ```
 
 ## Dump
