@@ -4,6 +4,6 @@
 .vscode
 debug
 main
-MpegTsAnalyzer
+mpeg-ts-analyzer
 
 dist/

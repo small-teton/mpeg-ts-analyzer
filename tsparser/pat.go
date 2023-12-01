@@ -3,12 +3,12 @@ package tsparser
 import (
 	"fmt"
 
-	"github.com/small-teton/MpegTsAnalyzer/bitbuffer"
+	"github.com/small-teton/mpeg-ts-analyzer/bitbuffer"
 )
 
 // Pat Program Map Table.
 type Pat struct {
-	startFlag         bool
+	// startFlag      bool
 	continuityCounter uint8
 	buf               []byte
 	pmtPid            uint16

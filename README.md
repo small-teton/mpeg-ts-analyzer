@@ -1,6 +1,6 @@
-# MpegTsAnalyzer
+# mpeg-ts-analyzer
 
-MpegTsAnalyzer is the Analyzer of MPEG2 Transport Stream(ISO_IEC_13818-1).
+mpeg-ts-analyzer is the Analyzer of MPEG2 Transport Stream(ISO_IEC_13818-1).
 It can parse TS header, Adaptation Field, PSI(PAT/PMT) and PES header. Then, it can check continuity_counter(TS header), CRC32(PSI). 
 
 
@@ -9,7 +9,7 @@ It can parse TS header, Adaptation Field, PSI(PAT/PMT) and PES header. Then, it 
 Default, it is dump each timestamps(PCR/PTS/DTS) that include PCR interval and PTS PCR gap. If you want to dump more detail, please add each command line flags.
 
 ```
-usage: MpegTsAnalyzer [<flags>] [<input>]
+usage: mpeg-ts-analyzer [<flags>] [<input>]
 
 
 Flags:
@@ -32,7 +32,7 @@ Args:
 ## No option
 
 ```
-$ ./MpegTsAnalyzer ColorBar_4Mbps_1280x720_2997p.m2t
+$ ./mpeg-ts-analyzer ColorBar_4Mbps_1280x720_2997p.m2t
 Input file:  ColorBar_4Mbps_1280x720_2997p.m2t
 Detected PAT: PMT pid = 0x100
 Detected PMT
@@ -43,7 +43,7 @@ PMT : Program Info : elementary_PID	: 0x201, stream_type : 0x11 (14496-3 audio w
 ## Dump TS header
 
 ```
-$ ./MpegTsAnalyzer ColorBar_4Mbps_1280x720_2997p.m2t --dump-ts-header 
+$ ./mpeg-ts-analyzer ColorBar_4Mbps_1280x720_2997p.m2t --dump-ts-header 
 Input file:  ColorBar_4Mbps_1280x720_2997p.m2t
 ===============================================================
  TS Header
@@ -90,7 +90,7 @@ continuity_counter		: 0
 ## Dump
 
 ```
-$ ./MpegTsAnalyzer ColorBar_4Mbps_1280x720_2997p.m2t --dump-ts-payload
+$ ./mpeg-ts-analyzer ColorBar_4Mbps_1280x720_2997p.m2t --dump-ts-payload
 Input file:  ColorBar_4Mbps_1280x720_2997p.m2t
 ===============================================================
  Dump TS Data
@@ -125,7 +125,7 @@ Input file:  ColorBar_4Mbps_1280x720_2997p.m2t
 ## Dump adaptation field
 
 ```
-$ ./MpegTsAnalyzer ColorBar_4Mbps_1280x720_2997p.m2t --dump-adaptation-field
+$ ./mpeg-ts-analyzer ColorBar_4Mbps_1280x720_2997p.m2t --dump-adaptation-field
 Input file:  ColorBar_4Mbps_1280x720_2997p.m2t
 
 ===========================================
@@ -159,7 +159,7 @@ Adaptation Field : adaptation_field_extension_flag              : 0
 ## Dump PSI
 
 ```
-$ ./MpegTsAnalyzer ColorBar_4Mbps_1280x720_2997p.m2t --dump-psi
+$ ./mpeg-ts-analyzer ColorBar_4Mbps_1280x720_2997p.m2t --dump-psi
 Input file:  ColorBar_4Mbps_1280x720_2997p.m2t
 Detected PAT: PMT pid = 0x100
 
@@ -200,7 +200,7 @@ PMT : CRC_32                    : c582fb7e
 ## Dump timestamp
 
 ```
-$ ./MpegTsAnalyzer ColorBar_4Mbps_1280x720_2997p.m2t --dump-timestamp
+$ ./mpeg-ts-analyzer ColorBar_4Mbps_1280x720_2997p.m2t --dump-timestamp
 Input file:  ColorBar_4Mbps_1280x720_2997p.m2t
 Detected PAT: PMT pid = 0x100
 Detected PMT

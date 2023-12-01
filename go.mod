@@ -1,10 +1,10 @@
-module github.com/small-teton/MpegTsAnalyzer
+module github.com/small-teton/mpeg-ts-analyzer
 
 go 1.21.4
 
-require github.com/alecthomas/kingpin/v2 v2.4.0
+require github.com/spf13/cobra v1.8.0
 
 require (
-	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137 // indirect
-	github.com/xhit/go-str2duration/v2 v2.1.0 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/spf13/pflag v1.0.5 // indirect
 )
