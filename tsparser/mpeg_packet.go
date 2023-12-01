@@ -6,7 +6,7 @@ import (
 	"math"
 	"os"
 
-	"github.com/small-teton/MpegTsAnalyzer/options"
+	"github.com/small-teton/mpeg-ts-analyzer/options"
 )
 
 // MpegPacket PSI or PES
@@ -31,7 +31,7 @@ func BufferPsi(file *os.File, pos *int64, pid uint16, mpegPacket MpegPacket, opt
 		if err == io.EOF {
 			break
 		} else if err != nil || size != tsPacketSize {
-			return fmt.Errorf("File read error: %s", err)
+			return fmt.Errorf("file read error: %s", err)
 		}
 		if size < tsPacketSize {
 			break
@@ -83,7 +83,7 @@ func BufferPes(file *os.File, pos *int64, pcrPid uint16, programInfos []ProgramI
 		if err == io.EOF {
 			break
 		} else if err != nil || size != tsPacketSize {
-			return fmt.Errorf("File read error: %s", err)
+			return fmt.Errorf("file read error: %s", err)
 		}
 		if size < tsPacketSize {
 			break
