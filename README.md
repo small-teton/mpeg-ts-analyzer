@@ -9,19 +9,22 @@ It can parse TS header, Adaptation Field, PSI(PAT/PMT) and PES header. Then, it 
 Default, it is dump each timestamps(PCR/PTS/DTS) that include PCR interval and PTS PCR gap. If you want to dump more detail, please add each command line flags.
 
 ```
-usage: MpegTsAnalyzer [<flags>] <input>
+usage: MpegTsAnalyzer [<flags>] [<input>]
+
 
 Flags:
-      --help                   Show context-sensitive help (also try --help-long
-                               and --help-man).
-      --dump-ts-header         Dump TS packet header.
-      --dump-ts-payload        Dump TS packet payload binary.
-      --dump-adaptation-field  Dump TS packet adaptation_field detail.
-      --dump-psi               Dump PSI(PAT/PMT) detail.
-  -t, --dump-timestamp         Dump PCR/PTS/DTS timestamps.
+      --[no-]help             Show context-sensitive help (also try --help-long and --help-man).
+      --[no-]dump-ts-header   Dump TS packet header.
+      --[no-]dump-ts-payload  Dump TS packet payload binary.
+      --[no-]dump-adaptation-field  
+                              Dump TS packet adaptation_field detail.
+      --[no-]dump-psi         Dump PSI(PAT/PMT) detail.
+      --[no-]dump-pes-header  Dump PES packet header detail.
+  -t, --[no-]dump-timestamp   Dump PCR/PTS/DTS timestamps.
+      --[no-]version          Show app version.
 
 Args:
-  <input>  Input file name.
+  [<input>]  Input file name.
 ```
 
 # Result Examples

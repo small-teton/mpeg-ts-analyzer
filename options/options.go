@@ -7,7 +7,8 @@ type Options struct {
 	dumpAdaptationField bool
 	dumpPsi             bool
 	dumpPesHeader       bool
-	dumpTimestamp    	bool
+	dumpTimestamp       bool
+	version             bool
 }
 
 // DumpHeader return flag data "--dump-ts-header"
@@ -28,6 +29,9 @@ func (o *Options) DumpPesHeader() bool { return o.dumpPesHeader }
 // NotDumpTimestamp return flag data "--not-dump-timestamp"
 func (o *Options) DumpTimestamp() bool { return o.dumpTimestamp }
 
+// NotDumpTimestamp return flag data "--not-dump-timestamp"
+func (o *Options) Version() bool { return o.version }
+
 // SetDumpHeader set value to "--dump-ts-header"
 func (o *Options) SetDumpHeader(v bool) { o.dumpHeader = v }
 
@@ -45,3 +49,6 @@ func (o *Options) SetDumpPesHeader(v bool) { o.dumpPesHeader = v }
 
 // SetDumpTimestamp set value to "--dump-timestamp"
 func (o *Options) SetDumpTimestamp(v bool) { o.dumpTimestamp = v }
+
+// SetVersion set value to "--version"
+func (o *Options) SetVersion(v bool) { o.version = v }

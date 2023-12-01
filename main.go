@@ -19,10 +19,13 @@ var (
 	dumpPsi             = kingpin.Flag("dump-psi", "Dump PSI(PAT/PMT) detail.").Bool()
 	dumpPesHeader       = kingpin.Flag("dump-pes-header", "Dump PES packet header detail.").Bool()
 	dumpTimestamp       = kingpin.Flag("dump-timestamp", "Dump PCR/PTS/DTS timestamps.").Short('t').Bool()
+	showVersion         = kingpin.Flag("version", "Show app version.").Bool()
 )
 
+var version string
+
 func main() {
-	filename := kingpin.Arg("input", "Input file name.").Required().String()
+	filename := kingpin.Arg("input", "Input file name.").String()
 	kingpin.Parse()
 
 	var options options.Options
@@ -32,6 +35,17 @@ func main() {
 	options.SetDumpPsi(*dumpPsi)
 	options.SetDumpPesHeader(*dumpPesHeader)
 	options.SetDumpTimestamp(*dumpTimestamp)
+	options.SetVersion(*showVersion)
+
+	if options.Version() {
+		fmt.Printf("version: %s\n", version)
+		os.Exit(0)
+	}
+
+	if *filename == "" {
+		fmt.Println("input file name is empty.")
+		os.Exit(1)
+	}
 
 	if err := parseTsFile(*filename, options); err != nil {
 		fmt.Println(err)
