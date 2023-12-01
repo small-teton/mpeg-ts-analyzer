@@ -5,3 +5,5 @@
 debug
 main
 MpegTsAnalyzer
+
+dist/

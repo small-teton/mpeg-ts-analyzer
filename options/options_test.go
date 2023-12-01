@@ -193,3 +193,19 @@ func TestDumpTimestamp(t *testing.T) {
 		t.Errorf("actual: false, But got %t", retVal)
 	}
 }
+
+func TestVersion(t *testing.T) {
+	options := new(Options)
+
+	options.SetVersion(true)
+	retVal := options.version
+	if retVal != true {
+		t.Errorf("actual: true, But got %t", retVal)
+	}
+
+	options.SetVersion(false)
+	retVal = options.version
+	if retVal != false {
+		t.Errorf("actual: false, But got %t", retVal)
+	}
+}
