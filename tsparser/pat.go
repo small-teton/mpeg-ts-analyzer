@@ -8,7 +8,7 @@ import (
 
 // Pat Program Map Table.
 type Pat struct {
-	startFlag         bool
+	// startFlag      bool
 	continuityCounter uint8
 	buf               []byte
 	pmtPid            uint16
