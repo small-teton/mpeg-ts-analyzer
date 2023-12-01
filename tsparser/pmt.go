@@ -8,7 +8,7 @@ import (
 
 // Pmt Progran Map Table
 type Pmt struct {
-	startFlag         bool
+	// startFlag         bool
 	continuityCounter uint8
 	buf               []byte
 

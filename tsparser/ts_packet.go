@@ -70,7 +70,7 @@ func (tp *TsPacket) Pcr() uint64 { return tp.adaptationField.Pcr() }
 // Parse parse TsPacket header.
 func (tp *TsPacket) Parse() error {
 	if len(tp.buf) < 188 {
-		return fmt.Errorf("Buffer is short of length: %d", len(tp.buf))
+		return fmt.Errorf("buffer is short of length: %d", len(tp.buf))
 	}
 	bb := new(bitbuffer.BitBuffer)
 	bb.Set(tp.buf)

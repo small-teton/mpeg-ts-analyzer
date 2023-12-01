@@ -11,7 +11,7 @@ import (
 func ParseTsFile(filename string, options options.Options) error {
 	file, err := os.Open(filename)
 	if err != nil {
-		return fmt.Errorf("File open error: %s %s", filename, err)
+		return fmt.Errorf("file open error: %s %s", filename, err)
 	}
 	fmt.Println("Input file: ", filename)
 
@@ -27,26 +27,27 @@ func ParseTsFile(filename string, options options.Options) error {
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			return fmt.Errorf("File read error: %s", err)
+			return fmt.Errorf("file read error: %s", err)
 		}
 		if pos, err = findPat(buf); err != nil {
 			continue
 		}
 
 		if _, err = file.Seek(pos, 0); err != nil {
-			return fmt.Errorf("File seek error: %s", err)
+			return fmt.Errorf("file seek error: %s", err)
 		}
 
 		// Parse PAT
-		err = BufferPsi(file, &pos, patPid, pat, options)
-		err = pat.Parse()
-		if err != nil {
+		if err = BufferPsi(file, &pos, patPid, pat, options); err != nil {
+			return err
+		}
+		if err = pat.Parse(); err != nil {
 			continue
 		}
 		pmtPid := pat.PmtPid()
 
 		if _, err = file.Seek(pos, 0); err != nil {
-			return fmt.Errorf("File seek error: %s", err)
+			return fmt.Errorf("file seek error: %s", err)
 		}
 		fmt.Printf("Detected PAT: PMT pid = 0x%02x\n", pmtPid)
 		if options.DumpPsi() {
@@ -54,16 +55,17 @@ func ParseTsFile(filename string, options options.Options) error {
 		}
 
 		// Parse PMT
-		err = BufferPsi(file, &pos, pmtPid, pmt, options)
-		err = pmt.Parse()
-		if err != nil {
+		if err = BufferPsi(file, &pos, pmtPid, pmt, options); err != nil {
+			return err
+		}
+		if err = pmt.Parse(); err != nil {
 			continue
 		}
 		programs := pmt.ProgramInfos()
 		pcrPid := pmt.PcrPid()
 
 		if _, err = file.Seek(pos, 0); err != nil {
-			return fmt.Errorf("File seek error: %s", err)
+			return fmt.Errorf("file seek error: %s", err)
 		}
 		fmt.Println("Detected PMT")
 		if options.DumpPsi() {
@@ -92,5 +94,5 @@ func findPat(data []byte) (int64, error) {
 			}
 		}
 	}
-	return 0, fmt.Errorf("Cannot find pat")
+	return 0, fmt.Errorf("cannot find pat")
 }
