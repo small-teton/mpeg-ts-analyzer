@@ -6,7 +6,7 @@ import (
 	"math"
 	"os"
 
-	"github.com/small-teton/MpegTsAnalyzer/options"
+	"github.com/small-teton/mpeg-ts-analyzer/options"
 )
 
 // MpegPacket PSI or PES

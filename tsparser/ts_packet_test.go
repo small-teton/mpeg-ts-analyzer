@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/small-teton/MpegTsAnalyzer/options"
+	"github.com/small-teton/mpeg-ts-analyzer/options"
 )
 
 func TestNewTsPacket(t *testing.T) {

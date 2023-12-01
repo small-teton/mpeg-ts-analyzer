@@ -3,7 +3,7 @@ package tsparser
 import (
 	"fmt"
 
-	"github.com/small-teton/MpegTsAnalyzer/bitbuffer"
+	"github.com/small-teton/mpeg-ts-analyzer/bitbuffer"
 )
 
 // Pat Program Map Table.

@@ -3,8 +3,8 @@ package tsparser
 import (
 	"fmt"
 
-	"github.com/small-teton/MpegTsAnalyzer/bitbuffer"
-	"github.com/small-teton/MpegTsAnalyzer/options"
+	"github.com/small-teton/mpeg-ts-analyzer/bitbuffer"
+	"github.com/small-teton/mpeg-ts-analyzer/options"
 )
 
 const tsHeaderSize = 4
