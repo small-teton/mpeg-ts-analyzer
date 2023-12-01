@@ -1,12 +1,6 @@
-# This is an example .goreleaser.yml file with some sensible defaults.
-# Make sure to check the documentation at https://goreleaser.com
-
-# The lines below are called `modelines`. See `:help modeline`
-# Feel free to remove those if you don't want/need to use them.
-# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
-# vim: set ts=2 sw=2 tw=0 fo=cnqoj
-
 version: 1
+
+project_name: mpeg-ts-analyzer
 
 before:
   hooks:
@@ -26,7 +20,7 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X main.version={{.Version}}
+      - -X github.com/small-teton/mpeg-ts-analyzer/cmd.version={{.Version}}
 
 archives:
   - format: tar.gz
