@@ -5,9 +5,9 @@ import (
 	"io"
 	"os"
 
+	"github.com/alecthomas/kingpin/v2"
 	"github.com/small-teton/MpegTsAnalyzer/options"
 	"github.com/small-teton/MpegTsAnalyzer/tsparser"
-	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 const tsPacketSize = 188
@@ -34,6 +34,7 @@ func main() {
 	options.SetDumpTimestamp(*dumpTimestamp)
 
 	if err := parseTsFile(*filename, options); err != nil {
+		fmt.Println(err)
 		os.Exit(1)
 	}
 }
