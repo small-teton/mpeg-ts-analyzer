@@ -23,6 +23,15 @@ var rootCmd = &cobra.Command{
 			return
 		}
 
+		if flag, _ := cmd.Flags().GetBool("generic-test"); flag {
+			genericTest()
+			return
+		}
+		if flag, _ := cmd.Flags().GetBool("new-peek-sample"); flag {
+			newBitBufferTest()
+			return
+		}
+
 		if len(args) == 0 {
 			fmt.Println("input file path is not specified.")
 			return
@@ -50,6 +59,8 @@ func init() {
 	rootCmd.Flags().Bool("dump-pes-header", false, "Dump PES packet header detail.")
 	rootCmd.Flags().Bool("dump-timestamp", false, "Dump PCR/PTS/DTS timestamps.")
 	rootCmd.Flags().Bool("version", false, "show mpeg-ts-analyzer version.")
+	rootCmd.Flags().Bool("generic-test", false, "show mpeg-ts-analyzer version.")
+	rootCmd.Flags().Bool("new-peek-sample", false, "show mpeg-ts-analyzer version.")
 }
 
 func loadFlags(cmd *cobra.Command) options.Options {
