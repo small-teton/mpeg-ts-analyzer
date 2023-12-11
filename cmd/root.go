@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/cockroachdb/errors"
 	"github.com/small-teton/mpeg-ts-analyzer/options"
 	"github.com/small-teton/mpeg-ts-analyzer/tsparser"
 	"github.com/spf13/cobra"
@@ -28,7 +29,7 @@ var rootCmd = &cobra.Command{
 			return
 		}
 
-		opt := loadFlags(cmd)
+		opt, _ := loadFlags(cmd)
 		tsparser.ParseTsFile(args[0], opt)
 	},
 }
@@ -52,14 +53,32 @@ func init() {
 	rootCmd.Flags().Bool("version", false, "show mpeg-ts-analyzer version.")
 }
 
-func loadFlags(cmd *cobra.Command) options.Options {
-	dumpHeader, _ := cmd.Flags().GetBool("dump-ts-header")
-	dumpPayload, _ := cmd.Flags().GetBool("dump-ts-payload")
-	dumpAdaptationField, _ := cmd.Flags().GetBool("dump-adaptation-field")
-	dumpPsi, _ := cmd.Flags().GetBool("dump-psi")
-	dumpPesHeader, _ := cmd.Flags().GetBool("dump-pes-header")
-	dumpTimestamp, _ := cmd.Flags().GetBool("dump-timestamp")
+func loadFlags(cmd *cobra.Command) (options.Options, error) {
 	var opt options.Options
+	dumpHeader, err := cmd.Flags().GetBool("dump-ts-header")
+	if err != nil {
+		return opt, errors.Wrap(err, "failed flag parse --dump-ts-header")
+	}
+	dumpPayload, _ := cmd.Flags().GetBool("dump-ts-payload")
+	if err != nil {
+		return opt, errors.Wrap(err, "failed flag parse --dump-ts-payload")
+	}
+	dumpAdaptationField, _ := cmd.Flags().GetBool("dump-adaptation-field")
+	if err != nil {
+		return opt, errors.Wrap(err, "failed flag parse --dump-adaptation-field")
+	}
+	dumpPsi, _ := cmd.Flags().GetBool("dump-psi")
+	if err != nil {
+		return opt, errors.Wrap(err, "failed flag parse --dump-psi")
+	}
+	dumpPesHeader, _ := cmd.Flags().GetBool("dump-pes-header")
+	if err != nil {
+		return opt, errors.Wrap(err, "failed flag parse --dump-pes-header")
+	}
+	dumpTimestamp, _ := cmd.Flags().GetBool("dump-timestamp")
+	if err != nil {
+		return opt, errors.Wrap(err, "failed flag parse --dump-timestamp")
+	}
 	opt.SetDumpHeader(dumpHeader)
 	opt.SetDumpPayload(dumpPayload)
 	opt.SetDumpAdaptationField(dumpAdaptationField)
@@ -67,5 +86,5 @@ func loadFlags(cmd *cobra.Command) options.Options {
 	opt.SetDumpPesHeader(dumpPesHeader)
 	opt.SetDumpTimestamp(dumpTimestamp)
 
-	return opt
+	return opt, nil
 }

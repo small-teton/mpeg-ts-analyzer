@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 
+	"github.com/cockroachdb/errors"
 	"github.com/small-teton/mpeg-ts-analyzer/options"
 )
 
@@ -31,7 +32,7 @@ func BufferPsi(file *os.File, pos *int64, pid uint16, mpegPacket MpegPacket, opt
 		if err == io.EOF {
 			break
 		} else if err != nil || size != tsPacketSize {
-			return fmt.Errorf("file read error: %s", err)
+			return errors.Wrap(err, "file read error")
 		}
 		if size < tsPacketSize {
 			break
@@ -57,7 +58,7 @@ func BufferPsi(file *os.File, pos *int64, pid uint16, mpegPacket MpegPacket, opt
 			mpegPacket.SetContinuityCounter(tsPacket.ContinuityCounter())
 			mpegPacket.Append(tsPacket.Payload())
 		} else {
-			return fmt.Errorf("packet loss. pos:0x%08x", pos)
+			return errors.Newf("packet loss. pos:0x%08x", pos)
 		}
 
 		*pos += int64(size)
