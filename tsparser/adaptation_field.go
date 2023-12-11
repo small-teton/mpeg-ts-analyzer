@@ -3,6 +3,7 @@ package tsparser
 import (
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/small-teton/mpeg-ts-analyzer/bitbuffer"
 	"github.com/small-teton/mpeg-ts-analyzer/options"
 )
@@ -101,42 +102,44 @@ func (af *AdaptationField) Parse() (uint8, error) {
 
 	var err error
 	if af.adaptationFieldLength, err = bb.PeekUint8(8); err != nil {
-		return 0, err
+		return 0, errors.Wrap(err, "failed peek adaptation_fields adaptation_field_length")
 	}
 	if af.adaptationFieldLength <= 0 {
 		return 0, nil
 	}
 	if af.discontinuityIndicator, err = bb.PeekUint8(1); err != nil {
-		return 0, err
+		return 0, errors.Wrap(err, "failed peek adaptation_fields discontinuity_indicator")
 	}
 	if af.randomAccessIndicator, err = bb.PeekUint8(1); err != nil {
-		return 0, err
+		return 0, errors.Wrap(err, "failed peek adaptation_fields randomAccess_indicator")
 	}
 	if af.elementaryStreamPriorityIndicator, err = bb.PeekUint8(1); err != nil {
-		return 0, err
+		return 0, errors.Wrap(err, "failed peek adaptation_fields elementary_stream_priority_indicator")
 	}
 	if af.pcrFlag, err = bb.PeekUint8(1); err != nil {
-		return 0, err
+		return 0, errors.Wrap(err, "failed peek adaptation_fields pcr_flag")
 	}
 	if af.oPcrFlag, err = bb.PeekUint8(1); err != nil {
-		return 0, err
+		return 0, errors.Wrap(err, "failed peek adaptation_fields o_pcr_flag")
 	}
 	if af.splicingPointFlag, err = bb.PeekUint8(1); err != nil {
-		return 0, err
+		return 0, errors.Wrap(err, "failed peek adaptation_fields splicing_point_flag")
 	}
 	if af.transportPrivateDataFlag, err = bb.PeekUint8(1); err != nil {
-		return 0, err
+		return 0, errors.Wrap(err, "failed peek adaptation_fields transport_private_data_flag")
 	}
 	if af.adaptationFieldExtensionFlag, err = bb.PeekUint8(1); err != nil {
-		return 0, err
+		return 0, errors.Wrap(err, "failed peek adaptation_fields adaptation_field_extension_flag")
 	}
 	if af.pcrFlag == 1 {
 		if af.programClockReferenceBase, err = bb.PeekUint64(33); err != nil {
-			return 0, err
+			return 0, errors.Wrap(err, "failed peek adaptation_fields program_clock_reference_base")
 		}
-		bb.Skip(6) // reserved
+		if err = bb.Skip(6); err != nil {
+			return 0, errors.Wrap(err, "failed to skip in adaptation_fields: reserved")
+		} // reserved
 		if af.programClockReferenceExtension, err = bb.PeekUint16(9); err != nil {
-			return 0, err
+			return 0, errors.Wrap(err, "failed peek adaptation_fields program_clock_reference_extension")
 		}
 
 		pcrBase := af.programClockReferenceBase
@@ -145,88 +148,88 @@ func (af *AdaptationField) Parse() (uint8, error) {
 	}
 	if af.oPcrFlag == 1 {
 		if af.originalProgramClockReferenceBase, err = bb.PeekUint64(33); err != nil {
-			return 0, err
+			return 0, errors.Wrap(err, "failed peek adaptation_fields original_program_clock_reference_base")
 		}
 		bb.Skip(6) // reserved
 		if af.originalProgramClockReferenceExtension, err = bb.PeekUint16(9); err != nil {
-			return 0, err
+			return 0, errors.Wrap(err, "failed peek adaptation_fields original_program_clock_reference_extension")
 		}
 	}
 	if af.splicingPointFlag == 1 {
 		if af.spliceCountdown, err = bb.PeekUint8(8); err != nil {
-			return 0, err
+			return 0, errors.Wrap(err, "failed peek adaptation_fields splice_countdown")
 		}
 	}
 	if af.transportPrivateDataFlag == 1 {
 		if af.transportPrivateDataLength, err = bb.PeekUint8(8); err != nil {
-			return 0, err
+			return 0, errors.Wrap(err, "failed peek adaptation_fields transport_private_data_length")
 		}
 		for i := uint8(0); i < af.transportPrivateDataLength; i++ {
 			chunk, err := bb.PeekUint8(8)
 			if err != nil {
-				return 0, err
+				return 0, errors.Wrap(err, "failed peek adaptation_fields transport_private_data chunk")
 			}
 			af.privateDataByte = append(af.privateDataByte, chunk)
 		}
 	}
 	if af.adaptationFieldExtensionFlag == 1 {
 		if af.adaptationFieldExtensionLength, err = bb.PeekUint8(8); err != nil {
-			return 0, err
+			return 0, errors.Wrap(err, "failed peek adaptation_fields adaptation_field_extension_length")
 		}
 		if af.ltwFlag, err = bb.PeekUint8(1); err != nil {
-			return 0, err
+			return 0, errors.Wrap(err, "failed peek adaptation_fields ltw_flag")
 		}
 		if af.piecewiseRateFlag, err = bb.PeekUint8(1); err != nil {
-			return 0, err
+			return 0, errors.Wrap(err, "failed peek adaptation_fields piecewise_rate_flag")
 		}
 		if af.seamlessSpliceFlag, err = bb.PeekUint8(1); err != nil {
-			return 0, err
+			return 0, errors.Wrap(err, "failed peek adaptation_fields seamless_splice_flag")
 		}
 		if err := bb.Skip(5); err != nil {
-			return 0, err
+			return 0, errors.Wrap(err, "failed to skip in adaptation_fields: reserved")
 		} // reserved
 		if af.ltwFlag == 1 {
 			if af.ltwValidFlag, err = bb.PeekUint8(1); err != nil {
-				return 0, err
+				return 0, errors.Wrap(err, "failed peek adaptation_fields ltw_valid_flag")
 			}
 			if af.ltwOffset, err = bb.PeekUint16(15); err != nil {
-				return 0, err
+				return 0, errors.Wrap(err, "failed peek adaptation_fields ltw_offset")
 			}
 		}
 		if af.piecewiseRateFlag == 1 {
 			if err := bb.Skip(2); err != nil {
-				return 0, err
+				return 0, errors.Wrap(err, "failed to skip in adaptation_fields: reserved")
 			} // reserved
 			if af.piecewiseRate, err = bb.PeekUint32(22); err != nil {
-				return 0, err
+				return 0, errors.Wrap(err, "failed peek adaptation_fields piecewise_rate")
 			}
 		}
 		if af.seamlessSpliceFlag == 1 {
 			if af.spliceType, err = bb.PeekUint8(4); err != nil {
-				return 0, err
+				return 0, errors.Wrap(err, "failed peek adaptation_fields splice_type")
 			}
 			if af.dtsNextAu, err = bb.PeekUint32(3); err != nil {
-				return 0, err
+				return 0, errors.Wrap(err, "failed peek adaptation_fields dts_next_au first")
 			}
 			af.dtsNextAu <<= 30
 			if err := bb.Skip(1); err != nil {
-				return 0, err
+				return 0, errors.Wrap(err, "failed to skip in adaptation_fields dts_next_au: first")
 			} // marker_bit
 			second, err := bb.PeekUint32(15)
 			if err != nil {
-				return 0, err
+				return 0, errors.Wrap(err, "failed peek adaptation_fields dts_next_au second")
 			}
 			af.dtsNextAu |= second << 15
 			if err := bb.Skip(1); err != nil {
-				return 0, err
+				return 0, errors.Wrap(err, "failed to skip in adaptation_fields dts_next_au: second")
 			} // marker_bit
 			third, err := bb.PeekUint32(15)
 			if err != nil {
-				return 0, err
+				return 0, errors.Wrap(err, "failed peek adaptation_fields dts_next_au third")
 			}
 			af.dtsNextAu |= third
 			if err := bb.Skip(1); err != nil {
-				return 0, err
+				return 0, errors.Wrap(err, "failed to skip in adaptation_fields dts_next_au: third")
 			} // marker_bit
 		}
 	}
