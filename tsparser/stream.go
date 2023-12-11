@@ -5,13 +5,14 @@ import (
 	"io"
 	"os"
 
+	"github.com/cockroachdb/errors"
 	"github.com/small-teton/mpeg-ts-analyzer/options"
 )
 
 func ParseTsFile(filename string, options options.Options) error {
 	file, err := os.Open(filename)
 	if err != nil {
-		return fmt.Errorf("file open error: %s %s", filename, err)
+		return errors.WithMessagef(err, "file open error: %s %s", filename)
 	}
 	fmt.Println("Input file: ", filename)
 
@@ -27,14 +28,14 @@ func ParseTsFile(filename string, options options.Options) error {
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			return fmt.Errorf("file read error: %s", err)
+			return errors.Wrap(err, "file read error")
 		}
 		if pos, err = findPat(buf); err != nil {
 			continue
 		}
 
 		if _, err = file.Seek(pos, 0); err != nil {
-			return fmt.Errorf("file seek error: %s", err)
+			return errors.Wrap(err, "file seek error")
 		}
 
 		// Parse PAT
@@ -47,7 +48,7 @@ func ParseTsFile(filename string, options options.Options) error {
 		pmtPid := pat.PmtPid()
 
 		if _, err = file.Seek(pos, 0); err != nil {
-			return fmt.Errorf("file seek error: %s", err)
+			return errors.Wrap(err, "file seek error")
 		}
 		fmt.Printf("Detected PAT: PMT pid = 0x%02x\n", pmtPid)
 		if options.DumpPsi() {
@@ -56,7 +57,7 @@ func ParseTsFile(filename string, options options.Options) error {
 
 		// Parse PMT
 		if err = BufferPsi(file, &pos, pmtPid, pmt, options); err != nil {
-			return err
+			return errors.Wrap(err, "failed parse pmt")
 		}
 		if err = pmt.Parse(); err != nil {
 			continue
@@ -65,7 +66,7 @@ func ParseTsFile(filename string, options options.Options) error {
 		pcrPid := pmt.PcrPid()
 
 		if _, err = file.Seek(pos, 0); err != nil {
-			return fmt.Errorf("file seek error: %s", err)
+			return errors.Wrap(err, "file seek error")
 		}
 		fmt.Println("Detected PMT")
 		if options.DumpPsi() {
@@ -76,7 +77,7 @@ func ParseTsFile(filename string, options options.Options) error {
 
 		err = BufferPes(file, &pos, pcrPid, programs, options)
 		if err != nil {
-			return fmt.Errorf("TS parse error: %s", err)
+			return errors.Wrap(err, "TS parse error")
 		}
 		if size < bufSize {
 			break
@@ -94,5 +95,5 @@ func findPat(data []byte) (int64, error) {
 			}
 		}
 	}
-	return 0, fmt.Errorf("cannot find pat")
+	return 0, errors.New("cannot find pat")
 }
