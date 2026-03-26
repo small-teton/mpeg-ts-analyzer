@@ -32,13 +32,13 @@ type Pes struct {
 	dsmTrickModeFlag                 uint8
 	additionalCopyInfoFlag           uint8
 	pesCrcFlag                       uint8
-	pesExtentionFlag                 uint8
+	pesExtensionFlag                 uint8
 	pesHeaderDataLength              uint8
 	pts                              uint64
 	dts                              uint64
 	escr                             uint32
 	escrBase                         uint64
-	escrExtention                    uint16
+	escrExtension                    uint16
 	esRate                           uint32
 	trickModeControl                 uint8
 	fieldID                          uint8
@@ -51,13 +51,13 @@ type Pes struct {
 	packHeaderFieldFlag              uint8
 	programPacketSequenceCounterFlag uint8
 	pStdBufferFlag                   uint8
-	pesExtentionFlag2                uint8
+	pesExtensionFlag2                uint8
 	programPacketSequenceCounter     uint8
-	mpeg1Mpeg2Identifer              uint8
+	mpeg1Mpeg2Identifier              uint8
 	originalStuffLength              uint8
 	pStdBufferScale                  uint8
 	pStdBufferSize                   uint16
-	pesExtentionFieldLength          uint8
+	pesExtensionFieldLength          uint8
 
 	data []byte
 }
@@ -94,13 +94,13 @@ func (p *Pes) Initialize(pid uint16, pos int64, prevPcr uint64, prevPcrPos int64
 	p.dsmTrickModeFlag = 0
 	p.additionalCopyInfoFlag = 0
 	p.pesCrcFlag = 0
-	p.pesExtentionFlag = 0
+	p.pesExtensionFlag = 0
 	p.pesHeaderDataLength = 0
 	p.pts = 0
 	p.dts = 0
 	p.escr = 0
 	p.escrBase = 0
-	p.escrExtention = 0
+	p.escrExtension = 0
 	p.esRate = 0
 	p.trickModeControl = 0
 	p.fieldID = 0
@@ -113,13 +113,13 @@ func (p *Pes) Initialize(pid uint16, pos int64, prevPcr uint64, prevPcrPos int64
 	p.packHeaderFieldFlag = 0
 	p.programPacketSequenceCounterFlag = 0
 	p.pStdBufferFlag = 0
-	p.pesExtentionFlag2 = 0
+	p.pesExtensionFlag2 = 0
 	p.programPacketSequenceCounter = 0
-	p.mpeg1Mpeg2Identifer = 0
+	p.mpeg1Mpeg2Identifier = 0
 	p.originalStuffLength = 0
 	p.pStdBufferScale = 0
 	p.pStdBufferSize = 0
-	p.pesExtentionFieldLength = 0
+	p.pesExtensionFieldLength = 0
 }
 
 // ContinuityCounter return current continuity_counter of TsPacket.
@@ -189,7 +189,7 @@ func (p *Pes) Parse() error {
 	if p.pesCrcFlag, err = bb.PeekUint8(1); err != nil {
 		return errors.Wrap(err, "failed peek pes pes_crc_flag")
 	}
-	if p.pesExtentionFlag, err = bb.PeekUint8(1); err != nil {
+	if p.pesExtensionFlag, err = bb.PeekUint8(1); err != nil {
 		return errors.Wrap(err, "failed peek pes pes_extention_flag")
 	}
 	if p.pesHeaderDataLength, err = bb.PeekUint8(8); err != nil {
@@ -395,13 +395,13 @@ func (p *Pes) DumpHeader() {
 	fmt.Printf("PES : dsm_trick_mode_flag			: %d\n", p.dsmTrickModeFlag)
 	fmt.Printf("PES : additional_copy_info_flag			: %d\n", p.additionalCopyInfoFlag)
 	fmt.Printf("PES : pes_crc_flag				: %d\n", p.pesCrcFlag)
-	fmt.Printf("PES : pes_extention_flag			: %d\n", p.pesExtentionFlag)
+	fmt.Printf("PES : pes_extention_flag			: %d\n", p.pesExtensionFlag)
 	fmt.Printf("PES : pes_header_data_length			: %d\n", p.pesHeaderDataLength)
 	fmt.Printf("PES : pts					: %d\n", p.pts)
 	fmt.Printf("PES : dts					: %d\n", p.dts)
 	fmt.Printf("PES : escr					: %d\n", p.escr)
 	fmt.Printf("PES : escr_base					: %d\n", p.escrBase)
-	fmt.Printf("PES : escr_extention				: %d\n", p.escrExtention)
+	fmt.Printf("PES : escr_extention				: %d\n", p.escrExtension)
 	fmt.Printf("PES : es_rate					: %d\n", p.esRate)
 	fmt.Printf("PES : trick_mode_control			: %d\n", p.trickModeControl)
 	fmt.Printf("PES : field_id					: %d\n", p.fieldID)
@@ -414,11 +414,11 @@ func (p *Pes) DumpHeader() {
 	fmt.Printf("PES : pack_header_field_flag			: %d\n", p.packHeaderFieldFlag)
 	fmt.Printf("PES : program_packet_sequence_counter_flag	: %d\n", p.programPacketSequenceCounterFlag)
 	fmt.Printf("PES : p-std_buffer_flag				: %d\n", p.pStdBufferFlag)
-	fmt.Printf("PES : pes_extention_flag2			: %d\n", p.pesExtentionFlag2)
+	fmt.Printf("PES : pes_extention_flag2			: %d\n", p.pesExtensionFlag2)
 	fmt.Printf("PES : program_packet_sequence_counter		: %d\n", p.programPacketSequenceCounter)
-	fmt.Printf("PES : mpeg1_mpeg2_identifer			: %d\n", p.mpeg1Mpeg2Identifer)
+	fmt.Printf("PES : mpeg1_mpeg2_identifer			: %d\n", p.mpeg1Mpeg2Identifier)
 	fmt.Printf("PES : original_stuff_length			: %d\n", p.originalStuffLength)
 	fmt.Printf("PES : p-std_buffer_scale			: %d\n", p.pStdBufferScale)
 	fmt.Printf("PES : p-std_buffer_size				: %d\n", p.pStdBufferSize)
-	fmt.Printf("PES : pes_extention_field_length		: %d\n", p.pesExtentionFieldLength)
+	fmt.Printf("PES : pes_extention_field_length		: %d\n", p.pesExtensionFieldLength)
 }
