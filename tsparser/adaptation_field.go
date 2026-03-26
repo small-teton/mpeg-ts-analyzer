@@ -102,44 +102,44 @@ func (af *AdaptationField) Parse() (uint8, error) {
 
 	var err error
 	if af.adaptationFieldLength, err = bb.ReadUint8(8); err != nil {
-		return 0, errors.Wrap(err, "failed peek adaptation_fields adaptation_field_length")
+		return 0, errors.Wrap(err, "failed to read adaptation_fields adaptation_field_length")
 	}
 	if af.adaptationFieldLength <= 0 {
 		return 0, nil
 	}
 	if af.discontinuityIndicator, err = bb.ReadUint8(1); err != nil {
-		return 0, errors.Wrap(err, "failed peek adaptation_fields discontinuity_indicator")
+		return 0, errors.Wrap(err, "failed to read adaptation_fields discontinuity_indicator")
 	}
 	if af.randomAccessIndicator, err = bb.ReadUint8(1); err != nil {
-		return 0, errors.Wrap(err, "failed peek adaptation_fields randomAccess_indicator")
+		return 0, errors.Wrap(err, "failed to read adaptation_fields randomAccess_indicator")
 	}
 	if af.elementaryStreamPriorityIndicator, err = bb.ReadUint8(1); err != nil {
-		return 0, errors.Wrap(err, "failed peek adaptation_fields elementary_stream_priority_indicator")
+		return 0, errors.Wrap(err, "failed to read adaptation_fields elementary_stream_priority_indicator")
 	}
 	if af.pcrFlag, err = bb.ReadUint8(1); err != nil {
-		return 0, errors.Wrap(err, "failed peek adaptation_fields pcr_flag")
+		return 0, errors.Wrap(err, "failed to read adaptation_fields pcr_flag")
 	}
 	if af.oPcrFlag, err = bb.ReadUint8(1); err != nil {
-		return 0, errors.Wrap(err, "failed peek adaptation_fields o_pcr_flag")
+		return 0, errors.Wrap(err, "failed to read adaptation_fields o_pcr_flag")
 	}
 	if af.splicingPointFlag, err = bb.ReadUint8(1); err != nil {
-		return 0, errors.Wrap(err, "failed peek adaptation_fields splicing_point_flag")
+		return 0, errors.Wrap(err, "failed to read adaptation_fields splicing_point_flag")
 	}
 	if af.transportPrivateDataFlag, err = bb.ReadUint8(1); err != nil {
-		return 0, errors.Wrap(err, "failed peek adaptation_fields transport_private_data_flag")
+		return 0, errors.Wrap(err, "failed to read adaptation_fields transport_private_data_flag")
 	}
 	if af.adaptationFieldExtensionFlag, err = bb.ReadUint8(1); err != nil {
-		return 0, errors.Wrap(err, "failed peek adaptation_fields adaptation_field_extension_flag")
+		return 0, errors.Wrap(err, "failed to read adaptation_fields adaptation_field_extension_flag")
 	}
 	if af.pcrFlag == 1 {
 		if af.programClockReferenceBase, err = bb.ReadUint64(33); err != nil {
-			return 0, errors.Wrap(err, "failed peek adaptation_fields program_clock_reference_base")
+			return 0, errors.Wrap(err, "failed to read adaptation_fields program_clock_reference_base")
 		}
 		if err = bb.Skip(6); err != nil {
 			return 0, errors.Wrap(err, "failed to skip in adaptation_fields: reserved")
 		} // reserved
 		if af.programClockReferenceExtension, err = bb.ReadUint16(9); err != nil {
-			return 0, errors.Wrap(err, "failed peek adaptation_fields program_clock_reference_extension")
+			return 0, errors.Wrap(err, "failed to read adaptation_fields program_clock_reference_extension")
 		}
 
 		pcrBase := af.programClockReferenceBase
@@ -148,52 +148,52 @@ func (af *AdaptationField) Parse() (uint8, error) {
 	}
 	if af.oPcrFlag == 1 {
 		if af.originalProgramClockReferenceBase, err = bb.ReadUint64(33); err != nil {
-			return 0, errors.Wrap(err, "failed peek adaptation_fields original_program_clock_reference_base")
+			return 0, errors.Wrap(err, "failed to read adaptation_fields original_program_clock_reference_base")
 		}
 		bb.Skip(6) // reserved
 		if af.originalProgramClockReferenceExtension, err = bb.ReadUint16(9); err != nil {
-			return 0, errors.Wrap(err, "failed peek adaptation_fields original_program_clock_reference_extension")
+			return 0, errors.Wrap(err, "failed to read adaptation_fields original_program_clock_reference_extension")
 		}
 	}
 	if af.splicingPointFlag == 1 {
 		if af.spliceCountdown, err = bb.ReadUint8(8); err != nil {
-			return 0, errors.Wrap(err, "failed peek adaptation_fields splice_countdown")
+			return 0, errors.Wrap(err, "failed to read adaptation_fields splice_countdown")
 		}
 	}
 	if af.transportPrivateDataFlag == 1 {
 		if af.transportPrivateDataLength, err = bb.ReadUint8(8); err != nil {
-			return 0, errors.Wrap(err, "failed peek adaptation_fields transport_private_data_length")
+			return 0, errors.Wrap(err, "failed to read adaptation_fields transport_private_data_length")
 		}
 		for i := uint8(0); i < af.transportPrivateDataLength; i++ {
 			chunk, err := bb.ReadUint8(8)
 			if err != nil {
-				return 0, errors.Wrap(err, "failed peek adaptation_fields transport_private_data chunk")
+				return 0, errors.Wrap(err, "failed to read adaptation_fields transport_private_data chunk")
 			}
 			af.privateDataByte = append(af.privateDataByte, chunk)
 		}
 	}
 	if af.adaptationFieldExtensionFlag == 1 {
 		if af.adaptationFieldExtensionLength, err = bb.ReadUint8(8); err != nil {
-			return 0, errors.Wrap(err, "failed peek adaptation_fields adaptation_field_extension_length")
+			return 0, errors.Wrap(err, "failed to read adaptation_fields adaptation_field_extension_length")
 		}
 		if af.ltwFlag, err = bb.ReadUint8(1); err != nil {
-			return 0, errors.Wrap(err, "failed peek adaptation_fields ltw_flag")
+			return 0, errors.Wrap(err, "failed to read adaptation_fields ltw_flag")
 		}
 		if af.piecewiseRateFlag, err = bb.ReadUint8(1); err != nil {
-			return 0, errors.Wrap(err, "failed peek adaptation_fields piecewise_rate_flag")
+			return 0, errors.Wrap(err, "failed to read adaptation_fields piecewise_rate_flag")
 		}
 		if af.seamlessSpliceFlag, err = bb.ReadUint8(1); err != nil {
-			return 0, errors.Wrap(err, "failed peek adaptation_fields seamless_splice_flag")
+			return 0, errors.Wrap(err, "failed to read adaptation_fields seamless_splice_flag")
 		}
 		if err := bb.Skip(5); err != nil {
 			return 0, errors.Wrap(err, "failed to skip in adaptation_fields: reserved")
 		} // reserved
 		if af.ltwFlag == 1 {
 			if af.ltwValidFlag, err = bb.ReadUint8(1); err != nil {
-				return 0, errors.Wrap(err, "failed peek adaptation_fields ltw_valid_flag")
+				return 0, errors.Wrap(err, "failed to read adaptation_fields ltw_valid_flag")
 			}
 			if af.ltwOffset, err = bb.ReadUint16(15); err != nil {
-				return 0, errors.Wrap(err, "failed peek adaptation_fields ltw_offset")
+				return 0, errors.Wrap(err, "failed to read adaptation_fields ltw_offset")
 			}
 		}
 		if af.piecewiseRateFlag == 1 {
@@ -201,15 +201,15 @@ func (af *AdaptationField) Parse() (uint8, error) {
 				return 0, errors.Wrap(err, "failed to skip in adaptation_fields: reserved")
 			} // reserved
 			if af.piecewiseRate, err = bb.ReadUint32(22); err != nil {
-				return 0, errors.Wrap(err, "failed peek adaptation_fields piecewise_rate")
+				return 0, errors.Wrap(err, "failed to read adaptation_fields piecewise_rate")
 			}
 		}
 		if af.seamlessSpliceFlag == 1 {
 			if af.spliceType, err = bb.ReadUint8(4); err != nil {
-				return 0, errors.Wrap(err, "failed peek adaptation_fields splice_type")
+				return 0, errors.Wrap(err, "failed to read adaptation_fields splice_type")
 			}
 			if af.dtsNextAu, err = bb.ReadUint32(3); err != nil {
-				return 0, errors.Wrap(err, "failed peek adaptation_fields dts_next_au first")
+				return 0, errors.Wrap(err, "failed to read adaptation_fields dts_next_au first")
 			}
 			af.dtsNextAu <<= 30
 			if err := bb.Skip(1); err != nil {
@@ -217,7 +217,7 @@ func (af *AdaptationField) Parse() (uint8, error) {
 			} // marker_bit
 			second, err := bb.ReadUint32(15)
 			if err != nil {
-				return 0, errors.Wrap(err, "failed peek adaptation_fields dts_next_au second")
+				return 0, errors.Wrap(err, "failed to read adaptation_fields dts_next_au second")
 			}
 			af.dtsNextAu |= second << 15
 			if err := bb.Skip(1); err != nil {
@@ -225,7 +225,7 @@ func (af *AdaptationField) Parse() (uint8, error) {
 			} // marker_bit
 			third, err := bb.ReadUint32(15)
 			if err != nil {
-				return 0, errors.Wrap(err, "failed peek adaptation_fields dts_next_au third")
+				return 0, errors.Wrap(err, "failed to read adaptation_fields dts_next_au third")
 			}
 			af.dtsNextAu |= third
 			if err := bb.Skip(1); err != nil {
