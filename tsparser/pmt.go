@@ -63,10 +63,10 @@ func (p *Pmt) Parse() error {
 
 	var err error
 	if p.tableID, err = bb.ReadUint8(8); err != nil {
-		return errors.Wrap(err, "failed peek pmt table_id")
+		return errors.Wrap(err, "failed to read pmt table_id")
 	}
 	if p.sectionSyntaxIndicator, err = bb.ReadUint8(1); err != nil {
-		return errors.Wrap(err, "failed peek pmt section_syntax_indicator")
+		return errors.Wrap(err, "failed to read pmt section_syntax_indicator")
 	}
 	if err := bb.Skip(1); err != nil {
 		return errors.Wrap(err, "failed to skip in pmt: ()")
@@ -75,37 +75,37 @@ func (p *Pmt) Parse() error {
 		return errors.Wrap(err, "failed to skip in pmt: reserved")
 	} // reserved
 	if p.sectionLength, err = bb.ReadUint16(12); err != nil {
-		return errors.Wrap(err, "failed peek pmt section_length")
+		return errors.Wrap(err, "failed to read pmt section_length")
 	}
 	if p.programNumber, err = bb.ReadUint16(16); err != nil {
-		return errors.Wrap(err, "failed peek pmt program_number")
+		return errors.Wrap(err, "failed to read pmt program_number")
 	}
 	if err := bb.Skip(2); err != nil {
 		return errors.Wrap(err, "failed to skip in pmt: reserved")
 	} // reserved
 	if p.versionNumber, err = bb.ReadUint8(5); err != nil {
-		return errors.Wrap(err, "failed peek pmt version_number")
+		return errors.Wrap(err, "failed to read pmt version_number")
 	}
 	if p.currentNextIndicator, err = bb.ReadUint8(1); err != nil {
-		return errors.Wrap(err, "failed peek pmt current_next_indicator")
+		return errors.Wrap(err, "failed to read pmt current_next_indicator")
 	}
 	if p.sectionNumber, err = bb.ReadUint8(8); err != nil {
-		return errors.Wrap(err, "failed peek pmt section_number")
+		return errors.Wrap(err, "failed to read pmt section_number")
 	}
 	if p.lastSectionNumber, err = bb.ReadUint8(8); err != nil {
-		return errors.Wrap(err, "failed peek pmt last_section_number")
+		return errors.Wrap(err, "failed to read pmt last_section_number")
 	}
 	if err := bb.Skip(3); err != nil {
 		return errors.Wrap(err, "failed to skip in pmt: reserved")
 	} // reserved
 	if p.pcrPid, err = bb.ReadUint16(13); err != nil {
-		return errors.Wrap(err, "failed peek pmt pcr_pid")
+		return errors.Wrap(err, "failed to read pmt pcr_pid")
 	}
 	if err := bb.Skip(4); err != nil {
 		return errors.Wrap(err, "failed to skip in pmt reserved")
 	} // reserved
 	if p.programInfoLength, err = bb.ReadUint16(12); err != nil {
-		return errors.Wrap(err, "failed peek pmt pragram_info_length")
+		return errors.Wrap(err, "failed to read pmt pragram_info_length")
 	}
 	if err := bb.Skip(8 * uint32(p.programInfoLength)); err != nil {
 		return errors.Wrap(err, "failed to skip in pmt")
@@ -114,19 +114,19 @@ func (p *Pmt) Parse() error {
 	for remainLength > 0 {
 		var info ProgramInfo
 		if info.streamType, err = bb.ReadUint8(8); err != nil {
-			return errors.Wrap(err, "failed peek pmt program info: stream_type")
+			return errors.Wrap(err, "failed to read pmt program info: stream_type")
 		}
 		if err := bb.Skip(3); err != nil {
 			return errors.Wrap(err, "failed to skip in pmt program info: reserved")
 		} // reserved
 		if info.elementaryPid, err = bb.ReadUint16(13); err != nil {
-			return errors.Wrap(err, "failed peek pmt program info: elementary_pid")
+			return errors.Wrap(err, "failed to read pmt program info: elementary_pid")
 		}
 		if err := bb.Skip(4); err != nil {
 			return errors.Wrap(err, "failed to skip in pmt program info: reserved")
 		} // reserved
 		if info.esInfoLength, err = bb.ReadUint16(12); err != nil {
-			return errors.Wrap(err, "failed peek pmt program info: es_info_length")
+			return errors.Wrap(err, "failed to read pmt program info: es_info_length")
 		}
 		if err := bb.Skip(8 * uint32(info.esInfoLength)); err != nil {
 			return errors.Wrap(err, "failed to skip in pmt program info")
@@ -135,7 +135,7 @@ func (p *Pmt) Parse() error {
 		p.programInfos = append(p.programInfos, info)
 	}
 	if p.crc32, err = bb.ReadUint32(32); err != nil {
-		return errors.Wrap(err, "failed peek pmt crc32")
+		return errors.Wrap(err, "failed to read pmt crc32")
 	}
 
 	if len(p.buf) >= int(3+p.sectionLength-4) && p.crc32 != crc32(p.buf[0:3+p.sectionLength-4]) {
