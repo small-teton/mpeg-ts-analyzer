@@ -107,7 +107,7 @@ func (p *Pmt) Parse() error {
 	if p.programInfoLength, err = bb.PeekUint16(12); err != nil {
 		return errors.Wrap(err, "failed peek pmt pragram_info_length")
 	}
-	if err := bb.Skip(8 * p.programInfoLength); err != nil {
+	if err := bb.Skip(8 * uint32(p.programInfoLength)); err != nil {
 		return errors.Wrap(err, "failed to skip in pmt")
 	}
 	remainLength := int32(p.sectionLength - 9 - 4)
@@ -128,7 +128,7 @@ func (p *Pmt) Parse() error {
 		if info.esInfoLength, err = bb.PeekUint16(12); err != nil {
 			return errors.Wrap(err, "failed peek pmt program info: es_info_length")
 		}
-		if err := bb.Skip(8 * info.esInfoLength); err != nil {
+		if err := bb.Skip(8 * uint32(info.esInfoLength)); err != nil {
 			return errors.Wrap(err, "failed to skip in pmt program info")
 		}
 		remainLength = remainLength - 5 - int32(info.esInfoLength)
