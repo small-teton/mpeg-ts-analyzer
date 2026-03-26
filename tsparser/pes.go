@@ -32,13 +32,13 @@ type Pes struct {
 	dsmTrickModeFlag                 uint8
 	additionalCopyInfoFlag           uint8
 	pesCrcFlag                       uint8
-	pesExtentionFlag                 uint8
+	pesExtensionFlag                 uint8
 	pesHeaderDataLength              uint8
 	pts                              uint64
 	dts                              uint64
 	escr                             uint32
 	escrBase                         uint64
-	escrExtention                    uint16
+	escrExtension                    uint16
 	esRate                           uint32
 	trickModeControl                 uint8
 	fieldID                          uint8
@@ -51,13 +51,13 @@ type Pes struct {
 	packHeaderFieldFlag              uint8
 	programPacketSequenceCounterFlag uint8
 	pStdBufferFlag                   uint8
-	pesExtentionFlag2                uint8
+	pesExtensionFlag2                uint8
 	programPacketSequenceCounter     uint8
-	mpeg1Mpeg2Identifer              uint8
+	mpeg1Mpeg2Identifier              uint8
 	originalStuffLength              uint8
 	pStdBufferScale                  uint8
 	pStdBufferSize                   uint16
-	pesExtentionFieldLength          uint8
+	pesExtensionFieldLength          uint8
 
 	data []byte
 }
@@ -94,13 +94,13 @@ func (p *Pes) Initialize(pid uint16, pos int64, prevPcr uint64, prevPcrPos int64
 	p.dsmTrickModeFlag = 0
 	p.additionalCopyInfoFlag = 0
 	p.pesCrcFlag = 0
-	p.pesExtentionFlag = 0
+	p.pesExtensionFlag = 0
 	p.pesHeaderDataLength = 0
 	p.pts = 0
 	p.dts = 0
 	p.escr = 0
 	p.escrBase = 0
-	p.escrExtention = 0
+	p.escrExtension = 0
 	p.esRate = 0
 	p.trickModeControl = 0
 	p.fieldID = 0
@@ -113,13 +113,13 @@ func (p *Pes) Initialize(pid uint16, pos int64, prevPcr uint64, prevPcrPos int64
 	p.packHeaderFieldFlag = 0
 	p.programPacketSequenceCounterFlag = 0
 	p.pStdBufferFlag = 0
-	p.pesExtentionFlag2 = 0
+	p.pesExtensionFlag2 = 0
 	p.programPacketSequenceCounter = 0
-	p.mpeg1Mpeg2Identifer = 0
+	p.mpeg1Mpeg2Identifier = 0
 	p.originalStuffLength = 0
 	p.pStdBufferScale = 0
 	p.pStdBufferSize = 0
-	p.pesExtentionFieldLength = 0
+	p.pesExtensionFieldLength = 0
 }
 
 // ContinuityCounter return current continuity_counter of TsPacket.
@@ -139,14 +139,14 @@ func (p *Pes) Parse() error {
 	bb.Set(p.buf)
 
 	var err error
-	if p.packetStartCodePrefix, err = bb.PeekUint32(24); err != nil {
-		return errors.Wrap(err, "failed peek pes packet_start_code_prefix")
+	if p.packetStartCodePrefix, err = bb.ReadUint32(24); err != nil {
+		return errors.Wrap(err, "failed to read pes packet_start_code_prefix")
 	}
-	if p.streamID, err = bb.PeekUint8(8); err != nil {
-		return errors.Wrap(err, "failed peek pes stream_id")
+	if p.streamID, err = bb.ReadUint8(8); err != nil {
+		return errors.Wrap(err, "failed to read pes stream_id")
 	}
-	if p.pesPacketLength, err = bb.PeekUint16(16); err != nil {
-		return errors.Wrap(err, "failed peek pes pes_packed_length")
+	if p.pesPacketLength, err = bb.ReadUint16(16); err != nil {
+		return errors.Wrap(err, "failed to read pes pes_packed_length")
 	}
 	switch p.streamID {
 	case 0xBC, 0xBF, 0xF0, 0xF1, 0xFF, 0xF2, 0xF8:
@@ -156,44 +156,44 @@ func (p *Pes) Parse() error {
 	if err = bb.Skip(2); err != nil {
 		return errors.Wrap(err, "failed to skip in pes: 10")
 	} // '10'
-	if p.pesScramblingControl, err = bb.PeekUint8(2); err != nil {
-		return errors.Wrap(err, "failed peek pes pes_scrambling_control")
+	if p.pesScramblingControl, err = bb.ReadUint8(2); err != nil {
+		return errors.Wrap(err, "failed to read pes pes_scrambling_control")
 	}
-	if p.pesPriority, err = bb.PeekUint8(1); err != nil {
-		return errors.Wrap(err, "failed peek pes pes_priority")
+	if p.pesPriority, err = bb.ReadUint8(1); err != nil {
+		return errors.Wrap(err, "failed to read pes pes_priority")
 	}
-	if p.dataAlignmentIndicator, err = bb.PeekUint8(1); err != nil {
-		return errors.Wrap(err, "failed peek pes data_alignment_indicator")
+	if p.dataAlignmentIndicator, err = bb.ReadUint8(1); err != nil {
+		return errors.Wrap(err, "failed to read pes data_alignment_indicator")
 	}
-	if p.copyright, err = bb.PeekUint8(1); err != nil {
-		return errors.Wrap(err, "failed peek pes copyright")
+	if p.copyright, err = bb.ReadUint8(1); err != nil {
+		return errors.Wrap(err, "failed to read pes copyright")
 	}
-	if p.originalOrCopy, err = bb.PeekUint8(1); err != nil {
-		return errors.Wrap(err, "failed peek pes original_or_copy")
+	if p.originalOrCopy, err = bb.ReadUint8(1); err != nil {
+		return errors.Wrap(err, "failed to read pes original_or_copy")
 	}
-	if p.ptsDtsFlags, err = bb.PeekUint8(2); err != nil {
-		return errors.Wrap(err, "failed peek pes pts_fts_flag")
+	if p.ptsDtsFlags, err = bb.ReadUint8(2); err != nil {
+		return errors.Wrap(err, "failed to read pes pts_fts_flag")
 	}
-	if p.escrFlag, err = bb.PeekUint8(1); err != nil {
-		return errors.Wrap(err, "failed peek pes escr_flag")
+	if p.escrFlag, err = bb.ReadUint8(1); err != nil {
+		return errors.Wrap(err, "failed to read pes escr_flag")
 	}
-	if p.esRateFlag, err = bb.PeekUint8(1); err != nil {
-		return errors.Wrap(err, "failed peek pes es_rate_flag")
+	if p.esRateFlag, err = bb.ReadUint8(1); err != nil {
+		return errors.Wrap(err, "failed to read pes es_rate_flag")
 	}
-	if p.dsmTrickModeFlag, err = bb.PeekUint8(1); err != nil {
-		return errors.Wrap(err, "failed peek pes dsm_trick_mode_flag")
+	if p.dsmTrickModeFlag, err = bb.ReadUint8(1); err != nil {
+		return errors.Wrap(err, "failed to read pes dsm_trick_mode_flag")
 	}
-	if p.additionalCopyInfoFlag, err = bb.PeekUint8(1); err != nil {
-		return errors.Wrap(err, "failed peek pes additional_copy_info_flag")
+	if p.additionalCopyInfoFlag, err = bb.ReadUint8(1); err != nil {
+		return errors.Wrap(err, "failed to read pes additional_copy_info_flag")
 	}
-	if p.pesCrcFlag, err = bb.PeekUint8(1); err != nil {
-		return errors.Wrap(err, "failed peek pes pes_crc_flag")
+	if p.pesCrcFlag, err = bb.ReadUint8(1); err != nil {
+		return errors.Wrap(err, "failed to read pes pes_crc_flag")
 	}
-	if p.pesExtentionFlag, err = bb.PeekUint8(1); err != nil {
-		return errors.Wrap(err, "failed peek pes pes_extention_flag")
+	if p.pesExtensionFlag, err = bb.ReadUint8(1); err != nil {
+		return errors.Wrap(err, "failed to read pes pes_extention_flag")
 	}
-	if p.pesHeaderDataLength, err = bb.PeekUint8(8); err != nil {
-		return errors.Wrap(err, "failed peek pes pes_header_data_length")
+	if p.pesHeaderDataLength, err = bb.ReadUint8(8); err != nil {
+		return errors.Wrap(err, "failed to read pes pes_header_data_length")
 	}
 
 	if p.ptsDtsFlags == 2 {
@@ -201,22 +201,22 @@ func (p *Pes) Parse() error {
 			return errors.Wrap(err, "failed to skip in pes: 0011 (PtsDtsFlag=2)")
 		} // '0011'
 		var first, second, third uint64
-		if first, err = bb.PeekUint64(3); err != nil {
-			return errors.Wrap(err, "failed peek pes pts first (PtsDtsFlag=2)")
+		if first, err = bb.ReadUint64(3); err != nil {
+			return errors.Wrap(err, "failed to read pes pts first (PtsDtsFlag=2)")
 		}
 		p.pts = first << 30
 		if err = bb.Skip(1); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: first pts marker_bit (PtsDtsFlag=2)")
 		} // marker_bit
-		if second, err = bb.PeekUint64(15); err != nil {
-			return errors.Wrap(err, "failed peek pes pts second (PtsDtsFlag=2)")
+		if second, err = bb.ReadUint64(15); err != nil {
+			return errors.Wrap(err, "failed to read pes pts second (PtsDtsFlag=2)")
 		}
 		p.pts |= second << 15
 		if err = bb.Skip(1); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: second pts marker_bit (PtsDtsFlag=2)")
 		} // marker_bit
-		if third, err = bb.PeekUint64(15); err != nil {
-			return errors.Wrap(err, "failed peek pes pts third (PtsDtsFlag=2)")
+		if third, err = bb.ReadUint64(15); err != nil {
+			return errors.Wrap(err, "failed to read pes pts third (PtsDtsFlag=2)")
 		}
 		p.pts |= third
 		if err = bb.Skip(1); err != nil {
@@ -228,22 +228,22 @@ func (p *Pes) Parse() error {
 			return errors.Wrap(err, "failed to skip in pes: 0011 (PtsDtsFlag=3)")
 		} // '0011'
 		var first, second, third uint64
-		if first, err = bb.PeekUint64(3); err != nil {
-			return errors.Wrap(err, "failed peek pes pts first (PtsDtsFlag=3)")
+		if first, err = bb.ReadUint64(3); err != nil {
+			return errors.Wrap(err, "failed to read pes pts first (PtsDtsFlag=3)")
 		}
 		p.pts = first << 30
 		if err = bb.Skip(1); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: first pts marker_bit (PtsDtsFlag=3)")
 		} // marker_bit
-		if second, err = bb.PeekUint64(15); err != nil {
-			return errors.Wrap(err, "failed peek pes pts second (PtsDtsFlag=3)")
+		if second, err = bb.ReadUint64(15); err != nil {
+			return errors.Wrap(err, "failed to read pes pts second (PtsDtsFlag=3)")
 		}
 		p.pts |= second << 15
 		if err = bb.Skip(1); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: second pts marker_bit (PtsDtsFlag=3)")
 		} // marker_bit
-		if third, err = bb.PeekUint64(15); err != nil {
-			return errors.Wrap(err, "failed peek pes pts third (PtsDtsFlag=3)")
+		if third, err = bb.ReadUint64(15); err != nil {
+			return errors.Wrap(err, "failed to read pes pts third (PtsDtsFlag=3)")
 		}
 		p.pts |= third
 		if err = bb.Skip(1); err != nil {
@@ -252,22 +252,22 @@ func (p *Pes) Parse() error {
 		if err = bb.Skip(4); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: pts-dts 0001 (PtsDtsFlag=3)")
 		} // '0001'
-		if first, err = bb.PeekUint64(3); err != nil {
-			return errors.Wrap(err, "failed peek pes dts first (PtsDtsFlag=3)")
+		if first, err = bb.ReadUint64(3); err != nil {
+			return errors.Wrap(err, "failed to read pes dts first (PtsDtsFlag=3)")
 		}
 		p.dts = first << 30
 		if err = bb.Skip(1); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: first dts marker_bit (PtsDtsFlag=3)")
 		} // marker_bit
-		if second, err = bb.PeekUint64(15); err != nil {
-			return errors.Wrap(err, "failed peek pes dts second (PtsDtsFlag=3)")
+		if second, err = bb.ReadUint64(15); err != nil {
+			return errors.Wrap(err, "failed to read pes dts second (PtsDtsFlag=3)")
 		}
 		p.dts |= second << 15
 		if err = bb.Skip(1); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: second dts marker_bit (PtsDtsFlag=3)")
 		} // marker_bit
-		if third, err = bb.PeekUint64(15); err != nil {
-			return errors.Wrap(err, "failed peek pes dts third (PtsDtsFlag=3)")
+		if third, err = bb.ReadUint64(15); err != nil {
+			return errors.Wrap(err, "failed to read pes dts third (PtsDtsFlag=3)")
 		}
 		p.dts |= third
 		if err = bb.Skip(1); err != nil {
@@ -279,22 +279,22 @@ func (p *Pes) Parse() error {
 			return errors.Wrap(err, "failed to skip in pes: reserved(EscrFlag=1)")
 		} // reserved
 		var first, second, third uint64
-		if first, err = bb.PeekUint64(3); err != nil {
-			return errors.Wrap(err, "failed peek pes escr first")
+		if first, err = bb.ReadUint64(3); err != nil {
+			return errors.Wrap(err, "failed to read pes escr first")
 		}
 		p.escrBase = first << 30
 		if err = bb.Skip(1); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: first ercr marker_bit")
 		} // marker_bit
-		if second, err = bb.PeekUint64(15); err != nil {
-			return errors.Wrap(err, "failed peek pes escr second")
+		if second, err = bb.ReadUint64(15); err != nil {
+			return errors.Wrap(err, "failed to read pes escr second")
 		}
 		p.escrBase |= second << 15
 		if err = bb.Skip(1); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: second ercr marker_bit")
 		} // marker_bit
-		if third, err = bb.PeekUint64(15); err != nil {
-			return errors.Wrap(err, "failed peek pes escr third")
+		if third, err = bb.ReadUint64(15); err != nil {
+			return errors.Wrap(err, "failed to read pes escr third")
 		}
 		p.escrBase |= third
 	}
@@ -302,31 +302,31 @@ func (p *Pes) Parse() error {
 		if err = bb.Skip(1); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: first es_rate marker_bit")
 		} // marker_bit
-		if p.esRate, err = bb.PeekUint32(22); err != nil {
-			return errors.Wrap(err, "failed peek pes es_rate")
+		if p.esRate, err = bb.ReadUint32(22); err != nil {
+			return errors.Wrap(err, "failed to read pes es_rate")
 		}
-		if bb.Skip(1); err != nil {
+		if err = bb.Skip(1); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: second es_rate marker_bit")
 		} // marker_bit
 	}
 	if p.dsmTrickModeFlag == 1 {
-		if p.trickModeControl, err = bb.PeekUint8(3); err != nil {
-			return errors.Wrap(err, "failed peek pes trick_mode_control")
+		if p.trickModeControl, err = bb.ReadUint8(3); err != nil {
+			return errors.Wrap(err, "failed to read pes trick_mode_control")
 		}
 		switch p.trickModeControl {
 		case 0x00, 0x03: // fast_forward, freeze_frame
-			if p.fieldID, err = bb.PeekUint8(2); err != nil {
-				return errors.Wrap(err, "failed peek pes field_id")
+			if p.fieldID, err = bb.ReadUint8(2); err != nil {
+				return errors.Wrap(err, "failed to read pes field_id")
 			}
-			if p.intraSliceRefresh, err = bb.PeekUint8(1); err != nil {
-				return errors.Wrap(err, "failed peek pes intra_slice_refresh")
+			if p.intraSliceRefresh, err = bb.ReadUint8(1); err != nil {
+				return errors.Wrap(err, "failed to read pes intra_slice_refresh")
 			}
-			if p.frequencyTruncation, err = bb.PeekUint8(2); err != nil {
-				return errors.Wrap(err, "failed peek pes frequency_truncation")
+			if p.frequencyTruncation, err = bb.ReadUint8(2); err != nil {
+				return errors.Wrap(err, "failed to read pes frequency_truncation")
 			}
 		case 0x01: // slow_motion, slow_reverse
-			if p.repCntrl, err = bb.PeekUint8(5); err != nil {
-				return errors.Wrap(err, "failed peek pes rep_cntrl")
+			if p.repCntrl, err = bb.ReadUint8(5); err != nil {
+				return errors.Wrap(err, "failed to read pes rep_cntrl")
 			}
 		default:
 			if err = bb.Skip(5); err != nil {
@@ -338,13 +338,13 @@ func (p *Pes) Parse() error {
 		if err = bb.Skip(1); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: additional_copy_info marker_bit")
 		} // marker_bit
-		if p.additionalCopyInfo, err = bb.PeekUint8(7); err != nil {
-			return errors.Wrap(err, "failed peek pes additional_copy_info")
+		if p.additionalCopyInfo, err = bb.ReadUint8(7); err != nil {
+			return errors.Wrap(err, "failed to read pes additional_copy_info")
 		}
 	}
 	if p.pesCrcFlag == 1 {
-		if p.previousPesPacketCrc, err = bb.PeekUint16(16); err != nil {
-			return errors.Wrap(err, "failed peek pes previous_pes_packet_crc")
+		if p.previousPesPacketCrc, err = bb.ReadUint16(16); err != nil {
+			return errors.Wrap(err, "failed to read pes previous_pes_packet_crc")
 		}
 	}
 	return nil
@@ -352,21 +352,28 @@ func (p *Pes) Parse() error {
 
 // DumpTimestamp dump PTS and DTS
 func (p *Pes) DumpTimestamp() float64 {
-	var pcrDelay float32
+	var pcrDelay float64
 	if p.ptsDtsFlags == 2 {
-		prevPcr := float32(p.prevPcr) / 300 / 90
-		nextPcr := float32(p.nextPcr) / 300 / 90
-		pcrDelay = float32(p.pts)/90 - (prevPcr + (nextPcr-prevPcr)*(float32(p.pos-p.prevPcrPos)/float32(p.nextPcrPos-p.prevPcrPos)))
-		fmt.Printf("0x%08x PTS: 0x%08x[%012fms] (pid:0x%02x) (delay:%fms)\n", p.pos, p.pts, float32(p.pts)/90, p.pid, pcrDelay)
+		if p.nextPcrPos != p.prevPcrPos {
+			prevPcr := float64(p.prevPcr) / 300 / 90
+			nextPcr := float64(p.nextPcr) / 300 / 90
+			pcrDelay = float64(p.pts)/90 - (prevPcr + (nextPcr-prevPcr)*(float64(p.pos-p.prevPcrPos)/float64(p.nextPcrPos-p.prevPcrPos)))
+			fmt.Printf("0x%08x PTS: 0x%08x[%012fms] (pid:0x%02x) (delay:%fms)\n", p.pos, p.pts, float64(p.pts)/90, p.pid, pcrDelay)
+		} else {
+			fmt.Printf("0x%08x PTS: 0x%08x[%012fms] (pid:0x%02x)\n", p.pos, p.pts, float64(p.pts)/90, p.pid)
+		}
 	}
 	if p.ptsDtsFlags == 3 {
-		//fmt.Printf("0x%08x PTS: 0x%08x[%012fms] (pid:0x%02x)\n", p.pos, p.pts, float32(p.pts)/90, p.pid)
-		prevPcr := float32(p.prevPcr) / 300 / 90
-		nextPcr := float32(p.nextPcr) / 300 / 90
-		pcrDelay = float32(p.dts)/90 - (prevPcr + (nextPcr-prevPcr)*(float32(p.pos-p.prevPcrPos)/float32(p.nextPcrPos-p.prevPcrPos)))
-		fmt.Printf("0x%08x DTS: 0x%08x[%012fms] (pid:0x%02x) (delay:%fms)\n", p.pos, p.dts, float32(p.dts)/90, p.pid, pcrDelay)
+		if p.nextPcrPos != p.prevPcrPos {
+			prevPcr := float64(p.prevPcr) / 300 / 90
+			nextPcr := float64(p.nextPcr) / 300 / 90
+			pcrDelay = float64(p.dts)/90 - (prevPcr + (nextPcr-prevPcr)*(float64(p.pos-p.prevPcrPos)/float64(p.nextPcrPos-p.prevPcrPos)))
+			fmt.Printf("0x%08x DTS: 0x%08x[%012fms] (pid:0x%02x) (delay:%fms)\n", p.pos, p.dts, float64(p.dts)/90, p.pid, pcrDelay)
+		} else {
+			fmt.Printf("0x%08x DTS: 0x%08x[%012fms] (pid:0x%02x)\n", p.pos, p.dts, float64(p.dts)/90, p.pid)
+		}
 	}
-	return float64(pcrDelay)
+	return pcrDelay
 }
 
 // Dump PES header detail.
@@ -388,13 +395,13 @@ func (p *Pes) DumpHeader() {
 	fmt.Printf("PES : dsm_trick_mode_flag			: %d\n", p.dsmTrickModeFlag)
 	fmt.Printf("PES : additional_copy_info_flag			: %d\n", p.additionalCopyInfoFlag)
 	fmt.Printf("PES : pes_crc_flag				: %d\n", p.pesCrcFlag)
-	fmt.Printf("PES : pes_extention_flag			: %d\n", p.pesExtentionFlag)
+	fmt.Printf("PES : pes_extention_flag			: %d\n", p.pesExtensionFlag)
 	fmt.Printf("PES : pes_header_data_length			: %d\n", p.pesHeaderDataLength)
 	fmt.Printf("PES : pts					: %d\n", p.pts)
 	fmt.Printf("PES : dts					: %d\n", p.dts)
 	fmt.Printf("PES : escr					: %d\n", p.escr)
 	fmt.Printf("PES : escr_base					: %d\n", p.escrBase)
-	fmt.Printf("PES : escr_extention				: %d\n", p.escrExtention)
+	fmt.Printf("PES : escr_extention				: %d\n", p.escrExtension)
 	fmt.Printf("PES : es_rate					: %d\n", p.esRate)
 	fmt.Printf("PES : trick_mode_control			: %d\n", p.trickModeControl)
 	fmt.Printf("PES : field_id					: %d\n", p.fieldID)
@@ -407,11 +414,11 @@ func (p *Pes) DumpHeader() {
 	fmt.Printf("PES : pack_header_field_flag			: %d\n", p.packHeaderFieldFlag)
 	fmt.Printf("PES : program_packet_sequence_counter_flag	: %d\n", p.programPacketSequenceCounterFlag)
 	fmt.Printf("PES : p-std_buffer_flag				: %d\n", p.pStdBufferFlag)
-	fmt.Printf("PES : pes_extention_flag2			: %d\n", p.pesExtentionFlag2)
+	fmt.Printf("PES : pes_extention_flag2			: %d\n", p.pesExtensionFlag2)
 	fmt.Printf("PES : program_packet_sequence_counter		: %d\n", p.programPacketSequenceCounter)
-	fmt.Printf("PES : mpeg1_mpeg2_identifer			: %d\n", p.mpeg1Mpeg2Identifer)
+	fmt.Printf("PES : mpeg1_mpeg2_identifer			: %d\n", p.mpeg1Mpeg2Identifier)
 	fmt.Printf("PES : original_stuff_length			: %d\n", p.originalStuffLength)
 	fmt.Printf("PES : p-std_buffer_scale			: %d\n", p.pStdBufferScale)
 	fmt.Printf("PES : p-std_buffer_size				: %d\n", p.pStdBufferSize)
-	fmt.Printf("PES : pes_extention_field_length		: %d\n", p.pesExtentionFieldLength)
+	fmt.Printf("PES : pes_extention_field_length		: %d\n", p.pesExtensionFieldLength)
 }

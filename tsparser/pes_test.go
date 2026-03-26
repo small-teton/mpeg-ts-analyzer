@@ -136,7 +136,7 @@ func TestPesParse(t *testing.T) {
 	err = err || pes.dsmTrickModeFlag != 0x00
 	err = err || pes.additionalCopyInfoFlag != 0x00
 	err = err || pes.pesCrcFlag != 0x00
-	err = err || pes.pesExtentionFlag != 0x00
+	err = err || pes.pesExtensionFlag != 0x00
 	err = err || pes.pts != 0x639F
 	err = err || pes.dts != 0x57E4
 	if err {

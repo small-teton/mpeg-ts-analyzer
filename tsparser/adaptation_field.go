@@ -101,45 +101,45 @@ func (af *AdaptationField) Parse() (uint8, error) {
 	bb.Set(af.buf)
 
 	var err error
-	if af.adaptationFieldLength, err = bb.PeekUint8(8); err != nil {
-		return 0, errors.Wrap(err, "failed peek adaptation_fields adaptation_field_length")
+	if af.adaptationFieldLength, err = bb.ReadUint8(8); err != nil {
+		return 0, errors.Wrap(err, "failed to read adaptation_fields adaptation_field_length")
 	}
 	if af.adaptationFieldLength <= 0 {
 		return 0, nil
 	}
-	if af.discontinuityIndicator, err = bb.PeekUint8(1); err != nil {
-		return 0, errors.Wrap(err, "failed peek adaptation_fields discontinuity_indicator")
+	if af.discontinuityIndicator, err = bb.ReadUint8(1); err != nil {
+		return 0, errors.Wrap(err, "failed to read adaptation_fields discontinuity_indicator")
 	}
-	if af.randomAccessIndicator, err = bb.PeekUint8(1); err != nil {
-		return 0, errors.Wrap(err, "failed peek adaptation_fields randomAccess_indicator")
+	if af.randomAccessIndicator, err = bb.ReadUint8(1); err != nil {
+		return 0, errors.Wrap(err, "failed to read adaptation_fields randomAccess_indicator")
 	}
-	if af.elementaryStreamPriorityIndicator, err = bb.PeekUint8(1); err != nil {
-		return 0, errors.Wrap(err, "failed peek adaptation_fields elementary_stream_priority_indicator")
+	if af.elementaryStreamPriorityIndicator, err = bb.ReadUint8(1); err != nil {
+		return 0, errors.Wrap(err, "failed to read adaptation_fields elementary_stream_priority_indicator")
 	}
-	if af.pcrFlag, err = bb.PeekUint8(1); err != nil {
-		return 0, errors.Wrap(err, "failed peek adaptation_fields pcr_flag")
+	if af.pcrFlag, err = bb.ReadUint8(1); err != nil {
+		return 0, errors.Wrap(err, "failed to read adaptation_fields pcr_flag")
 	}
-	if af.oPcrFlag, err = bb.PeekUint8(1); err != nil {
-		return 0, errors.Wrap(err, "failed peek adaptation_fields o_pcr_flag")
+	if af.oPcrFlag, err = bb.ReadUint8(1); err != nil {
+		return 0, errors.Wrap(err, "failed to read adaptation_fields o_pcr_flag")
 	}
-	if af.splicingPointFlag, err = bb.PeekUint8(1); err != nil {
-		return 0, errors.Wrap(err, "failed peek adaptation_fields splicing_point_flag")
+	if af.splicingPointFlag, err = bb.ReadUint8(1); err != nil {
+		return 0, errors.Wrap(err, "failed to read adaptation_fields splicing_point_flag")
 	}
-	if af.transportPrivateDataFlag, err = bb.PeekUint8(1); err != nil {
-		return 0, errors.Wrap(err, "failed peek adaptation_fields transport_private_data_flag")
+	if af.transportPrivateDataFlag, err = bb.ReadUint8(1); err != nil {
+		return 0, errors.Wrap(err, "failed to read adaptation_fields transport_private_data_flag")
 	}
-	if af.adaptationFieldExtensionFlag, err = bb.PeekUint8(1); err != nil {
-		return 0, errors.Wrap(err, "failed peek adaptation_fields adaptation_field_extension_flag")
+	if af.adaptationFieldExtensionFlag, err = bb.ReadUint8(1); err != nil {
+		return 0, errors.Wrap(err, "failed to read adaptation_fields adaptation_field_extension_flag")
 	}
 	if af.pcrFlag == 1 {
-		if af.programClockReferenceBase, err = bb.PeekUint64(33); err != nil {
-			return 0, errors.Wrap(err, "failed peek adaptation_fields program_clock_reference_base")
+		if af.programClockReferenceBase, err = bb.ReadUint64(33); err != nil {
+			return 0, errors.Wrap(err, "failed to read adaptation_fields program_clock_reference_base")
 		}
 		if err = bb.Skip(6); err != nil {
 			return 0, errors.Wrap(err, "failed to skip in adaptation_fields: reserved")
 		} // reserved
-		if af.programClockReferenceExtension, err = bb.PeekUint16(9); err != nil {
-			return 0, errors.Wrap(err, "failed peek adaptation_fields program_clock_reference_extension")
+		if af.programClockReferenceExtension, err = bb.ReadUint16(9); err != nil {
+			return 0, errors.Wrap(err, "failed to read adaptation_fields program_clock_reference_extension")
 		}
 
 		pcrBase := af.programClockReferenceBase
@@ -147,85 +147,85 @@ func (af *AdaptationField) Parse() (uint8, error) {
 		af.pcr = pcrBase*300 + pcrExt
 	}
 	if af.oPcrFlag == 1 {
-		if af.originalProgramClockReferenceBase, err = bb.PeekUint64(33); err != nil {
-			return 0, errors.Wrap(err, "failed peek adaptation_fields original_program_clock_reference_base")
+		if af.originalProgramClockReferenceBase, err = bb.ReadUint64(33); err != nil {
+			return 0, errors.Wrap(err, "failed to read adaptation_fields original_program_clock_reference_base")
 		}
 		bb.Skip(6) // reserved
-		if af.originalProgramClockReferenceExtension, err = bb.PeekUint16(9); err != nil {
-			return 0, errors.Wrap(err, "failed peek adaptation_fields original_program_clock_reference_extension")
+		if af.originalProgramClockReferenceExtension, err = bb.ReadUint16(9); err != nil {
+			return 0, errors.Wrap(err, "failed to read adaptation_fields original_program_clock_reference_extension")
 		}
 	}
 	if af.splicingPointFlag == 1 {
-		if af.spliceCountdown, err = bb.PeekUint8(8); err != nil {
-			return 0, errors.Wrap(err, "failed peek adaptation_fields splice_countdown")
+		if af.spliceCountdown, err = bb.ReadUint8(8); err != nil {
+			return 0, errors.Wrap(err, "failed to read adaptation_fields splice_countdown")
 		}
 	}
 	if af.transportPrivateDataFlag == 1 {
-		if af.transportPrivateDataLength, err = bb.PeekUint8(8); err != nil {
-			return 0, errors.Wrap(err, "failed peek adaptation_fields transport_private_data_length")
+		if af.transportPrivateDataLength, err = bb.ReadUint8(8); err != nil {
+			return 0, errors.Wrap(err, "failed to read adaptation_fields transport_private_data_length")
 		}
 		for i := uint8(0); i < af.transportPrivateDataLength; i++ {
-			chunk, err := bb.PeekUint8(8)
+			chunk, err := bb.ReadUint8(8)
 			if err != nil {
-				return 0, errors.Wrap(err, "failed peek adaptation_fields transport_private_data chunk")
+				return 0, errors.Wrap(err, "failed to read adaptation_fields transport_private_data chunk")
 			}
 			af.privateDataByte = append(af.privateDataByte, chunk)
 		}
 	}
 	if af.adaptationFieldExtensionFlag == 1 {
-		if af.adaptationFieldExtensionLength, err = bb.PeekUint8(8); err != nil {
-			return 0, errors.Wrap(err, "failed peek adaptation_fields adaptation_field_extension_length")
+		if af.adaptationFieldExtensionLength, err = bb.ReadUint8(8); err != nil {
+			return 0, errors.Wrap(err, "failed to read adaptation_fields adaptation_field_extension_length")
 		}
-		if af.ltwFlag, err = bb.PeekUint8(1); err != nil {
-			return 0, errors.Wrap(err, "failed peek adaptation_fields ltw_flag")
+		if af.ltwFlag, err = bb.ReadUint8(1); err != nil {
+			return 0, errors.Wrap(err, "failed to read adaptation_fields ltw_flag")
 		}
-		if af.piecewiseRateFlag, err = bb.PeekUint8(1); err != nil {
-			return 0, errors.Wrap(err, "failed peek adaptation_fields piecewise_rate_flag")
+		if af.piecewiseRateFlag, err = bb.ReadUint8(1); err != nil {
+			return 0, errors.Wrap(err, "failed to read adaptation_fields piecewise_rate_flag")
 		}
-		if af.seamlessSpliceFlag, err = bb.PeekUint8(1); err != nil {
-			return 0, errors.Wrap(err, "failed peek adaptation_fields seamless_splice_flag")
+		if af.seamlessSpliceFlag, err = bb.ReadUint8(1); err != nil {
+			return 0, errors.Wrap(err, "failed to read adaptation_fields seamless_splice_flag")
 		}
 		if err := bb.Skip(5); err != nil {
 			return 0, errors.Wrap(err, "failed to skip in adaptation_fields: reserved")
 		} // reserved
 		if af.ltwFlag == 1 {
-			if af.ltwValidFlag, err = bb.PeekUint8(1); err != nil {
-				return 0, errors.Wrap(err, "failed peek adaptation_fields ltw_valid_flag")
+			if af.ltwValidFlag, err = bb.ReadUint8(1); err != nil {
+				return 0, errors.Wrap(err, "failed to read adaptation_fields ltw_valid_flag")
 			}
-			if af.ltwOffset, err = bb.PeekUint16(15); err != nil {
-				return 0, errors.Wrap(err, "failed peek adaptation_fields ltw_offset")
+			if af.ltwOffset, err = bb.ReadUint16(15); err != nil {
+				return 0, errors.Wrap(err, "failed to read adaptation_fields ltw_offset")
 			}
 		}
 		if af.piecewiseRateFlag == 1 {
 			if err := bb.Skip(2); err != nil {
 				return 0, errors.Wrap(err, "failed to skip in adaptation_fields: reserved")
 			} // reserved
-			if af.piecewiseRate, err = bb.PeekUint32(22); err != nil {
-				return 0, errors.Wrap(err, "failed peek adaptation_fields piecewise_rate")
+			if af.piecewiseRate, err = bb.ReadUint32(22); err != nil {
+				return 0, errors.Wrap(err, "failed to read adaptation_fields piecewise_rate")
 			}
 		}
 		if af.seamlessSpliceFlag == 1 {
-			if af.spliceType, err = bb.PeekUint8(4); err != nil {
-				return 0, errors.Wrap(err, "failed peek adaptation_fields splice_type")
+			if af.spliceType, err = bb.ReadUint8(4); err != nil {
+				return 0, errors.Wrap(err, "failed to read adaptation_fields splice_type")
 			}
-			if af.dtsNextAu, err = bb.PeekUint32(3); err != nil {
-				return 0, errors.Wrap(err, "failed peek adaptation_fields dts_next_au first")
+			if af.dtsNextAu, err = bb.ReadUint32(3); err != nil {
+				return 0, errors.Wrap(err, "failed to read adaptation_fields dts_next_au first")
 			}
 			af.dtsNextAu <<= 30
 			if err := bb.Skip(1); err != nil {
 				return 0, errors.Wrap(err, "failed to skip in adaptation_fields dts_next_au: first")
 			} // marker_bit
-			second, err := bb.PeekUint32(15)
+			second, err := bb.ReadUint32(15)
 			if err != nil {
-				return 0, errors.Wrap(err, "failed peek adaptation_fields dts_next_au second")
+				return 0, errors.Wrap(err, "failed to read adaptation_fields dts_next_au second")
 			}
 			af.dtsNextAu |= second << 15
 			if err := bb.Skip(1); err != nil {
 				return 0, errors.Wrap(err, "failed to skip in adaptation_fields dts_next_au: second")
 			} // marker_bit
-			third, err := bb.PeekUint32(15)
+			third, err := bb.ReadUint32(15)
 			if err != nil {
-				return 0, errors.Wrap(err, "failed peek adaptation_fields dts_next_au third")
+				return 0, errors.Wrap(err, "failed to read adaptation_fields dts_next_au third")
 			}
 			af.dtsNextAu |= third
 			if err := bb.Skip(1); err != nil {
@@ -237,12 +237,16 @@ func (af *AdaptationField) Parse() (uint8, error) {
 	return af.adaptationFieldLength, nil
 }
 
-// DumpPcr print PCR.
+// DumpPcr prints PCR. If prevPcr is non-zero, the interval is also shown.
 func (af *AdaptationField) DumpPcr(prevPcr uint64) {
 	if af.pcrFlag == 1 {
 		pcrMilisec := float64(af.pcr) / 300 / 90
-		pcrInterval := float64(af.pcr-prevPcr) / 300 / 90
-		fmt.Printf("0x%08x PCR: 0x%08x[%012fms] (Interval:%012fms)\n", af.pos, af.pcr, pcrMilisec, pcrInterval)
+		if prevPcr != 0 {
+			pcrInterval := float64(af.pcr-prevPcr) / 300 / 90
+			fmt.Printf("0x%08x PCR: 0x%08x[%012fms] (Interval:%012fms)\n", af.pos, af.pcr, pcrMilisec, pcrInterval)
+		} else {
+			fmt.Printf("0x%08x PCR: 0x%08x[%012fms]\n", af.pos, af.pcr, pcrMilisec)
+		}
 	}
 }
 
