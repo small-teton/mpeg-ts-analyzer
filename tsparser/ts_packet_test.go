@@ -16,14 +16,14 @@ func TestNewTsPacket(t *testing.T) {
 
 func TestTsPacketInitialize(t *testing.T) {
 	var options options.Options
-	options.SetDumpHeader(true)
+	options.DumpHeader = true
 	tp1 := NewTsPacket()
 	tp1.Initialize(1, options)
 
 	if tp1.pos != 1 {
 		t.Errorf("actual: 1, But got %d", tp1.pos)
 	}
-	if !tp1.options.DumpHeader() {
+	if !tp1.options.DumpHeader {
 		t.Errorf("actual: true, But got false")
 	}
 

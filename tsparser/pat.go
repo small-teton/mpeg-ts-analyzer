@@ -7,7 +7,7 @@ import (
 	"github.com/small-teton/mpeg-ts-analyzer/bitbuffer"
 )
 
-// Pat Program Map Table.
+// Pat Program Association Table.
 type Pat struct {
 	// startFlag      bool
 	continuityCounter uint8
@@ -56,10 +56,10 @@ func (p *Pat) Parse() error {
 	bb.Set(p.buf)
 
 	var err error
-	if p.tableID, err = bb.PeekUint8(8); err != nil {
-		return errors.Wrap(err, "failed peek pat table_id")
+	if p.tableID, err = bb.ReadUint8(8); err != nil {
+		return errors.Wrap(err, "failed to read pat table_id")
 	}
-	if p.sectionSyntaxIndicator, err = bb.PeekUint8(1); err != nil {
+	if p.sectionSyntaxIndicator, err = bb.ReadUint8(1); err != nil {
 		return errors.Wrap(err, "failed to peek pat section_syntax_indicator")
 	}
 	if err = bb.Skip(1); err != nil {
@@ -68,54 +68,54 @@ func (p *Pat) Parse() error {
 	if err = bb.Skip(2); err != nil {
 		return errors.Wrap(err, "failed to skip in pat: reserved")
 	} // reserved
-	if p.sectionLength, err = bb.PeekUint16(12); err != nil {
+	if p.sectionLength, err = bb.ReadUint16(12); err != nil {
 		return errors.Wrap(err, "failed to peek pat section_length")
 	}
-	if p.transportStreamID, err = bb.PeekUint16(16); err != nil {
+	if p.transportStreamID, err = bb.ReadUint16(16); err != nil {
 		return errors.Wrap(err, "failed to peek pat transport_stream_id")
 	}
 	if err = bb.Skip(2); err != nil {
 		return errors.Wrap(err, "failed to skip in pat: reserved")
 	} // reserved
-	if p.versionNumber, err = bb.PeekUint8(5); err != nil {
+	if p.versionNumber, err = bb.ReadUint8(5); err != nil {
 		return errors.Wrap(err, "failed to peek pat transport_stream_id")
 	}
-	if p.currentNextIndicator, err = bb.PeekUint8(1); err != nil {
+	if p.currentNextIndicator, err = bb.ReadUint8(1); err != nil {
 		return errors.Wrap(err, "failed to peek pat current_next_indicator")
 	}
-	if p.sectionNumber, err = bb.PeekUint8(8); err != nil {
+	if p.sectionNumber, err = bb.ReadUint8(8); err != nil {
 		return errors.Wrap(err, "failed to peek pat section_number")
 	}
-	if p.lastSectionNumber, err = bb.PeekUint8(8); err != nil {
+	if p.lastSectionNumber, err = bb.ReadUint8(8); err != nil {
 		return errors.Wrap(err, "failed to peek pat last_section_number")
 	}
 
 	for i := 0; i < ((int(p.sectionLength) - 9) / 4); i++ {
 		var patProgramInfo PatProgramInfo
-		if patProgramInfo.programNumber, err = bb.PeekUint16(16); err != nil {
+		if patProgramInfo.programNumber, err = bb.ReadUint16(16); err != nil {
 			return errors.Wrap(err, "failed to peek pat program info: program_number")
 		}
 		if err = bb.Skip(3); err != nil {
 			return errors.Wrap(err, "failed to skip in pat program info: reserved")
 		} // reserved
 		if patProgramInfo.programNumber == 0 {
-			if patProgramInfo.networkPid, err = bb.PeekUint16(13); err != nil {
+			if patProgramInfo.networkPid, err = bb.ReadUint16(13); err != nil {
 				return errors.Wrap(err, "failed to peek pat program info: network_pid")
 			}
 		} else {
-			if patProgramInfo.programMapPid, err = bb.PeekUint16(13); err != nil {
+			if patProgramInfo.programMapPid, err = bb.ReadUint16(13); err != nil {
 				return errors.Wrap(err, "failed to peek pat program info: program_map_pid")
 			}
 			p.pmtPid = patProgramInfo.programMapPid
 		}
 		p.programInfo = append(p.programInfo, patProgramInfo)
 	}
-	if p.crc32, err = bb.PeekUint32(32); err != nil {
+	if p.crc32, err = bb.ReadUint32(32); err != nil {
 		return errors.Wrap(err, "failed to peek pat crc32")
 	}
 
 	if len(p.buf) >= int(3+p.sectionLength-4) && p.crc32 != crc32(p.buf[0:3+p.sectionLength-4]) {
-		return errors.New("PAT CRC32 is invalidate")
+		return errors.New("PAT CRC32 is invalid")
 	}
 
 	return nil

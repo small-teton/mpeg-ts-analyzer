@@ -16,14 +16,14 @@ func TestNewAdaptationField(t *testing.T) {
 
 func TestAdaptationFieldInitialize(t *testing.T) {
 	var options options.Options
-	options.SetDumpHeader(true)
+	options.DumpHeader = true
 	af1 := NewAdaptationField()
 	af1.Initialize(1, options)
 
 	if af1.pos != 1 {
 		t.Errorf("actual: 1, But got %d", af1.pos)
 	}
-	if !af1.options.DumpHeader() {
+	if !af1.options.DumpHeader {
 		t.Errorf("actual: true, But got false")
 	}
 

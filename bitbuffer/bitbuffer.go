@@ -4,154 +4,98 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// BitBuffer Peek buffer by the bit
+// BitBuffer reads buffer by the bit.
 type BitBuffer struct {
 	buf []byte
-	pos uint16
+	pos uint32
 }
 
-// Set set the data in the buffer
+// Set set the data in the buffer.
 func (b *BitBuffer) Set(src []byte) {
-	b.buf = make([]byte, len(src))
-	copy(b.buf, src)
+	b.buf = src
 }
 
-// Skip Only increase position. Not Peek data.
-func (b *BitBuffer) Skip(length uint16) error {
-	if (b.pos + length) > uint16(len(b.buf)*8) {
+// Skip advances the bit position without reading.
+func (b *BitBuffer) Skip(length uint32) error {
+	if (b.pos + length) > uint32(len(b.buf)*8) {
 		return errors.Newf("Length(%d) is out of range(%d)", length, len(b.buf))
 	}
 	b.pos += length
 	return nil
 }
 
-// PeekUint8 return type uint8
-func (b *BitBuffer) PeekUint8(length uint16) (uint8, error) {
-	if length > 8 || (b.pos+length) > uint16(len(b.buf)*8) {
+// readBits reads up to 64 bits and returns them as uint64.
+func (b *BitBuffer) readBits(n uint32) (uint64, error) {
+	if n == 0 {
+		return 0, nil
+	}
+	if n > 64 || (b.pos+n) > uint32(len(b.buf)*8) {
+		return 0, errors.Newf("Length(%d) is out of range", n)
+	}
+
+	var result uint64
+	remaining := n
+	byteIndex := b.pos / 8
+	bitOffset := b.pos % 8
+
+	// 1. Head: partial bits from the first byte
+	if bitOffset > 0 {
+		bitsFromFirst := 8 - bitOffset
+		if bitsFromFirst > remaining {
+			bitsFromFirst = remaining
+		}
+		result = uint64(b.buf[byteIndex]>>(8-bitOffset-bitsFromFirst)) & ((1 << bitsFromFirst) - 1)
+		remaining -= bitsFromFirst
+		byteIndex++
+	}
+
+	// 2. Middle: full bytes
+	for remaining >= 8 {
+		result = (result << 8) | uint64(b.buf[byteIndex])
+		remaining -= 8
+		byteIndex++
+	}
+
+	// 3. Tail: partial bits from the last byte
+	if remaining > 0 {
+		result = (result << remaining) | uint64(b.buf[byteIndex]>>(8-remaining))
+	}
+
+	b.pos += n
+	return result, nil
+}
+
+// ReadUint8 reads up to 8 bits and returns them as uint8.
+func (b *BitBuffer) ReadUint8(length uint32) (uint8, error) {
+	if length > 8 {
 		return 0, errors.Newf("Length(%d) is out of range(0-8)", length)
 	}
-
-	index := b.pos / 8
-	offset := b.pos % 8
-
-	var firstByte, secondByte, buf uint16
-	if uint16(len(b.buf)*8)-b.pos <= 8 {
-		firstByte = 0x0
-		secondByte = uint16(b.buf[index])
-		buf = firstByte | secondByte
-		buf >>= (8 - offset - length)
-	} else {
-		firstByte = uint16(b.buf[index])
-		firstByte <<= 8
-		secondByte = uint16(b.buf[index+1])
-		buf = firstByte | secondByte
-		buf >>= (16 - offset - length)
-	}
-	var digit uint16 = 1
-	var mask uint16
-	for i := uint16(0); i < length; i++ {
-		mask += digit
-		digit *= 2
-	}
-	b.pos += length
-	return uint8(buf & mask), nil
+	v, err := b.readBits(length)
+	return uint8(v), err
 }
 
-// PeekUint16 return type uint16
-func (b *BitBuffer) PeekUint16(length uint16) (uint16, error) {
-	if length > 16 || (b.pos+length) > uint16(len(b.buf)*8) {
-		return 0, errors.Newf("Length(%d) is out of range(0-16)%d %d", length, b.pos, len(b.buf)*8)
+// ReadUint16 reads up to 16 bits and returns them as uint16.
+func (b *BitBuffer) ReadUint16(length uint32) (uint16, error) {
+	if length > 16 {
+		return 0, errors.Newf("Length(%d) is out of range(0-16)", length)
 	}
-
-	if length <= 8 {
-		val, err := b.PeekUint8(length)
-		return uint16(val), err
-	}
-	var err error
-	var first8, second8 uint8
-	first8, err = b.PeekUint8(8)
-	if err != nil {
-		return 0, err
-	}
-	second8, err = b.PeekUint8(length - 8)
-	if err != nil {
-		return 0, err
-	}
-	return uint16(first8)<<(length-8) | uint16(second8), nil
+	v, err := b.readBits(length)
+	return uint16(v), err
 }
 
-// PeekUint32 return type uint32
-func (b *BitBuffer) PeekUint32(length uint16) (uint32, error) {
-	if length > 32 || (b.pos+length) > uint16(len(b.buf)*8) {
+// ReadUint32 reads up to 32 bits and returns them as uint32.
+func (b *BitBuffer) ReadUint32(length uint32) (uint32, error) {
+	if length > 32 {
 		return 0, errors.Newf("Length(%d) is out of range(0-32)", length)
 	}
-
-	var err error
-	var second8 uint8
-	var val, first16, second16 uint16
-	if length <= 16 {
-		val, err = b.PeekUint16(length)
-		return uint32(val), err
-	} else if length-16 <= 8 {
-		first16, err = b.PeekUint16(16)
-		if err != nil {
-			return 0, err
-		}
-		second8, err = b.PeekUint8(length - 16)
-		return uint32(first16)<<(length-16) | uint32(second8), err
-	}
-	first16, err = b.PeekUint16(16)
-	if err != nil {
-		return 0, err
-	}
-	second16, err = b.PeekUint16(length - 16)
-	return uint32(first16)<<(length-16) | uint32(second16), err
+	v, err := b.readBits(length)
+	return uint32(v), err
 }
 
-// PeekUint64 return type uint64
-func (b *BitBuffer) PeekUint64(length uint16) (uint64, error) {
-	if length > 64 || (b.pos+length) > uint16(len(b.buf)*8) {
+// ReadUint64 reads up to 64 bits and returns them as uint64.
+func (b *BitBuffer) ReadUint64(length uint32) (uint64, error) {
+	if length > 64 {
 		return 0, errors.Newf("Length(%d) is out of range(0-64)", length)
 	}
-
-	var err error
-	var second8 uint8
-	var second16 uint16
-	var val, first32, second32 uint32
-	if length <= 32 {
-		val, err = b.PeekUint32(length)
-		if err != nil {
-			return 0, err
-		}
-		return uint64(val), err
-	} else if length-32 <= 8 {
-		first32, err = b.PeekUint32(32)
-		if err != nil {
-			return 0, err
-		}
-		second8, err = b.PeekUint8(length - 32)
-		if err != nil {
-			return 0, err
-		}
-		return uint64(first32)<<(length-32) | uint64(second8), nil
-	} else if length-32 <= 16 {
-		first32, err = b.PeekUint32(32)
-		if err != nil {
-			return 0, err
-		}
-		second16, err = b.PeekUint16(length - 16)
-		if err != nil {
-			return 0, err
-		}
-		return uint64(first32)<<(length-32) | uint64(second16), nil
-	}
-	first32, err = b.PeekUint32(32)
-	if err != nil {
-		return 0, err
-	}
-	second32, err = b.PeekUint32(length - 32)
-	if err != nil {
-		return 0, err
-	}
-	return uint64(first32)<<(length-32) | uint64(second32), nil
+	return b.readBits(length)
 }
