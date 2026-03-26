@@ -5,7 +5,13 @@ It can parse TS header, Adaptation Field, PSI (PAT/PMT) and PES header. It also 
 
 **Note:** Only 188-byte TS packets are supported. 192-byte packets (M2TS/BDAV format with TP_extra_header) are not currently supported.
 
-A sample TS file is included in `sample_data/` for quick testing.
+A sample TS file is included in `sample_data/` for quick testing. It was generated with ffmpeg:
+
+```bash
+ffmpeg -f lavfi -i "color=c=blue:s=320x240:d=5,format=yuv420p" \
+       -f lavfi -i "anullsrc=r=48000:cl=stereo" \
+       -t 5 -c:v mpeg2video -c:a mp2 -f mpegts sample_data/sample.ts
+```
 
 # Usage
 
