@@ -110,7 +110,7 @@ func (p *Pmt) Parse() error {
 	if err := bb.Skip(8 * uint32(p.programInfoLength)); err != nil {
 		return errors.Wrap(err, "failed to skip in pmt")
 	}
-	remainLength := int32(p.sectionLength - 9 - 4)
+	remainLength := int32(p.sectionLength) - 9 - 4 - int32(p.programInfoLength)
 	for remainLength > 0 {
 		var info ProgramInfo
 		if info.streamType, err = bb.ReadUint8(8); err != nil {
