@@ -139,13 +139,13 @@ func (p *Pes) Parse() error {
 	bb.Set(p.buf)
 
 	var err error
-	if p.packetStartCodePrefix, err = bb.PeekUint32(24); err != nil {
+	if p.packetStartCodePrefix, err = bb.ReadUint32(24); err != nil {
 		return errors.Wrap(err, "failed peek pes packet_start_code_prefix")
 	}
-	if p.streamID, err = bb.PeekUint8(8); err != nil {
+	if p.streamID, err = bb.ReadUint8(8); err != nil {
 		return errors.Wrap(err, "failed peek pes stream_id")
 	}
-	if p.pesPacketLength, err = bb.PeekUint16(16); err != nil {
+	if p.pesPacketLength, err = bb.ReadUint16(16); err != nil {
 		return errors.Wrap(err, "failed peek pes pes_packed_length")
 	}
 	switch p.streamID {
@@ -156,43 +156,43 @@ func (p *Pes) Parse() error {
 	if err = bb.Skip(2); err != nil {
 		return errors.Wrap(err, "failed to skip in pes: 10")
 	} // '10'
-	if p.pesScramblingControl, err = bb.PeekUint8(2); err != nil {
+	if p.pesScramblingControl, err = bb.ReadUint8(2); err != nil {
 		return errors.Wrap(err, "failed peek pes pes_scrambling_control")
 	}
-	if p.pesPriority, err = bb.PeekUint8(1); err != nil {
+	if p.pesPriority, err = bb.ReadUint8(1); err != nil {
 		return errors.Wrap(err, "failed peek pes pes_priority")
 	}
-	if p.dataAlignmentIndicator, err = bb.PeekUint8(1); err != nil {
+	if p.dataAlignmentIndicator, err = bb.ReadUint8(1); err != nil {
 		return errors.Wrap(err, "failed peek pes data_alignment_indicator")
 	}
-	if p.copyright, err = bb.PeekUint8(1); err != nil {
+	if p.copyright, err = bb.ReadUint8(1); err != nil {
 		return errors.Wrap(err, "failed peek pes copyright")
 	}
-	if p.originalOrCopy, err = bb.PeekUint8(1); err != nil {
+	if p.originalOrCopy, err = bb.ReadUint8(1); err != nil {
 		return errors.Wrap(err, "failed peek pes original_or_copy")
 	}
-	if p.ptsDtsFlags, err = bb.PeekUint8(2); err != nil {
+	if p.ptsDtsFlags, err = bb.ReadUint8(2); err != nil {
 		return errors.Wrap(err, "failed peek pes pts_fts_flag")
 	}
-	if p.escrFlag, err = bb.PeekUint8(1); err != nil {
+	if p.escrFlag, err = bb.ReadUint8(1); err != nil {
 		return errors.Wrap(err, "failed peek pes escr_flag")
 	}
-	if p.esRateFlag, err = bb.PeekUint8(1); err != nil {
+	if p.esRateFlag, err = bb.ReadUint8(1); err != nil {
 		return errors.Wrap(err, "failed peek pes es_rate_flag")
 	}
-	if p.dsmTrickModeFlag, err = bb.PeekUint8(1); err != nil {
+	if p.dsmTrickModeFlag, err = bb.ReadUint8(1); err != nil {
 		return errors.Wrap(err, "failed peek pes dsm_trick_mode_flag")
 	}
-	if p.additionalCopyInfoFlag, err = bb.PeekUint8(1); err != nil {
+	if p.additionalCopyInfoFlag, err = bb.ReadUint8(1); err != nil {
 		return errors.Wrap(err, "failed peek pes additional_copy_info_flag")
 	}
-	if p.pesCrcFlag, err = bb.PeekUint8(1); err != nil {
+	if p.pesCrcFlag, err = bb.ReadUint8(1); err != nil {
 		return errors.Wrap(err, "failed peek pes pes_crc_flag")
 	}
-	if p.pesExtensionFlag, err = bb.PeekUint8(1); err != nil {
+	if p.pesExtensionFlag, err = bb.ReadUint8(1); err != nil {
 		return errors.Wrap(err, "failed peek pes pes_extention_flag")
 	}
-	if p.pesHeaderDataLength, err = bb.PeekUint8(8); err != nil {
+	if p.pesHeaderDataLength, err = bb.ReadUint8(8); err != nil {
 		return errors.Wrap(err, "failed peek pes pes_header_data_length")
 	}
 
@@ -201,21 +201,21 @@ func (p *Pes) Parse() error {
 			return errors.Wrap(err, "failed to skip in pes: 0011 (PtsDtsFlag=2)")
 		} // '0011'
 		var first, second, third uint64
-		if first, err = bb.PeekUint64(3); err != nil {
+		if first, err = bb.ReadUint64(3); err != nil {
 			return errors.Wrap(err, "failed peek pes pts first (PtsDtsFlag=2)")
 		}
 		p.pts = first << 30
 		if err = bb.Skip(1); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: first pts marker_bit (PtsDtsFlag=2)")
 		} // marker_bit
-		if second, err = bb.PeekUint64(15); err != nil {
+		if second, err = bb.ReadUint64(15); err != nil {
 			return errors.Wrap(err, "failed peek pes pts second (PtsDtsFlag=2)")
 		}
 		p.pts |= second << 15
 		if err = bb.Skip(1); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: second pts marker_bit (PtsDtsFlag=2)")
 		} // marker_bit
-		if third, err = bb.PeekUint64(15); err != nil {
+		if third, err = bb.ReadUint64(15); err != nil {
 			return errors.Wrap(err, "failed peek pes pts third (PtsDtsFlag=2)")
 		}
 		p.pts |= third
@@ -228,21 +228,21 @@ func (p *Pes) Parse() error {
 			return errors.Wrap(err, "failed to skip in pes: 0011 (PtsDtsFlag=3)")
 		} // '0011'
 		var first, second, third uint64
-		if first, err = bb.PeekUint64(3); err != nil {
+		if first, err = bb.ReadUint64(3); err != nil {
 			return errors.Wrap(err, "failed peek pes pts first (PtsDtsFlag=3)")
 		}
 		p.pts = first << 30
 		if err = bb.Skip(1); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: first pts marker_bit (PtsDtsFlag=3)")
 		} // marker_bit
-		if second, err = bb.PeekUint64(15); err != nil {
+		if second, err = bb.ReadUint64(15); err != nil {
 			return errors.Wrap(err, "failed peek pes pts second (PtsDtsFlag=3)")
 		}
 		p.pts |= second << 15
 		if err = bb.Skip(1); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: second pts marker_bit (PtsDtsFlag=3)")
 		} // marker_bit
-		if third, err = bb.PeekUint64(15); err != nil {
+		if third, err = bb.ReadUint64(15); err != nil {
 			return errors.Wrap(err, "failed peek pes pts third (PtsDtsFlag=3)")
 		}
 		p.pts |= third
@@ -252,21 +252,21 @@ func (p *Pes) Parse() error {
 		if err = bb.Skip(4); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: pts-dts 0001 (PtsDtsFlag=3)")
 		} // '0001'
-		if first, err = bb.PeekUint64(3); err != nil {
+		if first, err = bb.ReadUint64(3); err != nil {
 			return errors.Wrap(err, "failed peek pes dts first (PtsDtsFlag=3)")
 		}
 		p.dts = first << 30
 		if err = bb.Skip(1); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: first dts marker_bit (PtsDtsFlag=3)")
 		} // marker_bit
-		if second, err = bb.PeekUint64(15); err != nil {
+		if second, err = bb.ReadUint64(15); err != nil {
 			return errors.Wrap(err, "failed peek pes dts second (PtsDtsFlag=3)")
 		}
 		p.dts |= second << 15
 		if err = bb.Skip(1); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: second dts marker_bit (PtsDtsFlag=3)")
 		} // marker_bit
-		if third, err = bb.PeekUint64(15); err != nil {
+		if third, err = bb.ReadUint64(15); err != nil {
 			return errors.Wrap(err, "failed peek pes dts third (PtsDtsFlag=3)")
 		}
 		p.dts |= third
@@ -279,21 +279,21 @@ func (p *Pes) Parse() error {
 			return errors.Wrap(err, "failed to skip in pes: reserved(EscrFlag=1)")
 		} // reserved
 		var first, second, third uint64
-		if first, err = bb.PeekUint64(3); err != nil {
+		if first, err = bb.ReadUint64(3); err != nil {
 			return errors.Wrap(err, "failed peek pes escr first")
 		}
 		p.escrBase = first << 30
 		if err = bb.Skip(1); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: first ercr marker_bit")
 		} // marker_bit
-		if second, err = bb.PeekUint64(15); err != nil {
+		if second, err = bb.ReadUint64(15); err != nil {
 			return errors.Wrap(err, "failed peek pes escr second")
 		}
 		p.escrBase |= second << 15
 		if err = bb.Skip(1); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: second ercr marker_bit")
 		} // marker_bit
-		if third, err = bb.PeekUint64(15); err != nil {
+		if third, err = bb.ReadUint64(15); err != nil {
 			return errors.Wrap(err, "failed peek pes escr third")
 		}
 		p.escrBase |= third
@@ -302,7 +302,7 @@ func (p *Pes) Parse() error {
 		if err = bb.Skip(1); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: first es_rate marker_bit")
 		} // marker_bit
-		if p.esRate, err = bb.PeekUint32(22); err != nil {
+		if p.esRate, err = bb.ReadUint32(22); err != nil {
 			return errors.Wrap(err, "failed peek pes es_rate")
 		}
 		if err = bb.Skip(1); err != nil {
@@ -310,22 +310,22 @@ func (p *Pes) Parse() error {
 		} // marker_bit
 	}
 	if p.dsmTrickModeFlag == 1 {
-		if p.trickModeControl, err = bb.PeekUint8(3); err != nil {
+		if p.trickModeControl, err = bb.ReadUint8(3); err != nil {
 			return errors.Wrap(err, "failed peek pes trick_mode_control")
 		}
 		switch p.trickModeControl {
 		case 0x00, 0x03: // fast_forward, freeze_frame
-			if p.fieldID, err = bb.PeekUint8(2); err != nil {
+			if p.fieldID, err = bb.ReadUint8(2); err != nil {
 				return errors.Wrap(err, "failed peek pes field_id")
 			}
-			if p.intraSliceRefresh, err = bb.PeekUint8(1); err != nil {
+			if p.intraSliceRefresh, err = bb.ReadUint8(1); err != nil {
 				return errors.Wrap(err, "failed peek pes intra_slice_refresh")
 			}
-			if p.frequencyTruncation, err = bb.PeekUint8(2); err != nil {
+			if p.frequencyTruncation, err = bb.ReadUint8(2); err != nil {
 				return errors.Wrap(err, "failed peek pes frequency_truncation")
 			}
 		case 0x01: // slow_motion, slow_reverse
-			if p.repCntrl, err = bb.PeekUint8(5); err != nil {
+			if p.repCntrl, err = bb.ReadUint8(5); err != nil {
 				return errors.Wrap(err, "failed peek pes rep_cntrl")
 			}
 		default:
@@ -338,12 +338,12 @@ func (p *Pes) Parse() error {
 		if err = bb.Skip(1); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: additional_copy_info marker_bit")
 		} // marker_bit
-		if p.additionalCopyInfo, err = bb.PeekUint8(7); err != nil {
+		if p.additionalCopyInfo, err = bb.ReadUint8(7); err != nil {
 			return errors.Wrap(err, "failed peek pes additional_copy_info")
 		}
 	}
 	if p.pesCrcFlag == 1 {
-		if p.previousPesPacketCrc, err = bb.PeekUint16(16); err != nil {
+		if p.previousPesPacketCrc, err = bb.ReadUint16(16); err != nil {
 			return errors.Wrap(err, "failed peek pes previous_pes_packet_crc")
 		}
 	}

@@ -76,28 +76,28 @@ func (tp *TsPacket) Parse() error {
 	bb.Set(tp.buf)
 
 	var err error
-	if tp.syncByte, err = bb.PeekUint8(8); err != nil {
+	if tp.syncByte, err = bb.ReadUint8(8); err != nil {
 		return err
 	}
-	if tp.transportErrorIndicator, err = bb.PeekUint8(1); err != nil {
+	if tp.transportErrorIndicator, err = bb.ReadUint8(1); err != nil {
 		return err
 	}
-	if tp.payloadUnitStartIndicator, err = bb.PeekUint8(1); err != nil {
+	if tp.payloadUnitStartIndicator, err = bb.ReadUint8(1); err != nil {
 		return err
 	}
-	if tp.transportPriority, err = bb.PeekUint8(1); err != nil {
+	if tp.transportPriority, err = bb.ReadUint8(1); err != nil {
 		return err
 	}
-	if tp.pid, err = bb.PeekUint16(13); err != nil {
+	if tp.pid, err = bb.ReadUint16(13); err != nil {
 		return err
 	}
-	if tp.transportScramblingControl, err = bb.PeekUint8(2); err != nil {
+	if tp.transportScramblingControl, err = bb.ReadUint8(2); err != nil {
 		return err
 	}
-	if tp.adaptationFieldControl, err = bb.PeekUint8(2); err != nil {
+	if tp.adaptationFieldControl, err = bb.ReadUint8(2); err != nil {
 		return err
 	}
-	if tp.continuityCounter, err = bb.PeekUint8(4); err != nil {
+	if tp.continuityCounter, err = bb.ReadUint8(4); err != nil {
 		return err
 	}
 
