@@ -44,10 +44,12 @@ func ParseTsFile(filename string, options options.Options) error {
 		// Parse PAT
 		pat := NewPat()
 		if err = BufferPsi(file, &pos, patPid, pat, options); err != nil {
+			fmt.Printf("0x%08x PAT buffering error: %s, retrying PAT discovery...\n", pos, err)
 			fileOffset = pos
 			continue
 		}
 		if err = pat.Parse(); err != nil {
+			fmt.Printf("0x%08x PAT parse error: %s, retrying PAT discovery...\n", pos, err)
 			fileOffset = pos
 			continue
 		}
@@ -64,10 +66,12 @@ func ParseTsFile(filename string, options options.Options) error {
 		// Parse PMT
 		pmt := NewPmt()
 		if err = BufferPsi(file, &pos, pmtPid, pmt, options); err != nil {
+			fmt.Printf("0x%08x PMT buffering error: %s, retrying PAT discovery...\n", pos, err)
 			fileOffset = pos
 			continue
 		}
 		if err = pmt.Parse(); err != nil {
+			fmt.Printf("0x%08x PMT parse error: %s, retrying PAT discovery...\n", pos, err)
 			fileOffset = pos
 			continue
 		}
@@ -86,6 +90,7 @@ func ParseTsFile(filename string, options options.Options) error {
 
 		err = BufferPes(file, &pos, pcrPid, programs, options)
 		if err != nil {
+			fmt.Printf("0x%08x PES parse error: %s, retrying PAT discovery...\n", pos, err)
 			fileOffset = pos
 			continue
 		}
