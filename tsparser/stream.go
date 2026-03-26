@@ -45,7 +45,7 @@ func ParseTsFile(filename string, options options.Options) error {
 		pat := NewPat()
 		if err = BufferPsi(file, &pos, patPid, pat, options); err != nil {
 			fmt.Printf("0x%08x PAT buffering error: %s, retrying PAT discovery...\n", pos, err)
-			fileOffset = pos
+			fileOffset = maxInt64(pos, readStart+patOffset+tsPacketSize)
 			continue
 		}
 		if err = pat.Parse(); err != nil {
@@ -67,7 +67,7 @@ func ParseTsFile(filename string, options options.Options) error {
 		pmt := NewPmt()
 		if err = BufferPsi(file, &pos, pmtPid, pmt, options); err != nil {
 			fmt.Printf("0x%08x PMT buffering error: %s, retrying PAT discovery...\n", pos, err)
-			fileOffset = pos
+			fileOffset = maxInt64(pos, readStart+patOffset+tsPacketSize)
 			continue
 		}
 		if err = pmt.Parse(); err != nil {
@@ -91,12 +91,19 @@ func ParseTsFile(filename string, options options.Options) error {
 		err = BufferPes(file, &pos, pcrPid, programs, options)
 		if err != nil {
 			fmt.Printf("0x%08x PES parse error: %s, retrying PAT discovery...\n", pos, err)
-			fileOffset = pos
+			fileOffset = maxInt64(pos, readStart+patOffset+tsPacketSize)
 			continue
 		}
 		break
 	}
 	return nil
+}
+
+func maxInt64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func findPat(data []byte) (int64, error) {
