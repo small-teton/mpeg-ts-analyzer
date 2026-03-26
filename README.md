@@ -126,7 +126,7 @@ Detected PAT: PMT pid = 0x1000
 Detected PMT
 PMT : Program Info : elementary_PID	: 0x100, stream_type : 0x02 (13818-2 video or 11172-2 constrained parameter video stream)
 PMT : Program Info : elementary_PID	: 0x101, stream_type : 0x03 (11172 audio)
-0x000034e0 PCR: 0x018344a0[00940.000000ms] (Interval:00940.000000ms)
+0x000034e0 PCR: 0x018344a0[00940.000000ms]
 0x000034e0 DTS: 0x00024090[01640.000000ms] (pid:0x100) (delay:700.000000ms)
 0x0000359c PTS: 0x00023a3a[01621.977778ms] (pid:0x101) (delay:668.922222ms)
 0x00004970 PCR: 0x01a43a20[01020.000000ms] (Interval:00080.000000ms)
