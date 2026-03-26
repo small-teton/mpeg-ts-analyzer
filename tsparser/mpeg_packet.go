@@ -43,6 +43,8 @@ func BufferPsi(file *os.File, pos *int64, pid uint16, mpegPacket MpegPacket, opt
 		if err := tsPacket.Parse(); err != nil {
 			return errors.Wrap(err, "failed to parse TS packet in BufferPsi")
 		}
+		*pos += int64(size)
+
 		if tsPacket.Pid() != pid {
 			continue
 		}
@@ -62,8 +64,6 @@ func BufferPsi(file *os.File, pos *int64, pid uint16, mpegPacket MpegPacket, opt
 		} else {
 			return errors.Newf("packet loss. pos:0x%08x", *pos)
 		}
-
-		*pos += int64(size)
 	}
 	return nil
 }
@@ -108,6 +108,11 @@ func BufferPes(file *os.File, pos *int64, pcrPid uint16, programInfos []ProgramI
 			lastPcrPos = *pos
 		}
 		if !exist {
+			*pos += int64(size)
+			continue
+		}
+
+		if pes == nil && !tsPacket.PayloadUnitStartIndicator() {
 			*pos += int64(size)
 			continue
 		}
