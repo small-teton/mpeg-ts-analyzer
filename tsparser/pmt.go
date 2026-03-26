@@ -139,7 +139,7 @@ func (p *Pmt) Parse() error {
 	}
 
 	if len(p.buf) >= int(3+p.sectionLength-4) && p.crc32 != crc32(p.buf[0:3+p.sectionLength-4]) {
-		return errors.New("PAT CRC32 is invalidate")
+		return errors.New("PMT CRC32 is invalid")
 	}
 
 	return nil
