@@ -1,3 +1,5 @@
+testdata/*
+!testdata/.gitkeep
 *.mpg
 *.m2t
 *.m2ts
