@@ -7,7 +7,7 @@ import (
 // BitBuffer Peek buffer by the bit
 type BitBuffer struct {
 	buf []byte
-	pos uint16
+	pos uint32
 }
 
 // Set set the data in the buffer
@@ -17,8 +17,8 @@ func (b *BitBuffer) Set(src []byte) {
 }
 
 // Skip Only increase position. Not Peek data.
-func (b *BitBuffer) Skip(length uint16) error {
-	if (b.pos + length) > uint16(len(b.buf)*8) {
+func (b *BitBuffer) Skip(length uint32) error {
+	if (b.pos + length) > uint32(len(b.buf)*8) {
 		return errors.Newf("Length(%d) is out of range(%d)", length, len(b.buf))
 	}
 	b.pos += length
@@ -26,30 +26,30 @@ func (b *BitBuffer) Skip(length uint16) error {
 }
 
 // PeekUint8 return type uint8
-func (b *BitBuffer) PeekUint8(length uint16) (uint8, error) {
-	if length > 8 || (b.pos+length) > uint16(len(b.buf)*8) {
+func (b *BitBuffer) PeekUint8(length uint32) (uint8, error) {
+	if length > 8 || (b.pos+length) > uint32(len(b.buf)*8) {
 		return 0, errors.Newf("Length(%d) is out of range(0-8)", length)
 	}
 
 	index := b.pos / 8
 	offset := b.pos % 8
 
-	var firstByte, secondByte, buf uint16
-	if uint16(len(b.buf)*8)-b.pos <= 8 {
+	var firstByte, secondByte, buf uint32
+	if uint32(len(b.buf)*8)-b.pos <= 8 {
 		firstByte = 0x0
-		secondByte = uint16(b.buf[index])
+		secondByte = uint32(b.buf[index])
 		buf = firstByte | secondByte
 		buf >>= (8 - offset - length)
 	} else {
-		firstByte = uint16(b.buf[index])
+		firstByte = uint32(b.buf[index])
 		firstByte <<= 8
-		secondByte = uint16(b.buf[index+1])
+		secondByte = uint32(b.buf[index+1])
 		buf = firstByte | secondByte
 		buf >>= (16 - offset - length)
 	}
-	var digit uint16 = 1
-	var mask uint16
-	for i := uint16(0); i < length; i++ {
+	var digit uint32 = 1
+	var mask uint32
+	for i := uint32(0); i < length; i++ {
 		mask += digit
 		digit *= 2
 	}
@@ -58,8 +58,8 @@ func (b *BitBuffer) PeekUint8(length uint16) (uint8, error) {
 }
 
 // PeekUint16 return type uint16
-func (b *BitBuffer) PeekUint16(length uint16) (uint16, error) {
-	if length > 16 || (b.pos+length) > uint16(len(b.buf)*8) {
+func (b *BitBuffer) PeekUint16(length uint32) (uint16, error) {
+	if length > 16 || (b.pos+length) > uint32(len(b.buf)*8) {
 		return 0, errors.Newf("Length(%d) is out of range(0-16)%d %d", length, b.pos, len(b.buf)*8)
 	}
 
@@ -81,8 +81,8 @@ func (b *BitBuffer) PeekUint16(length uint16) (uint16, error) {
 }
 
 // PeekUint32 return type uint32
-func (b *BitBuffer) PeekUint32(length uint16) (uint32, error) {
-	if length > 32 || (b.pos+length) > uint16(len(b.buf)*8) {
+func (b *BitBuffer) PeekUint32(length uint32) (uint32, error) {
+	if length > 32 || (b.pos+length) > uint32(len(b.buf)*8) {
 		return 0, errors.Newf("Length(%d) is out of range(0-32)", length)
 	}
 
@@ -109,8 +109,8 @@ func (b *BitBuffer) PeekUint32(length uint16) (uint32, error) {
 }
 
 // PeekUint64 return type uint64
-func (b *BitBuffer) PeekUint64(length uint16) (uint64, error) {
-	if length > 64 || (b.pos+length) > uint16(len(b.buf)*8) {
+func (b *BitBuffer) PeekUint64(length uint32) (uint64, error) {
+	if length > 64 || (b.pos+length) > uint32(len(b.buf)*8) {
 		return 0, errors.Newf("Length(%d) is out of range(0-64)", length)
 	}
 
