@@ -17,33 +17,37 @@ func ParseTsFile(filename string, options options.Options) error {
 	defer file.Close()
 	fmt.Println("Input file: ", filename)
 
-	pat := NewPat()
-	pmt := NewPmt()
-
 	const patPid = 0x0
 	const bufSize = 65536
-	var pos int64
+	var fileOffset int64
 	buf := make([]byte, bufSize)
 	for {
+		readStart := fileOffset
 		size, err := file.Read(buf)
 		if err == io.EOF {
 			break
 		} else if err != nil {
 			return errors.Wrap(err, "file read error")
 		}
-		if pos, err = findPat(buf); err != nil {
+		fileOffset += int64(size)
+
+		patOffset, err := findPat(buf[:size])
+		if err != nil {
 			continue
 		}
 
+		pos := readStart + patOffset
 		if _, err = file.Seek(pos, 0); err != nil {
 			return errors.Wrap(err, "file seek error")
 		}
 
 		// Parse PAT
+		pat := NewPat()
 		if err = BufferPsi(file, &pos, patPid, pat, options); err != nil {
 			return err
 		}
 		if err = pat.Parse(); err != nil {
+			fileOffset = pos
 			continue
 		}
 		pmtPid := pat.PmtPid()
@@ -57,10 +61,12 @@ func ParseTsFile(filename string, options options.Options) error {
 		}
 
 		// Parse PMT
+		pmt := NewPmt()
 		if err = BufferPsi(file, &pos, pmtPid, pmt, options); err != nil {
 			return errors.Wrap(err, "failed parse pmt")
 		}
 		if err = pmt.Parse(); err != nil {
+			fileOffset = pos
 			continue
 		}
 		programs := pmt.ProgramInfos()
@@ -80,10 +86,7 @@ func ParseTsFile(filename string, options options.Options) error {
 		if err != nil {
 			return errors.Wrap(err, "TS parse error")
 		}
-		if size < bufSize {
-			break
-		}
-		pos += bufSize
+		break
 	}
 	return nil
 }
