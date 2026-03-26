@@ -58,7 +58,7 @@ func BufferPsi(file *os.File, pos *int64, pid uint16, mpegPacket MpegPacket, opt
 			mpegPacket.SetContinuityCounter(tsPacket.ContinuityCounter())
 			mpegPacket.Append(tsPacket.Payload())
 		} else {
-			return errors.Newf("packet loss. pos:0x%08x", pos)
+			return errors.Newf("packet loss. pos:0x%08x", *pos)
 		}
 
 		*pos += int64(size)
