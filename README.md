@@ -139,11 +139,12 @@ PMT : Program Info : elementary_PID	: 0x101, stream_type : 0x03 (11172 audio)
 
 (snip)
 
-0x0000dffc PCR: 0x02abe620[01660.000000ms] (Interval:00080.000000ms)
-0x0000d43c DTS: 0x00032fa0[02320.000000ms] (pid:0x100) (delay:659.563636ms)
-0x0000d4f8 PTS: 0x0003267a[02293.977778ms] (pid:0x101) (delay:627.795960ms)
-0x0000e5dc PTS: 0x0003375a[02341.977778ms] (pid:0x101) (delay:638.436794ms)
+0x0004a66c PCR: 0x091bd920[05660.000000ms] (Interval:00080.000000ms)
+0x00049c24 DTS: 0x0008ade0[06320.000000ms] (pid:0x100) (delay:729.563591ms)
+0x00049ce0 PTS: 0x00089f1a[06277.977778ms] (pid:0x101) (delay:684.062566ms)
+0x0004a728 PTS: 0x0008affa[06325.977778ms] (pid:0x101) (delay:662.486106ms)
+0x0004b0b4 PTS: 0x0008c0da[06373.977778ms] (pid:0x101) (delay:665.094372ms)
 -----------------------------
 Max PCR interval: 940.000000ms
-PCR-PTS max gap: 722.558140ms
+PCR-PTS max gap: 729.563591ms
 ```
