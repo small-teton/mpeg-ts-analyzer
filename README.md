@@ -1,12 +1,12 @@
 # mpeg-ts-analyzer
 
-mpeg-ts-analyzer is the Analyzer of MPEG2 Transport Stream(ISO_IEC_13818-1).
-It can parse TS header, Adaptation Field, PSI(PAT/PMT) and PES header. Then, it can check continuity_counter(TS header), CRC32(PSI). 
+mpeg-ts-analyzer is an analyzer for MPEG-2 Transport Stream (ISO/IEC 13818-1).
+It can parse TS header, Adaptation Field, PSI (PAT/PMT) and PES header. It also validates continuity_counter (TS header) and CRC32 (PSI).
 
 
 # Usage
 
-Default, it is dump each timestamps(PCR/PTS/DTS) that include PCR interval and PTS PCR gap. If you want to dump more detail, please add each command line flags.
+By default, it dumps all timestamps (PCR/PTS/DTS) including PCR interval and PCR-PTS gap. To dump more details, add the corresponding command-line flags.
 
 ```
 Usage:
@@ -83,7 +83,7 @@ adaptation_field_control	: 1
 continuity_counter		: 0
 ```
 
-## Dump
+## Dump TS payload
 
 ```
 $ ./mpeg-ts-analyzer ColorBar_4Mbps_1280x720_2997p.m2t --dump-ts-payload
