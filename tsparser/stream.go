@@ -12,7 +12,7 @@ import (
 func ParseTsFile(filename string, options options.Options) error {
 	file, err := os.Open(filename)
 	if err != nil {
-		return errors.WithMessagef(err, "file open error: %s %s", filename)
+		return errors.WithMessagef(err, "file open error: %s", filename)
 	}
 	fmt.Println("Input file: ", filename)
 
