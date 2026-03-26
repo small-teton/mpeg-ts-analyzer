@@ -352,21 +352,20 @@ func (p *Pes) Parse() error {
 
 // DumpTimestamp dump PTS and DTS
 func (p *Pes) DumpTimestamp() float64 {
-	var pcrDelay float32
+	var pcrDelay float64
 	if p.ptsDtsFlags == 2 {
-		prevPcr := float32(p.prevPcr) / 300 / 90
-		nextPcr := float32(p.nextPcr) / 300 / 90
-		pcrDelay = float32(p.pts)/90 - (prevPcr + (nextPcr-prevPcr)*(float32(p.pos-p.prevPcrPos)/float32(p.nextPcrPos-p.prevPcrPos)))
-		fmt.Printf("0x%08x PTS: 0x%08x[%012fms] (pid:0x%02x) (delay:%fms)\n", p.pos, p.pts, float32(p.pts)/90, p.pid, pcrDelay)
+		prevPcr := float64(p.prevPcr) / 300 / 90
+		nextPcr := float64(p.nextPcr) / 300 / 90
+		pcrDelay = float64(p.pts)/90 - (prevPcr + (nextPcr-prevPcr)*(float64(p.pos-p.prevPcrPos)/float64(p.nextPcrPos-p.prevPcrPos)))
+		fmt.Printf("0x%08x PTS: 0x%08x[%012fms] (pid:0x%02x) (delay:%fms)\n", p.pos, p.pts, float64(p.pts)/90, p.pid, pcrDelay)
 	}
 	if p.ptsDtsFlags == 3 {
-		//fmt.Printf("0x%08x PTS: 0x%08x[%012fms] (pid:0x%02x)\n", p.pos, p.pts, float32(p.pts)/90, p.pid)
-		prevPcr := float32(p.prevPcr) / 300 / 90
-		nextPcr := float32(p.nextPcr) / 300 / 90
-		pcrDelay = float32(p.dts)/90 - (prevPcr + (nextPcr-prevPcr)*(float32(p.pos-p.prevPcrPos)/float32(p.nextPcrPos-p.prevPcrPos)))
-		fmt.Printf("0x%08x DTS: 0x%08x[%012fms] (pid:0x%02x) (delay:%fms)\n", p.pos, p.dts, float32(p.dts)/90, p.pid, pcrDelay)
+		prevPcr := float64(p.prevPcr) / 300 / 90
+		nextPcr := float64(p.nextPcr) / 300 / 90
+		pcrDelay = float64(p.dts)/90 - (prevPcr + (nextPcr-prevPcr)*(float64(p.pos-p.prevPcrPos)/float64(p.nextPcrPos-p.prevPcrPos)))
+		fmt.Printf("0x%08x DTS: 0x%08x[%012fms] (pid:0x%02x) (delay:%fms)\n", p.pos, p.dts, float64(p.dts)/90, p.pid, pcrDelay)
 	}
-	return float64(pcrDelay)
+	return pcrDelay
 }
 
 // Dump PES header detail.
