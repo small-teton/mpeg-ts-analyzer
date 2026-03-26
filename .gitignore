@@ -1,5 +1,5 @@
-testdata/*
-!testdata/.gitkeep
+.DS_Store
+testdata/
 *.mpg
 *.m2t
 *.m2ts
