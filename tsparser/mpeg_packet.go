@@ -105,6 +105,8 @@ func BufferPes(file *os.File, pos *int64, pcrPid uint16, programInfos []ProgramI
 					tsPacket.adaptationField.DumpPcr(lastPcr)
 				}
 				maxPcrInterval = math.Max(maxPcrInterval, float64(tsPacket.Pcr()-lastPcr))
+			} else if options.DumpTimestamp {
+				tsPacket.adaptationField.DumpFirstPcr()
 			}
 			lastPcr = tsPacket.Pcr()
 			lastPcrPos = *pos
