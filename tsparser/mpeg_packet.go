@@ -100,7 +100,7 @@ func BufferPes(file *os.File, pos *int64, pcrPid uint16, programInfos []ProgramI
 		pid := tsPacket.Pid()
 		pes, exist := pesMap[pid]
 		if tsPacket.HasAf() && tsPacket.adaptationField.PcrFlag() && pcrPid != 0 && pid == pcrPid {
-			if options.DumpTimestamp() {
+			if options.DumpTimestamp {
 				tsPacket.adaptationField.DumpPcr(lastPcr)
 			}
 			maxPcrInterval = math.Max(maxPcrInterval, float64(tsPacket.Pcr()-lastPcr))
@@ -115,11 +115,11 @@ func BufferPes(file *os.File, pos *int64, pcrPid uint16, programInfos []ProgramI
 		if tsPacket.PayloadUnitStartIndicator() {
 			if pes != nil {
 				pes.Parse()
-				if options.DumpTimestamp() {
+				if options.DumpTimestamp {
 					pcrDelay := pes.DumpTimestamp()
 					maxDelay = math.Max(maxDelay, pcrDelay)
 				}
-				if options.DumpPesHeader() {
+				if options.DumpPesHeader {
 					pes.DumpHeader()
 				}
 			} else {
@@ -143,7 +143,7 @@ func BufferPes(file *os.File, pos *int64, pcrPid uint16, programInfos []ProgramI
 
 		*pos += int64(size)
 	}
-	if options.DumpTimestamp() {
+	if options.DumpTimestamp {
 		fmt.Println("-----------------------------")
 		fmt.Printf("Max PCR interval: %fms\n", maxPcrInterval/300/90)
 		fmt.Printf("PCR-PTS max gap: %fms\n", maxDelay)

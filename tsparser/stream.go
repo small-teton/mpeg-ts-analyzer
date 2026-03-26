@@ -52,7 +52,7 @@ func ParseTsFile(filename string, options options.Options) error {
 			return errors.Wrap(err, "file seek error")
 		}
 		fmt.Printf("Detected PAT: PMT pid = 0x%02x\n", pmtPid)
-		if options.DumpPsi() {
+		if options.DumpPsi {
 			pat.Dump()
 		}
 
@@ -70,7 +70,7 @@ func ParseTsFile(filename string, options options.Options) error {
 			return errors.Wrap(err, "file seek error")
 		}
 		fmt.Println("Detected PMT")
-		if options.DumpPsi() {
+		if options.DumpPsi {
 			pmt.Dump()
 		} else {
 			pmt.DumpProgramInfos()
