@@ -237,7 +237,15 @@ func (af *AdaptationField) Parse() (uint8, error) {
 	return af.adaptationFieldLength, nil
 }
 
-// DumpPcr print PCR.
+// DumpFirstPcr prints the first PCR without interval.
+func (af *AdaptationField) DumpFirstPcr() {
+	if af.pcrFlag == 1 {
+		pcrMilisec := float64(af.pcr) / 300 / 90
+		fmt.Printf("0x%08x PCR: 0x%08x[%012fms]\n", af.pos, af.pcr, pcrMilisec)
+	}
+}
+
+// DumpPcr print PCR with interval from previous PCR.
 func (af *AdaptationField) DumpPcr(prevPcr uint64) {
 	if af.pcrFlag == 1 {
 		pcrMilisec := float64(af.pcr) / 300 / 90
