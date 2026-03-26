@@ -62,10 +62,10 @@ func (p *Pmt) Parse() error {
 	bb.Set(p.buf)
 
 	var err error
-	if p.tableID, err = bb.PeekUint8(8); err != nil {
+	if p.tableID, err = bb.ReadUint8(8); err != nil {
 		return errors.Wrap(err, "failed peek pmt table_id")
 	}
-	if p.sectionSyntaxIndicator, err = bb.PeekUint8(1); err != nil {
+	if p.sectionSyntaxIndicator, err = bb.ReadUint8(1); err != nil {
 		return errors.Wrap(err, "failed peek pmt section_syntax_indicator")
 	}
 	if err := bb.Skip(1); err != nil {
@@ -74,37 +74,37 @@ func (p *Pmt) Parse() error {
 	if err := bb.Skip(2); err != nil {
 		return errors.Wrap(err, "failed to skip in pmt: reserved")
 	} // reserved
-	if p.sectionLength, err = bb.PeekUint16(12); err != nil {
+	if p.sectionLength, err = bb.ReadUint16(12); err != nil {
 		return errors.Wrap(err, "failed peek pmt section_length")
 	}
-	if p.programNumber, err = bb.PeekUint16(16); err != nil {
+	if p.programNumber, err = bb.ReadUint16(16); err != nil {
 		return errors.Wrap(err, "failed peek pmt program_number")
 	}
 	if err := bb.Skip(2); err != nil {
 		return errors.Wrap(err, "failed to skip in pmt: reserved")
 	} // reserved
-	if p.versionNumber, err = bb.PeekUint8(5); err != nil {
+	if p.versionNumber, err = bb.ReadUint8(5); err != nil {
 		return errors.Wrap(err, "failed peek pmt version_number")
 	}
-	if p.currentNextIndicator, err = bb.PeekUint8(1); err != nil {
+	if p.currentNextIndicator, err = bb.ReadUint8(1); err != nil {
 		return errors.Wrap(err, "failed peek pmt current_next_indicator")
 	}
-	if p.sectionNumber, err = bb.PeekUint8(8); err != nil {
+	if p.sectionNumber, err = bb.ReadUint8(8); err != nil {
 		return errors.Wrap(err, "failed peek pmt section_number")
 	}
-	if p.lastSectionNumber, err = bb.PeekUint8(8); err != nil {
+	if p.lastSectionNumber, err = bb.ReadUint8(8); err != nil {
 		return errors.Wrap(err, "failed peek pmt last_section_number")
 	}
 	if err := bb.Skip(3); err != nil {
 		return errors.Wrap(err, "failed to skip in pmt: reserved")
 	} // reserved
-	if p.pcrPid, err = bb.PeekUint16(13); err != nil {
+	if p.pcrPid, err = bb.ReadUint16(13); err != nil {
 		return errors.Wrap(err, "failed peek pmt pcr_pid")
 	}
 	if err := bb.Skip(4); err != nil {
 		return errors.Wrap(err, "failed to skip in pmt reserved")
 	} // reserved
-	if p.programInfoLength, err = bb.PeekUint16(12); err != nil {
+	if p.programInfoLength, err = bb.ReadUint16(12); err != nil {
 		return errors.Wrap(err, "failed peek pmt pragram_info_length")
 	}
 	if err := bb.Skip(8 * uint32(p.programInfoLength)); err != nil {
@@ -113,19 +113,19 @@ func (p *Pmt) Parse() error {
 	remainLength := int32(p.sectionLength - 9 - 4)
 	for remainLength > 0 {
 		var info ProgramInfo
-		if info.streamType, err = bb.PeekUint8(8); err != nil {
+		if info.streamType, err = bb.ReadUint8(8); err != nil {
 			return errors.Wrap(err, "failed peek pmt program info: stream_type")
 		}
 		if err := bb.Skip(3); err != nil {
 			return errors.Wrap(err, "failed to skip in pmt program info: reserved")
 		} // reserved
-		if info.elementaryPid, err = bb.PeekUint16(13); err != nil {
+		if info.elementaryPid, err = bb.ReadUint16(13); err != nil {
 			return errors.Wrap(err, "failed peek pmt program info: elementary_pid")
 		}
 		if err := bb.Skip(4); err != nil {
 			return errors.Wrap(err, "failed to skip in pmt program info: reserved")
 		} // reserved
-		if info.esInfoLength, err = bb.PeekUint16(12); err != nil {
+		if info.esInfoLength, err = bb.ReadUint16(12); err != nil {
 			return errors.Wrap(err, "failed peek pmt program info: es_info_length")
 		}
 		if err := bb.Skip(8 * uint32(info.esInfoLength)); err != nil {
@@ -134,7 +134,7 @@ func (p *Pmt) Parse() error {
 		remainLength = remainLength - 5 - int32(info.esInfoLength)
 		p.programInfos = append(p.programInfos, info)
 	}
-	if p.crc32, err = bb.PeekUint32(32); err != nil {
+	if p.crc32, err = bb.ReadUint32(32); err != nil {
 		return errors.Wrap(err, "failed peek pmt crc32")
 	}
 
