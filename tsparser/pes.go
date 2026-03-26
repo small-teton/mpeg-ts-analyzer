@@ -305,7 +305,7 @@ func (p *Pes) Parse() error {
 		if p.esRate, err = bb.PeekUint32(22); err != nil {
 			return errors.Wrap(err, "failed peek pes es_rate")
 		}
-		if bb.Skip(1); err != nil {
+		if err = bb.Skip(1); err != nil {
 			return errors.Wrap(err, "failed to skip in pes: second es_rate marker_bit")
 		} // marker_bit
 	}
