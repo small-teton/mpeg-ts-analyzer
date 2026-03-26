@@ -44,7 +44,8 @@ func ParseTsFile(filename string, options options.Options) error {
 		// Parse PAT
 		pat := NewPat()
 		if err = BufferPsi(file, &pos, patPid, pat, options); err != nil {
-			return err
+			fileOffset = pos
+			continue
 		}
 		if err = pat.Parse(); err != nil {
 			fileOffset = pos
@@ -63,7 +64,8 @@ func ParseTsFile(filename string, options options.Options) error {
 		// Parse PMT
 		pmt := NewPmt()
 		if err = BufferPsi(file, &pos, pmtPid, pmt, options); err != nil {
-			return errors.Wrap(err, "failed parse pmt")
+			fileOffset = pos
+			continue
 		}
 		if err = pmt.Parse(); err != nil {
 			fileOffset = pos
@@ -84,7 +86,8 @@ func ParseTsFile(filename string, options options.Options) error {
 
 		err = BufferPes(file, &pos, pcrPid, programs, options)
 		if err != nil {
-			return errors.Wrap(err, "TS parse error")
+			fileOffset = pos
+			continue
 		}
 		break
 	}
