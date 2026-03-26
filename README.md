@@ -3,6 +3,8 @@
 mpeg-ts-analyzer is an analyzer for MPEG-2 Transport Stream (ISO/IEC 13818-1).
 It can parse TS header, Adaptation Field, PSI (PAT/PMT) and PES header. It also validates continuity_counter (TS header) and CRC32 (PSI).
 
+**Note:** Only 188-byte TS packets are supported. 192-byte packets (M2TS/BDAV format with TP_extra_header) are not currently supported.
+
 
 # Usage
 
