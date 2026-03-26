@@ -68,7 +68,7 @@ func BufferPsi(file *os.File, pos *int64, pid uint16, mpegPacket MpegPacket, opt
 	return nil
 }
 
-// BufferPes buffer PSI data from TS payload
+// BufferPes buffer PES data from TS payload
 func BufferPes(file *os.File, pos *int64, pcrPid uint16, programInfos []ProgramInfo, options options.Options) error {
 	tsBuffer := make([]byte, tsPacketSize)
 	pesMap := make(map[uint16]*Pes)
