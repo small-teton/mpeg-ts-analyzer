@@ -40,7 +40,9 @@ func BufferPsi(file *os.File, pos *int64, pid uint16, mpegPacket MpegPacket, opt
 
 		tsPacket.Initialize(*pos, options)
 		tsPacket.Append(tsBuffer)
-		tsPacket.Parse()
+		if err := tsPacket.Parse(); err != nil {
+			return errors.Wrap(err, "failed to parse TS packet in BufferPsi")
+		}
 		if tsPacket.Pid() != pid {
 			continue
 		}
@@ -92,7 +94,9 @@ func BufferPes(file *os.File, pos *int64, pcrPid uint16, programInfos []ProgramI
 
 		tsPacket.Initialize(*pos, options)
 		tsPacket.Append(tsBuffer)
-		tsPacket.Parse()
+		if err := tsPacket.Parse(); err != nil {
+			return errors.Wrap(err, "failed to parse TS packet in BufferPes")
+		}
 		pid := tsPacket.Pid()
 		pes, exist := pesMap[pid]
 		if tsPacket.HasAf() && tsPacket.adaptationField.PcrFlag() && pcrPid != 0 && pid == pcrPid {
