@@ -108,7 +108,7 @@ func (tp *TsPacket) Parse() error {
 		if afLength, err = tp.adaptationField.Parse(); err != nil {
 			return err
 		}
-		if tp.options.DumpAdaptationField() {
+		if tp.options.DumpAdaptationField {
 			tp.adaptationField.Dump()
 		}
 	}
@@ -119,10 +119,10 @@ func (tp *TsPacket) Parse() error {
 		tp.payload = tp.buf[tsHeaderSize+afLength+1:]
 	}
 
-	if tp.options.DumpHeader() {
+	if tp.options.DumpHeader {
 		tp.DumpHeader()
 	}
-	if tp.options.DumpPayload() {
+	if tp.options.DumpPayload {
 		tp.DumpPayload()
 	}
 
