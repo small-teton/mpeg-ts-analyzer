@@ -319,3 +319,35 @@ func TestBufferPes_192(t *testing.T) {
 		t.Errorf("unexpected error: %s", err)
 	}
 }
+
+func TestBufferPsiSkipsAfOnlyPacket(t *testing.T) {
+	// AF-only packet (afc=2) on PAT PID should be skipped (no payload)
+	f, err := os.CreateTemp("", "bufpsi_afonly*.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+
+	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
+	// PAT start
+	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
+	// AF-only packet on PAT PID (afc=2, no payload)
+	f.Write(buildPcrPacket(0x0000, 13500))
+	// Second PAT to terminate buffering
+	f.Write(buildTsPacket(0x0000, true, 1, patPayload))
+	f.Close()
+
+	f2, err := os.Open(f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f2.Close()
+
+	var pos int64
+	pat := NewPat()
+	var opts options.Options
+	err = BufferPsi(f2, &pos, 0x0000, pat, opts, 188)
+	if err != nil {
+		t.Errorf("unexpected error: %s", err)
+	}
+}

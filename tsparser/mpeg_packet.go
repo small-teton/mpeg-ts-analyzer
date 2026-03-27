@@ -53,6 +53,9 @@ func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, 
 		}
 
 		buf := tsPacket.Payload()
+		if len(buf) == 0 {
+			continue
+		}
 		if tsPacket.PayloadUnitStartIndicator() {
 			if isBuffering {
 				mpegPacket.Append(buf[1 : 1+buf[0]]) // read until pointer_field
@@ -61,7 +64,7 @@ func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, 
 				mpegPacket.Append(buf[1+buf[0]:]) // read until pointer_field
 				isBuffering = true
 			}
-		} else if tsPacket.ContinuityCounter() == (mpegPacket.ContinuityCounter()+1) || (tsPacket.ContinuityCounter() == 0x0 && mpegPacket.ContinuityCounter() == 0xF) {
+		} else if tsPacket.ContinuityCounter() == (mpegPacket.ContinuityCounter()+1)&0xF {
 			mpegPacket.SetContinuityCounter(tsPacket.ContinuityCounter())
 			mpegPacket.Append(tsPacket.Payload())
 		} else {
@@ -123,6 +126,13 @@ func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []Progr
 			continue
 		}
 
+		// Skip packets without payload (e.g., AF-only packets with afc=2).
+		// Per MPEG-2 spec, these do not increment continuity_counter.
+		if len(tsPacket.Payload()) == 0 {
+			*pos += int64(size)
+			continue
+		}
+
 		if tsPacket.PayloadUnitStartIndicator() {
 			if pes != nil {
 				pes.Parse()
@@ -141,7 +151,7 @@ func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []Progr
 			pes.SetContinuityCounter(tsPacket.ContinuityCounter())
 			pes.Append(tsPacket.Payload()) // read until pointer_field
 
-		} else if tsPacket.ContinuityCounter() == (pes.ContinuityCounter()+1) || (tsPacket.ContinuityCounter() == 0x0 && pes.ContinuityCounter() == 0xF) {
+		} else if tsPacket.ContinuityCounter() == (pes.ContinuityCounter()+1)&0xF {
 			pes.SetContinuityCounter(tsPacket.ContinuityCounter())
 			if pes.nextPcr == 0 && lastPcr > pes.prevPcr {
 				pes.nextPcr = lastPcr
