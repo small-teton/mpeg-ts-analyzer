@@ -166,3 +166,126 @@ func TestPmtParse(t *testing.T) {
 		t.Errorf("Cannot detect parse error")
 	}
 }
+
+func TestPmtParseWithDescriptors(t *testing.T) {
+	// PMT with programInfoLength > 0 and ES info descriptors
+	header := []byte{
+		0x02,       // table_id
+		0xB0, 0x1C, // ssi=1, section_length=28
+		0x00, 0x01, // program_number=1
+		0xC1,       // reserved=11, version=0, cni=1
+		0x00,       // section_number
+		0x00,       // last_section_number
+		0xE0, 0x31, // reserved=111, PCR_PID=0x31
+		0xF0, 0x02, // reserved=1111, program_info_length=2
+		0xAA, 0xBB, // 2 bytes of program descriptor (skipped)
+		0x1B,       // stream_type=0x1B (H.264)
+		0xE0, 0x31, // reserved=111, elementary_PID=0x31
+		0xF0, 0x03, // reserved=1111, ES_info_length=3
+		0xCC, 0xDD, 0xEE, // 3 bytes of ES descriptor (skipped)
+		0x0F,       // stream_type=0x0F (AAC)
+		0xE0, 0x64, // reserved=111, elementary_PID=0x64
+		0xF0, 0x00, // reserved=1111, ES_info_length=0
+	}
+	crc := crc32(header)
+	data := append(header, byte(crc>>24), byte(crc>>16), byte(crc>>8), byte(crc))
+
+	pmt := NewPmt()
+	pmt.Append(data)
+	if err := pmt.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	if pmt.programInfoLength != 2 {
+		t.Errorf("expected programInfoLength=2, got %d", pmt.programInfoLength)
+	}
+	if len(pmt.programInfos) != 2 {
+		t.Fatalf("expected 2 program infos, got %d", len(pmt.programInfos))
+	}
+	if pmt.programInfos[0].streamType != 0x1B {
+		t.Errorf("expected streamType=0x1B, got 0x%02X", pmt.programInfos[0].streamType)
+	}
+	if pmt.programInfos[0].esInfoLength != 3 {
+		t.Errorf("expected esInfoLength=3, got %d", pmt.programInfos[0].esInfoLength)
+	}
+	if pmt.programInfos[1].streamType != 0x0F {
+		t.Errorf("expected streamType=0x0F, got 0x%02X", pmt.programInfos[1].streamType)
+	}
+	if pmt.programInfos[1].elementaryPid != 0x64 {
+		t.Errorf("expected elementaryPid=0x64, got 0x%04X", pmt.programInfos[1].elementaryPid)
+	}
+}
+
+func TestPmtDumpProgramInfos(t *testing.T) {
+	pmt := NewPmt()
+	// Add various stream types to cover the switch cases
+	pmt.programInfos = []ProgramInfo{
+		{streamType: 0x00, elementaryPid: 0x10, esInfoLength: 0}, // reserved
+		{streamType: 0x01, elementaryPid: 0x11, esInfoLength: 0}, // 11172 video
+		{streamType: 0x02, elementaryPid: 0x12, esInfoLength: 0}, // 13818-2 video
+		{streamType: 0x03, elementaryPid: 0x13, esInfoLength: 0}, // 11172 audio
+		{streamType: 0x0F, elementaryPid: 0x14, esInfoLength: 0}, // AAC
+		{streamType: 0x1B, elementaryPid: 0x15, esInfoLength: 0}, // H.264
+		{streamType: 0x7F, elementaryPid: 0x16, esInfoLength: 0}, // IPMP
+		{streamType: 0x50, elementaryPid: 0x17, esInfoLength: 0}, // reserved (<=0x7E)
+		{streamType: 0x90, elementaryPid: 0x18, esInfoLength: 0}, // user private (>0x7E)
+	}
+	// Should not panic
+	pmt.DumpProgramInfos()
+}
+
+func TestPmtDump(t *testing.T) {
+	data := []byte{0x02, 0xB0, 0x1C, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE0, 0x31, 0xF0, 0x00, 0x1B, 0xE0, 0x31, 0xF0, 0x00, 0x0F, 0xE0, 0x64, 0xF0, 0x00, 0x0F, 0xE0, 0x98, 0xF0, 0x00, 0x3D, 0xFE, 0xAE, 0x61, 0xFF}
+	pmt := NewPmt()
+	pmt.Append(data)
+	pmt.Parse()
+	// Should not panic
+	pmt.Dump()
+}
+
+func TestPmtDumpProgramInfosAllTypes(t *testing.T) {
+	pmt := NewPmt()
+	pmt.programInfos = []ProgramInfo{
+		{streamType: 0x04, elementaryPid: 0x20, esInfoLength: 0},
+		{streamType: 0x05, elementaryPid: 0x21, esInfoLength: 0},
+		{streamType: 0x06, elementaryPid: 0x22, esInfoLength: 0},
+		{streamType: 0x07, elementaryPid: 0x23, esInfoLength: 0},
+		{streamType: 0x08, elementaryPid: 0x24, esInfoLength: 0},
+		{streamType: 0x09, elementaryPid: 0x25, esInfoLength: 0},
+		{streamType: 0x0A, elementaryPid: 0x26, esInfoLength: 0},
+		{streamType: 0x0B, elementaryPid: 0x27, esInfoLength: 0},
+		{streamType: 0x0C, elementaryPid: 0x28, esInfoLength: 0},
+		{streamType: 0x0D, elementaryPid: 0x29, esInfoLength: 0},
+		{streamType: 0x0E, elementaryPid: 0x2A, esInfoLength: 0},
+		{streamType: 0x10, elementaryPid: 0x2B, esInfoLength: 0},
+		{streamType: 0x11, elementaryPid: 0x2C, esInfoLength: 0},
+		{streamType: 0x12, elementaryPid: 0x2D, esInfoLength: 0},
+		{streamType: 0x13, elementaryPid: 0x2E, esInfoLength: 0},
+		{streamType: 0x14, elementaryPid: 0x2F, esInfoLength: 0},
+		{streamType: 0x15, elementaryPid: 0x30, esInfoLength: 0},
+		{streamType: 0x16, elementaryPid: 0x31, esInfoLength: 0},
+		{streamType: 0x17, elementaryPid: 0x32, esInfoLength: 0},
+		{streamType: 0x18, elementaryPid: 0x33, esInfoLength: 0},
+		{streamType: 0x19, elementaryPid: 0x34, esInfoLength: 0},
+		{streamType: 0x1A, elementaryPid: 0x35, esInfoLength: 0},
+	}
+	// Should not panic; covers all stream type switch cases 0x04-0x1A
+	pmt.DumpProgramInfos()
+}
+
+func TestPmtParseErrors(t *testing.T) {
+	valid := []byte{0x02, 0xB0, 0x1C, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE0, 0x31, 0xF0, 0x00, 0x1B, 0xE0, 0x31, 0xF0, 0x00, 0x0F, 0xE0, 0x64, 0xF0, 0x00, 0x0F, 0xE0, 0x98, 0xF0, 0x00, 0x3D, 0xFE, 0xAE, 0x61}
+	// Full parse should succeed
+	pmt := NewPmt()
+	pmt.Append(valid)
+	if err := pmt.Parse(); err != nil {
+		t.Fatalf("full buffer parse should succeed: %s", err)
+	}
+	// Truncated parses should fail (i=0: empty buf covers tableID read error)
+	for i := 0; i < len(valid); i++ {
+		pmt := NewPmt()
+		pmt.Append(valid[:i])
+		if err := pmt.Parse(); err == nil {
+			t.Errorf("expected error for truncated buffer of length %d", i)
+		}
+	}
+}

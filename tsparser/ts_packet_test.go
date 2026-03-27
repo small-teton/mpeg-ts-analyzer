@@ -103,18 +103,146 @@ func TestHasAf(t *testing.T) {
 }
 
 func TestPcr(t *testing.T) {
-	// tp := NewTsPacket()
+	// Build a 188-byte TS packet with AF containing PCR
+	// Header: sync=0x47, pid=0x31, afc=10 (AF only), cc=0
+	// AF: length=183, flags=0x10 (PCR), PCR base=100, ext=50
+	pkt := make([]byte, 188)
+	pkt[0] = 0x47
+	pkt[1] = 0x00
+	pkt[2] = 0x31
+	pkt[3] = 0x20 // afc=10, cc=0
 
-	// tp.tp.adaptationField.pcr = true
-	// if !tp.Pcr() {
-	// 	t.Errorf("actual: true, But got false")
-	// }
+	pkt[4] = 183  // adaptation_field_length
+	pkt[5] = 0x10 // PCR flag=1
 
-	// tp.dumpPsi = false
-	// retVal = tp.DumpPsi()
-	// if tp.Pcr() {
-	// 	t.Errorf("actual: false, But got true")
-	// }
+	// PCR: base=100, ext=50
+	pkt[6] = 0x00
+	pkt[7] = 0x00
+	pkt[8] = 0x00
+	pkt[9] = 0x32  // base>>1 = 50
+	pkt[10] = 0x7E // (base&1)<<7 | reserved(6) | ext>>8
+	pkt[11] = 0x32 // ext&0xFF = 50
+	for i := 12; i < 188; i++ {
+		pkt[i] = 0xFF
+	}
+
+	tp := NewTsPacket()
+	tp.Append(pkt)
+	if err := tp.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	// PCR = base*300 + ext = 100*300+50 = 30050
+	if tp.Pcr() != 30050 {
+		t.Errorf("expected Pcr=30050, got %d", tp.Pcr())
+	}
+}
+
+func TestParseAfOnly(t *testing.T) {
+	// adaptationFieldControl=2 (AF only, no payload)
+	pkt := make([]byte, 188)
+	pkt[0] = 0x47
+	pkt[1] = 0x00
+	pkt[2] = 0x31
+	pkt[3] = 0x25 // afc=10, cc=5
+	pkt[4] = 183  // adaptation_field_length
+	pkt[5] = 0x00 // no flags
+	for i := 6; i < 188; i++ {
+		pkt[i] = 0xFF
+	}
+
+	tp := NewTsPacket()
+	tp.Append(pkt)
+	if err := tp.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	if tp.adaptationFieldControl != 2 {
+		t.Errorf("expected afc=2, got %d", tp.adaptationFieldControl)
+	}
+	if tp.continuityCounter != 5 {
+		t.Errorf("expected cc=5, got %d", tp.continuityCounter)
+	}
+	if len(tp.Payload()) != 0 {
+		t.Errorf("expected empty payload for AF-only packet, got %d bytes", len(tp.Payload()))
+	}
+}
+
+func TestParseAfAndPayload(t *testing.T) {
+	// adaptationFieldControl=3 (AF + payload)
+	pkt := make([]byte, 188)
+	pkt[0] = 0x47
+	pkt[1] = 0x40 // PUSI=1
+	pkt[2] = 0x31
+	pkt[3] = 0x31 // afc=11, cc=1
+
+	pkt[4] = 0x07 // adaptation_field_length=7
+	pkt[5] = 0x10 // PCR flag=1
+	pkt[6] = 0x00
+	pkt[7] = 0x00
+	pkt[8] = 0x00
+	pkt[9] = 0x32
+	pkt[10] = 0x7E
+	pkt[11] = 0x32
+	// Payload starts at 4 + 7 + 1 = 12
+	for i := 12; i < 188; i++ {
+		pkt[i] = 0xAA
+	}
+
+	tp := NewTsPacket()
+	tp.Append(pkt)
+	if err := tp.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	if tp.adaptationFieldControl != 3 {
+		t.Errorf("expected afc=3, got %d", tp.adaptationFieldControl)
+	}
+	payload := tp.Payload()
+	expectedLen := 188 - 12
+	if len(payload) != expectedLen {
+		t.Errorf("expected payload length=%d, got %d", expectedLen, len(payload))
+	}
+	if payload[0] != 0xAA {
+		t.Errorf("expected payload[0]=0xAA, got 0x%02X", payload[0])
+	}
+}
+
+func TestParseShortBuffer(t *testing.T) {
+	tp := NewTsPacket()
+	tp.Append([]byte{0x47, 0x00, 0x00, 0x10})
+	if err := tp.Parse(); err == nil {
+		t.Errorf("expected error for short buffer")
+	}
+}
+
+func TestTsPacketDumpHeader(t *testing.T) {
+	data := make([]byte, 188)
+	data[0] = 0x47
+	data[1] = 0x40
+	data[2] = 0x31
+	data[3] = 0x10
+	for i := 4; i < 188; i++ {
+		data[i] = 0xFF
+	}
+	tp := NewTsPacket()
+	tp.Append(data)
+	tp.Parse()
+	// Should not panic
+	tp.DumpHeader()
+}
+
+func TestTsPacketDumpPayload(t *testing.T) {
+	data := make([]byte, 188)
+	data[0] = 0x47
+	data[1] = 0x40
+	data[2] = 0x31
+	data[3] = 0x10
+	for i := 4; i < 188; i++ {
+		data[i] = byte(i)
+	}
+	tp := NewTsPacket()
+	tp.Append(data)
+	tp.Parse()
+	// Should not panic
+	tp.DumpPayload()
 }
 
 func TestParse(t *testing.T) {
@@ -233,5 +361,37 @@ func TestTsPacketContinuityCounter(t *testing.T) {
 	retVal = tp.ContinuityCounter()
 	if retVal != actual {
 		t.Errorf("actual: %x, But got %d", actual, retVal)
+	}
+}
+
+func TestTsPacketParseWithDumpOptions(t *testing.T) {
+	// Packet with AF + payload (afc=3) and all dump options enabled
+	pkt := make([]byte, 188)
+	pkt[0] = 0x47
+	pkt[1] = 0x40 // PUSI=1
+	pkt[2] = 0x31
+	pkt[3] = 0x31 // afc=11, cc=1
+	pkt[4] = 0x07 // adaptation_field_length=7
+	pkt[5] = 0x10 // PCR flag=1
+	pkt[6] = 0x00
+	pkt[7] = 0x00
+	pkt[8] = 0x00
+	pkt[9] = 0x32
+	pkt[10] = 0x7E
+	pkt[11] = 0x32
+	for i := 12; i < 188; i++ {
+		pkt[i] = 0xAA
+	}
+
+	var opts options.Options
+	opts.DumpHeader = true
+	opts.DumpPayload = true
+	opts.DumpAdaptationField = true
+
+	tp := NewTsPacket()
+	tp.Initialize(0, opts)
+	tp.Append(pkt)
+	if err := tp.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
 	}
 }

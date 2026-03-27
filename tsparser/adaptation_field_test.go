@@ -127,3 +127,229 @@ func TestAdaptationFieldParse(t *testing.T) {
 		t.Errorf("Parse error")
 	}
 }
+
+func TestAdaptationFieldParseOpcr(t *testing.T) {
+	// oPcrFlag=1, base=100, ext=50
+	// OPCR 48 bits: base(33)=100, reserved(6)=0x3F, ext(9)=50
+	// Bytes: 0x00, 0x00, 0x00, 0x32, 0x7E, 0x32
+	data := []byte{0x07, 0x08, 0x00, 0x00, 0x00, 0x32, 0x7E, 0x32}
+
+	af := NewAdaptationField()
+	af.Append(data)
+	if _, err := af.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	if af.oPcrFlag != 1 {
+		t.Errorf("expected oPcrFlag=1, got %d", af.oPcrFlag)
+	}
+	if af.originalProgramClockReferenceBase != 100 {
+		t.Errorf("expected originalProgramClockReferenceBase=100, got %d", af.originalProgramClockReferenceBase)
+	}
+	if af.originalProgramClockReferenceExtension != 50 {
+		t.Errorf("expected originalProgramClockReferenceExtension=50, got %d", af.originalProgramClockReferenceExtension)
+	}
+}
+
+func TestAdaptationFieldParseSpliceCountdown(t *testing.T) {
+	// splicingPointFlag=1, splice_countdown=0xAB
+	data := []byte{0x02, 0x04, 0xAB}
+
+	af := NewAdaptationField()
+	af.Append(data)
+	if _, err := af.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	if af.splicingPointFlag != 1 {
+		t.Errorf("expected splicingPointFlag=1, got %d", af.splicingPointFlag)
+	}
+	if af.spliceCountdown != 0xAB {
+		t.Errorf("expected spliceCountdown=0xAB, got 0x%02X", af.spliceCountdown)
+	}
+}
+
+func TestAdaptationFieldParsePrivateData(t *testing.T) {
+	// transportPrivateDataFlag=1, private_data_length=3, data=0xDE,0xAD,0xFF
+	data := []byte{0x05, 0x02, 0x03, 0xDE, 0xAD, 0xFF}
+
+	af := NewAdaptationField()
+	af.Append(data)
+	if _, err := af.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	if af.transportPrivateDataFlag != 1 {
+		t.Errorf("expected transportPrivateDataFlag=1, got %d", af.transportPrivateDataFlag)
+	}
+	if af.transportPrivateDataLength != 3 {
+		t.Errorf("expected transportPrivateDataLength=3, got %d", af.transportPrivateDataLength)
+	}
+	expected := []byte{0xDE, 0xAD, 0xFF}
+	if !reflect.DeepEqual(af.privateDataByte, expected) {
+		t.Errorf("expected privateDataByte=%v, got %v", expected, af.privateDataByte)
+	}
+}
+
+func TestAdaptationFieldParseExtensionLtw(t *testing.T) {
+	// adaptationFieldExtensionFlag=1, ltw=1
+	// Extension: ext_len=3, flags=0x80(ltw=1,piecewise=0,seamless=0,reserved=00000)
+	// LTW: valid(1)=1, offset(15)=0x1234
+	//   1_001001000110100 -> bytes: 0x92, 0x34
+	data := []byte{0x05, 0x01, 0x03, 0x80, 0x92, 0x34}
+
+	af := NewAdaptationField()
+	af.Append(data)
+	if _, err := af.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	if af.adaptationFieldExtensionFlag != 1 {
+		t.Errorf("expected adaptationFieldExtensionFlag=1, got %d", af.adaptationFieldExtensionFlag)
+	}
+	if af.ltwFlag != 1 {
+		t.Errorf("expected ltwFlag=1, got %d", af.ltwFlag)
+	}
+	if af.ltwValidFlag != 1 {
+		t.Errorf("expected ltwValidFlag=1, got %d", af.ltwValidFlag)
+	}
+	if af.ltwOffset != 0x1234 {
+		t.Errorf("expected ltwOffset=0x1234, got 0x%04X", af.ltwOffset)
+	}
+}
+
+func TestAdaptationFieldParseExtensionPiecewiseRate(t *testing.T) {
+	// adaptationFieldExtensionFlag=1, piecewiseRate=1
+	// Extension: ext_len=4, flags=0x40(ltw=0,piecewise=1,seamless=0,reserved=00000)
+	// Piecewise: reserved(2)+rate(22)=24 bits; rate=100000
+	// 100000 in 22 bits: 0000011000011010100000 (padded)
+	// Full 24 bits with reserved=00: 00_0000011000011010100000
+	// Bytes: 0x01, 0x86, 0xA0
+	data := []byte{0x06, 0x01, 0x04, 0x40, 0x01, 0x86, 0xA0}
+
+	af := NewAdaptationField()
+	af.Append(data)
+	if _, err := af.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	if af.piecewiseRateFlag != 1 {
+		t.Errorf("expected piecewiseRateFlag=1, got %d", af.piecewiseRateFlag)
+	}
+	if af.piecewiseRate != 100000 {
+		t.Errorf("expected piecewiseRate=100000, got %d", af.piecewiseRate)
+	}
+}
+
+func TestAdaptationFieldParseExtensionSeamlessSplice(t *testing.T) {
+	// adaptationFieldExtensionFlag=1, seamlessSplice=1
+	// Extension: ext_len=6, flags=0x20(ltw=0,piecewise=0,seamless=1,reserved=00000)
+	// Seamless splice: spliceType(4)=3, first(3)=2, marker, second(15)=100, marker, third(15)=200, marker
+	// dtsNextAu = 2<<30 | 100<<15 | 200 = 0x803200C8
+	// Bits: 0011 010 1 000000001100100 1 000000011001000 1
+	// Bytes: 0x35, 0x00, 0xC9, 0x01, 0x91
+	data := []byte{0x08, 0x01, 0x06, 0x20, 0x35, 0x00, 0xC9, 0x01, 0x91}
+
+	af := NewAdaptationField()
+	af.Append(data)
+	if _, err := af.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	if af.seamlessSpliceFlag != 1 {
+		t.Errorf("expected seamlessSpliceFlag=1, got %d", af.seamlessSpliceFlag)
+	}
+	if af.spliceType != 3 {
+		t.Errorf("expected spliceType=3, got %d", af.spliceType)
+	}
+	if af.dtsNextAu != 0x803200C8 {
+		t.Errorf("expected dtsNextAu=0x803200C8, got 0x%08X", af.dtsNextAu)
+	}
+}
+
+func TestAdaptationFieldDumpPcr(t *testing.T) {
+	// Parse AF with PCR, then call DumpPcr with prevPcr=0 and prevPcr!=0
+	data := []byte{0x07, 0x10, 0x00, 0x00, 0x00, 0x32, 0x7E, 0x32}
+	af := NewAdaptationField()
+	af.Append(data)
+	if _, err := af.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	// Should not panic
+	af.DumpPcr(0)
+	af.DumpPcr(1000)
+}
+
+func TestAdaptationFieldDump(t *testing.T) {
+	// Parse AF with multiple flags set and call Dump to verify no panic
+	// Flags byte: disc=0,random=0,priority=0,pcr=1,opcr=0,splicing=0,private=0,ext=0 = 0x10
+	// Just use a simple PCR-only AF for the Dump test
+	data := []byte{
+		0x07,                                     // adaptation_field_length=7
+		0x10,                                     // flags: pcrFlag=1
+		0x00, 0x00, 0x00, 0x32, 0x7E, 0x32,      // PCR data (base=100, ext=50)
+	}
+	af := NewAdaptationField()
+	af.Append(data)
+	if _, err := af.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	// Should not panic
+	af.Dump()
+
+	// Also test Dump with adaptationFieldLength=0
+	af2 := NewAdaptationField()
+	af2.Append([]byte{0x00})
+	if _, err := af2.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	af2.Dump()
+}
+
+func TestAdaptationFieldDumpAllFlags(t *testing.T) {
+	data := []byte{
+		0x1C,                                           // adaptation_field_length=28
+		0xFF,                                           // all flags: disc=1,random=1,priority=1,pcr=1,opcr=1,splice=1,private=1,ext=1
+		0x00, 0x00, 0x00, 0x32, 0x7E, 0x32,            // PCR base=100, ext=50
+		0x00, 0x00, 0x00, 0x32, 0x7E, 0x32,            // OPCR base=100, ext=50
+		0xAB,                                           // splice_countdown
+		0x01, 0xDD,                                     // private: length=1, data=0xDD
+		0x0B,                                           // extension length=11
+		0xE0,                                           // ext flags: ltw=1, piecewise=1, seamless=1, reserved=00000
+		0x92, 0x34,                                     // LTW: valid=1, offset=0x1234
+		0x01, 0x86, 0xA0,                               // piecewise: reserved=00, rate=100000
+		0x35, 0x00, 0xC9, 0x01, 0x91,                   // seamless: spliceType=3, dtsNextAu parts
+	}
+	af := NewAdaptationField()
+	af.Append(data)
+	if _, err := af.Parse(); err != nil {
+		t.Fatalf("full buffer parse should succeed: %s", err)
+	}
+	// Call Dump to cover all Dump branches (PCR, OPCR, splice, private, extension with LTW+piecewise+seamless)
+	af.Dump()
+}
+
+func TestAdaptationFieldParseErrors(t *testing.T) {
+	valid := []byte{
+		0x1C,                                           // adaptation_field_length=28
+		0xFF,                                           // all flags
+		0x00, 0x00, 0x00, 0x32, 0x7E, 0x32,            // PCR
+		0x00, 0x00, 0x00, 0x32, 0x7E, 0x32,            // OPCR
+		0xAB,                                           // splice_countdown
+		0x01, 0xDD,                                     // private data
+		0x0B,                                           // extension length
+		0xE0,                                           // ext flags
+		0x92, 0x34,                                     // LTW
+		0x01, 0x86, 0xA0,                               // piecewise
+		0x35, 0x00, 0xC9, 0x01, 0x91,                   // seamless
+	}
+	// Full parse should succeed
+	af := NewAdaptationField()
+	af.Append(valid)
+	if _, err := af.Parse(); err != nil {
+		t.Fatalf("full buffer parse should succeed: %s", err)
+	}
+	// Truncated parses should fail (i=0: empty buf, i=1: flags byte missing, etc.)
+	for i := 0; i < len(valid); i++ {
+		af := NewAdaptationField()
+		af.Append(valid[:i])
+		_, err := af.Parse()
+		if err == nil {
+			t.Errorf("expected error for truncated buffer of length %d, got nil", i)
+		}
+	}
+}
