@@ -18,11 +18,14 @@ type MpegPacket interface {
 	Dump()
 }
 
-const tsPacketSize = 188
+const (
+	tsPayloadSize    = 188
+	tpExtraHeaderSize = 4
+)
 
 // BufferPsi buffer PSI data from TS payload
-func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, options options.Options) error {
-	tsBuffer := make([]byte, tsPacketSize)
+func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, options options.Options, packetSize int) error {
+	tsBuffer := make([]byte, packetSize)
 	isBuffering := false
 	tsPacket := NewTsPacket()
 
@@ -30,12 +33,16 @@ func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, 
 		size, err := reader.Read(tsBuffer)
 		if err == io.EOF {
 			break
-		} else if err != nil || size != tsPacketSize {
+		} else if err != nil || size != packetSize {
 			return errors.Wrap(err, "file read error")
 		}
 
+		tsData := tsBuffer
+		if packetSize > tsPayloadSize {
+			tsData = tsBuffer[packetSize-tsPayloadSize:]
+		}
 		tsPacket.Initialize(*pos, options)
-		tsPacket.Append(tsBuffer)
+		tsPacket.Append(tsData)
 		if err := tsPacket.Parse(); err != nil {
 			return errors.Wrap(err, "failed to parse TS packet in BufferPsi")
 		}
@@ -65,8 +72,8 @@ func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, 
 }
 
 // BufferPes buffer PES data from TS payload
-func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []ProgramInfo, options options.Options) error {
-	tsBuffer := make([]byte, tsPacketSize)
+func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []ProgramInfo, options options.Options, packetSize int) error {
+	tsBuffer := make([]byte, packetSize)
 	pesMap := make(map[uint16]*Pes)
 	for _, val := range programInfos {
 		pesMap[val.elementaryPid] = nil
@@ -81,12 +88,16 @@ func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []Progr
 		size, err := reader.Read(tsBuffer)
 		if err == io.EOF {
 			break
-		} else if err != nil || size != tsPacketSize {
+		} else if err != nil || size != packetSize {
 			return fmt.Errorf("file read error: %s", err)
 		}
 
+		tsData := tsBuffer
+		if packetSize > tsPayloadSize {
+			tsData = tsBuffer[packetSize-tsPayloadSize:]
+		}
 		tsPacket.Initialize(*pos, options)
-		tsPacket.Append(tsBuffer)
+		tsPacket.Append(tsData)
 		if err := tsPacket.Parse(); err != nil {
 			return errors.Wrap(err, "failed to parse TS packet in BufferPes")
 		}

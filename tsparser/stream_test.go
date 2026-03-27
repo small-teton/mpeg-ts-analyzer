@@ -121,7 +121,7 @@ func TestFindPat_NotFound(t *testing.T) {
 	for i := range data {
 		data[i] = 0xAA
 	}
-	_, err := findPat(data)
+	_, err := findPat(data, 188)
 	if err == nil {
 		t.Errorf("expected error for data with no PAT, got nil")
 	}
@@ -129,7 +129,7 @@ func TestFindPat_NotFound(t *testing.T) {
 
 func TestFindPat_AtOffset0(t *testing.T) {
 	data := buildFindPatData(0)
-	pos, err := findPat(data)
+	pos, err := findPat(data, 188)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
@@ -140,7 +140,7 @@ func TestFindPat_AtOffset0(t *testing.T) {
 
 func TestFindPat_AtOffset5(t *testing.T) {
 	data := buildFindPatData(5)
-	pos, err := findPat(data)
+	pos, err := findPat(data, 188)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
@@ -158,7 +158,7 @@ func TestFindPat_SyncButNotPat(t *testing.T) {
 	// PID = 0x100, PUSI=1
 	data[1] = 0x41
 	data[2] = 0x00
-	_, err := findPat(data)
+	_, err := findPat(data, 188)
 	if err == nil {
 		t.Errorf("expected error for sync bytes without PAT PID, got nil")
 	}
@@ -170,7 +170,7 @@ func TestFindPat_ShortData(t *testing.T) {
 	data[1] = 0x40
 	data[2] = 0x00
 	data[188] = 0x47
-	_, err := findPat(data)
+	_, err := findPat(data, 188)
 	if err == nil {
 		t.Errorf("expected error for data shorter than 3 packets, got nil")
 	}
@@ -183,7 +183,7 @@ func TestFindPat_GarbagePrefixThenValid(t *testing.T) {
 	}
 	patData := buildFindPatData(0)
 	data := append(garbage, patData...)
-	pos, err := findPat(data)
+	pos, err := findPat(data, 188)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
@@ -642,7 +642,7 @@ func TestBufferPsi_MultiPacket(t *testing.T) {
 	var pos int64
 	var opt options.Options
 	pat := NewPat()
-	err = BufferPsi(file, &pos, 0x0, pat, opt)
+	err = BufferPsi(file, &pos, 0x0, pat, opt, 188)
 	if err != nil {
 		t.Errorf("expected successful BufferPsi, got: %s", err)
 	}
@@ -672,7 +672,7 @@ func TestBufferPsi_Continuation(t *testing.T) {
 	var pos int64
 	var opt options.Options
 	pat := NewPat()
-	err = BufferPsi(file, &pos, 0x0, pat, opt)
+	err = BufferPsi(file, &pos, 0x0, pat, opt, 188)
 	if err != nil {
 		t.Errorf("expected successful BufferPsi with continuation, got: %s", err)
 	}
@@ -700,7 +700,7 @@ func TestBufferPsi_PacketLoss(t *testing.T) {
 	var pos int64
 	var opt options.Options
 	pat := NewPat()
-	err = BufferPsi(file, &pos, 0x0, pat, opt)
+	err = BufferPsi(file, &pos, 0x0, pat, opt, 188)
 	if err == nil {
 		t.Errorf("expected packet loss error, got nil")
 	}
@@ -844,6 +844,121 @@ func TestMaxInt64(t *testing.T) {
 	}
 	if maxInt64(5, 5) != 5 {
 		t.Errorf("expected 5")
+	}
+}
+
+// wrapM2TS prepends a 4-byte TP_extra_header (zeroed) to a 188-byte TS packet.
+func wrapM2TS(tsPacket []byte) []byte {
+	m2ts := make([]byte, 192)
+	copy(m2ts[4:], tsPacket)
+	return m2ts
+}
+
+func TestDetectPacketSize_188(t *testing.T) {
+	data := buildFindPatData(0) // 188-byte aligned
+	if got := detectPacketSize(data); got != 188 {
+		t.Errorf("expected 188, got %d", got)
+	}
+}
+
+func TestDetectPacketSize_192(t *testing.T) {
+	// Build 3 consecutive 192-byte packets with sync at offset 4
+	data := make([]byte, 192*3)
+	for i := 0; i < 3; i++ {
+		data[i*192+4] = 0x47 // sync byte at offset 4
+	}
+	if got := detectPacketSize(data); got != 192 {
+		t.Errorf("expected 192, got %d", got)
+	}
+}
+
+func TestDetectPacketSize_ShortData(t *testing.T) {
+	data := []byte{0x47}
+	if got := detectPacketSize(data); got != 188 {
+		t.Errorf("expected default 188, got %d", got)
+	}
+}
+
+func TestDetectPacketSize_NoSync(t *testing.T) {
+	data := make([]byte, 1000)
+	for i := range data {
+		data[i] = 0xAA
+	}
+	if got := detectPacketSize(data); got != 188 {
+		t.Errorf("expected default 188, got %d", got)
+	}
+}
+
+func TestFindPat_192(t *testing.T) {
+	// Build 192-byte packets: PAT + 2 stuffing
+	pat := wrapM2TS(buildTsPacket(0x0000, true, 0, []byte{0x00, 0xB0, 0x0D}))
+	stuff1 := wrapM2TS(buildStuffingPacket())
+	stuff2 := wrapM2TS(buildStuffingPacket())
+	data := append(pat, stuff1...)
+	data = append(data, stuff2...)
+
+	pos, err := findPat(data, 192)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if pos != 0 {
+		t.Errorf("expected pos=0, got %d", pos)
+	}
+}
+
+func TestFindPat_192_WithOffset(t *testing.T) {
+	garbage := make([]byte, 192) // one packet of garbage
+	for i := range garbage {
+		garbage[i] = 0xFF
+	}
+	pat := wrapM2TS(buildTsPacket(0x0000, true, 0, []byte{0x00, 0xB0, 0x0D}))
+	stuff1 := wrapM2TS(buildStuffingPacket())
+	stuff2 := wrapM2TS(buildStuffingPacket())
+	data := append(garbage, pat...)
+	data = append(data, stuff1...)
+	data = append(data, stuff2...)
+
+	pos, err := findPat(data, 192)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if pos != 192 {
+		t.Errorf("expected pos=192, got %d", pos)
+	}
+}
+
+func TestParseTsFile_192BytePackets(t *testing.T) {
+	f, err := os.CreateTemp("", "m2ts*.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+
+	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
+	f.Write(wrapM2TS(buildTsPacket(0x0000, true, 0, patPayload)))
+	f.Write(wrapM2TS(buildStuffingPacket()))
+	f.Write(wrapM2TS(buildStuffingPacket()))
+	// Second PAT for BufferPsi termination
+	f.Write(wrapM2TS(buildTsPacket(0x0000, true, 1, patPayload)))
+
+	// PMT with correct CRC
+	pmtHeader := []byte{0x02, 0xB0, 0x12, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE0, 0x31, 0xF0, 0x00, 0x1B, 0xE0, 0x31, 0xF0, 0x00}
+	pmtCrc := crc32(pmtHeader)
+	pmtPayload := append(pmtHeader, byte(pmtCrc>>24), byte(pmtCrc>>16), byte(pmtCrc>>8), byte(pmtCrc))
+	f.Write(wrapM2TS(buildTsPacket(0x003F, true, 0, pmtPayload)))
+	f.Write(wrapM2TS(buildTsPacket(0x003F, true, 1, pmtPayload)))
+
+	// PCR + PES
+	f.Write(wrapM2TS(buildPcrPacket(0x0031, 13500)))
+	pesHeader := []byte{0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x80, 0x05, 0x21, 0x00, 0x07, 0xD8, 0x61}
+	f.Write(wrapM2TS(buildTsPacket(0x0031, true, 1, pesHeader)))
+
+	f.Close()
+
+	var opt options.Options
+	err = ParseTsFile(f.Name(), opt)
+	if err != nil {
+		t.Errorf("expected successful parse of 192-byte stream, got: %s", err)
 	}
 }
 

@@ -17,7 +17,7 @@ In addition, it can dump various MPEG-2 TS internal structures for stream invest
 - PES header with PTS/DTS timestamps
 - continuity_counter validation
 
-**Note:** Only 188-byte TS packets are supported. 192-byte packets (M2TS/BDAV format with TP_extra_header) are not currently supported.
+Both 188-byte TS packets and 192-byte M2TS packets (BDAV format with TP_extra_header) are supported. The packet size is auto-detected from the stream.
 
 **Note:** The correctness of the output is not guaranteed.
 
