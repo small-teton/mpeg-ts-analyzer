@@ -17,13 +17,17 @@ func ParseTsFile(filename string, options options.Options) error {
 	defer file.Close()
 	fmt.Println("Input file: ", filename)
 
+	return parseTsReader(file, options)
+}
+
+func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 	const patPid = 0x0
 	const bufSize = 65536
 	var fileOffset int64
 	buf := make([]byte, bufSize)
 	for {
 		readStart := fileOffset
-		size, err := file.Read(buf)
+		size, err := reader.Read(buf)
 		if err == io.EOF {
 			break
 		} else if err != nil {
@@ -37,13 +41,13 @@ func ParseTsFile(filename string, options options.Options) error {
 		}
 
 		pos := readStart + patOffset
-		if _, err = file.Seek(pos, 0); err != nil {
+		if _, err = reader.Seek(pos, 0); err != nil {
 			return errors.Wrap(err, "file seek error")
 		}
 
 		// Parse PAT
 		pat := NewPat()
-		if err = BufferPsi(file, &pos, patPid, pat, options); err != nil {
+		if err = BufferPsi(reader, &pos, patPid, pat, options); err != nil {
 			fmt.Printf("0x%08x PAT buffering error: %s, retrying PAT discovery...\n", pos, err)
 			fileOffset = maxInt64(pos, readStart+patOffset+tsPacketSize)
 			continue
@@ -55,7 +59,7 @@ func ParseTsFile(filename string, options options.Options) error {
 		}
 		pmtPid := pat.PmtPid()
 
-		if _, err = file.Seek(pos, 0); err != nil {
+		if _, err = reader.Seek(pos, 0); err != nil {
 			return errors.Wrap(err, "file seek error")
 		}
 		fmt.Printf("Detected PAT: PMT pid = 0x%02x\n", pmtPid)
@@ -65,7 +69,7 @@ func ParseTsFile(filename string, options options.Options) error {
 
 		// Parse PMT
 		pmt := NewPmt()
-		if err = BufferPsi(file, &pos, pmtPid, pmt, options); err != nil {
+		if err = BufferPsi(reader, &pos, pmtPid, pmt, options); err != nil {
 			fmt.Printf("0x%08x PMT buffering error: %s, retrying PAT discovery...\n", pos, err)
 			fileOffset = maxInt64(pos, readStart+patOffset+tsPacketSize)
 			continue
@@ -78,7 +82,7 @@ func ParseTsFile(filename string, options options.Options) error {
 		programs := pmt.ProgramInfos()
 		pcrPid := pmt.PcrPid()
 
-		if _, err = file.Seek(pos, 0); err != nil {
+		if _, err = reader.Seek(pos, 0); err != nil {
 			return errors.Wrap(err, "file seek error")
 		}
 		fmt.Println("Detected PMT")
@@ -88,7 +92,7 @@ func ParseTsFile(filename string, options options.Options) error {
 			pmt.DumpProgramInfos()
 		}
 
-		err = BufferPes(file, &pos, pcrPid, programs, options)
+		err = BufferPes(reader, &pos, pcrPid, programs, options)
 		if err != nil {
 			fmt.Printf("0x%08x PES parse error: %s, retrying PAT discovery...\n", pos, err)
 			fileOffset = maxInt64(pos, readStart+patOffset+tsPacketSize)

@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/errors"
-	"github.com/small-teton/mpeg-ts-analyzer/bitbuffer"
 )
 
 // Pmt Progran Map Table
@@ -12,6 +11,7 @@ type Pmt struct {
 	// startFlag         bool
 	continuityCounter uint8
 	buf               []byte
+	newBitReader      func() bitReader
 
 	tableID                uint8
 	sectionSyntaxIndicator uint8
@@ -58,7 +58,12 @@ func (p *Pmt) Append(buf []byte) {
 
 // Parse PMT data.
 func (p *Pmt) Parse() error {
-	bb := new(bitbuffer.BitBuffer)
+	var bb bitReader
+	if p.newBitReader != nil {
+		bb = p.newBitReader()
+	} else {
+		bb = newDefaultBitReader()
+	}
 	bb.Set(p.buf)
 
 	var err error
