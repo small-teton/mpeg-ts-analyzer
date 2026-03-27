@@ -25,6 +25,7 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 	const bufSize = 65536
 	var fileOffset int64
 	buf := make([]byte, bufSize)
+	packetSize := 0
 	for {
 		readStart := fileOffset
 		size, err := reader.Read(buf)
@@ -35,7 +36,12 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 		}
 		fileOffset += int64(size)
 
-		patOffset, err := findPat(buf[:size])
+		if packetSize == 0 {
+			packetSize = detectPacketSize(buf[:size])
+			fmt.Printf("Packet size: %d bytes\n", packetSize)
+		}
+
+		patOffset, err := findPat(buf[:size], packetSize)
 		if err != nil {
 			continue
 		}
@@ -47,9 +53,9 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 
 		// Parse PAT
 		pat := NewPat()
-		if err = BufferPsi(reader, &pos, patPid, pat, options); err != nil {
+		if err = BufferPsi(reader, &pos, patPid, pat, options, packetSize); err != nil {
 			fmt.Printf("0x%08x PAT buffering error: %s, retrying PAT discovery...\n", pos, err)
-			fileOffset = maxInt64(pos, readStart+patOffset+tsPacketSize)
+			fileOffset = maxInt64(pos, readStart+patOffset+int64(packetSize))
 			continue
 		}
 		if err = pat.Parse(); err != nil {
@@ -69,9 +75,9 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 
 		// Parse PMT
 		pmt := NewPmt()
-		if err = BufferPsi(reader, &pos, pmtPid, pmt, options); err != nil {
+		if err = BufferPsi(reader, &pos, pmtPid, pmt, options, packetSize); err != nil {
 			fmt.Printf("0x%08x PMT buffering error: %s, retrying PAT discovery...\n", pos, err)
-			fileOffset = maxInt64(pos, readStart+patOffset+tsPacketSize)
+			fileOffset = maxInt64(pos, readStart+patOffset+int64(packetSize))
 			continue
 		}
 		if err = pmt.Parse(); err != nil {
@@ -92,10 +98,10 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 			pmt.DumpProgramInfos()
 		}
 
-		err = BufferPes(reader, &pos, pcrPid, programs, options)
+		err = BufferPes(reader, &pos, pcrPid, programs, options, packetSize)
 		if err != nil {
 			fmt.Printf("0x%08x PES parse error: %s, retrying PAT discovery...\n", pos, err)
-			fileOffset = maxInt64(pos, readStart+patOffset+tsPacketSize)
+			fileOffset = maxInt64(pos, readStart+patOffset+int64(packetSize))
 			continue
 		}
 		break
@@ -110,10 +116,33 @@ func maxInt64(a, b int64) int64 {
 	return b
 }
 
-func findPat(data []byte) (int64, error) {
-	for i := 0; i+188*2 <= len(data)-1; i++ {
-		if data[i] == 0x47 && data[i+188] == 0x47 && data[i+188*2] == 0x47 {
-			if (data[i+1]&0x5F) == 0x40 && data[i+2] == 0x00 {
+// detectPacketSize detects whether the stream uses 188-byte or 192-byte packets.
+func detectPacketSize(data []byte) int {
+	for _, candidate := range []int{tsPayloadSize, tsPayloadSize + tpExtraHeaderSize} {
+		syncOffset := candidate - tsPayloadSize // 0 for 188, 4 for 192
+		if len(data) < syncOffset+candidate*2+1 {
+			continue
+		}
+		for i := 0; i+syncOffset+candidate*2 < len(data); i++ {
+			if data[i+syncOffset] == 0x47 &&
+				data[i+syncOffset+candidate] == 0x47 &&
+				data[i+syncOffset+candidate*2] == 0x47 {
+				return candidate
+			}
+		}
+	}
+	return tsPayloadSize
+}
+
+// findPat finds the first PAT packet in the data with the given packet size.
+func findPat(data []byte, packetSize int) (int64, error) {
+	syncOffset := packetSize - tsPayloadSize // 0 for 188, 4 for 192
+	for i := 0; i+syncOffset+packetSize*2 < len(data); i++ {
+		sync0 := i + syncOffset
+		sync1 := sync0 + packetSize
+		sync2 := sync1 + packetSize
+		if data[sync0] == 0x47 && data[sync1] == 0x47 && data[sync2] == 0x47 {
+			if (data[sync0+1]&0x5F) == 0x40 && data[sync0+2] == 0x00 {
 				return int64(i), nil
 			}
 		}
