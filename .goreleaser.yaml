@@ -20,7 +20,6 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/small-teton/mpeg-ts-analyzer/cmd.version={{.Version}}
 
 archives:
   - format: tar.gz
