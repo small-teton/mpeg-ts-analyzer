@@ -4,16 +4,16 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/errors"
-	"github.com/small-teton/mpeg-ts-analyzer/bitbuffer"
 	"github.com/small-teton/mpeg-ts-analyzer/options"
 )
 
 // AdaptationField adaptation_field data.
 type AdaptationField struct {
-	pcr     uint64
-	pos     int64
-	options options.Options
-	buf     []byte
+	pcr            uint64
+	pos            int64
+	options        options.Options
+	buf            []byte
+	newBitReader   func() bitReader
 
 	adaptationFieldLength                  uint8
 	discontinuityIndicator                 uint8
@@ -97,7 +97,12 @@ func (af *AdaptationField) Pcr() uint64 { return af.pcr }
 
 // Parse parse adaptation_field data.
 func (af *AdaptationField) Parse() (uint8, error) {
-	bb := new(bitbuffer.BitBuffer)
+	var bb bitReader
+	if af.newBitReader != nil {
+		bb = af.newBitReader()
+	} else {
+		bb = newDefaultBitReader()
+	}
 	bb.Set(af.buf)
 
 	var err error

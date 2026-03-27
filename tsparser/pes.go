@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/errors"
-	"github.com/small-teton/mpeg-ts-analyzer/bitbuffer"
 )
 
 // Pes Packetized Elementary Stream.
@@ -13,6 +12,7 @@ type Pes struct {
 	continuityCounter uint8
 	buf               []byte
 	pos               int64
+	newBitReader      func() bitReader
 	prevPcr           uint64
 	nextPcr           uint64
 	prevPcrPos        int64
@@ -135,7 +135,12 @@ func (p *Pes) Append(buf []byte) {
 
 // Parse PES header.
 func (p *Pes) Parse() error {
-	bb := new(bitbuffer.BitBuffer)
+	var bb bitReader
+	if p.newBitReader != nil {
+		bb = p.newBitReader()
+	} else {
+		bb = newDefaultBitReader()
+	}
 	bb.Set(p.buf)
 
 	var err error
