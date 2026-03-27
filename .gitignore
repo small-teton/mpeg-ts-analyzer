@@ -9,3 +9,4 @@ main
 mpeg-ts-analyzer
 
 dist/
+out/
