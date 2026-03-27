@@ -1,4 +1,4 @@
-.PHONY: build test coverage clean setup
+.PHONY: build test coverage clean setup install uninstall
 
 build:
 	go build -v ./...
@@ -17,6 +17,12 @@ coverage:
 
 clean:
 	rm -rf out/ dist/
+
+install:
+	go install ./...
+
+uninstall:
+	rm -f $(shell go env GOPATH)/bin/mpeg-ts-analyzer
 
 setup:
 	git config core.hooksPath .githooks
