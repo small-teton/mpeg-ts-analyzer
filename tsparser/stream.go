@@ -26,9 +26,30 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 	var fileOffset int64
 	buf := make([]byte, bufSize)
 	packetSize := 0
+
+	if options.Offset > 0 {
+		if _, err := reader.Seek(options.Offset, io.SeekStart); err != nil {
+			return errors.Wrap(err, "file seek error")
+		}
+		fileOffset = options.Offset
+	}
+
+	var endOffset int64
+	if options.Limit > 0 {
+		endOffset = fileOffset + options.Limit
+	}
+
 	for {
 		readStart := fileOffset
-		size, err := reader.Read(buf)
+		readBuf := buf
+		if endOffset > 0 && fileOffset+int64(len(buf)) > endOffset {
+			remaining := endOffset - fileOffset
+			if remaining <= 0 {
+				break
+			}
+			readBuf = buf[:remaining]
+		}
+		size, err := reader.Read(readBuf)
 		if err == io.EOF {
 			break
 		} else if err != nil {
@@ -53,7 +74,7 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 
 		// Parse PAT
 		pat := NewPat()
-		if err = BufferPsi(reader, &pos, patPid, pat, options, packetSize); err != nil {
+		if err = BufferPsi(reader, &pos, patPid, pat, options, packetSize, endOffset); err != nil {
 			fmt.Printf("0x%08x PAT buffering error: %s, retrying PAT discovery...\n", pos, err)
 			fileOffset = maxInt64(pos, readStart+patOffset+int64(packetSize))
 			continue
@@ -75,7 +96,7 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 
 		// Parse PMT
 		pmt := NewPmt()
-		if err = BufferPsi(reader, &pos, pmtPid, pmt, options, packetSize); err != nil {
+		if err = BufferPsi(reader, &pos, pmtPid, pmt, options, packetSize, endOffset); err != nil {
 			fmt.Printf("0x%08x PMT buffering error: %s, retrying PAT discovery...\n", pos, err)
 			fileOffset = maxInt64(pos, readStart+patOffset+int64(packetSize))
 			continue
@@ -98,7 +119,7 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 			pmt.DumpProgramInfos()
 		}
 
-		err = BufferPes(reader, &pos, pcrPid, programs, options, packetSize)
+		err = BufferPes(reader, &pos, pcrPid, programs, options, packetSize, endOffset)
 		if err != nil {
 			fmt.Printf("0x%08x PES parse error: %s, retrying PAT discovery...\n", pos, err)
 			fileOffset = maxInt64(pos, readStart+patOffset+int64(packetSize))

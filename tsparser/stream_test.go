@@ -642,7 +642,7 @@ func TestBufferPsi_MultiPacket(t *testing.T) {
 	var pos int64
 	var opt options.Options
 	pat := NewPat()
-	err = BufferPsi(file, &pos, 0x0, pat, opt, 188)
+	err = BufferPsi(file, &pos, 0x0, pat, opt, 188, 0)
 	if err != nil {
 		t.Errorf("expected successful BufferPsi, got: %s", err)
 	}
@@ -672,7 +672,7 @@ func TestBufferPsi_Continuation(t *testing.T) {
 	var pos int64
 	var opt options.Options
 	pat := NewPat()
-	err = BufferPsi(file, &pos, 0x0, pat, opt, 188)
+	err = BufferPsi(file, &pos, 0x0, pat, opt, 188, 0)
 	if err != nil {
 		t.Errorf("expected successful BufferPsi with continuation, got: %s", err)
 	}
@@ -700,7 +700,7 @@ func TestBufferPsi_PacketLoss(t *testing.T) {
 	var pos int64
 	var opt options.Options
 	pat := NewPat()
-	err = BufferPsi(file, &pos, 0x0, pat, opt, 188)
+	err = BufferPsi(file, &pos, 0x0, pat, opt, 188, 0)
 	if err == nil {
 		t.Errorf("expected packet loss error, got nil")
 	}
@@ -844,6 +844,92 @@ func TestMaxInt64(t *testing.T) {
 	}
 	if maxInt64(5, 5) != 5 {
 		t.Errorf("expected 5")
+	}
+}
+
+func TestParseTsFile_WithLimit(t *testing.T) {
+	f, err := os.CreateTemp("", "limit*.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+
+	writeFullStream(f, 2, []uint64{13500, 27000, 40500})
+	f.Close()
+
+	var opt options.Options
+	opt.Limit = 188 * 20
+	err = ParseTsFile(f.Name(), opt)
+	if err != nil {
+		t.Errorf("expected successful parse with limit, got: %s", err)
+	}
+}
+
+func TestParseTsFile_WithOffset(t *testing.T) {
+	f, err := os.CreateTemp("", "offset*.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+
+	// Write garbage prefix, then two full streams
+	garbage := make([]byte, 188*10)
+	for i := range garbage {
+		garbage[i] = 0xFF
+	}
+	f.Write(garbage)
+	writeFullStream(f, 1, []uint64{13500})
+	f.Close()
+
+	var opt options.Options
+	opt.Offset = int64(len(garbage))
+	err = ParseTsFile(f.Name(), opt)
+	if err != nil {
+		t.Errorf("expected successful parse with offset, got: %s", err)
+	}
+}
+
+func TestParseTsFile_WithOffsetAndLimit(t *testing.T) {
+	f, err := os.CreateTemp("", "offsetlimit*.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+
+	garbage := make([]byte, 188*10)
+	for i := range garbage {
+		garbage[i] = 0xFF
+	}
+	f.Write(garbage)
+	writeFullStream(f, 2, []uint64{13500, 27000, 40500})
+	f.Close()
+
+	var opt options.Options
+	opt.Offset = int64(len(garbage))
+	opt.Limit = 188 * 20
+	err = ParseTsFile(f.Name(), opt)
+	if err != nil {
+		t.Errorf("expected successful parse with offset+limit, got: %s", err)
+	}
+}
+
+func TestParseTsReader_LimitZeroRemaining(t *testing.T) {
+	// Limit of 1 byte means on second iteration remaining <= 0 after first read
+	r := &errReadSeeker{data: buildValidStreamBuf(), failAt: -1}
+	opts := options.Options{Limit: 1}
+	// Should exit cleanly without error
+	err := parseTsReader(r, opts)
+	if err != nil {
+		t.Errorf("expected nil error with tiny limit, got: %s", err)
+	}
+}
+
+func TestParseTsReader_OffsetSeekError(t *testing.T) {
+	r := &errReadSeeker{data: buildValidStreamBuf(), failAt: -1, seekFailAt: 1}
+	opts := options.Options{Offset: 100}
+	err := parseTsReader(r, opts)
+	if err == nil {
+		t.Errorf("expected seek error for offset, got nil")
 	}
 }
 

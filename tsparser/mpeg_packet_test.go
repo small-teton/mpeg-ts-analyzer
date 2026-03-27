@@ -38,7 +38,7 @@ func TestBufferPsiReadError(t *testing.T) {
 	var pos int64
 	pat := NewPat()
 	var opts options.Options
-	err := BufferPsi(r, &pos, 0x0000, pat, opts, 188)
+	err := BufferPsi(r, &pos, 0x0000, pat, opts, 188, 0)
 	if err == nil {
 		t.Errorf("expected error from mock reader, got nil")
 	}
@@ -49,7 +49,7 @@ func TestBufferPesReadError(t *testing.T) {
 	var pos int64
 	programInfos := []ProgramInfo{{streamType: 0x1B, elementaryPid: 0x31}}
 	var opts options.Options
-	err := BufferPes(r, &pos, 0x0031, programInfos, opts, 188)
+	err := BufferPes(r, &pos, 0x0031, programInfos, opts, 188, 0)
 	if err == nil {
 		t.Errorf("expected error from mock reader, got nil")
 	}
@@ -69,7 +69,7 @@ func TestBufferPesReadErrorMidStream(t *testing.T) {
 	var pos int64
 	programInfos := []ProgramInfo{{streamType: 0x1B, elementaryPid: 0x31}}
 	var opts options.Options
-	err := BufferPes(r, &pos, 0x0031, programInfos, opts, 188)
+	err := BufferPes(r, &pos, 0x0031, programInfos, opts, 188, 0)
 	if err == nil {
 		t.Errorf("expected error from mock reader, got nil")
 	}
@@ -120,7 +120,7 @@ func TestBufferPes(t *testing.T) {
 
 	var pos int64
 	var opts options.Options
-	err = BufferPes(f2, &pos, 0x0031, programInfos, opts, 188)
+	err = BufferPes(f2, &pos, 0x0031, programInfos, opts, 188, 0)
 	if err != nil {
 		t.Errorf("unexpected error: %s", err)
 	}
@@ -171,7 +171,7 @@ func TestBufferPesWithTimestamp(t *testing.T) {
 
 	var pos int64
 	opts := options.Options{DumpTimestamp: true}
-	err = BufferPes(f2, &pos, 0x0031, programInfos, opts, 188)
+	err = BufferPes(f2, &pos, 0x0031, programInfos, opts, 188, 0)
 	if err != nil {
 		t.Errorf("unexpected error: %s", err)
 	}
@@ -202,7 +202,7 @@ func TestBufferPesNonPesPacketSkip(t *testing.T) {
 
 	var pos int64
 	var opts options.Options
-	err = BufferPes(f2, &pos, 0x0031, programInfos, opts, 188)
+	err = BufferPes(f2, &pos, 0x0031, programInfos, opts, 188, 0)
 	if err != nil {
 		t.Errorf("unexpected error: %s", err)
 	}
@@ -247,7 +247,7 @@ func TestBufferPesPacketLoss(t *testing.T) {
 
 	var pos int64
 	var opts options.Options
-	err = BufferPes(f2, &pos, 0x0031, programInfos, opts, 188)
+	err = BufferPes(f2, &pos, 0x0031, programInfos, opts, 188, 0)
 	if err != nil {
 		t.Errorf("unexpected error: %s", err)
 	}
@@ -273,7 +273,7 @@ func TestBufferPsi_192(t *testing.T) {
 	var pos int64
 	var opt options.Options
 	pat := NewPat()
-	err = BufferPsi(file, &pos, 0x0, pat, opt, 192)
+	err = BufferPsi(file, &pos, 0x0, pat, opt, 192, 0)
 	if err != nil {
 		t.Errorf("expected successful BufferPsi with 192-byte packets, got: %s", err)
 	}
@@ -314,7 +314,72 @@ func TestBufferPes_192(t *testing.T) {
 
 	var pos int64
 	var opts options.Options
-	err = BufferPes(f2, &pos, 0x0031, programInfos, opts, 192)
+	err = BufferPes(f2, &pos, 0x0031, programInfos, opts, 192, 0)
+	if err != nil {
+		t.Errorf("unexpected error: %s", err)
+	}
+}
+
+func TestBufferPsi_EndOffset(t *testing.T) {
+	f, err := os.CreateTemp("", "bufpsi_endoff*.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+
+	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
+	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
+	f.Write(buildStuffingPacket())
+	f.Write(buildTsPacket(0x0000, true, 1, patPayload))
+	f.Close()
+
+	f2, err := os.Open(f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f2.Close()
+
+	var pos int64
+	var opts options.Options
+	pat := NewPat()
+	// endOffset stops reading after 1 packet
+	err = BufferPsi(f2, &pos, 0x0000, pat, opts, 188, 188)
+	// Should not error, just stop early
+	if err != nil {
+		t.Errorf("unexpected error: %s", err)
+	}
+}
+
+func TestBufferPes_EndOffset(t *testing.T) {
+	f, err := os.CreateTemp("", "bufpes_endoff*.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+
+	programInfos := []ProgramInfo{
+		{streamType: 0x1B, elementaryPid: 0x31, esInfoLength: 0},
+	}
+	pesHeader := []byte{
+		0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x80, 0x05,
+		0x21, 0x00, 0x07, 0xD8, 0x61,
+	}
+
+	f.Write(buildPcrPacket(0x0031, 13500))
+	f.Write(buildTsPacket(0x0031, true, 1, pesHeader))
+	f.Write(buildTsPacket(0x0031, false, 2, []byte{0x00, 0x01}))
+	f.Close()
+
+	f2, err := os.Open(f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f2.Close()
+
+	var pos int64
+	opts := options.Options{DumpTimestamp: true}
+	// endOffset stops reading after 2 packets
+	err = BufferPes(f2, &pos, 0x0031, programInfos, opts, 188, 188*2)
 	if err != nil {
 		t.Errorf("unexpected error: %s", err)
 	}
@@ -346,7 +411,7 @@ func TestBufferPsiSkipsAfOnlyPacket(t *testing.T) {
 	var pos int64
 	pat := NewPat()
 	var opts options.Options
-	err = BufferPsi(f2, &pos, 0x0000, pat, opts, 188)
+	err = BufferPsi(f2, &pos, 0x0000, pat, opts, 188, 0)
 	if err != nil {
 		t.Errorf("unexpected error: %s", err)
 	}

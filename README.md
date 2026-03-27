@@ -21,6 +21,15 @@ Both 188-byte TS packets and 192-byte M2TS packets (BDAV format with TP_extra_he
 
 **Note:** The correctness of the output is not guaranteed.
 
+# Why mpeg-ts-analyzer?
+
+Existing tools like ffprobe provide high-level stream information, but not the low-level detail that broadcast engineers need when debugging TS streams.
+
+mpeg-ts-analyzer gives you:
+
+- **Spec-level field dump** — Every field in TS headers, Adaptation Fields, PSI tables, and PES headers is printed exactly as defined in ISO/IEC 13818-1, making it easy to cross-reference with the specification.
+- **Compliance checks out of the box** — PCR interval (≤ 100ms) and PCR-PTS gap (≤ 1000ms) are automatically validated. No scripting required.
+
 Sample TS files are included in `sample_data/` for quick testing:
 
 ```bash
@@ -89,7 +98,15 @@ Flags:
       --dump-ts-header          Dump TS packet header.
       --dump-ts-payload         Dump TS packet payload binary.
   -h, --help                    help for mpeg-ts-analyzer
+      --limit int               Stop reading after this many bytes (0 = no limit).
+      --offset int              Start reading from this byte offset.
       --version                 show mpeg-ts-analyzer version.
+```
+
+**Tip:** For large files, dump options can produce a huge amount of output. Use `--limit` to restrict the byte range, or redirect output to a file to avoid losing the beginning of the output in your terminal scrollback:
+
+```bash
+mpeg-ts-analyzer large.ts --dump-ts-header --limit 1000000 > dump.txt
 ```
 
 # Result Examples
