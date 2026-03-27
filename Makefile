@@ -1,4 +1,4 @@
-.PHONY: build test coverage clean
+.PHONY: build test coverage clean setup
 
 build:
 	go build -v ./...
@@ -17,3 +17,6 @@ coverage:
 
 clean:
 	rm -rf out/ dist/
+
+setup:
+	git config core.hooksPath .githooks

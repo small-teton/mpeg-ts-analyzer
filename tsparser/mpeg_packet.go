@@ -18,11 +18,14 @@ type MpegPacket interface {
 	Dump()
 }
 
-const tsPacketSize = 188
+const (
+	tsPayloadSize    = 188
+	tpExtraHeaderSize = 4
+)
 
 // BufferPsi buffer PSI data from TS payload
-func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, options options.Options) error {
-	tsBuffer := make([]byte, tsPacketSize)
+func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, options options.Options, packetSize int) error {
+	tsBuffer := make([]byte, packetSize)
 	isBuffering := false
 	tsPacket := NewTsPacket()
 
@@ -30,12 +33,16 @@ func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, 
 		size, err := reader.Read(tsBuffer)
 		if err == io.EOF {
 			break
-		} else if err != nil || size != tsPacketSize {
+		} else if err != nil || size != packetSize {
 			return errors.Wrap(err, "file read error")
 		}
 
+		tsData := tsBuffer
+		if packetSize > tsPayloadSize {
+			tsData = tsBuffer[packetSize-tsPayloadSize:]
+		}
 		tsPacket.Initialize(*pos, options)
-		tsPacket.Append(tsBuffer)
+		tsPacket.Append(tsData)
 		if err := tsPacket.Parse(); err != nil {
 			return errors.Wrap(err, "failed to parse TS packet in BufferPsi")
 		}
@@ -46,6 +53,9 @@ func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, 
 		}
 
 		buf := tsPacket.Payload()
+		if len(buf) == 0 {
+			continue
+		}
 		if tsPacket.PayloadUnitStartIndicator() {
 			if isBuffering {
 				mpegPacket.Append(buf[1 : 1+buf[0]]) // read until pointer_field
@@ -54,7 +64,7 @@ func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, 
 				mpegPacket.Append(buf[1+buf[0]:]) // read until pointer_field
 				isBuffering = true
 			}
-		} else if tsPacket.ContinuityCounter() == (mpegPacket.ContinuityCounter()+1) || (tsPacket.ContinuityCounter() == 0x0 && mpegPacket.ContinuityCounter() == 0xF) {
+		} else if tsPacket.ContinuityCounter() == (mpegPacket.ContinuityCounter()+1)&0xF {
 			mpegPacket.SetContinuityCounter(tsPacket.ContinuityCounter())
 			mpegPacket.Append(tsPacket.Payload())
 		} else {
@@ -65,8 +75,8 @@ func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, 
 }
 
 // BufferPes buffer PES data from TS payload
-func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []ProgramInfo, options options.Options) error {
-	tsBuffer := make([]byte, tsPacketSize)
+func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []ProgramInfo, options options.Options, packetSize int) error {
+	tsBuffer := make([]byte, packetSize)
 	pesMap := make(map[uint16]*Pes)
 	for _, val := range programInfos {
 		pesMap[val.elementaryPid] = nil
@@ -81,12 +91,16 @@ func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []Progr
 		size, err := reader.Read(tsBuffer)
 		if err == io.EOF {
 			break
-		} else if err != nil || size != tsPacketSize {
+		} else if err != nil || size != packetSize {
 			return fmt.Errorf("file read error: %s", err)
 		}
 
+		tsData := tsBuffer
+		if packetSize > tsPayloadSize {
+			tsData = tsBuffer[packetSize-tsPayloadSize:]
+		}
 		tsPacket.Initialize(*pos, options)
-		tsPacket.Append(tsBuffer)
+		tsPacket.Append(tsData)
 		if err := tsPacket.Parse(); err != nil {
 			return errors.Wrap(err, "failed to parse TS packet in BufferPes")
 		}
@@ -112,6 +126,13 @@ func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []Progr
 			continue
 		}
 
+		// Skip packets without payload (e.g., AF-only packets with afc=2).
+		// Per MPEG-2 spec, these do not increment continuity_counter.
+		if len(tsPacket.Payload()) == 0 {
+			*pos += int64(size)
+			continue
+		}
+
 		if tsPacket.PayloadUnitStartIndicator() {
 			if pes != nil {
 				pes.Parse()
@@ -130,7 +151,7 @@ func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []Progr
 			pes.SetContinuityCounter(tsPacket.ContinuityCounter())
 			pes.Append(tsPacket.Payload()) // read until pointer_field
 
-		} else if tsPacket.ContinuityCounter() == (pes.ContinuityCounter()+1) || (tsPacket.ContinuityCounter() == 0x0 && pes.ContinuityCounter() == 0xF) {
+		} else if tsPacket.ContinuityCounter() == (pes.ContinuityCounter()+1)&0xF {
 			pes.SetContinuityCounter(tsPacket.ContinuityCounter())
 			if pes.nextPcr == 0 && lastPcr > pes.prevPcr {
 				pes.nextPcr = lastPcr

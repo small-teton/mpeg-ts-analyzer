@@ -31,7 +31,7 @@ type TsPacket struct {
 // NewTsPacket create new TsPacket instance.
 func NewTsPacket() *TsPacket {
 	tp := new(TsPacket)
-	tp.buf = make([]byte, 0, tsPacketSize)
+	tp.buf = make([]byte, 0, tsPayloadSize)
 	tp.adaptationField = NewAdaptationField()
 	return tp
 }

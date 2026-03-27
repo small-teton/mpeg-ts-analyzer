@@ -45,8 +45,8 @@ type AdaptationField struct {
 // NewAdaptationField create new adaptation_field instance.
 func NewAdaptationField() *AdaptationField {
 	af := new(AdaptationField)
-	af.buf = make([]byte, 0, tsPacketSize)
-	af.privateDataByte = make([]byte, 0, tsPacketSize)
+	af.buf = make([]byte, 0, tsPayloadSize)
+	af.privateDataByte = make([]byte, 0, tsPayloadSize)
 	return af
 }
 
