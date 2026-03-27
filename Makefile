@@ -1,7 +1,7 @@
-.PHONY: build test coverage clean setup
+.PHONY: build test coverage clean setup install uninstall
 
 build:
-	go build -v ./...
+	go build -v -ldflags "$(LDFLAGS)" ./...
 
 test:
 	go test -v ./...
@@ -17,6 +17,15 @@ coverage:
 
 clean:
 	rm -rf out/ dist/
+
+VERSION := $(shell cat VERSION)
+LDFLAGS := -X github.com/small-teton/mpeg-ts-analyzer/cmd.version=$(VERSION)
+
+install:
+	go install -ldflags "$(LDFLAGS)" ./...
+
+uninstall:
+	rm -f $(shell go env GOPATH)/bin/mpeg-ts-analyzer
 
 setup:
 	git config core.hooksPath .githooks
