@@ -8,4 +8,6 @@ type Options struct {
 	DumpPsi             bool
 	DumpPesHeader       bool
 	DumpTimestamp       bool
+	Offset              int64
+	Limit               int64
 }

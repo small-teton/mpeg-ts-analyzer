@@ -40,4 +40,6 @@ func init() {
 	rootCmd.Flags().BoolVar(&opt.DumpPsi, "dump-psi", false, "Dump PSI (PAT/PMT) detail.")
 	rootCmd.Flags().BoolVar(&opt.DumpPesHeader, "dump-pes-header", false, "Dump PES packet header detail.")
 	rootCmd.Flags().BoolVar(&opt.DumpTimestamp, "dump-timestamp", false, "Dump PCR/PTS/DTS timestamps.")
+	rootCmd.Flags().Int64Var(&opt.Offset, "offset", 0, "Start reading from this byte offset.")
+	rootCmd.Flags().Int64Var(&opt.Limit, "limit", 0, "Stop reading after this many bytes (0 = no limit).")
 }
