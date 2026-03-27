@@ -38,6 +38,7 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 
 		if packetSize == 0 {
 			packetSize = detectPacketSize(buf[:size])
+			fmt.Printf("Packet size: %d bytes\n", packetSize)
 		}
 
 		patOffset, err := findPat(buf[:size], packetSize)
