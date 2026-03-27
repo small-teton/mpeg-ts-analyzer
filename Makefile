@@ -1,4 +1,4 @@
-.PHONY: build test coverage clean setup install uninstall
+.PHONY: build test coverage clean setup install uninstall release
 
 build:
 	go build -v ./...
@@ -23,6 +23,12 @@ install:
 
 uninstall:
 	rm -f $(shell go env GOPATH)/bin/mpeg-ts-analyzer
+
+release:
+	@VERSION=$$(cat VERSION | tr -d '[:space:]') && \
+	echo "Releasing v$$VERSION..." && \
+	git tag "v$$VERSION" && \
+	git push origin "v$$VERSION"
 
 setup:
 	git config core.hooksPath .githooks
