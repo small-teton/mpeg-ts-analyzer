@@ -136,3 +136,82 @@ func TestReadUint64(t *testing.T) {
 		t.Errorf("Read over buffer length. But err is nil")
 	}
 }
+
+func TestReadBitsZero(t *testing.T) {
+	bb := new(BitBuffer)
+	bb.Set([]byte{0xFF})
+	val, err := bb.ReadUint8(0)
+	if err != nil {
+		t.Errorf("unexpected error: %s", err)
+	}
+	if val != 0 {
+		t.Errorf("expected 0 for 0-bit read, got %d", val)
+	}
+	// Position should not advance
+	if bb.pos != 0 {
+		t.Errorf("expected pos=0 after 0-bit read, got %d", bb.pos)
+	}
+}
+
+func TestReadBitsPartialHead(t *testing.T) {
+	// Test reading bits that start mid-byte and span into next byte
+	bb := new(BitBuffer)
+	bb.Set([]byte{0xAB, 0xCD}) // 10101011 11001101
+	// Skip 4 bits, then read 8 bits across byte boundary
+	bb.Skip(4)
+	val, err := bb.ReadUint8(8)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	// After skipping 4 bits: remaining of first byte = 1011, first 4 of second = 1100
+	// 10111100 = 0xBC
+	if val != 0xBC {
+		t.Errorf("expected 0xBC, got 0x%02X", val)
+	}
+}
+
+func TestReadBitsOverflow(t *testing.T) {
+	// Test n > 64 in readBits (defensive check)
+	bb := new(BitBuffer)
+	bb.Set([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
+	_, err := bb.readBits(65)
+	if err == nil {
+		t.Errorf("expected error for n > 64, got nil")
+	}
+}
+
+func TestReadBitsHeadOnlyPartial(t *testing.T) {
+	// Read fewer bits than remaining in the first byte (bitsFromFirst > remaining)
+	bb := new(BitBuffer)
+	bb.Set([]byte{0xAB}) // 10101011
+	bb.Skip(2)           // pos=2, bitOffset=2, 6 bits remaining in byte
+	// Read only 3 bits (< 6 remaining) → triggers bitsFromFirst > remaining
+	val, err := bb.ReadUint8(3)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	// bits at pos 2-4: 101 = 5
+	if val != 5 {
+		t.Errorf("expected 5, got %d", val)
+	}
+}
+
+func TestReadBitsTailPartial(t *testing.T) {
+	// Test reading bits that end mid-byte (tail partial)
+	bb := new(BitBuffer)
+	bb.Set([]byte{0xF0}) // 11110000
+	val, err := bb.ReadUint8(4)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if val != 0x0F {
+		t.Errorf("expected 0x0F, got 0x%02X", val)
+	}
+	val, err = bb.ReadUint8(4)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if val != 0x00 {
+		t.Errorf("expected 0x00, got 0x%02X", val)
+	}
+}

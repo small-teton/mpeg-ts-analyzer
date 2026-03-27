@@ -143,3 +143,327 @@ func TestPesParse(t *testing.T) {
 		t.Errorf("Parse error")
 	}
 }
+
+func TestPesParsePtsOnly(t *testing.T) {
+	// PTS=90000 (1 second at 90kHz), ptsDtsFlags=2
+	// PTS: first=0, second=2, third=24464
+	// PTS bytes: 0x21, 0x00, 0x05, 0xBF, 0x21
+	data := []byte{
+		0x00, 0x00, 0x01, // start code prefix
+		0xE0,             // stream_id (video)
+		0x00, 0x00,       // pes_packet_length
+		0x80,             // '10' + flags=0
+		0x80,             // ptsDtsFlags=10, others=0
+		0x05,             // pes_header_data_length
+		0x21, 0x00, 0x05, 0xBF, 0x21, // PTS data
+	}
+	pes := NewPes()
+	pes.Append(data)
+	if err := pes.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	if pes.ptsDtsFlags != 2 {
+		t.Errorf("expected ptsDtsFlags=2, got %d", pes.ptsDtsFlags)
+	}
+	if pes.pts != 90000 {
+		t.Errorf("expected pts=90000, got %d", pes.pts)
+	}
+}
+
+func TestPesParseSpecialStreamId(t *testing.T) {
+	// stream_id=0xBC (program_stream_map), should skip header parsing
+	data := []byte{
+		0x00, 0x00, 0x01, // start code prefix
+		0xBC,             // stream_id
+		0x00, 0x04,       // pes_packet_length=4
+		0xAA, 0xBB, 0xCC, 0xDD, // data
+	}
+	pes := NewPes()
+	pes.Append(data)
+	if err := pes.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	if pes.streamID != 0xBC {
+		t.Errorf("expected streamID=0xBC, got 0x%02X", pes.streamID)
+	}
+	if pes.pesPacketLength != 4 {
+		t.Errorf("expected pesPacketLength=4, got %d", pes.pesPacketLength)
+	}
+}
+
+func TestPesParseEscr(t *testing.T) {
+	// escrFlag=1, escrBase=45000
+	// first=0, second=1, third=12232
+	// ESCR bits (37): reserved(2)=00, first(3)=000, marker=1, second(15)=000000000000001, marker=1, third(15)=010111111001000
+	// Bytes: 0x04, 0x00, 0x0D, 0x7E, 0x40
+	data := []byte{
+		0x00, 0x00, 0x01, // start code prefix
+		0xE0,             // stream_id
+		0x00, 0x00,       // pes_packet_length
+		0x80,             // '10' + flags=0
+		0x20,             // ptsDts=00, escr=1, others=0
+		0x05,             // pes_header_data_length
+		0x04, 0x00, 0x0D, 0x7E, 0x40, // ESCR data
+	}
+	pes := NewPes()
+	pes.Append(data)
+	if err := pes.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	if pes.escrFlag != 1 {
+		t.Errorf("expected escrFlag=1, got %d", pes.escrFlag)
+	}
+	if pes.escrBase != 45000 {
+		t.Errorf("expected escrBase=45000, got %d", pes.escrBase)
+	}
+}
+
+func TestPesParseEsRate(t *testing.T) {
+	// esRateFlag=1, esRate=50000
+	// ES rate: marker(1)=1, rate(22)=50000, marker(1)=1
+	// Bytes: 0x81, 0x86, 0xA1
+	data := []byte{
+		0x00, 0x00, 0x01, // start code prefix
+		0xE0,             // stream_id
+		0x00, 0x00,       // pes_packet_length
+		0x80,             // '10' + flags=0
+		0x10,             // ptsDts=00, escr=0, esRate=1, others=0
+		0x03,             // pes_header_data_length
+		0x81, 0x86, 0xA1, // ES rate data
+	}
+	pes := NewPes()
+	pes.Append(data)
+	if err := pes.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	if pes.esRateFlag != 1 {
+		t.Errorf("expected esRateFlag=1, got %d", pes.esRateFlag)
+	}
+	if pes.esRate != 50000 {
+		t.Errorf("expected esRate=50000, got %d", pes.esRate)
+	}
+}
+
+func TestPesParseTrickModeFastForward(t *testing.T) {
+	// dsmTrickModeFlag=1, control=0x00 (fast_forward)
+	// Trick byte: 000_01_1_10 = 0x0E
+	// fieldID=1, intraSliceRefresh=1, frequencyTruncation=2
+	data := []byte{
+		0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x08, 0x01, 0x0E,
+	}
+	pes := NewPes()
+	pes.Append(data)
+	if err := pes.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	if pes.trickModeControl != 0x00 {
+		t.Errorf("expected trickModeControl=0, got %d", pes.trickModeControl)
+	}
+	if pes.fieldID != 1 {
+		t.Errorf("expected fieldID=1, got %d", pes.fieldID)
+	}
+	if pes.intraSliceRefresh != 1 {
+		t.Errorf("expected intraSliceRefresh=1, got %d", pes.intraSliceRefresh)
+	}
+	if pes.frequencyTruncation != 2 {
+		t.Errorf("expected frequencyTruncation=2, got %d", pes.frequencyTruncation)
+	}
+}
+
+func TestPesParseTrickModeSlowMotion(t *testing.T) {
+	// dsmTrickModeFlag=1, control=0x01 (slow_motion)
+	// Trick byte: 001_10101 = 0x35, repCntrl=21
+	data := []byte{
+		0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x08, 0x01, 0x35,
+	}
+	pes := NewPes()
+	pes.Append(data)
+	if err := pes.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	if pes.trickModeControl != 1 {
+		t.Errorf("expected trickModeControl=1, got %d", pes.trickModeControl)
+	}
+	if pes.repCntrl != 21 {
+		t.Errorf("expected repCntrl=21, got %d", pes.repCntrl)
+	}
+}
+
+func TestPesParseTrickModeDefault(t *testing.T) {
+	// dsmTrickModeFlag=1, control=0x02 (default path, skip 5 bits)
+	// Trick byte: 010_00000 = 0x40
+	data := []byte{
+		0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x08, 0x01, 0x40,
+	}
+	pes := NewPes()
+	pes.Append(data)
+	if err := pes.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	if pes.trickModeControl != 2 {
+		t.Errorf("expected trickModeControl=2, got %d", pes.trickModeControl)
+	}
+}
+
+func TestPesParseAdditionalCopyInfo(t *testing.T) {
+	// additionalCopyInfoFlag=1, info=0x55
+	// Byte: marker(1)=1, info(7)=0x55=1010101 -> 1_1010101 = 0xD5
+	data := []byte{
+		0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x04, 0x01, 0xD5,
+	}
+	pes := NewPes()
+	pes.Append(data)
+	if err := pes.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	if pes.additionalCopyInfoFlag != 1 {
+		t.Errorf("expected additionalCopyInfoFlag=1, got %d", pes.additionalCopyInfoFlag)
+	}
+	if pes.additionalCopyInfo != 0x55 {
+		t.Errorf("expected additionalCopyInfo=0x55, got 0x%02X", pes.additionalCopyInfo)
+	}
+}
+
+func TestPesParsePesCrc(t *testing.T) {
+	// pesCrcFlag=1, CRC=0xABCD
+	data := []byte{
+		0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x02, 0x02, 0xAB, 0xCD,
+	}
+	pes := NewPes()
+	pes.Append(data)
+	if err := pes.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	if pes.pesCrcFlag != 1 {
+		t.Errorf("expected pesCrcFlag=1, got %d", pes.pesCrcFlag)
+	}
+	if pes.previousPesPacketCrc != 0xABCD {
+		t.Errorf("expected previousPesPacketCrc=0xABCD, got 0x%04X", pes.previousPesPacketCrc)
+	}
+}
+
+func TestPesDumpTimestamp(t *testing.T) {
+	// Test DumpTimestamp with ptsDtsFlags=2 (PTS only), no PCR interpolation
+	data := []byte{
+		0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x80, 0x05,
+		0x21, 0x00, 0x05, 0xBF, 0x21, // PTS=90000
+	}
+	pes := NewPes()
+	pes.Append(data)
+	if err := pes.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	// Should not panic; prevPcrPos==nextPcrPos so no delay calculation
+	pes.DumpTimestamp()
+
+	// Test with PCR interpolation (nextPcrPos != prevPcrPos)
+	pes2 := NewPes()
+	pes2.Append(data)
+	pes2.prevPcr = 1000
+	pes2.nextPcr = 2000
+	pes2.prevPcrPos = 0
+	pes2.nextPcrPos = 100
+	pes2.pos = 50
+	if err := pes2.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	pes2.DumpTimestamp()
+}
+
+func TestPesDumpTimestampPtsDtsWithPcr(t *testing.T) {
+	// PES with PTS+DTS (ptsDtsFlags=3)
+	data := []byte{
+		0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x84, 0xC0, 0x0A, 0x31, 0x00, 0x01, 0xC7, 0x3F, 0x11, 0x00,
+		0x01, 0xAF, 0xC9, 0x00, 0x00, 0x00, 0x01, 0x09, 0x10, 0x00, 0x00, 0x00, 0x01, 0x67, 0x4D, 0x40,
+		0x1F, 0x96, 0x56, 0x05, 0xA1, 0xED, 0x82, 0xA8, 0x40, 0x00, 0x00, 0xFA, 0x40, 0x00, 0x3A, 0x98,
+	}
+	// With PCR interpolation
+	pes := NewPes()
+	pes.Append(data)
+	pes.prevPcr = 1000
+	pes.nextPcr = 2000
+	pes.prevPcrPos = 0
+	pes.nextPcrPos = 100
+	pes.pos = 50
+	if err := pes.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	// ptsDtsFlags=3 so DTS delay path is exercised
+	pes.DumpTimestamp()
+
+	// Without PCR interpolation (prevPcrPos == nextPcrPos)
+	pes2 := NewPes()
+	pes2.Append(data)
+	if err := pes2.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	pes2.DumpTimestamp()
+}
+
+func TestPesParseErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		data []byte
+	}{
+		{
+			"ptsDtsFlags=3",
+			[]byte{0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x84, 0xC0, 0x0A, 0x31, 0x00, 0x01, 0xC7, 0x3F, 0x11, 0x00, 0x01, 0xAF, 0xC9},
+		},
+		{
+			"ptsDtsFlags=2",
+			[]byte{0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x80, 0x05, 0x21, 0x00, 0x05, 0xBF, 0x21},
+		},
+		{
+			"escr",
+			[]byte{0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x20, 0x05, 0x04, 0x00, 0x0D, 0x7E, 0x40},
+		},
+		{
+			"esRate",
+			[]byte{0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x10, 0x03, 0x81, 0x86, 0xA1},
+		},
+		{
+			"trickMode",
+			[]byte{0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x08, 0x01, 0x0E},
+		},
+		{
+			"additionalCopyInfo",
+			[]byte{0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x04, 0x01, 0xD5},
+		},
+		{
+			"pesCrc",
+			[]byte{0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x02, 0x02, 0xAB, 0xCD},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Full parse should succeed
+			pes := NewPes()
+			pes.Append(tt.data)
+			if err := pes.Parse(); err != nil {
+				t.Fatalf("full buffer parse should succeed: %s", err)
+			}
+			// Truncated parses should return errors (i=0: empty buf covers first read error)
+			for i := 0; i < len(tt.data); i++ {
+				pes := NewPes()
+				pes.Append(tt.data[:i])
+				if err := pes.Parse(); err == nil {
+					t.Errorf("expected error for truncated %s buffer of length %d", tt.name, i)
+				}
+			}
+		})
+	}
+}
+
+func TestPesDumpHeader(t *testing.T) {
+	data := []byte{
+		0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x80, 0x05,
+		0x21, 0x00, 0x05, 0xBF, 0x21,
+	}
+	pes := NewPes()
+	pes.Append(data)
+	if err := pes.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	// Should not panic
+	pes.DumpHeader()
+}

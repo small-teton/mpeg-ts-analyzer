@@ -126,3 +126,91 @@ func TestPatParse(t *testing.T) {
 		t.Errorf("Cannot detect parse error")
 	}
 }
+
+func TestPatParseNetworkPid(t *testing.T) {
+	// PAT with programNumber=0 (network PID) + programNumber=1 (PMT PID)
+	header := []byte{
+		0x00,       // table_id
+		0xB0, 0x11, // ssi=1, section_length=17
+		0x00, 0x3F, // transport_stream_id
+		0xC1,       // reserved=11, version=0, cni=1
+		0x00,       // section_number
+		0x00,       // last_section_number
+		0x00, 0x00, // program_number=0
+		0xE0, 0x10, // reserved=111, network_pid=0x10
+		0x00, 0x01, // program_number=1
+		0xE0, 0x3F, // reserved=111, program_map_pid=0x3F
+	}
+	crc := crc32(header)
+	data := append(header, byte(crc>>24), byte(crc>>16), byte(crc>>8), byte(crc))
+
+	pat := NewPat()
+	pat.Append(data)
+	if err := pat.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	if len(pat.programInfo) != 2 {
+		t.Fatalf("expected 2 program infos, got %d", len(pat.programInfo))
+	}
+	// Network PID entry
+	if pat.programInfo[0].programNumber != 0 {
+		t.Errorf("expected programNumber=0, got %d", pat.programInfo[0].programNumber)
+	}
+	if pat.programInfo[0].networkPid != 0x10 {
+		t.Errorf("expected networkPid=0x10, got 0x%04X", pat.programInfo[0].networkPid)
+	}
+	// Program entry
+	if pat.programInfo[1].programNumber != 1 {
+		t.Errorf("expected programNumber=1, got %d", pat.programInfo[1].programNumber)
+	}
+	if pat.programInfo[1].programMapPid != 0x3F {
+		t.Errorf("expected programMapPid=0x3F, got 0x%04X", pat.programInfo[1].programMapPid)
+	}
+	if pat.pmtPid != 0x3F {
+		t.Errorf("expected pmtPid=0x3F, got 0x%04X", pat.pmtPid)
+	}
+}
+
+func TestPatDump(t *testing.T) {
+	data := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53, 0xFF}
+	pat := NewPat()
+	pat.Append(data)
+	pat.Parse()
+	// Should not panic
+	pat.Dump()
+}
+
+func TestPatDumpNetworkPid(t *testing.T) {
+	header := []byte{
+		0x00, 0xB0, 0x11, 0x00, 0x3F, 0xC1, 0x00, 0x00,
+		0x00, 0x00, 0xE0, 0x10, // program_number=0, network_pid=0x10
+		0x00, 0x01, 0xE0, 0x3F, // program_number=1, program_map_pid=0x3F
+	}
+	crc := crc32(header)
+	data := append(header, byte(crc>>24), byte(crc>>16), byte(crc>>8), byte(crc))
+	pat := NewPat()
+	pat.Append(data)
+	if err := pat.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	// Should not panic; covers the programNumber==0 branch in Dump
+	pat.Dump()
+}
+
+func TestPatParseErrors(t *testing.T) {
+	valid := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
+	// Full parse should succeed
+	pat := NewPat()
+	pat.Append(valid)
+	if err := pat.Parse(); err != nil {
+		t.Fatalf("full buffer parse should succeed: %s", err)
+	}
+	// Truncated parses should fail (i=0: empty buf covers tableID read error)
+	for i := 0; i < len(valid); i++ {
+		pat := NewPat()
+		pat.Append(valid[:i])
+		if err := pat.Parse(); err == nil {
+			t.Errorf("expected error for truncated buffer of length %d", i)
+		}
+	}
+}

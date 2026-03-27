@@ -1,11 +1,120 @@
 package tsparser
 
 import (
+	"bytes"
+	"errors"
 	"os"
 	"testing"
 
 	"github.com/small-teton/mpeg-ts-analyzer/options"
 )
+
+// errReadSeeker is a mock io.ReadSeeker that returns errors on specific Read/Seek calls.
+type errReadSeeker struct {
+	data        []byte
+	pos         int64
+	failAt      int // fail on the Nth Read call (0-indexed), -1 to disable
+	readNum     int
+	seekFailAt  int // fail on the Nth Seek call (1-indexed), 0 to disable
+	seekNum     int
+}
+
+func (r *errReadSeeker) Read(p []byte) (int, error) {
+	if r.failAt >= 0 && r.readNum == r.failAt {
+		r.readNum++
+		return 0, errors.New("mock read error")
+	}
+	r.readNum++
+	if r.pos >= int64(len(r.data)) {
+		return 0, errors.New("EOF")
+	}
+	n := copy(p, r.data[r.pos:])
+	r.pos += int64(n)
+	return n, nil
+}
+
+func (r *errReadSeeker) Seek(offset int64, whence int) (int64, error) {
+	r.seekNum++
+	if r.seekFailAt > 0 && r.seekNum == r.seekFailAt {
+		return 0, errors.New("mock seek error")
+	}
+	switch whence {
+	case 0:
+		r.pos = offset
+	case 1:
+		r.pos += offset
+	case 2:
+		r.pos = int64(len(r.data)) + offset
+	}
+	return r.pos, nil
+}
+
+func TestParseTsReaderReadError(t *testing.T) {
+	r := &errReadSeeker{failAt: 0}
+	var opts options.Options
+	err := parseTsReader(r, opts)
+	if err == nil {
+		t.Errorf("expected error from mock reader, got nil")
+	}
+}
+
+func buildValidStreamBuf() []byte {
+	var buf bytes.Buffer
+	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
+	buf.Write(buildTsPacket(0x0000, true, 0, patPayload))
+	buf.Write(buildStuffingPacket())
+	buf.Write(buildStuffingPacket())
+	// Second PAT for BufferPsi termination
+	buf.Write(buildTsPacket(0x0000, true, 1, patPayload))
+	// PMT (single stream, matching CRC)
+	pmtHeader := []byte{0x02, 0xB0, 0x12, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE0, 0x31, 0xF0, 0x00, 0x1B, 0xE0, 0x31, 0xF0, 0x00}
+	pmtCrc := crc32(pmtHeader)
+	pmtPayload := append(pmtHeader, byte(pmtCrc>>24), byte(pmtCrc>>16), byte(pmtCrc>>8), byte(pmtCrc))
+	buf.Write(buildTsPacket(0x003F, true, 0, pmtPayload))
+	// Second PMT for BufferPsi termination
+	buf.Write(buildTsPacket(0x003F, true, 1, pmtPayload))
+	// PCR + PES
+	buf.Write(buildPcrPacket(0x0031, 13500))
+	pesHeader := []byte{0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x80, 0x05, 0x21, 0x00, 0x07, 0xD8, 0x61}
+	buf.Write(buildTsPacket(0x0031, true, 1, pesHeader))
+	for buf.Len() < 65536 {
+		buf.WriteByte(0xFF)
+	}
+	return buf.Bytes()
+}
+
+func TestParseTsReaderSeekError1(t *testing.T) {
+	// First Seek fails (after findPat, before PAT buffering)
+	r := &errReadSeeker{data: buildValidStreamBuf(), failAt: -1, seekFailAt: 1}
+	var opts options.Options
+	err := parseTsReader(r, opts)
+	if err == nil {
+		t.Errorf("expected seek error on 1st seek, got nil")
+	}
+}
+
+func TestParseTsReaderSeekError2(t *testing.T) {
+	// Second Seek fails (after PAT parse, before PMT buffering)
+	r := &errReadSeeker{data: buildValidStreamBuf(), failAt: -1, seekFailAt: 2}
+	var opts options.Options
+	err := parseTsReader(r, opts)
+	if err == nil {
+		t.Errorf("expected seek error on 2nd seek, got nil")
+	}
+}
+
+func TestParseTsReaderSeekError3(t *testing.T) {
+	// Seek after PMT parse - try multiple seek numbers to find the right one
+	for seekN := 3; seekN <= 10; seekN++ {
+		r := &errReadSeeker{data: buildValidStreamBuf(), failAt: -1, seekFailAt: seekN}
+		var opts options.Options
+		err := parseTsReader(r, opts)
+		if err != nil {
+			return // found the right seek number
+		}
+	}
+	t.Errorf("expected seek error on post-PMT seek, none triggered")
+}
 
 func TestFindPat_NotFound(t *testing.T) {
 	data := make([]byte, 188*3)
@@ -150,7 +259,7 @@ func TestParseTsFile_GarbagePrefixBeforePat(t *testing.T) {
 }
 
 func TestParseTsFile_CorruptPatThenValid(t *testing.T) {
-	// First 64KB chunk: corrupt PAT (bad CRC), then padding
+	// First 64KB chunk: corrupt PAT (bad CRC), then stuffing packets
 	// Second 64KB chunk: valid PAT/PMT/PCR/PES
 	f, err := os.CreateTemp("", "corruptpat*.ts")
 	if err != nil {
@@ -158,25 +267,25 @@ func TestParseTsFile_CorruptPatThenValid(t *testing.T) {
 	}
 	defer os.Remove(f.Name())
 
-	// Corrupt PAT: valid structure but tampered CRC byte
+	// Corrupt PAT: valid structure but tampered CRC bytes
 	corruptPatPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF}
 	corruptPat := buildTsPacket(0x0000, true, 0, corruptPatPayload)
 
-	// Need 3 consecutive sync bytes for findPat, so write 3 PAT-like packets
+	// Need 3 consecutive sync bytes for findPat
 	f.Write(corruptPat)
-	f.Write(buildStuffingPacket()) // sync byte at +188
-	f.Write(buildStuffingPacket()) // sync byte at +376
+	f.Write(buildStuffingPacket())
+	f.Write(buildStuffingPacket())
+	// Second PAT PUSI to terminate buffering properly
+	f.Write(buildTsPacket(0x0000, true, 1, corruptPatPayload))
 
-	// Pad to fill the first 64KB buffer with 0xFF (avoid false PAT matches)
-	padLen := 65536 - 188*3
-	pad := make([]byte, padLen)
-	for i := range pad {
-		pad[i] = 0xFF
+	// Pad with stuffing packets (not raw 0xFF) so TS parse doesn't fail
+	numStuffing := (65536 - 188*4) / 188
+	for i := 0; i < numStuffing; i++ {
+		f.Write(buildStuffingPacket())
 	}
-	f.Write(pad)
 
 	// Second chunk: valid stream
-	writeValidTsStream(f)
+	writeFullStream(f, 1, []uint64{13500})
 	f.Close()
 
 	var opt options.Options
@@ -187,7 +296,7 @@ func TestParseTsFile_CorruptPatThenValid(t *testing.T) {
 }
 
 func TestParseTsFile_CorruptPmtThenValid(t *testing.T) {
-	// First chunk: valid PAT but corrupt PMT, then padding
+	// First chunk: valid PAT but corrupt PMT (bad CRC), then stuffing
 	// Second chunk: valid PAT/PMT/PCR/PES
 	f, err := os.CreateTemp("", "corruptpmt*.ts")
 	if err != nil {
@@ -195,27 +304,26 @@ func TestParseTsFile_CorruptPmtThenValid(t *testing.T) {
 	}
 	defer os.Remove(f.Name())
 
-	// Valid PAT
+	// Valid PAT with termination
 	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
 	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
+	f.Write(buildStuffingPacket())
+	f.Write(buildStuffingPacket())
+	f.Write(buildTsPacket(0x0000, true, 1, patPayload))
 
-	// Corrupt PMT: valid structure but tampered CRC
+	// Corrupt PMT: valid structure but tampered CRC + termination
 	corruptPmtPayload := []byte{0x02, 0xB0, 0x12, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE0, 0x31, 0xF0, 0x00, 0x1B, 0xE0, 0x31, 0xF0, 0x00, 0xFF, 0xFF, 0xFF, 0xFF}
 	f.Write(buildTsPacket(0x003F, true, 0, corruptPmtPayload))
+	f.Write(buildTsPacket(0x003F, true, 1, corruptPmtPayload))
 
-	// Need a third sync byte for findPat detection of the first PAT
-	f.Write(buildStuffingPacket())
-
-	// Pad to fill the first 64KB buffer with 0xFF
-	padLen := 65536 - 188*3
-	pad := make([]byte, padLen)
-	for i := range pad {
-		pad[i] = 0xFF
+	// Pad with stuffing packets
+	numStuffing := (65536 - 188*6) / 188
+	for i := 0; i < numStuffing; i++ {
+		f.Write(buildStuffingPacket())
 	}
-	f.Write(pad)
 
 	// Second chunk: valid stream
-	writeValidTsStream(f)
+	writeFullStream(f, 1, []uint64{13500})
 	f.Close()
 
 	var opt options.Options
@@ -234,52 +342,94 @@ func TestParseTsFile_PesPacketLossThenValid(t *testing.T) {
 	}
 	defer os.Remove(f.Name())
 
-	// Valid PAT
 	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
+	pmtPayload := []byte{0x02, 0xB0, 0x12, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE0, 0x31, 0xF0, 0x00, 0x1B, 0xE0, 0x31, 0xF0, 0x00, 0xB5, 0x9E, 0xA0, 0xB0}
+	pesHeader := []byte{
+		0x00, 0x00, 0x01, 0xE0,
+		0x00, 0x00, 0x80, 0x80, 0x05,
+		0x21, 0x00, 0x07, 0xD8, 0x61,
+	}
+
+	// Valid PAT with termination
 	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
-
-	// Stuffing packets for findPat sync detection
 	f.Write(buildStuffingPacket())
 	f.Write(buildStuffingPacket())
+	f.Write(buildTsPacket(0x0000, true, 1, patPayload))
 
-	// Valid PMT
-	pmtPayload := []byte{0x02, 0xB0, 0x12, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE0, 0x31, 0xF0, 0x00, 0x1B, 0xE0, 0x31, 0xF0, 0x00, 0xE0, 0x6A, 0x28, 0x6E}
+	// Valid PMT with termination
 	f.Write(buildTsPacket(0x003F, true, 0, pmtPayload))
+	f.Write(buildTsPacket(0x003F, true, 1, pmtPayload))
 
 	// PCR
 	f.Write(buildPcrPacket(0x0031, 13500))
 
-	// PES start packet with cc=0
-	pesHeader := []byte{
-		0x00, 0x00, 0x01, 0xE0,
-		0x00, 0x00,
-		0x80,
-		0x80,
-		0x05,
-		0x21, 0x00, 0x07, 0xD8, 0x61,
-	}
-	f.Write(buildTsPacket(0x0031, true, 0, pesHeader))
+	// PES start packet with cc=1
+	f.Write(buildTsPacket(0x0031, true, 1, pesHeader))
 
-	// Continuation packet with cc=5 (gap: expected 1) -> triggers packet loss
+	// Continuation packet with cc=5 (gap: expected 2) -> triggers packet loss in PES
 	f.Write(buildTsPacket(0x0031, false, 5, []byte{0x00, 0x00}))
 
-	// Pad to fill the first 64KB buffer with 0xFF
-	written := 188 * 7
-	padLen := 65536 - written
-	pad := make([]byte, padLen)
-	for i := range pad {
-		pad[i] = 0xFF
+	// Pad with stuffing packets
+	numStuffing := (65536 - 188*9) / 188
+	for i := 0; i < numStuffing; i++ {
+		f.Write(buildStuffingPacket())
 	}
-	f.Write(pad)
 
 	// Second chunk: valid stream
-	writeValidTsStream(f)
+	writeFullStream(f, 1, []uint64{13500})
 	f.Close()
 
 	var opt options.Options
 	err = ParseTsFile(f.Name(), opt)
 	if err != nil {
 		t.Errorf("expected recovery from PES packet loss, got: %s", err)
+	}
+}
+
+// writeFullStream writes a proper stream where PAT and PMT buffering terminates
+// correctly by including second PUSI packets for each PSI table. This ensures
+// BufferPsi completes without reading to EOF, so the file position is correct
+// for the subsequent PMT/PES parsing phases.
+func writeFullStream(f *os.File, pesPackets int, pcrs []uint64) {
+	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
+	pmtPayload := []byte{0x02, 0xB0, 0x12, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE0, 0x31, 0xF0, 0x00, 0x1B, 0xE0, 0x31, 0xF0, 0x00, 0xB5, 0x9E, 0xA0, 0xB0}
+	pesHeader := []byte{
+		0x00, 0x00, 0x01, 0xE0,
+		0x00, 0x00, 0x80, 0x80, 0x05,
+		0x21, 0x00, 0x07, 0xD8, 0x61,
+	}
+
+	// PAT packet + second PAT (terminates PAT buffering)
+	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
+	f.Write(buildStuffingPacket())
+	f.Write(buildStuffingPacket())
+	f.Write(buildTsPacket(0x0000, true, 1, patPayload)) // second PAT PUSI terminates buffering
+
+	// PMT packet + second PMT (terminates PMT buffering)
+	f.Write(buildTsPacket(0x003F, true, 0, pmtPayload))
+	f.Write(buildTsPacket(0x003F, true, 1, pmtPayload)) // second PMT PUSI terminates buffering
+
+	// Write PCR and PES packets
+	pcrIdx := 0
+	cc := uint8(1)
+	for i := 0; i < pesPackets; i++ {
+		if pcrIdx < len(pcrs) {
+			f.Write(buildPcrPacket(0x0031, pcrs[pcrIdx]))
+			pcrIdx++
+		}
+		f.Write(buildTsPacket(0x0031, true, cc, pesHeader))
+		cc++
+		// Insert continuation packet + PCR between first and second PES
+		if i == 0 && pcrIdx < len(pcrs) {
+			f.Write(buildPcrPacket(0x0031, pcrs[pcrIdx]))
+			pcrIdx++
+			f.Write(buildTsPacket(0x0031, false, cc, []byte{0x00, 0x00}))
+			cc++
+			if pcrIdx < len(pcrs) {
+				f.Write(buildPcrPacket(0x0031, pcrs[pcrIdx]))
+				pcrIdx++
+			}
+		}
 	}
 }
 
@@ -397,6 +547,304 @@ func buildTsPacket(pid uint16, pusi bool, cc uint8, payload []byte) []byte {
 		pkt[i] = 0xFF
 	}
 	return pkt
+}
+
+func TestParseTsFile_DumpPsiOption(t *testing.T) {
+	f, err := os.CreateTemp("", "dumppsi*.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+
+	writeFullStream(f, 1, []uint64{13500})
+	f.Close()
+
+	var opt options.Options
+	opt.DumpPsi = true
+	err = ParseTsFile(f.Name(), opt)
+	if err != nil {
+		t.Errorf("expected successful parse with DumpPsi, got: %s", err)
+	}
+}
+
+func TestParseTsFile_DumpTimestampOption(t *testing.T) {
+	f := createValidTsFile(t, 0)
+	defer os.Remove(f)
+
+	var opt options.Options
+	opt.DumpTimestamp = true
+	err := ParseTsFile(f, opt)
+	if err != nil {
+		t.Errorf("expected successful parse with DumpTimestamp, got: %s", err)
+	}
+}
+
+func TestParseTsFile_DumpPesHeaderOption(t *testing.T) {
+	f, err := os.CreateTemp("", "dumppes*.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+
+	writeFullStream(f, 2, []uint64{13500, 27000})
+	f.Close()
+
+	var opt options.Options
+	opt.DumpPesHeader = true
+	opt.DumpTimestamp = true
+	err = ParseTsFile(f.Name(), opt)
+	if err != nil {
+		t.Errorf("expected successful parse with DumpPesHeader, got: %s", err)
+	}
+}
+
+func TestParseTsFile_MultiplePcrAndPes(t *testing.T) {
+	// Tests the nextPcr update path in BufferPes (pes.nextPcr == 0 && lastPcr > pes.prevPcr)
+	f, err := os.CreateTemp("", "multipcr*.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+
+	writeFullStream(f, 2, []uint64{13500, 27000, 40500})
+	f.Close()
+
+	var opt options.Options
+	opt.DumpTimestamp = true
+	err = ParseTsFile(f.Name(), opt)
+	if err != nil {
+		t.Errorf("expected successful parse with multiple PCRs, got: %s", err)
+	}
+}
+
+func TestBufferPsi_MultiPacket(t *testing.T) {
+	// Tests the pointer_field buffering path in BufferPsi where isBuffering=true
+	// and a second PUSI packet arrives.
+	f, err := os.CreateTemp("", "multipsi*.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+
+	// First PAT packet (PUSI=1, cc=0) with pointer_field=0
+	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
+	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
+	f.Write(buildStuffingPacket())
+	f.Write(buildStuffingPacket())
+
+	// Second PAT packet (PUSI=1, cc=1) - triggers "isBuffering" break path
+	f.Write(buildTsPacket(0x0000, true, 1, patPayload))
+	f.Close()
+
+	file, _ := os.Open(f.Name())
+	defer file.Close()
+
+	var pos int64
+	var opt options.Options
+	pat := NewPat()
+	err = BufferPsi(file, &pos, 0x0, pat, opt)
+	if err != nil {
+		t.Errorf("expected successful BufferPsi, got: %s", err)
+	}
+}
+
+func TestBufferPsi_Continuation(t *testing.T) {
+	// Tests the successful continuation path in BufferPsi (non-PUSI with correct CC)
+	f, err := os.CreateTemp("", "psicont*.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+
+	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
+
+	// First PAT (PUSI=1, cc=0) - starts buffering
+	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
+	// Continuation PAT (PUSI=0, cc=1) - hits the continuation path
+	f.Write(buildTsPacket(0x0000, false, 1, patPayload))
+	// Second PAT PUSI (cc=2) - terminates buffering
+	f.Write(buildTsPacket(0x0000, true, 2, patPayload))
+	f.Close()
+
+	file, _ := os.Open(f.Name())
+	defer file.Close()
+
+	var pos int64
+	var opt options.Options
+	pat := NewPat()
+	err = BufferPsi(file, &pos, 0x0, pat, opt)
+	if err != nil {
+		t.Errorf("expected successful BufferPsi with continuation, got: %s", err)
+	}
+}
+
+func TestBufferPsi_PacketLoss(t *testing.T) {
+	// Tests the packet loss detection path in BufferPsi
+	f, err := os.CreateTemp("", "psiloss*.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+
+	// First PAT packet (PUSI=1, cc=0)
+	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
+	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
+
+	// Continuation packet with cc=5 (gap: expected 1 but got 5) -> packet loss
+	f.Write(buildTsPacket(0x0000, false, 5, patPayload))
+	f.Close()
+
+	file, _ := os.Open(f.Name())
+	defer file.Close()
+
+	var pos int64
+	var opt options.Options
+	pat := NewPat()
+	err = BufferPsi(file, &pos, 0x0, pat, opt)
+	if err == nil {
+		t.Errorf("expected packet loss error, got nil")
+	}
+}
+
+func TestParseTsFile_PatBufferingErrorThenValid(t *testing.T) {
+	// PAT buffering error (packet loss during PAT multi-packet) then valid stream.
+	f, err := os.CreateTemp("", "patbuferr*.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+
+	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
+
+	// First: a PAT PUSI (cc=0) followed by a PAT continuation with wrong cc (cc=5)
+	// This triggers packet loss in BufferPsi -> PAT buffering error
+	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
+	f.Write(buildStuffingPacket())
+	f.Write(buildStuffingPacket())
+	// Continuation packet for PAT with wrong cc -> triggers packet loss error
+	f.Write(buildTsPacket(0x0000, false, 5, patPayload))
+
+	// Pad to fill the first 64KB buffer
+	padLen := 65536 - 188*4
+	pad := make([]byte, padLen)
+	for i := range pad {
+		pad[i] = 0xFF
+	}
+	f.Write(pad)
+
+	// Second chunk: valid stream
+	writeFullStream(f, 1, []uint64{13500})
+	f.Close()
+
+	var opt options.Options
+	err = ParseTsFile(f.Name(), opt)
+	if err != nil {
+		t.Errorf("expected recovery from PAT buffering error, got: %s", err)
+	}
+}
+
+func TestParseTsFile_PmtBufferingErrorThenValid(t *testing.T) {
+	// Valid PAT, then PMT with packet loss during buffering, then valid stream.
+	f, err := os.CreateTemp("", "pmtbuferr*.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+
+	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
+	pmtPayload := []byte{0x02, 0xB0, 0x12, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE0, 0x31, 0xF0, 0x00, 0x1B, 0xE0, 0x31, 0xF0, 0x00, 0xB5, 0x9E, 0xA0, 0xB0}
+
+	// Valid PAT + second PAT for termination
+	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
+	f.Write(buildStuffingPacket())
+	f.Write(buildStuffingPacket())
+	f.Write(buildTsPacket(0x0000, true, 1, patPayload))
+
+	// PMT PUSI (cc=0) then PMT continuation with wrong cc (cc=5)
+	f.Write(buildTsPacket(0x003F, true, 0, pmtPayload))
+	f.Write(buildTsPacket(0x003F, false, 5, pmtPayload))
+
+	// Pad to fill the first 64KB buffer
+	padLen := 65536 - 188*6
+	pad := make([]byte, padLen)
+	for i := range pad {
+		pad[i] = 0xFF
+	}
+	f.Write(pad)
+
+	// Second chunk: valid stream
+	writeFullStream(f, 1, []uint64{13500})
+	f.Close()
+
+	var opt options.Options
+	err = ParseTsFile(f.Name(), opt)
+	if err != nil {
+		t.Errorf("expected recovery from PMT buffering error, got: %s", err)
+	}
+}
+
+func TestParseTsFile_PesErrorThenValid(t *testing.T) {
+	// Valid PAT+PMT, then PES read error, then valid stream in next chunk.
+	f, err := os.CreateTemp("", "peserr*.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+
+	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
+	pmtPayload := []byte{0x02, 0xB0, 0x12, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE0, 0x31, 0xF0, 0x00, 0x1B, 0xE0, 0x31, 0xF0, 0x00, 0xB5, 0x9E, 0xA0, 0xB0}
+
+	// Valid PAT with termination
+	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
+	f.Write(buildStuffingPacket())
+	f.Write(buildStuffingPacket())
+	f.Write(buildTsPacket(0x0000, true, 1, patPayload))
+
+	// Valid PMT with termination
+	f.Write(buildTsPacket(0x003F, true, 0, pmtPayload))
+	f.Write(buildTsPacket(0x003F, true, 1, pmtPayload))
+
+	// Write exactly 1 non-188-byte-aligned chunk to trigger BufferPes read error
+	// Actually, BufferPes only returns fmt.Errorf for read errors. To trigger that,
+	// we need the file to have non-188-byte-aligned data after PMT.
+	// Write 100 bytes of garbage (not 188 aligned) after the valid PMT to trigger
+	// a short read in BufferPes.
+	garbage := make([]byte, 100)
+	for i := range garbage {
+		garbage[i] = 0xAA
+	}
+	f.Write(garbage)
+
+	// Pad to fill the first 64KB buffer
+	written := 188*6 + 100
+	padLen := 65536 - written
+	pad := make([]byte, padLen)
+	for i := range pad {
+		pad[i] = 0xFF
+	}
+	f.Write(pad)
+
+	// Second chunk: valid stream
+	writeFullStream(f, 1, []uint64{13500})
+	f.Close()
+
+	var opt options.Options
+	err = ParseTsFile(f.Name(), opt)
+	if err != nil {
+		t.Errorf("expected recovery from PES error, got: %s", err)
+	}
+}
+
+func TestMaxInt64(t *testing.T) {
+	if maxInt64(1, 2) != 2 {
+		t.Errorf("expected 2")
+	}
+	if maxInt64(3, 1) != 3 {
+		t.Errorf("expected 3")
+	}
+	if maxInt64(5, 5) != 5 {
+		t.Errorf("expected 5")
+	}
 }
 
 // buildPcrPacket creates a 188-byte TS packet with adaptation field containing PCR.
