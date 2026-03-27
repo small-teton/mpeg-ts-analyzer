@@ -182,9 +182,12 @@ PCR-PTS max gap: 729.563591ms
 ## Test & Coverage
 
 ```bash
+make setup      # configure git hooks (run once after clone)
 make test       # run all tests
 make coverage   # run tests with coverage report
 make clean      # remove build/coverage artifacts
 ```
 
 Coverage is measured for `bitbuffer` and `tsparser` packages only. CLI entrypoint (`cmd`, `main.go`) is excluded from coverage targets. Both packages should maintain 100% coverage.
+
+A pre-push hook (`make setup` to enable) runs build, test, and coverage checks before every push. Push is rejected if coverage drops below 100%.
