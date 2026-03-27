@@ -3,9 +3,23 @@
 ![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/small-teton/9d60b1e4226ac2926940b20ce3381621/raw/coverage.json)
 
 mpeg-ts-analyzer is an analyzer for MPEG-2 Transport Stream (ISO/IEC 13818-1).
-It can parse TS header, Adaptation Field, PSI (PAT/PMT) and PES header. It also validates continuity_counter (TS header) and CRC32 (PSI).
+
+It parses TS packets and checks whether the stream conforms to the following requirements defined in the specification:
+
+- **Max PCR interval** should be no greater than 100ms (ISO/IEC 13818-1, Section 2.7.2)
+- **PCR-PTS max gap** (end-to-end delay) should be no greater than 1000ms
+
+In addition, it can dump various MPEG-2 TS internal structures for stream investigation purposes:
+
+- TS header and payload
+- Adaptation Field (including PCR)
+- PSI tables (PAT/PMT) with CRC32 validation
+- PES header with PTS/DTS timestamps
+- continuity_counter validation
 
 **Note:** Only 188-byte TS packets are supported. 192-byte packets (M2TS/BDAV format with TP_extra_header) are not currently supported.
+
+**Note:** The correctness of the output is not guaranteed.
 
 A sample TS file is included in `sample_data/` for quick testing. It was generated with ffmpeg:
 
@@ -33,18 +47,6 @@ Flags:
   -h, --help                    help for mpeg-ts-analyzer
       --version                 show mpeg-ts-analyzer version.
 ```
-
-# Development
-
-## Test & Coverage
-
-```bash
-make test       # run all tests
-make coverage   # run tests with coverage report
-make clean      # remove build/coverage artifacts
-```
-
-Coverage is measured for `bitbuffer` and `tsparser` packages only. CLI entrypoint (`cmd`, `main.go`) is excluded from coverage targets.
 
 # Result Examples
 
@@ -168,3 +170,15 @@ PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x03 (11172 audio
 Max PCR interval: 80.000000ms
 PCR-PTS max gap: 729.563591ms
 ```
+
+# Development
+
+## Test & Coverage
+
+```bash
+make test       # run all tests
+make coverage   # run tests with coverage report
+make clean      # remove build/coverage artifacts
+```
+
+Coverage is measured for `bitbuffer` and `tsparser` packages only. CLI entrypoint (`cmd`, `main.go`) is excluded from coverage targets. Both packages should maintain 100% coverage.
