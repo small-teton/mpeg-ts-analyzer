@@ -35,6 +35,16 @@ ffmpeg -f lavfi -i "color=c=red:s=320x240:d=2,format=yuv420p" \
        -t 2 -c:v mpeg2video -c:a mp2 -f mpegts -mpegts_m2ts_mode 1 sample_data/sample_192byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
 ```
 
+# Install
+
+Pre-built binaries are available on the [Releases](https://github.com/small-teton/mpeg-ts-analyzer/releases) page. No additional tools required.
+
+If you have a [Go](https://go.dev/dl/) environment (1.21+):
+
+```bash
+go install github.com/small-teton/mpeg-ts-analyzer@latest
+```
+
 # Usage
 
 By default, it dumps all timestamps (PCR/PTS/DTS) including PCR interval and PCR-PTS gap. To dump more details, add the corresponding command-line flags.
@@ -183,10 +193,15 @@ PCR-PTS max gap: 729.563591ms
 
 ```bash
 make setup      # configure git hooks (run once after clone)
+make build      # build binary
 make test       # run all tests
 make coverage   # run tests with coverage report
+make install    # install to $GOPATH/bin
+make uninstall  # remove from $GOPATH/bin
 make clean      # remove build/coverage artifacts
 ```
+
+The version string is managed in the `VERSION` file and injected at build time.
 
 Coverage is measured for `bitbuffer` and `tsparser` packages only. CLI entrypoint (`cmd`, `main.go`) is excluded from coverage targets. Both packages should maintain 100% coverage.
 

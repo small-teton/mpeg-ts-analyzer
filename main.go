@@ -1,7 +1,15 @@
 package main
 
-import "github.com/small-teton/mpeg-ts-analyzer/cmd"
+import (
+	_ "embed"
+	"strings"
+
+	"github.com/small-teton/mpeg-ts-analyzer/cmd"
+)
+
+//go:embed VERSION
+var version string
 
 func main() {
-	cmd.Execute()
+	cmd.Execute(strings.TrimSpace(version))
 }
