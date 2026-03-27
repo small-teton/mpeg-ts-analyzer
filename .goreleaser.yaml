@@ -36,6 +36,17 @@ archives:
       - goos: windows
         format: zip
 
+nfpms:
+  - package_name: mpeg-ts-analyzer
+    homepage: "https://github.com/small-teton/mpeg-ts-analyzer"
+    description: "An analyzer for MPEG-2 Transport Stream (ISO/IEC 13818-1)"
+    license: "Apache-2.0"
+    maintainer: "Masahiko Matsuura"
+    formats:
+      - deb
+      - rpm
+      - apk
+
 brews:
   - repository:
       owner: small-teton

@@ -43,6 +43,24 @@ ffmpeg -f lavfi -i "color=c=red:s=320x240:d=2,format=yuv420p" \
 brew install small-teton/tap/mpeg-ts-analyzer
 ```
 
+## Linux packages (deb / rpm / apk)
+
+Download `.deb`, `.rpm`, or `.apk` packages from the [Releases](https://github.com/small-teton/mpeg-ts-analyzer/releases) page.
+
+```bash
+# Debian / Ubuntu
+curl -LO https://github.com/small-teton/mpeg-ts-analyzer/releases/latest/download/mpeg-ts-analyzer_<version>_linux_amd64.deb
+sudo dpkg -i mpeg-ts-analyzer_<version>_linux_amd64.deb
+
+# RHEL / CentOS / Fedora
+curl -LO https://github.com/small-teton/mpeg-ts-analyzer/releases/latest/download/mpeg-ts-analyzer_<version>_linux_amd64.rpm
+sudo rpm -i mpeg-ts-analyzer_<version>_linux_amd64.rpm
+
+# Alpine
+curl -LO https://github.com/small-teton/mpeg-ts-analyzer/releases/latest/download/mpeg-ts-analyzer_<version>_linux_amd64.apk
+sudo apk add --allow-untrusted mpeg-ts-analyzer_<version>_linux_amd64.apk
+```
+
 ## Pre-built binaries
 
 Download from the [Releases](https://github.com/small-teton/mpeg-ts-analyzer/releases) page. No additional tools required.
