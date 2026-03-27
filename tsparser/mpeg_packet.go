@@ -24,12 +24,15 @@ const (
 )
 
 // BufferPsi buffer PSI data from TS payload
-func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, options options.Options, packetSize int) error {
+func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, options options.Options, packetSize int, endOffset int64) error {
 	tsBuffer := make([]byte, packetSize)
 	isBuffering := false
 	tsPacket := NewTsPacket()
 
 	for {
+		if endOffset > 0 && *pos+int64(packetSize) > endOffset {
+			break
+		}
 		size, err := reader.Read(tsBuffer)
 		if err == io.EOF {
 			break
@@ -75,7 +78,7 @@ func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, 
 }
 
 // BufferPes buffer PES data from TS payload
-func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []ProgramInfo, options options.Options, packetSize int) error {
+func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []ProgramInfo, options options.Options, packetSize int, endOffset int64) error {
 	tsBuffer := make([]byte, packetSize)
 	pesMap := make(map[uint16]*Pes)
 	for _, val := range programInfos {
@@ -88,6 +91,9 @@ func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []Progr
 	tsPacket := NewTsPacket()
 
 	for {
+		if endOffset > 0 && *pos+int64(packetSize) > endOffset {
+			break
+		}
 		size, err := reader.Read(tsBuffer)
 		if err == io.EOF {
 			break
