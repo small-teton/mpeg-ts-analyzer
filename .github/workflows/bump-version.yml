@@ -1,0 +1,53 @@
+name: Bump Version
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump type"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bump version
+        id: bump
+        run: |
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          IFS='.' read -r major minor patch <<< "$VERSION"
+          case "${{ inputs.bump }}" in
+            patch) patch=$((patch + 1)) ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+          esac
+          NEW_VERSION="${major}.${minor}.${patch}"
+          echo "$NEW_VERSION" > VERSION
+          echo "old_version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create Pull Request
+        run: |
+          BRANCH="chore/bump-v${{ steps.bump.outputs.new_version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add VERSION
+          git commit -m "bump version to ${{ steps.bump.outputs.new_version }}"
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "bump version to ${{ steps.bump.outputs.new_version }}" \
+            --body "Bump version from ${{ steps.bump.outputs.old_version }} to ${{ steps.bump.outputs.new_version }} (${{ inputs.bump }})."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
