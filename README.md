@@ -1,5 +1,7 @@
 # mpeg-ts-analyzer
 
+![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/small-teton/9d60b1e4226ac2926940b20ce3381621/raw/coverage.json)
+
 mpeg-ts-analyzer is an analyzer for MPEG-2 Transport Stream (ISO/IEC 13818-1).
 It can parse TS header, Adaptation Field, PSI (PAT/PMT) and PES header. It also validates continuity_counter (TS header) and CRC32 (PSI).
 
@@ -31,6 +33,18 @@ Flags:
   -h, --help                    help for mpeg-ts-analyzer
       --version                 show mpeg-ts-analyzer version.
 ```
+
+# Development
+
+## Test & Coverage
+
+```bash
+make test       # run all tests
+make coverage   # run tests with coverage report
+make clean      # remove build/coverage artifacts
+```
+
+Coverage is measured for `bitbuffer` and `tsparser` packages only. CLI entrypoint (`cmd`, `main.go`) is excluded from coverage targets.
 
 # Result Examples
 

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 
 	"github.com/cockroachdb/errors"
 	"github.com/small-teton/mpeg-ts-analyzer/options"
@@ -22,20 +21,17 @@ type MpegPacket interface {
 const tsPacketSize = 188
 
 // BufferPsi buffer PSI data from TS payload
-func BufferPsi(file *os.File, pos *int64, pid uint16, mpegPacket MpegPacket, options options.Options) error {
+func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, options options.Options) error {
 	tsBuffer := make([]byte, tsPacketSize)
 	isBuffering := false
 	tsPacket := NewTsPacket()
 
 	for {
-		size, err := file.Read(tsBuffer)
+		size, err := reader.Read(tsBuffer)
 		if err == io.EOF {
 			break
 		} else if err != nil || size != tsPacketSize {
 			return errors.Wrap(err, "file read error")
-		}
-		if size < tsPacketSize {
-			break
 		}
 
 		tsPacket.Initialize(*pos, options)
@@ -69,7 +65,7 @@ func BufferPsi(file *os.File, pos *int64, pid uint16, mpegPacket MpegPacket, opt
 }
 
 // BufferPes buffer PES data from TS payload
-func BufferPes(file *os.File, pos *int64, pcrPid uint16, programInfos []ProgramInfo, options options.Options) error {
+func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []ProgramInfo, options options.Options) error {
 	tsBuffer := make([]byte, tsPacketSize)
 	pesMap := make(map[uint16]*Pes)
 	for _, val := range programInfos {
@@ -82,14 +78,11 @@ func BufferPes(file *os.File, pos *int64, pcrPid uint16, programInfos []ProgramI
 	tsPacket := NewTsPacket()
 
 	for {
-		size, err := file.Read(tsBuffer)
+		size, err := reader.Read(tsBuffer)
 		if err == io.EOF {
 			break
 		} else if err != nil || size != tsPacketSize {
 			return fmt.Errorf("file read error: %s", err)
-		}
-		if size < tsPacketSize {
-			break
 		}
 
 		tsPacket.Initialize(*pos, options)

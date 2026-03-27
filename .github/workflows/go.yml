@@ -3,7 +3,13 @@
 
 name: Go
 
-on: push
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
 
@@ -22,3 +28,95 @@ jobs:
 
     - name: Test
       run: go test -v ./...
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version-file: './go.mod'
+
+    - name: Run tests with coverage
+      run: |
+        mkdir -p out
+        go test -coverprofile=out/bitbuffer.out -covermode=set ./bitbuffer/...
+        go test -coverprofile=out/tsparser.out -covermode=set ./tsparser/...
+
+    - name: Display coverage
+      run: |
+        echo "=== bitbuffer ==="
+        go tool cover -func=out/bitbuffer.out
+        echo ""
+        echo "=== tsparser ==="
+        go tool cover -func=out/tsparser.out
+
+    - name: Calculate coverage
+      id: coverage
+      run: |
+        BB=$(go tool cover -func=out/bitbuffer.out | grep total | awk '{print $NF}' | tr -d '%')
+        TS=$(go tool cover -func=out/tsparser.out | grep total | awk '{print $NF}' | tr -d '%')
+        echo "bitbuffer=$BB" >> "$GITHUB_OUTPUT"
+        echo "tsparser=$TS" >> "$GITHUB_OUTPUT"
+
+    - name: Update coverage badge
+      if: github.ref == 'refs/heads/master'
+      uses: schneegans/dynamic-badges-action@v1.7.0
+      with:
+        auth: ${{ secrets.GIST_TOKEN }}
+        gistID: 9d60b1e4226ac2926940b20ce3381621
+        filename: coverage.json
+        label: coverage
+        message: "bitbuffer ${{ steps.coverage.outputs.bitbuffer }}% | tsparser ${{ steps.coverage.outputs.tsparser }}%"
+        valColorRange: ${{ steps.coverage.outputs.tsparser }}
+        minColorRange: 50
+        maxColorRange: 100
+
+    - name: Post coverage to PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { execSync } = require('child_process');
+          const bb = execSync('go tool cover -func=out/bitbuffer.out').toString();
+          const ts = execSync('go tool cover -func=out/tsparser.out').toString();
+          const output = '=== bitbuffer ===\n' + bb + '\n=== tsparser ===\n' + ts;
+
+          const bbTotal = bb.match(/total:.*?([\d.]+)%/)?.[1] || 'N/A';
+          const tsTotal = ts.match(/total:.*?([\d.]+)%/)?.[1] || 'N/A';
+
+          const body = `## Test Coverage Report\n\n` +
+            `| Package | Coverage |\n` +
+            `|---------|----------|\n` +
+            `| bitbuffer | ${bbTotal}% |\n` +
+            `| tsparser | ${tsTotal}% |\n\n` +
+            `<details><summary>Details</summary>\n\n` +
+            '```\n' + output + '```\n\n' +
+            `</details>`;
+
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+          const existing = comments.find(c =>
+            c.user.login === 'github-actions[bot]' &&
+            c.body.includes('## Test Coverage Report')
+          );
+          if (existing) {
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: existing.id,
+              body,
+            });
+          } else {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+          }
