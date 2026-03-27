@@ -37,7 +37,17 @@ ffmpeg -f lavfi -i "color=c=red:s=320x240:d=2,format=yuv420p" \
 
 # Install
 
-Pre-built binaries are available on the [Releases](https://github.com/small-teton/mpeg-ts-analyzer/releases) page. No additional tools required.
+## Homebrew (macOS / Linux)
+
+```bash
+brew install small-teton/tap/mpeg-ts-analyzer
+```
+
+## Pre-built binaries
+
+Download from the [Releases](https://github.com/small-teton/mpeg-ts-analyzer/releases) page. No additional tools required.
+
+## Go install
 
 If you have a [Go](https://go.dev/dl/) environment (1.21+):
 
