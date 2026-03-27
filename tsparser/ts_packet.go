@@ -3,7 +3,6 @@ package tsparser
 import (
 	"fmt"
 
-	"github.com/small-teton/mpeg-ts-analyzer/bitbuffer"
 	"github.com/small-teton/mpeg-ts-analyzer/options"
 )
 
@@ -11,10 +10,11 @@ const tsHeaderSize = 4
 
 // TsPacket is mpeg2-ts packet. It has fixed size(188byte).
 type TsPacket struct {
-	pos     int64
-	options options.Options
-	buf     []byte
-	payload []byte
+	pos            int64
+	options        options.Options
+	buf            []byte
+	payload        []byte
+	newBitReader   func() bitReader
 
 	syncByte                   uint8
 	transportErrorIndicator    uint8
@@ -72,7 +72,12 @@ func (tp *TsPacket) Parse() error {
 	if len(tp.buf) < 188 {
 		return fmt.Errorf("buffer is short of length: %d", len(tp.buf))
 	}
-	bb := new(bitbuffer.BitBuffer)
+	var bb bitReader
+	if tp.newBitReader != nil {
+		bb = tp.newBitReader()
+	} else {
+		bb = newDefaultBitReader()
+	}
 	bb.Set(tp.buf)
 
 	var err error

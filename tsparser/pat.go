@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/errors"
-	"github.com/small-teton/mpeg-ts-analyzer/bitbuffer"
 )
 
 // Pat Program Association Table.
@@ -13,6 +12,7 @@ type Pat struct {
 	continuityCounter uint8
 	buf               []byte
 	pmtPid            uint16
+	newBitReader      func() bitReader
 
 	tableID                uint8
 	sectionSyntaxIndicator uint8
@@ -52,7 +52,12 @@ func (p *Pat) Append(buf []byte) {
 
 // Parse PAT data.
 func (p *Pat) Parse() error {
-	bb := new(bitbuffer.BitBuffer)
+	var bb bitReader
+	if p.newBitReader != nil {
+		bb = p.newBitReader()
+	} else {
+		bb = newDefaultBitReader()
+	}
 	bb.Set(p.buf)
 
 	var err error
