@@ -21,12 +21,18 @@ Both 188-byte TS packets and 192-byte M2TS packets (BDAV format with TP_extra_he
 
 **Note:** The correctness of the output is not guaranteed.
 
-A sample TS file is included in `sample_data/` for quick testing. It was generated with ffmpeg:
+Sample TS files are included in `sample_data/` for quick testing:
 
 ```bash
+# 188-byte TS
 ffmpeg -f lavfi -i "color=c=blue:s=320x240:d=5,format=yuv420p" \
        -f lavfi -i "anullsrc=r=48000:cl=stereo" \
-       -t 5 -c:v mpeg2video -c:a mp2 -f mpegts sample_data/sample.ts
+       -t 5 -c:v mpeg2video -c:a mp2 -f mpegts sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
+
+# 192-byte M2TS
+ffmpeg -f lavfi -i "color=c=red:s=320x240:d=2,format=yuv420p" \
+       -f lavfi -i "anullsrc=r=48000:cl=stereo" \
+       -t 2 -c:v mpeg2video -c:a mp2 -f mpegts -mpegts_m2ts_mode 1 sample_data/sample_192byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
 ```
 
 # Usage
@@ -53,8 +59,8 @@ Flags:
 ## No option
 
 ```
-$ ./mpeg-ts-analyzer sample_data/sample.ts
-Input file:  sample_data/sample.ts
+$ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
+Input file:  sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
 Detected PAT: PMT pid = 0x1000
 Detected PMT
 PMT : Program Info : elementary_PID     : 0x100, stream_type : 0x02 (13818-2 video or 11172-2 constrained parameter video stream)
@@ -64,8 +70,8 @@ PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x03 (11172 audio
 ## Dump TS header
 
 ```
-$ ./mpeg-ts-analyzer sample_data/sample.ts --dump-ts-header
-Input file:  sample_data/sample.ts
+$ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts --dump-ts-header
+Input file:  sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
 ===============================================================
  TS Header
 ===============================================================
@@ -101,8 +107,8 @@ continuity_counter              : 0
 ## Dump PSI
 
 ```
-$ ./mpeg-ts-analyzer sample_data/sample.ts --dump-psi
-Input file:  sample_data/sample.ts
+$ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts --dump-psi
+Input file:  sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
 Detected PAT: PMT pid = 0x1000
 
 ===========================================
@@ -142,8 +148,8 @@ PMT : CRC_32                            : f64a0355
 ## Dump timestamp
 
 ```
-$ ./mpeg-ts-analyzer sample_data/sample.ts --dump-timestamp
-Input file:  sample_data/sample.ts
+$ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts --dump-timestamp
+Input file:  sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
 Detected PAT: PMT pid = 0x1000
 Detected PMT
 PMT : Program Info : elementary_PID     : 0x100, stream_type : 0x02 (13818-2 video or 11172-2 constrained parameter video stream)
