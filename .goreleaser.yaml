@@ -36,6 +36,17 @@ archives:
       - goos: windows
         format: zip
 
+brews:
+  - repository:
+      owner: small-teton
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: "https://github.com/small-teton/mpeg-ts-analyzer"
+    description: "An analyzer for MPEG-2 Transport Stream (ISO/IEC 13818-1)"
+    license: "Apache-2.0"
+    install: |
+      bin.install "mpeg-ts-analyzer"
+
 changelog:
   sort: asc
   filters:
