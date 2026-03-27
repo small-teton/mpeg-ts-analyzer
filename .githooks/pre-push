@@ -1,0 +1,31 @@
+#!/bin/sh
+
+echo "=== pre-push: build ==="
+go build ./... || { echo "FAILED: build"; exit 1; }
+
+echo "=== pre-push: test ==="
+go test ./... || { echo "FAILED: test"; exit 1; }
+
+echo "=== pre-push: coverage ==="
+mkdir -p out
+
+go test -coverprofile=out/bitbuffer.out -covermode=set ./bitbuffer/... > /dev/null 2>&1 || { echo "FAILED: bitbuffer test"; exit 1; }
+BB=$(go tool cover -func=out/bitbuffer.out | grep total | awk '{print $NF}' | tr -d '%')
+
+go test -coverprofile=out/tsparser.out -covermode=set ./tsparser/... > /dev/null 2>&1 || { echo "FAILED: tsparser test"; exit 1; }
+TS=$(go tool cover -func=out/tsparser.out | grep total | awk '{print $NF}' | tr -d '%')
+
+echo "  bitbuffer: ${BB}%"
+echo "  tsparser:  ${TS}%"
+
+if [ "$BB" != "100.0" ]; then
+    echo "FAILED: bitbuffer coverage is ${BB}%, expected 100.0%"
+    exit 1
+fi
+
+if [ "$TS" != "100.0" ]; then
+    echo "FAILED: tsparser coverage is ${TS}%, expected 100.0%"
+    exit 1
+fi
+
+echo "=== pre-push: all checks passed ==="
