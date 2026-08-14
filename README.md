@@ -218,9 +218,15 @@ PMT :     profile_idc                   : 100 (High)
 PMT :     level_idc                     : 40 (4.0)
 ```
 
-Supported descriptors: ISO 639 language (0x0A), registration (0x05), AVC video
-(0x28), HEVC video (0x38), MPEG-4 AAC audio (0x7C), teletext (0x56) and DVB
-subtitling (0x59). Any other descriptor is reported by tag with its raw payload.
+Supported descriptors, grouped by the standard that defines them (the
+descriptor_tag range decides which one applies):
+
+- ISO/IEC 13818-1 (ITU-T H.222.0), clause 2.6 — registration (0x05),
+  ISO 639 language (0x0A), AVC video (0x28), HEVC video (0x38)
+- ETSI EN 300 468 (DVB), clause 6.2 — teletext (0x56), subtitling (0x59),
+  AAC (0x7C)
+
+Any other descriptor is reported by tag with its raw payload.
 
 ## Dump timestamp
 
