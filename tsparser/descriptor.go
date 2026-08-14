@@ -57,12 +57,23 @@ func (d Descriptor) Tag() uint8 { return d.tag }
 // Data returns the raw descriptor payload (excluding tag and length).
 func (d Descriptor) Data() []byte { return d.data }
 
-// dumpIndent is the prefix used for descriptor field lines so that the output
-// lines up under the "PMT : Program Info" line printed by DumpProgramInfos.
+// Descriptor detail lines are printed under the "PMT : Program Info" line they
+// belong to, so their ':' is aligned with that line's value column. The
+// "PMT : Program Info : elementary_PID" label is 35 columns wide and is followed
+// by a tab, putting the Program Info value ':' at column 40. descFieldIndent is
+// 10 columns and field names are padded to descFieldWidth (30) so the detail
+// ':' also lands at column 40 (10 + 30).
 const (
 	descHeaderPrefix = "PMT :   descriptor : "
-	descFieldPrefix  = "PMT :     "
+	descFieldIndent  = "PMT :     "
+	descFieldWidth   = 30
 )
+
+// descField prints one "PMT :     <name> : <value>" line with the value
+// formatted from format/args, keeping the ':' aligned at column 40.
+func descField(name, format string, args ...interface{}) {
+	fmt.Printf("%s%-*s: %s\n", descFieldIndent, descFieldWidth, name, fmt.Sprintf(format, args...))
+}
 
 // Dump prints the descriptor detail in the --dump-psi output format.
 func (d Descriptor) Dump() {
@@ -83,7 +94,7 @@ func (d Descriptor) Dump() {
 		d.dumpAACAudio()
 	default:
 		fmt.Printf("%sunknown descriptor (tag 0x%02X)\n", descHeaderPrefix, d.tag)
-		fmt.Printf("%sraw                    : % X\n", descFieldPrefix, d.data)
+		descField("raw", "% X", d.data)
 	}
 }
 
@@ -91,13 +102,13 @@ func (d Descriptor) Dump() {
 func (d Descriptor) dumpRegistration() {
 	fmt.Printf("%sRegistration descriptor\n", descHeaderPrefix)
 	if len(d.data) < 4 {
-		fmt.Printf("%sformat_identifier      : (truncated)\n", descFieldPrefix)
+		descField("format_identifier", "(truncated)")
 		return
 	}
 	id := d.data[0:4]
-	fmt.Printf("%sformat_identifier      : %s (0x%08X)\n", descFieldPrefix, printableASCII(id), uint32(id[0])<<24|uint32(id[1])<<16|uint32(id[2])<<8|uint32(id[3]))
+	descField("format_identifier", "%s (0x%08X)", printableASCII(id), uint32(id[0])<<24|uint32(id[1])<<16|uint32(id[2])<<8|uint32(id[3]))
 	if len(d.data) > 4 {
-		fmt.Printf("%sadditional_info        : % X\n", descFieldPrefix, d.data[4:])
+		descField("additional_info", "% X", d.data[4:])
 	}
 }
 
@@ -107,8 +118,8 @@ func (d Descriptor) dumpISO639Language() {
 	for i := 0; i+4 <= len(d.data); i += 4 {
 		lang := printableASCII(d.data[i : i+3])
 		audioType := d.data[i+3]
-		fmt.Printf("%slanguage_code          : %s\n", descFieldPrefix, lang)
-		fmt.Printf("%saudio_type             : 0x%02X (%s)\n", descFieldPrefix, audioType, audioTypeName(audioType))
+		descField("language_code", "%s", lang)
+		descField("audio_type", "0x%02X (%s)", audioType, audioTypeName(audioType))
 	}
 }
 
@@ -116,20 +127,20 @@ func (d Descriptor) dumpISO639Language() {
 func (d Descriptor) dumpAVCVideo() {
 	fmt.Printf("%sAVC video descriptor\n", descHeaderPrefix)
 	if len(d.data) < 3 {
-		fmt.Printf("%s(truncated)\n", descFieldPrefix)
+		descField("profile_idc", "(truncated)")
 		return
 	}
 	profileIDC := d.data[0]
 	levelIDC := d.data[2]
-	fmt.Printf("%sprofile_idc            : %d (%s)\n", descFieldPrefix, profileIDC, avcProfileName(profileIDC))
-	fmt.Printf("%slevel_idc              : %d (%s)\n", descFieldPrefix, levelIDC, avcLevelName(levelIDC))
+	descField("profile_idc", "%d (%s)", profileIDC, avcProfileName(profileIDC))
+	descField("level_idc", "%d (%s)", levelIDC, avcLevelName(levelIDC))
 }
 
 // dumpHEVCVideo handles tag 0x38 (HEVC_video_descriptor).
 func (d Descriptor) dumpHEVCVideo() {
 	fmt.Printf("%sHEVC video descriptor\n", descHeaderPrefix)
 	if len(d.data) < 12 {
-		fmt.Printf("%s(truncated)\n", descFieldPrefix)
+		descField("profile_idc", "(truncated)")
 		return
 	}
 	tierFlag := (d.data[0] >> 5) & 0x01
@@ -139,24 +150,24 @@ func (d Descriptor) dumpHEVCVideo() {
 	if tierFlag == 1 {
 		tier = "High"
 	}
-	fmt.Printf("%sprofile_idc            : %d (%s)\n", descFieldPrefix, profileIDC, hevcProfileName(profileIDC))
-	fmt.Printf("%stier_flag              : %d (%s tier)\n", descFieldPrefix, tierFlag, tier)
-	fmt.Printf("%slevel_idc              : %d (%s)\n", descFieldPrefix, levelIDC, hevcLevelName(levelIDC))
+	descField("profile_idc", "%d (%s)", profileIDC, hevcProfileName(profileIDC))
+	descField("tier_flag", "%d (%s tier)", tierFlag, tier)
+	descField("level_idc", "%d (%s)", levelIDC, hevcLevelName(levelIDC))
 }
 
 // dumpAACAudio handles tag 0x7C (MPEG-4_AAC_descriptor / AAC_audio_descriptor).
 func (d Descriptor) dumpAACAudio() {
 	fmt.Printf("%sAAC audio descriptor\n", descHeaderPrefix)
 	if len(d.data) < 2 {
-		fmt.Printf("%s(truncated)\n", descFieldPrefix)
+		descField("profile_and_level", "(truncated)")
 		return
 	}
 	profileAndLevel := d.data[0]
 	aacTypeFlag := (d.data[1] >> 7) & 0x01
-	fmt.Printf("%sprofile_and_level      : 0x%02X\n", descFieldPrefix, profileAndLevel)
-	fmt.Printf("%sAAC_type_flag          : %d\n", descFieldPrefix, aacTypeFlag)
+	descField("profile_and_level", "0x%02X", profileAndLevel)
+	descField("AAC_type_flag", "%d", aacTypeFlag)
 	if aacTypeFlag == 1 && len(d.data) >= 3 {
-		fmt.Printf("%sAAC_type               : 0x%02X\n", descFieldPrefix, d.data[2])
+		descField("AAC_type", "0x%02X", d.data[2])
 	}
 }
 
@@ -168,10 +179,10 @@ func (d Descriptor) dumpTeletext() {
 		teletextType := (d.data[i+3] >> 3) & 0x1F
 		magazine := d.data[i+3] & 0x07
 		page := d.data[i+4]
-		fmt.Printf("%slanguage_code          : %s\n", descFieldPrefix, lang)
-		fmt.Printf("%steletext_type          : 0x%02X (%s)\n", descFieldPrefix, teletextType, teletextTypeName(teletextType))
-		fmt.Printf("%smagazine_number        : %d\n", descFieldPrefix, magazine)
-		fmt.Printf("%spage_number            : 0x%02X\n", descFieldPrefix, page)
+		descField("language_code", "%s", lang)
+		descField("teletext_type", "0x%02X (%s)", teletextType, teletextTypeName(teletextType))
+		descField("magazine_number", "%d", magazine)
+		descField("page_number", "0x%02X", page)
 	}
 }
 
@@ -183,10 +194,10 @@ func (d Descriptor) dumpSubtitling() {
 		subtitlingType := d.data[i+3]
 		compositionPageID := uint16(d.data[i+4])<<8 | uint16(d.data[i+5])
 		ancillaryPageID := uint16(d.data[i+6])<<8 | uint16(d.data[i+7])
-		fmt.Printf("%slanguage_code          : %s\n", descFieldPrefix, lang)
-		fmt.Printf("%ssubtitling_type        : 0x%02X (%s)\n", descFieldPrefix, subtitlingType, subtitlingTypeName(subtitlingType))
-		fmt.Printf("%scomposition_page_id    : 0x%04X\n", descFieldPrefix, compositionPageID)
-		fmt.Printf("%sancillary_page_id      : 0x%04X\n", descFieldPrefix, ancillaryPageID)
+		descField("language_code", "%s", lang)
+		descField("subtitling_type", "0x%02X (%s)", subtitlingType, subtitlingTypeName(subtitlingType))
+		descField("composition_page_id", "0x%04X", compositionPageID)
+		descField("ancillary_page_id", "0x%04X", ancillaryPageID)
 	}
 }
 
