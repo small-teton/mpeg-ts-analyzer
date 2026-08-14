@@ -37,12 +37,14 @@ Sample TS files are included in `sample_data/` for quick testing:
 # 188-byte TS
 ffmpeg -f lavfi -i "color=c=blue:s=320x240:d=5,format=yuv420p" \
        -f lavfi -i "anullsrc=r=48000:cl=stereo" \
-       -t 5 -c:v mpeg2video -c:a mp2 -f mpegts sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
+       -t 5 -c:v mpeg2video -c:a mp2 -metadata:s:a:0 language=eng \
+       -f mpegts sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
 
 # 192-byte M2TS
 ffmpeg -f lavfi -i "color=c=red:s=320x240:d=2,format=yuv420p" \
        -f lavfi -i "anullsrc=r=48000:cl=stereo" \
-       -t 2 -c:v mpeg2video -c:a mp2 -f mpegts -mpegts_m2ts_mode 1 sample_data/sample_192byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
+       -t 2 -c:v mpeg2video -c:a mp2 -metadata:s:a:0 language=eng \
+       -f mpegts -mpegts_m2ts_mode 1 sample_data/sample_192byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
 ```
 
 # Install
@@ -188,7 +190,7 @@ Detected PMT
 ===========================================
 PMT : table_id                          : 0x2
 PMT : section_syntax_indicator          : 1
-PMT : section_length                    : 23
+PMT : section_length                    : 29
 PMT : program_number                    : 1
 PMT : version_number                    : 0
 PMT : current_next_indicator            : 1
@@ -198,22 +200,22 @@ PMT : PCR_PID                           : 0x100
 PMT : program_info_length               : 0
 PMT : Program Info : elementary_PID     : 0x100, stream_type : 0x02 (13818-2 video or 11172-2 constrained parameter video stream)
 PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x03 (11172 audio)
-PMT : CRC_32                            : f64a0355
+PMT :   descriptor : ISO 639 language descriptor
+PMT :     language_code          : eng
+PMT :     audio_type             : 0x00 (undefined)
+PMT : CRC_32                            : 11625f80
 ```
 
-When a program's ES info loop contains descriptors, they are decoded and printed
-under the corresponding `Program Info` line. For example, a stream carrying an
-AVC video descriptor and an ISO 639 language descriptor is dumped as:
+Descriptors found in a program's ES info loop are decoded and printed under the
+corresponding `Program Info` line (as seen above for the audio stream's ISO 639
+language descriptor). Other descriptor types are decoded similarly; for example
+an AVC video descriptor on an H.264 stream is dumped as:
 
 ```
 PMT : Program Info : elementary_PID     : 0x100, stream_type : 0x1b (AVC video stream as defined in ITU-T Rec. H.264|ISO/IEC 14496-10 Video)
 PMT :   descriptor : AVC video descriptor
 PMT :     profile_idc            : 100 (High)
 PMT :     level_idc              : 40 (4.0)
-PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x0f (13818-7 audio with ADTS transport syntax)
-PMT :   descriptor : ISO 639 language descriptor
-PMT :     language_code          : eng
-PMT :     audio_type             : 0x00 (undefined)
 ```
 
 Supported descriptors: ISO 639 language (0x0A), registration (0x05), AVC video
