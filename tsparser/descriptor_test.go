@@ -1,6 +1,112 @@
 package tsparser
 
-import "testing"
+import (
+	"bytes"
+	"io"
+	"os"
+	"strings"
+	"testing"
+)
+
+// captureStdout runs f and returns everything it prints to os.Stdout.
+func captureStdout(t *testing.T, f func()) string {
+	t.Helper()
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %s", err)
+	}
+	os.Stdout = w
+	f()
+	w.Close()
+	os.Stdout = old
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, r); err != nil {
+		t.Fatalf("io.Copy: %s", err)
+	}
+	return buf.String()
+}
+
+// expandTabs renders s with tab stops every 8 columns, matching how a terminal
+// displays the tab-aligned lines produced by the PMT dump.
+func expandTabs(s string) string {
+	var b strings.Builder
+	col := 0
+	for _, r := range s {
+		if r == '\t' {
+			for n := 8 - col%8; n > 0; n-- {
+				b.WriteByte(' ')
+				col++
+			}
+			continue
+		}
+		b.WriteRune(r)
+		col++
+	}
+	return b.String()
+}
+
+// descFieldColonCol returns the column of the ':' separator on a descriptor
+// detail line ("PMT :     <name> : <value>"), or -1 if line is not one. The
+// column is detected from the actual output rather than assumed from a width.
+func descFieldColonCol(line string) int {
+	if !strings.HasPrefix(line, descFieldIndent) {
+		return -1 // descriptor header line, not a field
+	}
+	rest := line[len(descFieldIndent):]
+	ci := strings.IndexByte(rest, ':')
+	if ci < 0 {
+		return -1
+	}
+	return len(descFieldIndent) + ci
+}
+
+// TestDescriptorDumpAlignment verifies, by detecting columns from the real
+// output (not from a fixed width), that every descriptor detail line aligns its
+// ':' with the parent "PMT : Program Info" line's ':', and that all descriptor
+// types agree on that column.
+func TestDescriptorDumpAlignment(t *testing.T) {
+	// Detect the column the Program Info line aligns its value ':' to. Descriptor
+	// detail lines are nested under it and must share that column.
+	pmt := parsePmtWithDescriptor(t, 0x0F, []byte{0x0A, 0x04, 'e', 'n', 'g', 0x00})
+	wantCol := -1
+	for _, line := range strings.Split(captureStdout(t, pmt.Dump), "\n") {
+		if strings.Contains(line, "Program Info") {
+			wantCol = alignedColonCol(line)
+			break
+		}
+	}
+	if wantCol < 0 {
+		t.Fatal("could not detect Program Info colon column")
+	}
+
+	descs := []Descriptor{
+		{tag: 0x05, data: []byte{'A', 'C', '-', '3', 0x01}},                      // registration + additional_info
+		{tag: 0x0A, data: []byte{'e', 'n', 'g', 0x02}},                           // ISO 639 language
+		{tag: 0x28, data: []byte{100, 0x00, 40, 0x00}},                           // AVC video
+		{tag: 0x38, data: []byte{0x21, 0x60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 120, 0}}, // HEVC video
+		{tag: 0x7C, data: []byte{0x50, 0x80, 0x01}},                              // AAC audio
+		{tag: 0x56, data: []byte{'e', 'n', 'g', 0x11, 0x00}},                     // teletext
+		{tag: 0x59, data: []byte{'e', 'n', 'g', 0x10, 0x00, 0x01, 0x00, 0x02}},   // subtitling
+		{tag: 0xFF, data: []byte{0xDE, 0xAD}},                                    // unknown (raw)
+	}
+	for _, d := range descs {
+		var fields int
+		for _, line := range strings.Split(captureStdout(t, d.Dump), "\n") {
+			col := descFieldColonCol(line)
+			if col < 0 {
+				continue
+			}
+			fields++
+			if col != wantCol {
+				t.Errorf("tag 0x%02X: detail colon at column %d, want %d (aligned with Program Info): %q", d.tag, col, wantCol, line)
+			}
+		}
+		if fields == 0 {
+			t.Errorf("tag 0x%02X: no field lines produced", d.tag)
+		}
+	}
+}
 
 // buildPmtWithDescriptor builds a valid PMT byte slice carrying a single
 // elementary stream whose ES info loop contains descBytes.

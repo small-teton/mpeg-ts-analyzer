@@ -201,8 +201,8 @@ PMT : program_info_length               : 0
 PMT : Program Info : elementary_PID     : 0x100, stream_type : 0x02 (13818-2 video or 11172-2 constrained parameter video stream)
 PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x03 (11172 audio)
 PMT :   descriptor : ISO 639 language descriptor
-PMT :     language_code          : eng
-PMT :     audio_type             : 0x00 (undefined)
+PMT :     language_code                 : eng
+PMT :     audio_type                    : 0x00 (undefined)
 PMT : CRC_32                            : 11625f80
 ```
 
@@ -214,8 +214,8 @@ an AVC video descriptor on an H.264 stream is dumped as:
 ```
 PMT : Program Info : elementary_PID     : 0x100, stream_type : 0x1b (AVC video stream as defined in ITU-T Rec. H.264|ISO/IEC 14496-10 Video)
 PMT :   descriptor : AVC video descriptor
-PMT :     profile_idc            : 100 (High)
-PMT :     level_idc              : 40 (4.0)
+PMT :     profile_idc                   : 100 (High)
+PMT :     level_idc                     : 40 (4.0)
 ```
 
 Supported descriptors: ISO 639 language (0x0A), registration (0x05), AVC video
