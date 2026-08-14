@@ -14,6 +14,7 @@ In addition, it can dump various MPEG-2 TS internal structures for stream invest
 - TS header and payload
 - Adaptation Field (including PCR)
 - PSI tables (PAT/PMT) with CRC32 validation
+- PMT ES info descriptors (ISO 639 language, registration, AVC/HEVC video, AAC audio, teletext, DVB subtitling)
 - PES header with PTS/DTS timestamps
 - continuity_counter validation
 
@@ -199,6 +200,25 @@ PMT : Program Info : elementary_PID     : 0x100, stream_type : 0x02 (13818-2 vid
 PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x03 (11172 audio)
 PMT : CRC_32                            : f64a0355
 ```
+
+When a program's ES info loop contains descriptors, they are decoded and printed
+under the corresponding `Program Info` line. For example, a stream carrying an
+AVC video descriptor and an ISO 639 language descriptor is dumped as:
+
+```
+PMT : Program Info : elementary_PID     : 0x100, stream_type : 0x1b (AVC video stream as defined in ITU-T Rec. H.264|ISO/IEC 14496-10 Video)
+PMT :   descriptor : AVC video descriptor
+PMT :     profile_idc            : 100 (High)
+PMT :     level_idc              : 40 (4.0)
+PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x0f (13818-7 audio with ADTS transport syntax)
+PMT :   descriptor : ISO 639 language descriptor
+PMT :     language_code          : eng
+PMT :     audio_type             : 0x00 (undefined)
+```
+
+Supported descriptors: ISO 639 language (0x0A), registration (0x05), AVC video
+(0x28), HEVC video (0x38), MPEG-4 AAC audio (0x7C), teletext (0x56) and DVB
+subtitling (0x59). Any other descriptor is reported by tag with its raw payload.
 
 ## Dump timestamp
 
