@@ -218,15 +218,21 @@ PMT :     profile_idc                   : 100 (High)
 PMT :     level_idc                     : 40 (4.0)
 ```
 
-Supported descriptors, grouped by the standard that defines them (the
+mpeg-ts-analyzer decodes a deliberately small, curated set of descriptors — the
+ones most commonly encountered when debugging streams — rather than aiming for
+exhaustive coverage. ISO/IEC 13818-1 and ETSI EN 300 468 together define well
+over a hundred descriptors, but the long tail is rarely seen, so supporting all
+of them would add a lot of code for little practical benefit. Descriptors outside
+this set are still reported by tag with their raw payload, so nothing is silently
+dropped.
+
+Decoded descriptors, grouped by the standard that defines them (the
 descriptor_tag range decides which one applies):
 
 - ISO/IEC 13818-1 (ITU-T H.222.0), clause 2.6 — registration (0x05),
   ISO 639 language (0x0A), AVC video (0x28), HEVC video (0x38)
 - ETSI EN 300 468 (DVB), clause 6.2 — teletext (0x56), subtitling (0x59),
   AAC (0x7C)
-
-Any other descriptor is reported by tag with its raw payload.
 
 ## Dump timestamp
 
