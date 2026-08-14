@@ -19,9 +19,13 @@ import (
 //
 // Because the length is always present, a parser can skip a descriptor it does
 // not understand, which is what keeps the format forward-compatible (see the
-// unknown-tag branch in Descriptor.Dump). In a PMT, descriptors appear in two
-// loops: after program_info_length (whole program) and after each
-// ES_info_length (one elementary stream); this file parses the ES-level loop.
+// unknown-tag branch in Descriptor.Dump). Only a deliberately small, curated set
+// of commonly seen descriptors is decoded here; 13818-1 and EN 300 468 together
+// define well over a hundred, but the long tail is rare, so the rest fall
+// through to the unknown-tag branch and are reported as raw payload. In a PMT,
+// descriptors appear in two loops: after program_info_length (whole program) and
+// after each ES_info_length (one elementary stream); this file parses the
+// ES-level loop.
 //
 // Where the descriptors are specified (descriptor_tag decides which standard):
 //
