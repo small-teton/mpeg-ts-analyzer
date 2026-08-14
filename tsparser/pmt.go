@@ -32,7 +32,11 @@ type ProgramInfo struct {
 	streamType    uint8
 	elementaryPid uint16
 	esInfoLength  uint16
+	descriptors   []Descriptor
 }
+
+// Descriptors return the ES info descriptors of this program info.
+func (pi ProgramInfo) Descriptors() []Descriptor { return pi.descriptors }
 
 // NewPmt create new PMT instance
 func NewPmt() *Pmt {
@@ -133,8 +137,8 @@ func (p *Pmt) Parse() error {
 		if info.esInfoLength, err = bb.ReadUint16(12); err != nil {
 			return errors.Wrap(err, "failed to read pmt program info: es_info_length")
 		}
-		if err := bb.Skip(8 * uint32(info.esInfoLength)); err != nil {
-			return errors.Wrap(err, "failed to skip in pmt program info")
+		if info.descriptors, err = parseDescriptors(bb, info.esInfoLength); err != nil {
+			return errors.Wrap(err, "failed to parse pmt program info descriptors")
 		}
 		remainLength = remainLength - 5 - int32(info.esInfoLength)
 		p.programInfos = append(p.programInfos, info)
@@ -150,8 +154,21 @@ func (p *Pmt) Parse() error {
 	return nil
 }
 
-// DumpProgramInfos Dump Program info
-func (p *Pmt) DumpProgramInfos() {
+// pmtColonColumn is the column where every "key : value" colon in the PMT dump
+// lines up. It is wide enough to clear the longest label,
+// "PMT : Program Info : elementary_PID" (35 columns), so header fields, the
+// per-stream Program Info lines and the descriptor detail lines (see descField)
+// all share one column.
+const pmtColonColumn = 40
+
+// pmtField prints one aligned "PMT : <label> : <value>" header/stream line.
+func pmtField(label, format string, args ...interface{}) {
+	dumpField("PMT : ", pmtColonColumn, label, format, args...)
+}
+
+// DumpProgramInfos Dump Program info. When dumpDescriptors is true, the parsed
+// ES info descriptors are printed under each program info line.
+func (p *Pmt) DumpProgramInfos(dumpDescriptors bool) {
 	for _, val := range p.programInfos {
 		var streamType string
 		switch val.streamType {
@@ -220,7 +237,12 @@ func (p *Pmt) DumpProgramInfos() {
 				streamType = "user private"
 			}
 		}
-		fmt.Printf("PMT : Program Info : elementary_PID	: 0x%02x, stream_type : 0x%02x (%s)\n", val.elementaryPid, val.streamType, streamType)
+		pmtField("Program Info : elementary_PID", "0x%02x, stream_type : 0x%02x (%s)", val.elementaryPid, val.streamType, streamType)
+		if dumpDescriptors {
+			for _, d := range val.descriptors {
+				d.Dump()
+			}
+		}
 	}
 }
 
@@ -229,16 +251,16 @@ func (p *Pmt) Dump() {
 	fmt.Printf("\n===========================================\n")
 	fmt.Printf(" PMT")
 	fmt.Printf("\n===========================================\n")
-	fmt.Printf("PMT : table_id			: 0x%x\n", p.tableID)
-	fmt.Printf("PMT : section_syntax_indicator	: %d\n", p.sectionSyntaxIndicator)
-	fmt.Printf("PMT : section_length		: %d\n", p.sectionLength)
-	fmt.Printf("PMT : program_number		: %d\n", p.programNumber)
-	fmt.Printf("PMT : version_number		: %d\n", p.versionNumber)
-	fmt.Printf("PMT : current_next_indicator	: %d\n", p.currentNextIndicator)
-	fmt.Printf("PMT : section_number		: %d\n", p.sectionNumber)
-	fmt.Printf("PMT : last_section_number	: %d\n", p.lastSectionNumber)
-	fmt.Printf("PMT : PCR_PID			: 0x%x\n", p.pcrPid)
-	fmt.Printf("PMT : program_info_length	: %d\n", p.programInfoLength)
-	p.DumpProgramInfos()
-	fmt.Printf("PMT : CRC_32			: %x\n", p.crc32)
+	pmtField("table_id", "0x%x", p.tableID)
+	pmtField("section_syntax_indicator", "%d", p.sectionSyntaxIndicator)
+	pmtField("section_length", "%d", p.sectionLength)
+	pmtField("program_number", "%d", p.programNumber)
+	pmtField("version_number", "%d", p.versionNumber)
+	pmtField("current_next_indicator", "%d", p.currentNextIndicator)
+	pmtField("section_number", "%d", p.sectionNumber)
+	pmtField("last_section_number", "%d", p.lastSectionNumber)
+	pmtField("PCR_PID", "0x%x", p.pcrPid)
+	pmtField("program_info_length", "%d", p.programInfoLength)
+	p.DumpProgramInfos(true)
+	pmtField("CRC_32", "%x", p.crc32)
 }

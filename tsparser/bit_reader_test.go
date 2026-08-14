@@ -136,7 +136,10 @@ func TestPatParseMockErrorsNetworkPid(t *testing.T) {
 }
 
 // TestPmtParseMockErrors tests all error paths in Pmt.Parse.
-// PMT with 3 streams, no descriptors: 16 + 6*3 + 1 = 35 calls.
+// PMT with 3 streams, no ES descriptors: 16 header/program-info calls +
+// 5 calls per stream (stream_type, reserved, elementary_pid, reserved,
+// es_info_length; parseDescriptors makes no reads when es_info_length is 0) +
+// 1 CRC read = 16 + 5*3 + 1 = 32 calls.
 func TestPmtParseMockErrors(t *testing.T) {
 	data := []byte{0x02, 0xB0, 0x1C, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE0, 0x31, 0xF0, 0x00,
 		0x1B, 0xE0, 0x31, 0xF0, 0x00,
@@ -150,7 +153,7 @@ func TestPmtParseMockErrors(t *testing.T) {
 		t.Fatalf("full parse should succeed: %s", err)
 	}
 
-	for failAt := 1; failAt <= 35; failAt++ {
+	for failAt := 1; failAt <= 32; failAt++ {
 		pmt := NewPmt()
 		pmt.Append(data)
 		pmt.newBitReader = newMockFactory(failAt)

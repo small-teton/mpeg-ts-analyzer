@@ -126,27 +126,35 @@ func (p *Pat) Parse() error {
 	return nil
 }
 
+// patColonColumn is the column where the PAT dump aligns its "key : value" colons.
+const patColonColumn = 32
+
+// patField prints one aligned "PAT : <label> : <value>" line.
+func patField(label, format string, args ...interface{}) {
+	dumpField("PAT : ", patColonColumn, label, format, args...)
+}
+
 // Dump PAT detail.
 func (p *Pat) Dump() {
 	fmt.Printf("\n===========================================\n")
 	fmt.Printf(" PAT")
 	fmt.Printf("\n===========================================\n")
-	fmt.Printf("PAT : table_id			: 0x%x\n", p.tableID)
-	fmt.Printf("PAT : section_syntax_indicator	: %d\n", p.sectionSyntaxIndicator)
-	fmt.Printf("PAT : section_length		: %d\n", p.sectionLength)
-	fmt.Printf("PAT : transport_stream_id	: %d\n", p.transportStreamID)
-	fmt.Printf("PAT : version_number		: %d\n", p.versionNumber)
-	fmt.Printf("PAT : current_next_indicator	: %d\n", p.currentNextIndicator)
-	fmt.Printf("PAT : section_number		: %d\n", p.sectionNumber)
-	fmt.Printf("PAT : last_section_number	: %d\n", p.lastSectionNumber)
+	patField("table_id", "0x%x", p.tableID)
+	patField("section_syntax_indicator", "%d", p.sectionSyntaxIndicator)
+	patField("section_length", "%d", p.sectionLength)
+	patField("transport_stream_id", "%d", p.transportStreamID)
+	patField("version_number", "%d", p.versionNumber)
+	patField("current_next_indicator", "%d", p.currentNextIndicator)
+	patField("section_number", "%d", p.sectionNumber)
+	patField("last_section_number", "%d", p.lastSectionNumber)
 
 	for _, val := range p.programInfo {
-		fmt.Printf("PAT : program_number		: %d\n", val.programNumber)
+		patField("program_number", "%d", val.programNumber)
 		if val.programNumber == 0 {
-			fmt.Printf("PAT : network_PID		: 0x%x\n", val.networkPid)
+			patField("network_PID", "0x%x", val.networkPid)
 		} else {
-			fmt.Printf("PAT : program_map_PID		: 0x%x\n", val.programMapPid)
+			patField("program_map_PID", "0x%x", val.programMapPid)
 		}
 	}
-	fmt.Printf("PAT : CRC_32			: %x\n", p.crc32)
+	patField("CRC_32", "%x", p.crc32)
 }

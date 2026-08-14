@@ -116,7 +116,7 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 		if options.DumpPsi {
 			pmt.Dump()
 		} else {
-			pmt.DumpProgramInfos()
+			pmt.DumpProgramInfos(false)
 		}
 
 		err = BufferPes(reader, &pos, pcrPid, programs, options, packetSize, endOffset)

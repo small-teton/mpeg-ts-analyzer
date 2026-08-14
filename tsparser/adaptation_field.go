@@ -9,11 +9,11 @@ import (
 
 // AdaptationField adaptation_field data.
 type AdaptationField struct {
-	pcr            uint64
-	pos            int64
-	options        options.Options
-	buf            []byte
-	newBitReader   func() bitReader
+	pcr          uint64
+	pos          int64
+	options      options.Options
+	buf          []byte
+	newBitReader func() bitReader
 
 	adaptationFieldLength                  uint8
 	discontinuityIndicator                 uint8
@@ -255,55 +255,63 @@ func (af *AdaptationField) DumpPcr(prevPcr uint64) {
 	}
 }
 
+// afColonColumn is the column where the adaptation_field dump aligns its colons.
+const afColonColumn = 64
+
+// afField prints one aligned "Adaptation Field : <label> : <value>" line.
+func afField(label, format string, args ...interface{}) {
+	dumpField("Adaptation Field : ", afColonColumn, label, format, args...)
+}
+
 // Dump adaptation_field detail.
 func (af *AdaptationField) Dump() {
 	fmt.Printf("\n===========================================\n")
 	fmt.Printf(" Adaptation Field")
 	fmt.Printf("\n===========================================\n")
-	fmt.Printf("Adaptation Field : adaptation_field_length			: %d\n", af.adaptationFieldLength)
+	afField("adaptation_field_length", "%d", af.adaptationFieldLength)
 	if af.adaptationFieldLength <= 0 {
 		return
 	}
-	fmt.Printf("Adaptation Field : discontinuity_indicator			: %d\n", af.discontinuityIndicator)
-	fmt.Printf("Adaptation Field : random_access_indicator			: %d\n", af.randomAccessIndicator)
-	fmt.Printf("Adaptation Field : elementary_stream_priority_indicator		: %d\n", af.elementaryStreamPriorityIndicator)
-	fmt.Printf("Adaptation Field : PCR_flag					: %d\n", af.pcrFlag)
-	fmt.Printf("Adaptation Field : OPCR_flag					: %d\n", af.oPcrFlag)
-	fmt.Printf("Adaptation Field : splicing_point_flag				: %d\n", af.splicingPointFlag)
-	fmt.Printf("Adaptation Field : adaptation_field_extension_flag		: %d\n", af.adaptationFieldExtensionFlag)
+	afField("discontinuity_indicator", "%d", af.discontinuityIndicator)
+	afField("random_access_indicator", "%d", af.randomAccessIndicator)
+	afField("elementary_stream_priority_indicator", "%d", af.elementaryStreamPriorityIndicator)
+	afField("PCR_flag", "%d", af.pcrFlag)
+	afField("OPCR_flag", "%d", af.oPcrFlag)
+	afField("splicing_point_flag", "%d", af.splicingPointFlag)
+	afField("adaptation_field_extension_flag", "%d", af.adaptationFieldExtensionFlag)
 	if af.pcrFlag == 1 {
-		fmt.Printf("Adaptation Field : program_clock_reference_base			: %d\n", af.programClockReferenceBase)
-		fmt.Printf("Adaptation Field : program_clock_reference_extension		: %d\n", af.programClockReferenceExtension)
+		afField("program_clock_reference_base", "%d", af.programClockReferenceBase)
+		afField("program_clock_reference_extension", "%d", af.programClockReferenceExtension)
 		pcrBase := af.programClockReferenceBase
 		pcrExt := uint64(af.programClockReferenceExtension)
 		fmt.Printf("Adaptation Field : PCR 0x%x[%fms]\n", pcrBase*300+pcrExt, float64(pcrBase*300+pcrExt)/300/90)
 
 	}
 	if af.oPcrFlag == 1 {
-		fmt.Printf("Adaptation Field : original_program_clock_reference_base	: %d\n", af.originalProgramClockReferenceBase)
-		fmt.Printf("Adaptation Field : original_program_clock_reference_extension	: %d\n", af.originalProgramClockReferenceExtension)
+		afField("original_program_clock_reference_base", "%d", af.originalProgramClockReferenceBase)
+		afField("original_program_clock_reference_extension", "%d", af.originalProgramClockReferenceExtension)
 	}
 	if af.splicingPointFlag == 1 {
-		fmt.Printf("Adaptation Field : splice_countdown				: %d\n", af.spliceCountdown)
+		afField("splice_countdown", "%d", af.spliceCountdown)
 	}
 	if af.transportPrivateDataFlag == 1 {
-		fmt.Printf("Adaptation Field : transport_private_data_length		: %d\n", af.transportPrivateDataLength)
+		afField("transport_private_data_length", "%d", af.transportPrivateDataLength)
 	}
 	if af.adaptationFieldExtensionFlag == 1 {
-		fmt.Printf("Adaptation Field : adaptation_field_extension_length		: %d\n", af.adaptationFieldExtensionLength)
-		fmt.Printf("Adaptation Field : ltw_flag					: %d\n", af.ltwFlag)
-		fmt.Printf("Adaptation Field : piecewise_rate_flag				: %d\n", af.piecewiseRateFlag)
-		fmt.Printf("Adaptation Field : seamless_splice_flag				: %d\n", af.seamlessSpliceFlag)
+		afField("adaptation_field_extension_length", "%d", af.adaptationFieldExtensionLength)
+		afField("ltw_flag", "%d", af.ltwFlag)
+		afField("piecewise_rate_flag", "%d", af.piecewiseRateFlag)
+		afField("seamless_splice_flag", "%d", af.seamlessSpliceFlag)
 		if af.ltwFlag == 1 {
-			fmt.Printf("Adaptation Field : ltw_valid_flag				: %d\n", af.ltwValidFlag)
-			fmt.Printf("Adaptation Field : ltw_offset					: %d\n", af.ltwOffset)
+			afField("ltw_valid_flag", "%d", af.ltwValidFlag)
+			afField("ltw_offset", "%d", af.ltwOffset)
 		}
 		if af.piecewiseRateFlag == 1 {
-			fmt.Printf("Adaptation Field : piecewise_rate				: %d\n", af.piecewiseRate)
+			afField("piecewise_rate", "%d", af.piecewiseRate)
 		}
 		if af.seamlessSpliceFlag == 1 {
-			fmt.Printf("Adaptation Field : splice_type					: %d\n", af.spliceType)
-			fmt.Printf("Adaptation Field : DTS_next_AU					: %d\n", af.dtsNextAu)
+			afField("splice_type", "%d", af.spliceType)
+			afField("DTS_next_AU", "%d", af.dtsNextAu)
 		}
 	}
 }
