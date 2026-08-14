@@ -172,17 +172,17 @@ Detected PAT: PMT pid = 0x1000
 ===========================================
  PAT
 ===========================================
-PAT : table_id                          : 0x0
-PAT : section_syntax_indicator          : 1
-PAT : section_length                    : 13
-PAT : transport_stream_id               : 1
-PAT : version_number                    : 0
-PAT : current_next_indicator            : 1
-PAT : section_number                    : 0
-PAT : last_section_number               : 0
-PAT : program_number                    : 1
-PAT : program_map_PID                   : 0x1000
-PAT : CRC_32                            : 2ab104b2
+PAT : table_id                  : 0x0
+PAT : section_syntax_indicator  : 1
+PAT : section_length            : 13
+PAT : transport_stream_id       : 1
+PAT : version_number            : 0
+PAT : current_next_indicator    : 1
+PAT : section_number            : 0
+PAT : last_section_number       : 0
+PAT : program_number            : 1
+PAT : program_map_PID           : 0x1000
+PAT : CRC_32                    : 2ab104b2
 Detected PMT
 
 ===========================================

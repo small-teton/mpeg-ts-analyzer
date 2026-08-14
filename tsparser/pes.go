@@ -53,7 +53,7 @@ type Pes struct {
 	pStdBufferFlag                   uint8
 	pesExtensionFlag2                uint8
 	programPacketSequenceCounter     uint8
-	mpeg1Mpeg2Identifier              uint8
+	mpeg1Mpeg2Identifier             uint8
 	originalStuffLength              uint8
 	pStdBufferScale                  uint8
 	pStdBufferSize                   uint16
@@ -382,48 +382,56 @@ func (p *Pes) DumpTimestamp() float64 {
 }
 
 // Dump PES header detail.
+// pesColonColumn is the column where the PES header dump aligns its colons.
+const pesColonColumn = 48
+
+// pesField prints one aligned "PES : <label> : <value>" line.
+func pesField(label, format string, args ...interface{}) {
+	dumpField("PES : ", pesColonColumn, label, format, args...)
+}
+
 func (p *Pes) DumpHeader() {
 	fmt.Printf("\n===========================================\n")
 	fmt.Printf(" PES")
 	fmt.Printf("\n===========================================\n")
-	fmt.Printf("PES : packet_start_code_prefix			: %d\n", p.packetStartCodePrefix)
-	fmt.Printf("PES : stream_id					: %d\n", p.streamID)
-	fmt.Printf("PES : pes_packet_length				: %d\n", p.pesPacketLength)
-	fmt.Printf("PES : pes_scrambling_control			: %d\n", p.pesScramblingControl)
-	fmt.Printf("PES : pes_priority				: %d\n", p.pesPriority)
-	fmt.Printf("PES : data_alignment_indicator			: %d\n", p.dataAlignmentIndicator)
-	fmt.Printf("PES : copyright					: %d\n", p.copyright)
-	fmt.Printf("PES : original_or_copy				: %d\n", p.originalOrCopy)
-	fmt.Printf("PES : pts_dts_flags				: %d\n", p.ptsDtsFlags)
-	fmt.Printf("PES : escr_flag					: %d\n", p.escrFlag)
-	fmt.Printf("PES : es_rate_flag				: %d\n", p.esRateFlag)
-	fmt.Printf("PES : dsm_trick_mode_flag			: %d\n", p.dsmTrickModeFlag)
-	fmt.Printf("PES : additional_copy_info_flag			: %d\n", p.additionalCopyInfoFlag)
-	fmt.Printf("PES : pes_crc_flag				: %d\n", p.pesCrcFlag)
-	fmt.Printf("PES : pes_extention_flag			: %d\n", p.pesExtensionFlag)
-	fmt.Printf("PES : pes_header_data_length			: %d\n", p.pesHeaderDataLength)
-	fmt.Printf("PES : pts					: %d\n", p.pts)
-	fmt.Printf("PES : dts					: %d\n", p.dts)
-	fmt.Printf("PES : escr					: %d\n", p.escr)
-	fmt.Printf("PES : escr_base					: %d\n", p.escrBase)
-	fmt.Printf("PES : escr_extention				: %d\n", p.escrExtension)
-	fmt.Printf("PES : es_rate					: %d\n", p.esRate)
-	fmt.Printf("PES : trick_mode_control			: %d\n", p.trickModeControl)
-	fmt.Printf("PES : field_id					: %d\n", p.fieldID)
-	fmt.Printf("PES : intra_slice_refresh			: %d\n", p.intraSliceRefresh)
-	fmt.Printf("PES : frequency_truncation			: %d\n", p.frequencyTruncation)
-	fmt.Printf("PES : rep_cntrl					: %d\n", p.repCntrl)
-	fmt.Printf("PES : additional_copy_info			: %d\n", p.additionalCopyInfo)
-	fmt.Printf("PES : previous_pes_packet_crc			: %d\n", p.previousPesPacketCrc)
-	fmt.Printf("PES : pes_private_data_flag			: %d\n", p.pesPrivateDataFlag)
-	fmt.Printf("PES : pack_header_field_flag			: %d\n", p.packHeaderFieldFlag)
-	fmt.Printf("PES : program_packet_sequence_counter_flag	: %d\n", p.programPacketSequenceCounterFlag)
-	fmt.Printf("PES : p-std_buffer_flag				: %d\n", p.pStdBufferFlag)
-	fmt.Printf("PES : pes_extention_flag2			: %d\n", p.pesExtensionFlag2)
-	fmt.Printf("PES : program_packet_sequence_counter		: %d\n", p.programPacketSequenceCounter)
-	fmt.Printf("PES : mpeg1_mpeg2_identifer			: %d\n", p.mpeg1Mpeg2Identifier)
-	fmt.Printf("PES : original_stuff_length			: %d\n", p.originalStuffLength)
-	fmt.Printf("PES : p-std_buffer_scale			: %d\n", p.pStdBufferScale)
-	fmt.Printf("PES : p-std_buffer_size				: %d\n", p.pStdBufferSize)
-	fmt.Printf("PES : pes_extention_field_length		: %d\n", p.pesExtensionFieldLength)
+	pesField("packet_start_code_prefix", "%d", p.packetStartCodePrefix)
+	pesField("stream_id", "%d", p.streamID)
+	pesField("pes_packet_length", "%d", p.pesPacketLength)
+	pesField("pes_scrambling_control", "%d", p.pesScramblingControl)
+	pesField("pes_priority", "%d", p.pesPriority)
+	pesField("data_alignment_indicator", "%d", p.dataAlignmentIndicator)
+	pesField("copyright", "%d", p.copyright)
+	pesField("original_or_copy", "%d", p.originalOrCopy)
+	pesField("pts_dts_flags", "%d", p.ptsDtsFlags)
+	pesField("escr_flag", "%d", p.escrFlag)
+	pesField("es_rate_flag", "%d", p.esRateFlag)
+	pesField("dsm_trick_mode_flag", "%d", p.dsmTrickModeFlag)
+	pesField("additional_copy_info_flag", "%d", p.additionalCopyInfoFlag)
+	pesField("pes_crc_flag", "%d", p.pesCrcFlag)
+	pesField("pes_extention_flag", "%d", p.pesExtensionFlag)
+	pesField("pes_header_data_length", "%d", p.pesHeaderDataLength)
+	pesField("pts", "%d", p.pts)
+	pesField("dts", "%d", p.dts)
+	pesField("escr", "%d", p.escr)
+	pesField("escr_base", "%d", p.escrBase)
+	pesField("escr_extention", "%d", p.escrExtension)
+	pesField("es_rate", "%d", p.esRate)
+	pesField("trick_mode_control", "%d", p.trickModeControl)
+	pesField("field_id", "%d", p.fieldID)
+	pesField("intra_slice_refresh", "%d", p.intraSliceRefresh)
+	pesField("frequency_truncation", "%d", p.frequencyTruncation)
+	pesField("rep_cntrl", "%d", p.repCntrl)
+	pesField("additional_copy_info", "%d", p.additionalCopyInfo)
+	pesField("previous_pes_packet_crc", "%d", p.previousPesPacketCrc)
+	pesField("pes_private_data_flag", "%d", p.pesPrivateDataFlag)
+	pesField("pack_header_field_flag", "%d", p.packHeaderFieldFlag)
+	pesField("program_packet_sequence_counter_flag", "%d", p.programPacketSequenceCounterFlag)
+	pesField("p-std_buffer_flag", "%d", p.pStdBufferFlag)
+	pesField("pes_extention_flag2", "%d", p.pesExtensionFlag2)
+	pesField("program_packet_sequence_counter", "%d", p.programPacketSequenceCounter)
+	pesField("mpeg1_mpeg2_identifer", "%d", p.mpeg1Mpeg2Identifier)
+	pesField("original_stuff_length", "%d", p.originalStuffLength)
+	pesField("p-std_buffer_scale", "%d", p.pStdBufferScale)
+	pesField("p-std_buffer_size", "%d", p.pStdBufferSize)
+	pesField("pes_extention_field_length", "%d", p.pesExtensionFieldLength)
 }

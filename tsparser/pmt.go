@@ -161,13 +161,6 @@ func (p *Pmt) Parse() error {
 // all share one column.
 const pmtColonColumn = 40
 
-// dumpField prints one aligned "<prefix><label> : <value>" line, left-padding
-// prefix+label to colonCol so the ':' lines up regardless of label length. It is
-// the shared formatter for the PMT dump and its descriptor detail lines.
-func dumpField(prefix string, colonCol int, label, format string, args ...interface{}) {
-	fmt.Printf("%-*s: %s\n", colonCol, prefix+label, fmt.Sprintf(format, args...))
-}
-
 // pmtField prints one aligned "PMT : <label> : <value>" header/stream line.
 func pmtField(label, format string, args ...interface{}) {
 	dumpField("PMT : ", pmtColonColumn, label, format, args...)
