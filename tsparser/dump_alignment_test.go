@@ -5,24 +5,18 @@ import (
 	"testing"
 )
 
-// alignedColonCol returns the tab-expanded column of the ':' separator that
-// follows the first tab on the line (the "label<tabs>: value" separator used by
-// the dump functions). Lines without a tab-aligned separator return -1.
+// alignedColonCol returns the tab-expanded column of a line's "label : value"
+// separator, i.e. the first ':' that is padded away from its label by two or
+// more spaces. This handles both the tab-aligned dumps (PAT, PES, adaptation
+// field, TS header) and the space-padded PMT dump, while ignoring embedded
+// colons such as the "PMT :" prefix or "Program Info :" that are preceded by a
+// single space. Lines without such a separator return -1.
 func alignedColonCol(line string) int {
-	firstTab := strings.IndexByte(line, '\t')
-	if firstTab < 0 {
-		return -1
-	}
-	col := 0
-	for i, r := range line {
-		if r == '\t' {
-			col += 8 - col%8
-			continue
+	exp := expandTabs(line)
+	for i := 2; i < len(exp); i++ {
+		if exp[i] == ':' && exp[i-1] == ' ' && exp[i-2] == ' ' {
+			return i
 		}
-		if r == ':' && i > firstTab {
-			return col
-		}
-		col++
 	}
 	return -1
 }
@@ -91,25 +85,10 @@ func TestDumpColonAlignment(t *testing.T) {
 	}
 	assertAligned(t, "PES", dumpLines(t, pes.DumpHeader))
 
-	// PMT with three elementary streams. The header fields and the Program Info
-	// lines are separate column groups, so check them independently.
-	pmt := NewPmt()
-	pmt.Append([]byte{0x02, 0xB0, 0x1C, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE0, 0x31, 0xF0, 0x00,
-		0x1B, 0xE0, 0x31, 0xF0, 0x00, 0x0F, 0xE0, 0x64, 0xF0, 0x00, 0x0F, 0xE0, 0x98, 0xF0, 0x00,
-		0x3D, 0xFE, 0xAE, 0x61, 0xFF})
-	if err := pmt.Parse(); err != nil {
-		t.Fatalf("PMT parse: %s", err)
-	}
-	var header, programInfo []string
-	for _, line := range dumpLines(t, pmt.Dump) {
-		if strings.Contains(line, "Program Info") {
-			programInfo = append(programInfo, line)
-		} else {
-			header = append(header, line)
-		}
-	}
-	assertAligned(t, "PMT header fields", header)
-	assertAligned(t, "PMT Program Info", programInfo)
+	// PMT: header fields, the per-stream Program Info lines and the descriptor
+	// detail lines all share a single colon column, so one check covers them all.
+	pmt := parsePmtWithDescriptor(t, 0x0F, []byte{0x0A, 0x04, 'e', 'n', 'g', 0x00})
+	assertAligned(t, "PMT", dumpLines(t, pmt.Dump))
 }
 
 func dumpLines(t *testing.T, fn func()) []string {

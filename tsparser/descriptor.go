@@ -99,22 +99,25 @@ func (d Descriptor) Tag() uint8 { return d.tag }
 // Data returns the raw descriptor payload (excluding tag and length).
 func (d Descriptor) Data() []byte { return d.data }
 
-// Descriptor detail lines are printed under the "PMT : Program Info" line they
-// belong to, so their ':' is aligned with that line's value column. The
-// "PMT : Program Info : elementary_PID" label is 35 columns wide and is followed
-// by a tab, putting the Program Info value ':' at column 40. descFieldIndent is
-// 10 columns and field names are padded to descFieldWidth (30) so the detail
-// ':' also lands at column 40 (10 + 30).
+// Descriptor lines are printed under the "PMT : Program Info" line they belong
+// to. descHeaderIndent is the indent for the "descriptor : <name>" header line
+// and descFieldIndent the deeper indent for its detail lines; both share the
+// whole PMT dump's colon column (pmtColonColumn) via dumpField.
 const (
-	descHeaderPrefix = "PMT :   descriptor : "
+	descHeaderIndent = "PMT :   "
 	descFieldIndent  = "PMT :     "
-	descFieldWidth   = 30
 )
 
-// descField prints one "PMT :     <name> : <value>" line with the value
-// formatted from format/args, keeping the ':' aligned at column 40.
+// descHeader prints the "PMT :   descriptor : <name>" line that introduces a
+// descriptor, aligned with the rest of the PMT dump at pmtColonColumn.
+func descHeader(name string) {
+	dumpField(descHeaderIndent, pmtColonColumn, "descriptor", "%s", name)
+}
+
+// descField prints one "PMT :     <name> : <value>" detail line, aligned with
+// the rest of the PMT dump at pmtColonColumn.
 func descField(name, format string, args ...interface{}) {
-	fmt.Printf("%s%-*s: %s\n", descFieldIndent, descFieldWidth, name, fmt.Sprintf(format, args...))
+	dumpField(descFieldIndent, pmtColonColumn, name, format, args...)
 }
 
 // Dump prints the descriptor detail in the --dump-psi output format.
@@ -135,7 +138,7 @@ func (d Descriptor) Dump() {
 	case 0x7C:
 		d.dumpAACAudio()
 	default:
-		fmt.Printf("%sunknown descriptor (tag 0x%02X)\n", descHeaderPrefix, d.tag)
+		descHeader(fmt.Sprintf("unknown (tag 0x%02X)", d.tag))
 		descField("raw", "% X", d.data)
 	}
 }
@@ -143,7 +146,7 @@ func (d Descriptor) Dump() {
 // dumpRegistration handles tag 0x05 (registration_descriptor).
 // Ref: ISO/IEC 13818-1 clause 2.6.8 / 2.6.9.
 func (d Descriptor) dumpRegistration() {
-	fmt.Printf("%sRegistration descriptor\n", descHeaderPrefix)
+	descHeader("Registration descriptor")
 	if len(d.data) < 4 {
 		descField("format_identifier", "(truncated)")
 		return
@@ -158,7 +161,7 @@ func (d Descriptor) dumpRegistration() {
 // dumpISO639Language handles tag 0x0A (ISO_639_language_descriptor).
 // Ref: ISO/IEC 13818-1 clause 2.6.18 / 2.6.19.
 func (d Descriptor) dumpISO639Language() {
-	fmt.Printf("%sISO 639 language descriptor\n", descHeaderPrefix)
+	descHeader("ISO 639 language descriptor")
 	for i := 0; i+4 <= len(d.data); i += 4 {
 		lang := printableASCII(d.data[i : i+3])
 		audioType := d.data[i+3]
@@ -170,7 +173,7 @@ func (d Descriptor) dumpISO639Language() {
 // dumpAVCVideo handles tag 0x28 (AVC_video_descriptor).
 // Ref: ISO/IEC 13818-1 clause 2.6 (added in the 2007 edition).
 func (d Descriptor) dumpAVCVideo() {
-	fmt.Printf("%sAVC video descriptor\n", descHeaderPrefix)
+	descHeader("AVC video descriptor")
 	if len(d.data) < 3 {
 		descField("profile_idc", "(truncated)")
 		return
@@ -184,7 +187,7 @@ func (d Descriptor) dumpAVCVideo() {
 // dumpHEVCVideo handles tag 0x38 (HEVC_video_descriptor).
 // Ref: ISO/IEC 13818-1 clause 2.6 (added in the 2013 edition).
 func (d Descriptor) dumpHEVCVideo() {
-	fmt.Printf("%sHEVC video descriptor\n", descHeaderPrefix)
+	descHeader("HEVC video descriptor")
 	if len(d.data) < 12 {
 		descField("profile_idc", "(truncated)")
 		return
@@ -204,7 +207,7 @@ func (d Descriptor) dumpHEVCVideo() {
 // dumpAACAudio handles tag 0x7C (DVB AAC_descriptor).
 // Ref: ETSI EN 300 468 clause 6.2. Not the MPEG-2 AAC descriptor (tag 0x2B).
 func (d Descriptor) dumpAACAudio() {
-	fmt.Printf("%sAAC audio descriptor\n", descHeaderPrefix)
+	descHeader("AAC audio descriptor")
 	if len(d.data) < 2 {
 		descField("profile_and_level", "(truncated)")
 		return
@@ -221,7 +224,7 @@ func (d Descriptor) dumpAACAudio() {
 // dumpTeletext handles tag 0x56 (teletext_descriptor).
 // Ref: ETSI EN 300 468 clause 6.2.
 func (d Descriptor) dumpTeletext() {
-	fmt.Printf("%sTeletext descriptor\n", descHeaderPrefix)
+	descHeader("Teletext descriptor")
 	for i := 0; i+5 <= len(d.data); i += 5 {
 		lang := printableASCII(d.data[i : i+3])
 		teletextType := (d.data[i+3] >> 3) & 0x1F
@@ -237,7 +240,7 @@ func (d Descriptor) dumpTeletext() {
 // dumpSubtitling handles tag 0x59 (subtitling_descriptor).
 // Ref: ETSI EN 300 468 clause 6.2.
 func (d Descriptor) dumpSubtitling() {
-	fmt.Printf("%sSubtitling descriptor\n", descHeaderPrefix)
+	descHeader("Subtitling descriptor")
 	for i := 0; i+8 <= len(d.data); i += 8 {
 		lang := printableASCII(d.data[i : i+3])
 		subtitlingType := d.data[i+3]
