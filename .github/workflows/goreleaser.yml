@@ -2,8 +2,12 @@ name: goreleaser
 
 on:
   push:
+    # Only run for well-formed version tags. A malformed tag such as "v.1.5.0"
+    # would otherwise start a run that goreleaser aborts as invalid semver.
+    # This trigger covers tags pushed by a user (e.g. `make release`); the
+    # Release workflow releases its own tag inline instead.
     tags:
-      - "*"
+      - "v[0-9]+.[0-9]+.[0-9]+"
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
