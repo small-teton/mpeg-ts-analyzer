@@ -285,3 +285,25 @@ The version string is managed in the `VERSION` file and injected at build time.
 Coverage is measured for `bitbuffer` and `tsparser` packages only. CLI entrypoint (`cmd`, `main.go`) is excluded from coverage targets. Both packages should maintain 100% coverage.
 
 A pre-push hook (`make setup` to enable) runs build, test, and coverage checks before every push. Push is rejected if coverage drops below 100%.
+
+## Release
+
+Releases are cut from the `VERSION` file. The tag is always `v<VERSION>`, so
+`VERSION` must contain a bare semver (`X.Y.Z`) with no leading `v` and no extra
+dots — a malformed value like `.1.5.0` produces the invalid tag `v.1.5.0` and
+fails the release.
+
+1. **Bump the version in a PR.** Edit `VERSION` (e.g. `1.4.0` → `1.5.0`) and merge
+   the PR to `master`. Do not tag by hand.
+2. **Run the Release workflow.** In GitHub → Actions → **Release** → *Run workflow*
+   (`workflow_dispatch`). It reads `VERSION`, checks that `v<VERSION>` does not
+   already exist, then creates and pushes the tag.
+3. **goreleaser publishes automatically.** Pushing the `v<VERSION>` tag triggers
+   the **goreleaser** workflow, which cross-compiles for linux/windows/darwin and
+   publishes the GitHub Release with the archives attached.
+
+If a release is created with a bad tag, delete the release and its tag before
+retrying — e.g. `gh release delete v.1.5.0 --cleanup-tag`.
+
+`make release` performs the tag step locally instead of via the Release workflow;
+prefer the workflow so releases are always cut from `master`.
