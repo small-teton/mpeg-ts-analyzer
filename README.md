@@ -14,6 +14,7 @@ In addition, it can dump various MPEG-2 TS internal structures for stream invest
 - TS header and payload
 - Adaptation Field (including PCR)
 - PSI tables (PAT/PMT) with CRC32 validation
+- PMT ES info descriptors (ISO 639 language, registration, AVC/HEVC video, AAC audio, teletext, DVB subtitling)
 - PES header with PTS/DTS timestamps
 - continuity_counter validation
 
@@ -36,12 +37,14 @@ Sample TS files are included in `sample_data/` for quick testing:
 # 188-byte TS
 ffmpeg -f lavfi -i "color=c=blue:s=320x240:d=5,format=yuv420p" \
        -f lavfi -i "anullsrc=r=48000:cl=stereo" \
-       -t 5 -c:v mpeg2video -c:a mp2 -f mpegts sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
+       -t 5 -c:v mpeg2video -c:a mp2 -metadata:s:a:0 language=eng \
+       -f mpegts sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
 
 # 192-byte M2TS
 ffmpeg -f lavfi -i "color=c=red:s=320x240:d=2,format=yuv420p" \
        -f lavfi -i "anullsrc=r=48000:cl=stereo" \
-       -t 2 -c:v mpeg2video -c:a mp2 -f mpegts -mpegts_m2ts_mode 1 sample_data/sample_192byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
+       -t 2 -c:v mpeg2video -c:a mp2 -metadata:s:a:0 language=eng \
+       -f mpegts -mpegts_m2ts_mode 1 sample_data/sample_192byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
 ```
 
 # Install
@@ -169,17 +172,17 @@ Detected PAT: PMT pid = 0x1000
 ===========================================
  PAT
 ===========================================
-PAT : table_id                          : 0x0
-PAT : section_syntax_indicator          : 1
-PAT : section_length                    : 13
-PAT : transport_stream_id               : 1
-PAT : version_number                    : 0
-PAT : current_next_indicator            : 1
-PAT : section_number                    : 0
-PAT : last_section_number               : 0
-PAT : program_number                    : 1
-PAT : program_map_PID                   : 0x1000
-PAT : CRC_32                            : 2ab104b2
+PAT : table_id                  : 0x0
+PAT : section_syntax_indicator  : 1
+PAT : section_length            : 13
+PAT : transport_stream_id       : 1
+PAT : version_number            : 0
+PAT : current_next_indicator    : 1
+PAT : section_number            : 0
+PAT : last_section_number       : 0
+PAT : program_number            : 1
+PAT : program_map_PID           : 0x1000
+PAT : CRC_32                    : 2ab104b2
 Detected PMT
 
 ===========================================
@@ -187,7 +190,7 @@ Detected PMT
 ===========================================
 PMT : table_id                          : 0x2
 PMT : section_syntax_indicator          : 1
-PMT : section_length                    : 23
+PMT : section_length                    : 29
 PMT : program_number                    : 1
 PMT : version_number                    : 0
 PMT : current_next_indicator            : 1
@@ -197,8 +200,39 @@ PMT : PCR_PID                           : 0x100
 PMT : program_info_length               : 0
 PMT : Program Info : elementary_PID     : 0x100, stream_type : 0x02 (13818-2 video or 11172-2 constrained parameter video stream)
 PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x03 (11172 audio)
-PMT : CRC_32                            : f64a0355
+PMT :   descriptor                      : ISO 639 language descriptor
+PMT :     language_code                 : eng
+PMT :     audio_type                    : 0x00 (undefined)
+PMT : CRC_32                            : 11625f80
 ```
+
+Descriptors found in a program's ES info loop are decoded and printed under the
+corresponding `Program Info` line (as seen above for the audio stream's ISO 639
+language descriptor). Other descriptor types are decoded similarly; for example
+an AVC video descriptor on an H.264 stream is dumped as:
+
+```
+PMT : Program Info : elementary_PID     : 0x100, stream_type : 0x1b (AVC video stream as defined in ITU-T Rec. H.264|ISO/IEC 14496-10 Video)
+PMT :   descriptor                      : AVC video descriptor
+PMT :     profile_idc                   : 100 (High)
+PMT :     level_idc                     : 40 (4.0)
+```
+
+mpeg-ts-analyzer decodes a deliberately small, curated set of descriptors — the
+ones most commonly encountered when debugging streams — rather than aiming for
+exhaustive coverage. ISO/IEC 13818-1 and ETSI EN 300 468 together define well
+over a hundred descriptors, but the long tail is rarely seen, so supporting all
+of them would add a lot of code for little practical benefit. Descriptors outside
+this set are still reported by tag with their raw payload, so nothing is silently
+dropped.
+
+Decoded descriptors, grouped by the standard that defines them (the
+descriptor_tag range decides which one applies):
+
+- ISO/IEC 13818-1 (ITU-T H.222.0), clause 2.6 — registration (0x05),
+  ISO 639 language (0x0A), AVC video (0x28), HEVC video (0x38)
+- ETSI EN 300 468 (DVB), clause 6.2 — teletext (0x56), subtitling (0x59),
+  AAC (0x7C)
 
 ## Dump timestamp
 
