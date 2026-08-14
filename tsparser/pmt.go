@@ -32,7 +32,11 @@ type ProgramInfo struct {
 	streamType    uint8
 	elementaryPid uint16
 	esInfoLength  uint16
+	descriptors   []Descriptor
 }
+
+// Descriptors return the ES info descriptors of this program info.
+func (pi ProgramInfo) Descriptors() []Descriptor { return pi.descriptors }
 
 // NewPmt create new PMT instance
 func NewPmt() *Pmt {
@@ -133,8 +137,8 @@ func (p *Pmt) Parse() error {
 		if info.esInfoLength, err = bb.ReadUint16(12); err != nil {
 			return errors.Wrap(err, "failed to read pmt program info: es_info_length")
 		}
-		if err := bb.Skip(8 * uint32(info.esInfoLength)); err != nil {
-			return errors.Wrap(err, "failed to skip in pmt program info")
+		if info.descriptors, err = parseDescriptors(bb, info.esInfoLength); err != nil {
+			return errors.Wrap(err, "failed to parse pmt program info descriptors")
 		}
 		remainLength = remainLength - 5 - int32(info.esInfoLength)
 		p.programInfos = append(p.programInfos, info)
@@ -150,8 +154,9 @@ func (p *Pmt) Parse() error {
 	return nil
 }
 
-// DumpProgramInfos Dump Program info
-func (p *Pmt) DumpProgramInfos() {
+// DumpProgramInfos Dump Program info. When dumpDescriptors is true, the parsed
+// ES info descriptors are printed under each program info line.
+func (p *Pmt) DumpProgramInfos(dumpDescriptors bool) {
 	for _, val := range p.programInfos {
 		var streamType string
 		switch val.streamType {
@@ -221,6 +226,11 @@ func (p *Pmt) DumpProgramInfos() {
 			}
 		}
 		fmt.Printf("PMT : Program Info : elementary_PID	: 0x%02x, stream_type : 0x%02x (%s)\n", val.elementaryPid, val.streamType, streamType)
+		if dumpDescriptors {
+			for _, d := range val.descriptors {
+				d.Dump()
+			}
+		}
 	}
 }
 
@@ -239,6 +249,6 @@ func (p *Pmt) Dump() {
 	fmt.Printf("PMT : last_section_number	: %d\n", p.lastSectionNumber)
 	fmt.Printf("PMT : PCR_PID			: 0x%x\n", p.pcrPid)
 	fmt.Printf("PMT : program_info_length	: %d\n", p.programInfoLength)
-	p.DumpProgramInfos()
+	p.DumpProgramInfos(true)
 	fmt.Printf("PMT : CRC_32			: %x\n", p.crc32)
 }

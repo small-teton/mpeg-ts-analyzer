@@ -230,7 +230,7 @@ func TestPmtDumpProgramInfos(t *testing.T) {
 		{streamType: 0x90, elementaryPid: 0x18, esInfoLength: 0}, // user private (>0x7E)
 	}
 	// Should not panic
-	pmt.DumpProgramInfos()
+	pmt.DumpProgramInfos(false)
 }
 
 func TestPmtDump(t *testing.T) {
@@ -269,7 +269,7 @@ func TestPmtDumpProgramInfosAllTypes(t *testing.T) {
 		{streamType: 0x1A, elementaryPid: 0x35, esInfoLength: 0},
 	}
 	// Should not panic; covers all stream type switch cases 0x04-0x1A
-	pmt.DumpProgramInfos()
+	pmt.DumpProgramInfos(true)
 }
 
 func TestPmtParseErrors(t *testing.T) {
