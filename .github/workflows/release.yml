@@ -29,3 +29,22 @@ jobs:
         run: |
           git tag "v${{ steps.version.outputs.version }}"
           git push origin "v${{ steps.version.outputs.version }}"
+
+      # GoReleaser runs in this same job rather than relying on the goreleaser
+      # workflow's `push: tags` trigger: a tag pushed with the default
+      # GITHUB_TOKEN does not start other workflow runs, so the tag push above
+      # would never kick off a separate release. Running it here releases the
+      # tag we just created.
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: "./go.mod"
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v5
+        with:
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
