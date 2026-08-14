@@ -263,6 +263,12 @@ func printableASCII(b []byte) string {
 	return string(out)
 }
 
+// audioTypeName maps the ISO 639 language descriptor's audio_type field
+// (ISO/IEC 13818-1 clause 2.6.19). 0x00 "undefined" is the common default: it
+// means the track carries no special audio-type designation (i.e. an ordinary
+// main audio track), not that parsing failed. The bundled sample streams are
+// muxed with only a language tag, so they report 0x00; the 0x01-0x03 values are
+// exercised by unit tests instead.
 func audioTypeName(t uint8) string {
 	switch t {
 	case 0x00:
