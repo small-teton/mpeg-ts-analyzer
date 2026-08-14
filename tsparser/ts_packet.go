@@ -10,11 +10,11 @@ const tsHeaderSize = 4
 
 // TsPacket is mpeg2-ts packet. It has fixed size(188byte).
 type TsPacket struct {
-	pos            int64
-	options        options.Options
-	buf            []byte
-	payload        []byte
-	newBitReader   func() bitReader
+	pos          int64
+	options      options.Options
+	buf          []byte
+	payload      []byte
+	newBitReader func() bitReader
 
 	syncByte                   uint8
 	transportErrorIndicator    uint8
@@ -148,20 +148,28 @@ func (tp *TsPacket) Pid() uint16 { return tp.pid }
 // ContinuityCounter return this TsPacket payload_unit_start_indicator.
 func (tp *TsPacket) ContinuityCounter() uint8 { return tp.continuityCounter }
 
+// tsColonColumn is the column where the TS header dump aligns its colons.
+const tsColonColumn = 32
+
+// tsField prints one aligned "<label> : <value>" TS header line (no prefix).
+func tsField(label, format string, args ...interface{}) {
+	dumpField("", tsColonColumn, label, format, args...)
+}
+
 // DumpHeader print this TsPacket header detail.
 func (tp *TsPacket) DumpHeader() {
 	fmt.Printf("===============================================================\n")
 	fmt.Printf(" TS Header\n")
 	fmt.Printf("===============================================================\n")
 
-	fmt.Printf("transport_error_indicator	: %d\n", tp.transportErrorIndicator)
-	fmt.Printf("payload_unit_start_indicator	: %d\n", tp.payloadUnitStartIndicator)
-	fmt.Printf("transport_priority		: %d\n", tp.transportPriority)
-	fmt.Printf("pid				: 0x%x\n", tp.pid)
+	tsField("transport_error_indicator", "%d", tp.transportErrorIndicator)
+	tsField("payload_unit_start_indicator", "%d", tp.payloadUnitStartIndicator)
+	tsField("transport_priority", "%d", tp.transportPriority)
+	tsField("pid", "0x%x", tp.pid)
 
-	fmt.Printf("transport_scrambling_control	: %x\n", tp.transportScramblingControl)
-	fmt.Printf("adaptation_field_control	: %x\n", tp.adaptationFieldControl)
-	fmt.Printf("continuity_counter		: %x\n", tp.continuityCounter)
+	tsField("transport_scrambling_control", "%x", tp.transportScramblingControl)
+	tsField("adaptation_field_control", "%x", tp.adaptationFieldControl)
+	tsField("continuity_counter", "%x", tp.continuityCounter)
 }
 
 // DumpData print this TsPacket payload binary.
