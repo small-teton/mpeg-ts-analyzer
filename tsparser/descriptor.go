@@ -6,6 +6,44 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
+// Descriptors are optional, self-describing metadata attached to PSI tables.
+// A PMT only carries the mandatory skeleton of each elementary stream
+// (stream_type + elementary_PID); descriptors hang off it to add attributes such
+// as audio language, codec profile/level or the real format of a private stream.
+//
+// Each descriptor is a simple TLV:
+//
+//	descriptor_tag    (8 bit)  - what kind of descriptor this is
+//	descriptor_length (8 bit)  - number of payload bytes that follow
+//	payload           (length bytes, format depends on the tag)
+//
+// Because the length is always present, a parser can skip a descriptor it does
+// not understand, which is what keeps the format forward-compatible (see the
+// unknown-tag branch in Descriptor.Dump). In a PMT, descriptors appear in two
+// loops: after program_info_length (whole program) and after each
+// ES_info_length (one elementary stream); this file parses the ES-level loop.
+//
+// Where the descriptors are specified (descriptor_tag decides which standard):
+//
+//	tag 0x00-0x3F : ISO/IEC 13818-1 (H.222.0), clause 2.6
+//	                "Program and program element descriptors".
+//	                The tag list is Table 2-39 in clause 2.6.1 (2000 edition;
+//	                renumbered Table 2-45 in the 2007/2013+ editions).
+//	tag 0x40-0xFF : "user private" in 13818-1; assigned by application
+//	                standards such as DVB (ETSI EN 300 468, clause 6.2).
+//
+// Per-tag references (edition-dependent clause numbers are approximate):
+//
+//	0x05 registration          ISO/IEC 13818-1  clause 2.6.8 / 2.6.9
+//	0x0A ISO_639_language       ISO/IEC 13818-1  clause 2.6.18 / 2.6.19
+//	0x28 AVC_video              ISO/IEC 13818-1  clause 2.6 (added in the 2007 edition)
+//	0x38 HEVC_video             ISO/IEC 13818-1  clause 2.6 (added in the 2013 edition)
+//	0x56 teletext               ETSI EN 300 468  clause 6.2
+//	0x59 subtitling             ETSI EN 300 468  clause 6.2
+//	0x7C AAC (DVB)              ETSI EN 300 468  clause 6.2
+//	                            (note: the MPEG-2 AAC descriptor is a different
+//	                            tag, 0x2B, in ISO/IEC 13818-1 clause 2.6)
+
 // parseDescriptors reads descriptors covering exactly totalLength bytes from bb.
 // It always consumes totalLength bytes so the surrounding parser stays aligned,
 // even if the descriptor loop is malformed.
@@ -99,6 +137,7 @@ func (d Descriptor) Dump() {
 }
 
 // dumpRegistration handles tag 0x05 (registration_descriptor).
+// Ref: ISO/IEC 13818-1 clause 2.6.8 / 2.6.9.
 func (d Descriptor) dumpRegistration() {
 	fmt.Printf("%sRegistration descriptor\n", descHeaderPrefix)
 	if len(d.data) < 4 {
@@ -113,6 +152,7 @@ func (d Descriptor) dumpRegistration() {
 }
 
 // dumpISO639Language handles tag 0x0A (ISO_639_language_descriptor).
+// Ref: ISO/IEC 13818-1 clause 2.6.18 / 2.6.19.
 func (d Descriptor) dumpISO639Language() {
 	fmt.Printf("%sISO 639 language descriptor\n", descHeaderPrefix)
 	for i := 0; i+4 <= len(d.data); i += 4 {
@@ -124,6 +164,7 @@ func (d Descriptor) dumpISO639Language() {
 }
 
 // dumpAVCVideo handles tag 0x28 (AVC_video_descriptor).
+// Ref: ISO/IEC 13818-1 clause 2.6 (added in the 2007 edition).
 func (d Descriptor) dumpAVCVideo() {
 	fmt.Printf("%sAVC video descriptor\n", descHeaderPrefix)
 	if len(d.data) < 3 {
@@ -137,6 +178,7 @@ func (d Descriptor) dumpAVCVideo() {
 }
 
 // dumpHEVCVideo handles tag 0x38 (HEVC_video_descriptor).
+// Ref: ISO/IEC 13818-1 clause 2.6 (added in the 2013 edition).
 func (d Descriptor) dumpHEVCVideo() {
 	fmt.Printf("%sHEVC video descriptor\n", descHeaderPrefix)
 	if len(d.data) < 12 {
@@ -155,7 +197,8 @@ func (d Descriptor) dumpHEVCVideo() {
 	descField("level_idc", "%d (%s)", levelIDC, hevcLevelName(levelIDC))
 }
 
-// dumpAACAudio handles tag 0x7C (MPEG-4_AAC_descriptor / AAC_audio_descriptor).
+// dumpAACAudio handles tag 0x7C (DVB AAC_descriptor).
+// Ref: ETSI EN 300 468 clause 6.2. Not the MPEG-2 AAC descriptor (tag 0x2B).
 func (d Descriptor) dumpAACAudio() {
 	fmt.Printf("%sAAC audio descriptor\n", descHeaderPrefix)
 	if len(d.data) < 2 {
@@ -172,6 +215,7 @@ func (d Descriptor) dumpAACAudio() {
 }
 
 // dumpTeletext handles tag 0x56 (teletext_descriptor).
+// Ref: ETSI EN 300 468 clause 6.2.
 func (d Descriptor) dumpTeletext() {
 	fmt.Printf("%sTeletext descriptor\n", descHeaderPrefix)
 	for i := 0; i+5 <= len(d.data); i += 5 {
@@ -187,6 +231,7 @@ func (d Descriptor) dumpTeletext() {
 }
 
 // dumpSubtitling handles tag 0x59 (subtitling_descriptor).
+// Ref: ETSI EN 300 468 clause 6.2.
 func (d Descriptor) dumpSubtitling() {
 	fmt.Printf("%sSubtitling descriptor\n", descHeaderPrefix)
 	for i := 0; i+8 <= len(d.data); i += 8 {
