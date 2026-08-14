@@ -296,14 +296,19 @@ fails the release.
 1. **Bump the version in a PR.** Edit `VERSION` (e.g. `1.4.0` → `1.5.0`) and merge
    the PR to `master`. Do not tag by hand.
 2. **Run the Release workflow.** In GitHub → Actions → **Release** → *Run workflow*
-   (`workflow_dispatch`). It reads `VERSION`, checks that `v<VERSION>` does not
-   already exist, then creates and pushes the tag.
-3. **goreleaser publishes automatically.** Pushing the `v<VERSION>` tag triggers
-   the **goreleaser** workflow, which cross-compiles for linux/windows/darwin and
-   publishes the GitHub Release with the archives attached.
+   (`workflow_dispatch`, so only users with write access can start it). It reads
+   `VERSION`, checks that `v<VERSION>` does not already exist, creates and pushes
+   the tag, then runs GoReleaser in the same job to cross-compile for
+   linux/windows/darwin and publish the GitHub Release with the archives attached.
 
-If a release is created with a bad tag, delete the release and its tag before
-retrying — e.g. `gh release delete v.1.5.0 --cleanup-tag`.
+That is the whole flow — bump `VERSION` in a PR, then trigger the workflow.
 
-`make release` performs the tag step locally instead of via the Release workflow;
-prefer the workflow so releases are always cut from `master`.
+GoReleaser runs inside the Release job (not as a reaction to the tag push)
+because a tag pushed with the workflow's `GITHUB_TOKEN` does not start other
+workflow runs. The separate **goreleaser** workflow only fires for well-formed
+`vX.Y.Z` tags pushed by a user (e.g. `make release`, which tags locally instead
+of going through the Release workflow — prefer the workflow so releases are
+always cut from `master`).
+
+If a release is ever created with a bad tag, delete the release and its tag
+before retrying — e.g. `gh release delete v.1.5.0 --cleanup-tag`.
