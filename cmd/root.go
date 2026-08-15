@@ -13,10 +13,10 @@ var opt options.Options
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:     "mpeg-ts-analyzer [input file path]",
-	Args:    cobra.ExactArgs(1),
-	Short:   "An analyzer for MPEG-2 Transport Stream (ISO/IEC 13818-1)",
-	Long:    "It can parse TS header, Adaptation Field, PSI (PAT/PMT) and PES header. It also validates continuity_counter (TS header) and CRC32 (PSI).",
+	Use:   "mpeg-ts-analyzer [input file path]",
+	Args:  cobra.ExactArgs(1),
+	Short: "An analyzer for MPEG-2 Transport Stream (ISO/IEC 13818-1)",
+	Long:  "It can parse TS header, Adaptation Field, PSI (PAT/PMT) and PES header. It also validates continuity_counter (TS header) and CRC32 (PSI).",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return tsparser.ParseTsFile(args[0], opt)
 	},

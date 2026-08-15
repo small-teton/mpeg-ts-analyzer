@@ -19,7 +19,7 @@ type MpegPacket interface {
 }
 
 const (
-	tsPayloadSize    = 188
+	tsPayloadSize     = 188
 	tpExtraHeaderSize = 4
 )
 

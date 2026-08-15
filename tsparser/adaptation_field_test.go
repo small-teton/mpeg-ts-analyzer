@@ -279,9 +279,9 @@ func TestAdaptationFieldDump(t *testing.T) {
 	// Flags byte: disc=0,random=0,priority=0,pcr=1,opcr=0,splicing=0,private=0,ext=0 = 0x10
 	// Just use a simple PCR-only AF for the Dump test
 	data := []byte{
-		0x07,                                     // adaptation_field_length=7
-		0x10,                                     // flags: pcrFlag=1
-		0x00, 0x00, 0x00, 0x32, 0x7E, 0x32,      // PCR data (base=100, ext=50)
+		0x07,                               // adaptation_field_length=7
+		0x10,                               // flags: pcrFlag=1
+		0x00, 0x00, 0x00, 0x32, 0x7E, 0x32, // PCR data (base=100, ext=50)
 	}
 	af := NewAdaptationField()
 	af.Append(data)
@@ -302,17 +302,17 @@ func TestAdaptationFieldDump(t *testing.T) {
 
 func TestAdaptationFieldDumpAllFlags(t *testing.T) {
 	data := []byte{
-		0x1C,                                           // adaptation_field_length=28
-		0xFF,                                           // all flags: disc=1,random=1,priority=1,pcr=1,opcr=1,splice=1,private=1,ext=1
-		0x00, 0x00, 0x00, 0x32, 0x7E, 0x32,            // PCR base=100, ext=50
-		0x00, 0x00, 0x00, 0x32, 0x7E, 0x32,            // OPCR base=100, ext=50
-		0xAB,                                           // splice_countdown
-		0x01, 0xDD,                                     // private: length=1, data=0xDD
-		0x0B,                                           // extension length=11
-		0xE0,                                           // ext flags: ltw=1, piecewise=1, seamless=1, reserved=00000
-		0x92, 0x34,                                     // LTW: valid=1, offset=0x1234
-		0x01, 0x86, 0xA0,                               // piecewise: reserved=00, rate=100000
-		0x35, 0x00, 0xC9, 0x01, 0x91,                   // seamless: spliceType=3, dtsNextAu parts
+		0x1C,                               // adaptation_field_length=28
+		0xFF,                               // all flags: disc=1,random=1,priority=1,pcr=1,opcr=1,splice=1,private=1,ext=1
+		0x00, 0x00, 0x00, 0x32, 0x7E, 0x32, // PCR base=100, ext=50
+		0x00, 0x00, 0x00, 0x32, 0x7E, 0x32, // OPCR base=100, ext=50
+		0xAB,       // splice_countdown
+		0x01, 0xDD, // private: length=1, data=0xDD
+		0x0B,       // extension length=11
+		0xE0,       // ext flags: ltw=1, piecewise=1, seamless=1, reserved=00000
+		0x92, 0x34, // LTW: valid=1, offset=0x1234
+		0x01, 0x86, 0xA0, // piecewise: reserved=00, rate=100000
+		0x35, 0x00, 0xC9, 0x01, 0x91, // seamless: spliceType=3, dtsNextAu parts
 	}
 	af := NewAdaptationField()
 	af.Append(data)
@@ -325,17 +325,17 @@ func TestAdaptationFieldDumpAllFlags(t *testing.T) {
 
 func TestAdaptationFieldParseErrors(t *testing.T) {
 	valid := []byte{
-		0x1C,                                           // adaptation_field_length=28
-		0xFF,                                           // all flags
-		0x00, 0x00, 0x00, 0x32, 0x7E, 0x32,            // PCR
-		0x00, 0x00, 0x00, 0x32, 0x7E, 0x32,            // OPCR
-		0xAB,                                           // splice_countdown
-		0x01, 0xDD,                                     // private data
-		0x0B,                                           // extension length
-		0xE0,                                           // ext flags
-		0x92, 0x34,                                     // LTW
-		0x01, 0x86, 0xA0,                               // piecewise
-		0x35, 0x00, 0xC9, 0x01, 0x91,                   // seamless
+		0x1C,                               // adaptation_field_length=28
+		0xFF,                               // all flags
+		0x00, 0x00, 0x00, 0x32, 0x7E, 0x32, // PCR
+		0x00, 0x00, 0x00, 0x32, 0x7E, 0x32, // OPCR
+		0xAB,       // splice_countdown
+		0x01, 0xDD, // private data
+		0x0B,       // extension length
+		0xE0,       // ext flags
+		0x92, 0x34, // LTW
+		0x01, 0x86, 0xA0, // piecewise
+		0x35, 0x00, 0xC9, 0x01, 0x91, // seamless
 	}
 	// Full parse should succeed
 	af := NewAdaptationField()

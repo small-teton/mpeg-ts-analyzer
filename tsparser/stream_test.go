@@ -11,12 +11,12 @@ import (
 
 // errReadSeeker is a mock io.ReadSeeker that returns errors on specific Read/Seek calls.
 type errReadSeeker struct {
-	data        []byte
-	pos         int64
-	failAt      int // fail on the Nth Read call (0-indexed), -1 to disable
-	readNum     int
-	seekFailAt  int // fail on the Nth Seek call (1-indexed), 0 to disable
-	seekNum     int
+	data       []byte
+	pos        int64
+	failAt     int // fail on the Nth Read call (0-indexed), -1 to disable
+	readNum    int
+	seekFailAt int // fail on the Nth Seek call (1-indexed), 0 to disable
+	seekNum    int
 }
 
 func (r *errReadSeeker) Read(p []byte) (int, error) {
@@ -514,10 +514,10 @@ func createValidTsFile(t *testing.T, garbageLen int) string {
 	// PES packet on PID 0x31 (video) with PTS
 	pesHeader := []byte{
 		0x00, 0x00, 0x01, 0xE0, // start code + stream_id (video)
-		0x00, 0x00,             // pes_packet_length=0 (unbounded)
-		0x80,                   // '10' marker
-		0x80,                   // PTS only
-		0x05,                   // pes_header_data_length
+		0x00, 0x00, // pes_packet_length=0 (unbounded)
+		0x80,                         // '10' marker
+		0x80,                         // PTS only
+		0x05,                         // pes_header_data_length
 		0x21, 0x00, 0x07, 0xD8, 0x61, // PTS = 1000
 	}
 	f.Write(buildTsPacket(0x0031, true, 1, pesHeader))
