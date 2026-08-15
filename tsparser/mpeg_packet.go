@@ -57,6 +57,10 @@ func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, 
 			continue
 		}
 		if tsPacket.PayloadUnitStartIndicator() {
+			// buf[0] is the pointer_field; reject values that run past the payload.
+			if 1+int(buf[0]) > len(buf) {
+				return errors.Newf("invalid pointer_field %d at pos:0x%08x", buf[0], *pos)
+			}
 			if isBuffering {
 				mpegPacket.Append(buf[1 : 1+buf[0]]) // read until pointer_field
 				break

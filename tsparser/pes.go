@@ -155,6 +155,11 @@ func (p *Pes) Parse() error {
 	}
 	switch p.streamID {
 	case 0xBC, 0xBF, 0xF0, 0xF1, 0xFF, 0xF2, 0xF8:
+		// pes_packet_length is attacker-controlled; reject a length that runs
+		// past the buffered data.
+		if 6+int(p.pesPacketLength) > len(p.buf) {
+			return errors.Newf("invalid pes_packet_length: %d", p.pesPacketLength)
+		}
 		p.data = p.buf[6 : 6+p.pesPacketLength]
 		return nil
 	}

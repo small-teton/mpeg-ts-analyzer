@@ -121,6 +121,11 @@ func (tp *TsPacket) Parse() error {
 		tp.payload = tp.buf[tsHeaderSize:]
 	}
 	if tp.adaptationFieldControl == 3 {
+		// afLength (adaptation_field_length) is attacker-controlled; reject one
+		// that would place the payload start past the packet.
+		if tsHeaderSize+int(afLength)+1 > len(tp.buf) {
+			return fmt.Errorf("invalid adaptation_field_length: %d", afLength)
+		}
 		tp.payload = tp.buf[tsHeaderSize+afLength+1:]
 	}
 

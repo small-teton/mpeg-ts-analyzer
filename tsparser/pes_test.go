@@ -191,6 +191,17 @@ func TestPesParseSpecialStreamId(t *testing.T) {
 	}
 }
 
+func TestPesParseSpecialStreamIdInvalidLength(t *testing.T) {
+	// stream_id=0xBC with pes_packet_length past the buffered data must error,
+	// not panic while slicing.
+	data := []byte{0x00, 0x00, 0x01, 0xBC, 0x00, 0x64} // length=100, no payload
+	pes := NewPes()
+	pes.Append(data)
+	if err := pes.Parse(); err == nil {
+		t.Error("expected error for pes_packet_length past buffer, got nil")
+	}
+}
+
 func TestPesParseEscr(t *testing.T) {
 	// escrFlag=1, escrBase=45000
 	// first=0, second=1, third=12232

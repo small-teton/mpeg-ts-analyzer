@@ -137,6 +137,23 @@ func TestPcr(t *testing.T) {
 	}
 }
 
+func TestParseInvalidAfLength(t *testing.T) {
+	// afc=11 (AF + payload) with an adaptation_field_length that pushes the
+	// payload start past the packet must error, not panic.
+	pkt := make([]byte, 188)
+	pkt[0] = 0x47
+	pkt[1] = 0x00
+	pkt[2] = 0x31
+	pkt[3] = 0x30 // afc=11 (AF + payload), cc=0
+	pkt[4] = 200  // adaptation_field_length (4+200+1 = 205 > 188)
+
+	tp := NewTsPacket()
+	tp.Append(pkt)
+	if err := tp.Parse(); err == nil {
+		t.Error("expected error for invalid adaptation_field_length, got nil")
+	}
+}
+
 func TestParseAfOnly(t *testing.T) {
 	// adaptationFieldControl=2 (AF only, no payload)
 	pkt := make([]byte, 188)
