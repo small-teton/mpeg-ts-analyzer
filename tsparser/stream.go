@@ -86,14 +86,47 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 			continue
 		}
 		patDetected = true
-		pmtPid := pat.PmtPid()
+		patPrograms := pat.Programs()
+		programStart := pos
 
 		if _, err = reader.Seek(pos, 0); err != nil {
 			return errors.Wrap(err, "file seek error")
 		}
-		fmt.Printf("Detected PAT: PMT pid = 0x%02x\n", pmtPid)
+		fmt.Printf("Detected PAT: %d program(s)\n", len(patPrograms))
 		if options.DumpPsi {
 			pat.Dump()
+		}
+
+		// A single-program stream is analyzed directly. A multi-program stream
+		// (e.g. a raw broadcast capture: main service + 1seg) is listed instead of
+		// picking one arbitrarily — the user selects one with --program. Both cases
+		// only parse PMTs here (cheap; no PES), so listing stays lightweight.
+		if options.ListPrograms || (len(patPrograms) > 1 && options.Program == 0) {
+			if !options.ListPrograms {
+				fmt.Println("Multiple programs detected; pass --program <program_number> to analyze one:")
+			}
+			listPrograms(reader, patPrograms, programStart, options, packetSize, endOffset)
+			return nil
+		}
+
+		if len(patPrograms) == 0 {
+			fmt.Printf("0x%08x PAT has no program, retrying PAT discovery...\n", pos)
+			fileOffset = pos
+			continue
+		}
+		pmtPid := patPrograms[0].PmtPid
+		if options.Program > 0 {
+			found := false
+			for _, prog := range patPrograms {
+				if int(prog.ProgramNumber) == options.Program {
+					pmtPid = prog.PmtPid
+					found = true
+					break
+				}
+			}
+			if !found {
+				return errors.Newf("program %d not found in PAT", options.Program)
+			}
 		}
 
 		// Parse PMT
@@ -135,6 +168,23 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 		return errors.New("no valid transport stream found (PAT not detected)")
 	}
 	return nil
+}
+
+// listPrograms parses each program's PMT (no PES analysis, so it only reads far
+// enough to find each PMT) and prints a summary of what the stream contains.
+func listPrograms(reader io.ReadSeeker, programs []Program, start int64, options options.Options, packetSize int, endOffset int64) {
+	for _, prog := range programs {
+		pos := start
+		_, _ = reader.Seek(pos, 0)
+		pmt := NewPmt()
+		_ = BufferPsi(reader, &pos, prog.PmtPid, pmt, options, packetSize, endOffset)
+		if err := pmt.Parse(); err != nil {
+			fmt.Printf("Program %d: PMT PID 0x%x (PMT parse error: %s)\n", prog.ProgramNumber, prog.PmtPid, err)
+			continue
+		}
+		fmt.Printf("Program %d: PMT PID 0x%x, PCR PID 0x%x\n", prog.ProgramNumber, prog.PmtPid, pmt.PcrPid())
+		pmt.DumpProgramInfos(false)
+	}
 }
 
 func maxInt64(a, b int64) int64 {
