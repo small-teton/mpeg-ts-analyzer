@@ -25,12 +25,24 @@ Both 188-byte TS packets and 192-byte M2TS packets (BDAV format with TP_extra_he
 
 # Why mpeg-ts-analyzer?
 
-Existing tools like ffprobe provide high-level stream information, but not the low-level detail that broadcast engineers need when debugging TS streams.
+mpeg-ts-analyzer is purpose-built for one job: **checking transport-layer timing compliance** — the Max PCR interval and the PCR-PTS (end-to-end) gap — and reporting a direct pass/fail answer.
 
-mpeg-ts-analyzer gives you:
+## Compared to other tools
+
+- **ffprobe / FFmpeg** work at the elementary-stream (codec) level. They expose PTS/DTS but **not the PCR**, which lives in the transport layer (adaptation field). PCR interval and PCR-PTS gap checks are therefore out of reach — ffprobe simply never surfaces the PCR.
+- **TSDuck** is an excellent, comprehensive TS toolkit and it *can* obtain these values (e.g. `tsp -P pcrextract` dumps PCR/PTS/DTS to CSV). But it hands you the raw timestamps — you still have to script the interval/gap computation and make the pass/fail decision yourself. TSDuck gives you the parts; it does not directly give you the answer.
+
+mpeg-ts-analyzer instead gives you:
 
 - **Spec-level field dump** — Every field in TS headers, Adaptation Fields, PSI tables, and PES headers is printed exactly as defined in ISO/IEC 13818-1, making it easy to cross-reference with the specification.
-- **Compliance checks out of the box** — PCR interval (≤ 100ms) and PCR-PTS gap (≤ 1000ms) are automatically validated. No scripting required.
+- **Compliance checks out of the box** — Max PCR interval (≤ 100ms) and PCR-PTS gap (≤ 1000ms) are validated automatically and reported as a direct result. No CSV, no scripting.
+
+## Which tool should I use?
+
+- **Transport-layer timing compliance** (Max PCR interval / PCR-PTS gap), or a lightweight pass/fail check you can drop into CI → **mpeg-ts-analyzer**. This is what it is built for.
+- **Broad, general analysis of a stream** — full PSI/SI tables (NIT/SDT/EIT/…), bitrate breakdown, service names, scrambling state, network information, deep TR 101 290 conformance monitoring → **[TSDuck](https://tsduck.io/)** is the far more capable tool, and we recommend it for that.
+
+mpeg-ts-analyzer deliberately stays small and focused on the compliance check rather than duplicating what TSDuck already does well.
 
 Sample TS files are included in `sample_data/` for quick testing:
 
