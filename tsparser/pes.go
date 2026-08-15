@@ -374,28 +374,48 @@ func (p *Pes) Parse() error {
 
 // DumpTimestamp dump PTS and DTS
 func (p *Pes) DumpTimestamp() float64 {
-	var pcrDelay float64
-	if p.ptsDtsFlags == 2 {
-		if p.nextPcrPos != p.prevPcrPos {
-			prevPcr := float64(p.prevPcr) / 300 / 90
-			nextPcr := float64(p.nextPcr) / 300 / 90
-			pcrDelay = float64(p.pts)/90 - (prevPcr + (nextPcr-prevPcr)*(float64(p.pos-p.prevPcrPos)/float64(p.nextPcrPos-p.prevPcrPos)))
-			fmt.Printf("0x%08x PTS: 0x%08x[%012fms] (pid:0x%02x) (delay:%fms)\n", p.pos, p.pts, float64(p.pts)/90, p.pid, pcrDelay)
-		} else {
-			fmt.Printf("0x%08x PTS: 0x%08x[%012fms] (pid:0x%02x)\n", p.pos, p.pts, float64(p.pts)/90, p.pid)
-		}
+	switch p.ptsDtsFlags {
+	case 2:
+		return p.dumpTimestamp("PTS", p.pts)
+	case 3:
+		// ptsDtsFlags == 3 carries both PTS and DTS; the end-to-end delay is
+		// measured against the DTS (when the access unit is decoded).
+		return p.dumpTimestamp("DTS", p.dts)
 	}
-	if p.ptsDtsFlags == 3 {
-		if p.nextPcrPos != p.prevPcrPos {
-			prevPcr := float64(p.prevPcr) / 300 / 90
-			nextPcr := float64(p.nextPcr) / 300 / 90
-			pcrDelay = float64(p.dts)/90 - (prevPcr + (nextPcr-prevPcr)*(float64(p.pos-p.prevPcrPos)/float64(p.nextPcrPos-p.prevPcrPos)))
-			fmt.Printf("0x%08x DTS: 0x%08x[%012fms] (pid:0x%02x) (delay:%fms)\n", p.pos, p.dts, float64(p.dts)/90, p.pid, pcrDelay)
-		} else {
-			fmt.Printf("0x%08x DTS: 0x%08x[%012fms] (pid:0x%02x)\n", p.pos, p.dts, float64(p.dts)/90, p.pid)
-		}
+	return 0
+}
+
+// dumpTimestamp prints one PTS/DTS line and returns the PCR-to-timestamp delay
+// (the end-to-end buffering delay) in milliseconds.
+func (p *Pes) dumpTimestamp(label string, stamp uint64) float64 {
+	stampMs := float64(stamp) / 90
+	refPcr, ok := p.referencePcrMs()
+	if !ok {
+		fmt.Printf("0x%08x %s: 0x%08x[%012fms] (pid:0x%02x)\n", p.pos, label, stamp, stampMs, p.pid)
+		return 0
 	}
+	pcrDelay := stampMs - refPcr
+	fmt.Printf("0x%08x %s: 0x%08x[%012fms] (pid:0x%02x) (delay:%fms)\n", p.pos, label, stamp, stampMs, p.pid, pcrDelay)
 	return pcrDelay
+}
+
+// referencePcrMs returns the reference PCR (in milliseconds) at this PES's byte
+// position. When a following PCR was captured during the PES, the value is
+// interpolated between the surrounding PCRs by byte position for a tighter
+// estimate. When no following PCR exists (e.g. the final PES before EOF), it
+// falls back to the most recent PCR — interpolating against an unset (zero)
+// nextPcr would otherwise produce a wildly wrong delay. The bool is false when
+// there is no preceding PCR to reference at all.
+func (p *Pes) referencePcrMs() (float64, bool) {
+	if p.prevPcr == 0 {
+		return 0, false
+	}
+	prevPcr := float64(p.prevPcr) / 300 / 90
+	if p.nextPcr > p.prevPcr && p.nextPcrPos > p.prevPcrPos {
+		nextPcr := float64(p.nextPcr) / 300 / 90
+		return prevPcr + (nextPcr-prevPcr)*(float64(p.pos-p.prevPcrPos)/float64(p.nextPcrPos-p.prevPcrPos)), true
+	}
+	return prevPcr, true
 }
 
 // Dump PES header detail.
