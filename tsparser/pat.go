@@ -64,6 +64,9 @@ func (p *Pat) Parse() error {
 	if p.tableID, err = bb.ReadUint8(8); err != nil {
 		return errors.Wrap(err, "failed to read pat table_id")
 	}
+	if p.tableID != 0x00 {
+		return errors.Newf("invalid pat table_id: 0x%02x", p.tableID)
+	}
 	if p.sectionSyntaxIndicator, err = bb.ReadUint8(1); err != nil {
 		return errors.Wrap(err, "failed to peek pat section_syntax_indicator")
 	}

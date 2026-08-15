@@ -6,7 +6,7 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Pmt Progran Map Table
+// Pmt Program Map Table
 type Pmt struct {
 	// startFlag         bool
 	continuityCounter uint8
@@ -23,6 +23,7 @@ type Pmt struct {
 	lastSectionNumber      uint8
 	pcrPid                 uint16
 	programInfoLength      uint16
+	descriptors            []Descriptor // program-level (whole-program) descriptors
 	programInfos           []ProgramInfo
 	crc32                  uint32
 }
@@ -74,6 +75,9 @@ func (p *Pmt) Parse() error {
 	if p.tableID, err = bb.ReadUint8(8); err != nil {
 		return errors.Wrap(err, "failed to read pmt table_id")
 	}
+	if p.tableID != 0x02 {
+		return errors.Newf("invalid pmt table_id: 0x%02x", p.tableID)
+	}
 	if p.sectionSyntaxIndicator, err = bb.ReadUint8(1); err != nil {
 		return errors.Wrap(err, "failed to read pmt section_syntax_indicator")
 	}
@@ -114,10 +118,10 @@ func (p *Pmt) Parse() error {
 		return errors.Wrap(err, "failed to skip in pmt reserved")
 	} // reserved
 	if p.programInfoLength, err = bb.ReadUint16(12); err != nil {
-		return errors.Wrap(err, "failed to read pmt pragram_info_length")
+		return errors.Wrap(err, "failed to read pmt program_info_length")
 	}
-	if err := bb.Skip(8 * uint32(p.programInfoLength)); err != nil {
-		return errors.Wrap(err, "failed to skip in pmt")
+	if p.descriptors, err = parseDescriptors(bb, p.programInfoLength); err != nil {
+		return errors.Wrap(err, "failed to parse pmt program descriptors")
 	}
 	remainLength := int32(p.sectionLength) - 9 - 4 - int32(p.programInfoLength)
 	for remainLength > 0 {
@@ -261,6 +265,9 @@ func (p *Pmt) Dump() {
 	pmtField("last_section_number", "%d", p.lastSectionNumber)
 	pmtField("PCR_PID", "0x%x", p.pcrPid)
 	pmtField("program_info_length", "%d", p.programInfoLength)
+	for _, d := range p.descriptors {
+		d.Dump()
+	}
 	p.DumpProgramInfos(true)
 	pmtField("CRC_32", "%x", p.crc32)
 }

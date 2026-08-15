@@ -137,6 +137,49 @@ func TestPcr(t *testing.T) {
 	}
 }
 
+func TestParseAdaptationFieldParseError(t *testing.T) {
+	// afc=10 (AF only) with transport_private_data_length exceeding the packet
+	// makes AdaptationField.Parse fail; TsPacket.Parse must return that error.
+	pkt := make([]byte, 188)
+	pkt[0] = 0x47
+	pkt[3] = 0x20 // afc=10 (AF only)
+	pkt[4] = 183  // adaptation_field_length
+	pkt[5] = 0x02 // transport_private_data_flag=1
+	pkt[6] = 0xFF // transport_private_data_length=255 (past the remaining AF bytes)
+	tp := NewTsPacket()
+	tp.Append(pkt)
+	if err := tp.Parse(); err == nil {
+		t.Error("expected error when adaptation_field parse fails, got nil")
+	}
+}
+
+func TestParseInvalidSyncByte(t *testing.T) {
+	pkt := make([]byte, 188)
+	pkt[0] = 0x48 // not the required sync_byte 0x47
+	tp := NewTsPacket()
+	tp.Append(pkt)
+	if err := tp.Parse(); err == nil {
+		t.Error("expected error for invalid sync_byte, got nil")
+	}
+}
+
+func TestParseInvalidAfLength(t *testing.T) {
+	// afc=11 (AF + payload) with an adaptation_field_length that pushes the
+	// payload start past the packet must error, not panic.
+	pkt := make([]byte, 188)
+	pkt[0] = 0x47
+	pkt[1] = 0x00
+	pkt[2] = 0x31
+	pkt[3] = 0x30 // afc=11 (AF + payload), cc=0
+	pkt[4] = 200  // adaptation_field_length (4+200+1 = 205 > 188)
+
+	tp := NewTsPacket()
+	tp.Append(pkt)
+	if err := tp.Parse(); err == nil {
+		t.Error("expected error for invalid adaptation_field_length, got nil")
+	}
+}
+
 func TestParseAfOnly(t *testing.T) {
 	// adaptationFieldControl=2 (AF only, no payload)
 	pkt := make([]byte, 188)
@@ -393,5 +436,17 @@ func TestTsPacketParseWithDumpOptions(t *testing.T) {
 	tp.Append(pkt)
 	if err := tp.Parse(); err != nil {
 		t.Fatalf("Parse error: %s", err)
+	}
+}
+
+func TestParseInvalidAfControl(t *testing.T) {
+	// adaptation_field_control=00 is reserved/forbidden.
+	pkt := make([]byte, 188)
+	pkt[0] = 0x47
+	pkt[3] = 0x00 // transport_scrambling_control=00, afc=00, cc=0
+	tp := NewTsPacket()
+	tp.Append(pkt)
+	if err := tp.Parse(); err == nil {
+		t.Error("expected error for adaptation_field_control=0, got nil")
 	}
 }
