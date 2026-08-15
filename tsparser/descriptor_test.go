@@ -18,7 +18,7 @@ func captureStdout(t *testing.T, f func()) string {
 	}
 	os.Stdout = w
 	f()
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 	var buf bytes.Buffer
 	if _, err := io.Copy(&buf, r); err != nil {
@@ -266,19 +266,19 @@ func TestDescriptorNameTables(t *testing.T) {
 		t.Errorf("printableASCII: got %q", printableASCII([]byte{0x00, 'A', 0x7F}))
 	}
 	for _, at := range []uint8{0x00, 0x01, 0x02, 0x03, 0x04} {
-		audioTypeName(at)
+		_ = audioTypeName(at)
 	}
 	for _, p := range []uint8{66, 77, 88, 100, 110, 122, 244, 0} {
-		avcProfileName(p)
+		_ = avcProfileName(p)
 	}
 	for _, p := range []uint8{1, 2, 3, 4, 0} {
-		hevcProfileName(p)
+		_ = hevcProfileName(p)
 	}
 	for _, tt := range []uint8{0x01, 0x02, 0x03, 0x04, 0x05, 0x00} {
-		teletextTypeName(tt)
+		_ = teletextTypeName(tt)
 	}
 	for _, st := range []uint8{0x10, 0x11, 0x20, 0x21, 0x00} {
-		subtitlingTypeName(st)
+		_ = subtitlingTypeName(st)
 	}
 }
 

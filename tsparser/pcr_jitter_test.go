@@ -220,10 +220,10 @@ func TestParseTsFile_DumpPcrJitterOption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	writeFullStream(f, 2, []uint64{13500, 27000, 40500})
-	f.Close()
+	_ = f.Close()
 
 	var opt options.Options
 	opt.DumpPcrJitter = true

@@ -29,10 +29,7 @@ func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, 
 	isBuffering := false
 	tsPacket := NewTsPacket()
 
-	for {
-		if endOffset > 0 && *pos+int64(packetSize) > endOffset {
-			break
-		}
+	for endOffset <= 0 || *pos+int64(packetSize) <= endOffset {
 		size, err := reader.Read(tsBuffer)
 		if err == io.EOF {
 			break
@@ -91,10 +88,7 @@ func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []Progr
 	var pcrJitter PcrJitter
 	tsPacket := NewTsPacket()
 
-	for {
-		if endOffset > 0 && *pos+int64(packetSize) > endOffset {
-			break
-		}
+	for endOffset <= 0 || *pos+int64(packetSize) <= endOffset {
 		size, err := reader.Read(tsBuffer)
 		if err == io.EOF {
 			break
@@ -145,7 +139,7 @@ func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []Progr
 
 		if tsPacket.PayloadUnitStartIndicator() {
 			if pes != nil {
-				pes.Parse()
+				_ = pes.Parse()
 				if options.DumpTimestamp {
 					pcrDelay := pes.DumpTimestamp()
 					maxDelay = math.Max(maxDelay, pcrDelay)

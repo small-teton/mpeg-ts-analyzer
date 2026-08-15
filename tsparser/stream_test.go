@@ -205,8 +205,8 @@ func TestParseTsFile_EmptyFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
-	f.Close()
+	defer func() { _ = os.Remove(f.Name()) }()
+	_ = f.Close()
 
 	var opt options.Options
 	err = ParseTsFile(f.Name(), opt)
@@ -220,14 +220,14 @@ func TestParseTsFile_GarbageOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	garbage := make([]byte, 65536)
 	for i := range garbage {
 		garbage[i] = 0xAA
 	}
-	f.Write(garbage)
-	f.Close()
+	_, _ = f.Write(garbage)
+	_ = f.Close()
 
 	var opt options.Options
 	err = ParseTsFile(f.Name(), opt)
@@ -238,7 +238,7 @@ func TestParseTsFile_GarbageOnly(t *testing.T) {
 
 func TestParseTsFile_ValidPatPmt(t *testing.T) {
 	f := createValidTsFile(t, 0)
-	defer os.Remove(f)
+	defer func() { _ = os.Remove(f) }()
 
 	var opt options.Options
 	err := ParseTsFile(f, opt)
@@ -249,7 +249,7 @@ func TestParseTsFile_ValidPatPmt(t *testing.T) {
 
 func TestParseTsFile_GarbagePrefixBeforePat(t *testing.T) {
 	f := createValidTsFile(t, 500)
-	defer os.Remove(f)
+	defer func() { _ = os.Remove(f) }()
 
 	var opt options.Options
 	err := ParseTsFile(f, opt)
@@ -265,28 +265,28 @@ func TestParseTsFile_CorruptPatThenValid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	// Corrupt PAT: valid structure but tampered CRC bytes
 	corruptPatPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF}
 	corruptPat := buildTsPacket(0x0000, true, 0, corruptPatPayload)
 
 	// Need 3 consecutive sync bytes for findPat
-	f.Write(corruptPat)
-	f.Write(buildStuffingPacket())
-	f.Write(buildStuffingPacket())
+	_, _ = f.Write(corruptPat)
+	_, _ = f.Write(buildStuffingPacket())
+	_, _ = f.Write(buildStuffingPacket())
 	// Second PAT PUSI to terminate buffering properly
-	f.Write(buildTsPacket(0x0000, true, 1, corruptPatPayload))
+	_, _ = f.Write(buildTsPacket(0x0000, true, 1, corruptPatPayload))
 
 	// Pad with stuffing packets (not raw 0xFF) so TS parse doesn't fail
 	numStuffing := (65536 - 188*4) / 188
 	for i := 0; i < numStuffing; i++ {
-		f.Write(buildStuffingPacket())
+		_, _ = f.Write(buildStuffingPacket())
 	}
 
 	// Second chunk: valid stream
 	writeFullStream(f, 1, []uint64{13500})
-	f.Close()
+	_ = f.Close()
 
 	var opt options.Options
 	err = ParseTsFile(f.Name(), opt)
@@ -302,29 +302,29 @@ func TestParseTsFile_CorruptPmtThenValid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	// Valid PAT with termination
 	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
-	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
-	f.Write(buildStuffingPacket())
-	f.Write(buildStuffingPacket())
-	f.Write(buildTsPacket(0x0000, true, 1, patPayload))
+	_, _ = f.Write(buildTsPacket(0x0000, true, 0, patPayload))
+	_, _ = f.Write(buildStuffingPacket())
+	_, _ = f.Write(buildStuffingPacket())
+	_, _ = f.Write(buildTsPacket(0x0000, true, 1, patPayload))
 
 	// Corrupt PMT: valid structure but tampered CRC + termination
 	corruptPmtPayload := []byte{0x02, 0xB0, 0x12, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE0, 0x31, 0xF0, 0x00, 0x1B, 0xE0, 0x31, 0xF0, 0x00, 0xFF, 0xFF, 0xFF, 0xFF}
-	f.Write(buildTsPacket(0x003F, true, 0, corruptPmtPayload))
-	f.Write(buildTsPacket(0x003F, true, 1, corruptPmtPayload))
+	_, _ = f.Write(buildTsPacket(0x003F, true, 0, corruptPmtPayload))
+	_, _ = f.Write(buildTsPacket(0x003F, true, 1, corruptPmtPayload))
 
 	// Pad with stuffing packets
 	numStuffing := (65536 - 188*6) / 188
 	for i := 0; i < numStuffing; i++ {
-		f.Write(buildStuffingPacket())
+		_, _ = f.Write(buildStuffingPacket())
 	}
 
 	// Second chunk: valid stream
 	writeFullStream(f, 1, []uint64{13500})
-	f.Close()
+	_ = f.Close()
 
 	var opt options.Options
 	err = ParseTsFile(f.Name(), opt)
@@ -340,7 +340,7 @@ func TestParseTsFile_PesPacketLossThenValid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
 	pmtPayload := []byte{0x02, 0xB0, 0x12, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE0, 0x31, 0xF0, 0x00, 0x1B, 0xE0, 0x31, 0xF0, 0x00, 0xB5, 0x9E, 0xA0, 0xB0}
@@ -351,33 +351,33 @@ func TestParseTsFile_PesPacketLossThenValid(t *testing.T) {
 	}
 
 	// Valid PAT with termination
-	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
-	f.Write(buildStuffingPacket())
-	f.Write(buildStuffingPacket())
-	f.Write(buildTsPacket(0x0000, true, 1, patPayload))
+	_, _ = f.Write(buildTsPacket(0x0000, true, 0, patPayload))
+	_, _ = f.Write(buildStuffingPacket())
+	_, _ = f.Write(buildStuffingPacket())
+	_, _ = f.Write(buildTsPacket(0x0000, true, 1, patPayload))
 
 	// Valid PMT with termination
-	f.Write(buildTsPacket(0x003F, true, 0, pmtPayload))
-	f.Write(buildTsPacket(0x003F, true, 1, pmtPayload))
+	_, _ = f.Write(buildTsPacket(0x003F, true, 0, pmtPayload))
+	_, _ = f.Write(buildTsPacket(0x003F, true, 1, pmtPayload))
 
 	// PCR
-	f.Write(buildPcrPacket(0x0031, 13500))
+	_, _ = f.Write(buildPcrPacket(0x0031, 13500))
 
 	// PES start packet with cc=1
-	f.Write(buildTsPacket(0x0031, true, 1, pesHeader))
+	_, _ = f.Write(buildTsPacket(0x0031, true, 1, pesHeader))
 
 	// Continuation packet with cc=5 (gap: expected 2) -> triggers packet loss in PES
-	f.Write(buildTsPacket(0x0031, false, 5, []byte{0x00, 0x00}))
+	_, _ = f.Write(buildTsPacket(0x0031, false, 5, []byte{0x00, 0x00}))
 
 	// Pad with stuffing packets
 	numStuffing := (65536 - 188*9) / 188
 	for i := 0; i < numStuffing; i++ {
-		f.Write(buildStuffingPacket())
+		_, _ = f.Write(buildStuffingPacket())
 	}
 
 	// Second chunk: valid stream
 	writeFullStream(f, 1, []uint64{13500})
-	f.Close()
+	_ = f.Close()
 
 	var opt options.Options
 	err = ParseTsFile(f.Name(), opt)
@@ -400,62 +400,37 @@ func writeFullStream(f *os.File, pesPackets int, pcrs []uint64) {
 	}
 
 	// PAT packet + second PAT (terminates PAT buffering)
-	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
-	f.Write(buildStuffingPacket())
-	f.Write(buildStuffingPacket())
-	f.Write(buildTsPacket(0x0000, true, 1, patPayload)) // second PAT PUSI terminates buffering
+	_, _ = f.Write(buildTsPacket(0x0000, true, 0, patPayload))
+	_, _ = f.Write(buildStuffingPacket())
+	_, _ = f.Write(buildStuffingPacket())
+	_, _ = f.Write(buildTsPacket(0x0000, true, 1, patPayload)) // second PAT PUSI terminates buffering
 
 	// PMT packet + second PMT (terminates PMT buffering)
-	f.Write(buildTsPacket(0x003F, true, 0, pmtPayload))
-	f.Write(buildTsPacket(0x003F, true, 1, pmtPayload)) // second PMT PUSI terminates buffering
+	_, _ = f.Write(buildTsPacket(0x003F, true, 0, pmtPayload))
+	_, _ = f.Write(buildTsPacket(0x003F, true, 1, pmtPayload)) // second PMT PUSI terminates buffering
 
 	// Write PCR and PES packets
 	pcrIdx := 0
 	cc := uint8(1)
 	for i := 0; i < pesPackets; i++ {
 		if pcrIdx < len(pcrs) {
-			f.Write(buildPcrPacket(0x0031, pcrs[pcrIdx]))
+			_, _ = f.Write(buildPcrPacket(0x0031, pcrs[pcrIdx]))
 			pcrIdx++
 		}
-		f.Write(buildTsPacket(0x0031, true, cc, pesHeader))
+		_, _ = f.Write(buildTsPacket(0x0031, true, cc, pesHeader))
 		cc++
 		// Insert continuation packet + PCR between first and second PES
 		if i == 0 && pcrIdx < len(pcrs) {
-			f.Write(buildPcrPacket(0x0031, pcrs[pcrIdx]))
+			_, _ = f.Write(buildPcrPacket(0x0031, pcrs[pcrIdx]))
 			pcrIdx++
-			f.Write(buildTsPacket(0x0031, false, cc, []byte{0x00, 0x00}))
+			_, _ = f.Write(buildTsPacket(0x0031, false, cc, []byte{0x00, 0x00}))
 			cc++
 			if pcrIdx < len(pcrs) {
-				f.Write(buildPcrPacket(0x0031, pcrs[pcrIdx]))
+				_, _ = f.Write(buildPcrPacket(0x0031, pcrs[pcrIdx]))
 				pcrIdx++
 			}
 		}
 	}
-}
-
-// writeValidTsStream writes a complete valid PAT+PMT+PCR+PES sequence to a file.
-func writeValidTsStream(f *os.File) {
-	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
-	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
-
-	// Stuffing packets for findPat sync
-	f.Write(buildStuffingPacket())
-	f.Write(buildStuffingPacket())
-
-	pmtPayload := []byte{0x02, 0xB0, 0x12, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE0, 0x31, 0xF0, 0x00, 0x1B, 0xE0, 0x31, 0xF0, 0x00, 0xE0, 0x6A, 0x28, 0x6E}
-	f.Write(buildTsPacket(0x003F, true, 0, pmtPayload))
-
-	f.Write(buildPcrPacket(0x0031, 13500))
-
-	pesHeader := []byte{
-		0x00, 0x00, 0x01, 0xE0,
-		0x00, 0x00,
-		0x80,
-		0x80,
-		0x05,
-		0x21, 0x00, 0x07, 0xD8, 0x61,
-	}
-	f.Write(buildTsPacket(0x0031, true, 1, pesHeader))
 }
 
 // buildStuffingPacket creates a 188-byte null/stuffing TS packet (PID 0x1FFF).
@@ -497,19 +472,19 @@ func createValidTsFile(t *testing.T, garbageLen int) string {
 		for i := range garbage {
 			garbage[i] = 0xFF
 		}
-		f.Write(garbage)
+		_, _ = f.Write(garbage)
 	}
 
 	// PAT: program 1 -> PMT PID 0x3F
 	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
-	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
+	_, _ = f.Write(buildTsPacket(0x0000, true, 0, patPayload))
 
 	// PMT: PCR PID=0x31, video stream PID=0x31 (type 0x1B)
 	pmtPayload := []byte{0x02, 0xB0, 0x12, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE0, 0x31, 0xF0, 0x00, 0x1B, 0xE0, 0x31, 0xF0, 0x00, 0xE0, 0x6A, 0x28, 0x6E}
-	f.Write(buildTsPacket(0x003F, true, 0, pmtPayload))
+	_, _ = f.Write(buildTsPacket(0x003F, true, 0, pmtPayload))
 
 	// PCR packet on PID 0x31
-	f.Write(buildPcrPacket(0x0031, 13500))
+	_, _ = f.Write(buildPcrPacket(0x0031, 13500))
 
 	// PES packet on PID 0x31 (video) with PTS
 	pesHeader := []byte{
@@ -520,10 +495,10 @@ func createValidTsFile(t *testing.T, garbageLen int) string {
 		0x05,                         // pes_header_data_length
 		0x21, 0x00, 0x07, 0xD8, 0x61, // PTS = 1000
 	}
-	f.Write(buildTsPacket(0x0031, true, 1, pesHeader))
+	_, _ = f.Write(buildTsPacket(0x0031, true, 1, pesHeader))
 
 	name := f.Name()
-	f.Close()
+	_ = f.Close()
 	return name
 }
 
@@ -554,10 +529,10 @@ func TestParseTsFile_DumpPsiOption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	writeFullStream(f, 1, []uint64{13500})
-	f.Close()
+	_ = f.Close()
 
 	var opt options.Options
 	opt.DumpPsi = true
@@ -569,7 +544,7 @@ func TestParseTsFile_DumpPsiOption(t *testing.T) {
 
 func TestParseTsFile_DumpTimestampOption(t *testing.T) {
 	f := createValidTsFile(t, 0)
-	defer os.Remove(f)
+	defer func() { _ = os.Remove(f) }()
 
 	var opt options.Options
 	opt.DumpTimestamp = true
@@ -584,10 +559,10 @@ func TestParseTsFile_DumpPesHeaderOption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	writeFullStream(f, 2, []uint64{13500, 27000})
-	f.Close()
+	_ = f.Close()
 
 	var opt options.Options
 	opt.DumpPesHeader = true
@@ -604,10 +579,10 @@ func TestParseTsFile_MultiplePcrAndPes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	writeFullStream(f, 2, []uint64{13500, 27000, 40500})
-	f.Close()
+	_ = f.Close()
 
 	var opt options.Options
 	opt.DumpTimestamp = true
@@ -624,20 +599,20 @@ func TestBufferPsi_MultiPacket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	// First PAT packet (PUSI=1, cc=0) with pointer_field=0
 	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
-	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
-	f.Write(buildStuffingPacket())
-	f.Write(buildStuffingPacket())
+	_, _ = f.Write(buildTsPacket(0x0000, true, 0, patPayload))
+	_, _ = f.Write(buildStuffingPacket())
+	_, _ = f.Write(buildStuffingPacket())
 
 	// Second PAT packet (PUSI=1, cc=1) - triggers "isBuffering" break path
-	f.Write(buildTsPacket(0x0000, true, 1, patPayload))
-	f.Close()
+	_, _ = f.Write(buildTsPacket(0x0000, true, 1, patPayload))
+	_ = f.Close()
 
 	file, _ := os.Open(f.Name())
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var pos int64
 	var opt options.Options
@@ -654,20 +629,20 @@ func TestBufferPsi_Continuation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
 
 	// First PAT (PUSI=1, cc=0) - starts buffering
-	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
+	_, _ = f.Write(buildTsPacket(0x0000, true, 0, patPayload))
 	// Continuation PAT (PUSI=0, cc=1) - hits the continuation path
-	f.Write(buildTsPacket(0x0000, false, 1, patPayload))
+	_, _ = f.Write(buildTsPacket(0x0000, false, 1, patPayload))
 	// Second PAT PUSI (cc=2) - terminates buffering
-	f.Write(buildTsPacket(0x0000, true, 2, patPayload))
-	f.Close()
+	_, _ = f.Write(buildTsPacket(0x0000, true, 2, patPayload))
+	_ = f.Close()
 
 	file, _ := os.Open(f.Name())
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var pos int64
 	var opt options.Options
@@ -684,18 +659,18 @@ func TestBufferPsi_PacketLoss(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	// First PAT packet (PUSI=1, cc=0)
 	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
-	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
+	_, _ = f.Write(buildTsPacket(0x0000, true, 0, patPayload))
 
 	// Continuation packet with cc=5 (gap: expected 1 but got 5) -> packet loss
-	f.Write(buildTsPacket(0x0000, false, 5, patPayload))
-	f.Close()
+	_, _ = f.Write(buildTsPacket(0x0000, false, 5, patPayload))
+	_ = f.Close()
 
 	file, _ := os.Open(f.Name())
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var pos int64
 	var opt options.Options
@@ -712,17 +687,17 @@ func TestParseTsFile_PatBufferingErrorThenValid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
 
 	// First: a PAT PUSI (cc=0) followed by a PAT continuation with wrong cc (cc=5)
 	// This triggers packet loss in BufferPsi -> PAT buffering error
-	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
-	f.Write(buildStuffingPacket())
-	f.Write(buildStuffingPacket())
+	_, _ = f.Write(buildTsPacket(0x0000, true, 0, patPayload))
+	_, _ = f.Write(buildStuffingPacket())
+	_, _ = f.Write(buildStuffingPacket())
 	// Continuation packet for PAT with wrong cc -> triggers packet loss error
-	f.Write(buildTsPacket(0x0000, false, 5, patPayload))
+	_, _ = f.Write(buildTsPacket(0x0000, false, 5, patPayload))
 
 	// Pad to fill the first 64KB buffer
 	padLen := 65536 - 188*4
@@ -730,11 +705,11 @@ func TestParseTsFile_PatBufferingErrorThenValid(t *testing.T) {
 	for i := range pad {
 		pad[i] = 0xFF
 	}
-	f.Write(pad)
+	_, _ = f.Write(pad)
 
 	// Second chunk: valid stream
 	writeFullStream(f, 1, []uint64{13500})
-	f.Close()
+	_ = f.Close()
 
 	var opt options.Options
 	err = ParseTsFile(f.Name(), opt)
@@ -749,20 +724,20 @@ func TestParseTsFile_PmtBufferingErrorThenValid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
 	pmtPayload := []byte{0x02, 0xB0, 0x12, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE0, 0x31, 0xF0, 0x00, 0x1B, 0xE0, 0x31, 0xF0, 0x00, 0xB5, 0x9E, 0xA0, 0xB0}
 
 	// Valid PAT + second PAT for termination
-	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
-	f.Write(buildStuffingPacket())
-	f.Write(buildStuffingPacket())
-	f.Write(buildTsPacket(0x0000, true, 1, patPayload))
+	_, _ = f.Write(buildTsPacket(0x0000, true, 0, patPayload))
+	_, _ = f.Write(buildStuffingPacket())
+	_, _ = f.Write(buildStuffingPacket())
+	_, _ = f.Write(buildTsPacket(0x0000, true, 1, patPayload))
 
 	// PMT PUSI (cc=0) then PMT continuation with wrong cc (cc=5)
-	f.Write(buildTsPacket(0x003F, true, 0, pmtPayload))
-	f.Write(buildTsPacket(0x003F, false, 5, pmtPayload))
+	_, _ = f.Write(buildTsPacket(0x003F, true, 0, pmtPayload))
+	_, _ = f.Write(buildTsPacket(0x003F, false, 5, pmtPayload))
 
 	// Pad to fill the first 64KB buffer
 	padLen := 65536 - 188*6
@@ -770,11 +745,11 @@ func TestParseTsFile_PmtBufferingErrorThenValid(t *testing.T) {
 	for i := range pad {
 		pad[i] = 0xFF
 	}
-	f.Write(pad)
+	_, _ = f.Write(pad)
 
 	// Second chunk: valid stream
 	writeFullStream(f, 1, []uint64{13500})
-	f.Close()
+	_ = f.Close()
 
 	var opt options.Options
 	err = ParseTsFile(f.Name(), opt)
@@ -789,20 +764,20 @@ func TestParseTsFile_PesErrorThenValid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
 	pmtPayload := []byte{0x02, 0xB0, 0x12, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE0, 0x31, 0xF0, 0x00, 0x1B, 0xE0, 0x31, 0xF0, 0x00, 0xB5, 0x9E, 0xA0, 0xB0}
 
 	// Valid PAT with termination
-	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
-	f.Write(buildStuffingPacket())
-	f.Write(buildStuffingPacket())
-	f.Write(buildTsPacket(0x0000, true, 1, patPayload))
+	_, _ = f.Write(buildTsPacket(0x0000, true, 0, patPayload))
+	_, _ = f.Write(buildStuffingPacket())
+	_, _ = f.Write(buildStuffingPacket())
+	_, _ = f.Write(buildTsPacket(0x0000, true, 1, patPayload))
 
 	// Valid PMT with termination
-	f.Write(buildTsPacket(0x003F, true, 0, pmtPayload))
-	f.Write(buildTsPacket(0x003F, true, 1, pmtPayload))
+	_, _ = f.Write(buildTsPacket(0x003F, true, 0, pmtPayload))
+	_, _ = f.Write(buildTsPacket(0x003F, true, 1, pmtPayload))
 
 	// Write exactly 1 non-188-byte-aligned chunk to trigger BufferPes read error
 	// Actually, BufferPes only returns fmt.Errorf for read errors. To trigger that,
@@ -813,7 +788,7 @@ func TestParseTsFile_PesErrorThenValid(t *testing.T) {
 	for i := range garbage {
 		garbage[i] = 0xAA
 	}
-	f.Write(garbage)
+	_, _ = f.Write(garbage)
 
 	// Pad to fill the first 64KB buffer
 	written := 188*6 + 100
@@ -822,11 +797,11 @@ func TestParseTsFile_PesErrorThenValid(t *testing.T) {
 	for i := range pad {
 		pad[i] = 0xFF
 	}
-	f.Write(pad)
+	_, _ = f.Write(pad)
 
 	// Second chunk: valid stream
 	writeFullStream(f, 1, []uint64{13500})
-	f.Close()
+	_ = f.Close()
 
 	var opt options.Options
 	err = ParseTsFile(f.Name(), opt)
@@ -852,10 +827,10 @@ func TestParseTsFile_WithLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	writeFullStream(f, 2, []uint64{13500, 27000, 40500})
-	f.Close()
+	_ = f.Close()
 
 	var opt options.Options
 	opt.Limit = 188 * 20
@@ -870,16 +845,16 @@ func TestParseTsFile_WithOffset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	// Write garbage prefix, then two full streams
 	garbage := make([]byte, 188*10)
 	for i := range garbage {
 		garbage[i] = 0xFF
 	}
-	f.Write(garbage)
+	_, _ = f.Write(garbage)
 	writeFullStream(f, 1, []uint64{13500})
-	f.Close()
+	_ = f.Close()
 
 	var opt options.Options
 	opt.Offset = int64(len(garbage))
@@ -894,15 +869,15 @@ func TestParseTsFile_WithOffsetAndLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	garbage := make([]byte, 188*10)
 	for i := range garbage {
 		garbage[i] = 0xFF
 	}
-	f.Write(garbage)
+	_, _ = f.Write(garbage)
 	writeFullStream(f, 2, []uint64{13500, 27000, 40500})
-	f.Close()
+	_ = f.Close()
 
 	var opt options.Options
 	opt.Offset = int64(len(garbage))
@@ -1018,28 +993,28 @@ func TestParseTsFile_192BytePackets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
-	f.Write(wrapM2TS(buildTsPacket(0x0000, true, 0, patPayload)))
-	f.Write(wrapM2TS(buildStuffingPacket()))
-	f.Write(wrapM2TS(buildStuffingPacket()))
+	_, _ = f.Write(wrapM2TS(buildTsPacket(0x0000, true, 0, patPayload)))
+	_, _ = f.Write(wrapM2TS(buildStuffingPacket()))
+	_, _ = f.Write(wrapM2TS(buildStuffingPacket()))
 	// Second PAT for BufferPsi termination
-	f.Write(wrapM2TS(buildTsPacket(0x0000, true, 1, patPayload)))
+	_, _ = f.Write(wrapM2TS(buildTsPacket(0x0000, true, 1, patPayload)))
 
 	// PMT with correct CRC
 	pmtHeader := []byte{0x02, 0xB0, 0x12, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE0, 0x31, 0xF0, 0x00, 0x1B, 0xE0, 0x31, 0xF0, 0x00}
 	pmtCrc := crc32(pmtHeader)
 	pmtPayload := append(pmtHeader, byte(pmtCrc>>24), byte(pmtCrc>>16), byte(pmtCrc>>8), byte(pmtCrc))
-	f.Write(wrapM2TS(buildTsPacket(0x003F, true, 0, pmtPayload)))
-	f.Write(wrapM2TS(buildTsPacket(0x003F, true, 1, pmtPayload)))
+	_, _ = f.Write(wrapM2TS(buildTsPacket(0x003F, true, 0, pmtPayload)))
+	_, _ = f.Write(wrapM2TS(buildTsPacket(0x003F, true, 1, pmtPayload)))
 
 	// PCR + PES
-	f.Write(wrapM2TS(buildPcrPacket(0x0031, 13500)))
+	_, _ = f.Write(wrapM2TS(buildPcrPacket(0x0031, 13500)))
 	pesHeader := []byte{0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x80, 0x05, 0x21, 0x00, 0x07, 0xD8, 0x61}
-	f.Write(wrapM2TS(buildTsPacket(0x0031, true, 1, pesHeader)))
+	_, _ = f.Write(wrapM2TS(buildTsPacket(0x0031, true, 1, pesHeader)))
 
-	f.Close()
+	_ = f.Close()
 
 	var opt options.Options
 	err = ParseTsFile(f.Name(), opt)

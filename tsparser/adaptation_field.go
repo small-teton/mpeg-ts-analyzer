@@ -158,7 +158,7 @@ func (af *AdaptationField) Parse() (uint8, error) {
 		if af.originalProgramClockReferenceBase, err = bb.ReadUint64(33); err != nil {
 			return 0, errors.Wrap(err, "failed to read adaptation_fields original_program_clock_reference_base")
 		}
-		bb.Skip(6) // reserved
+		_ = bb.Skip(6) // reserved
 		if af.originalProgramClockReferenceExtension, err = bb.ReadUint16(9); err != nil {
 			return 0, errors.Wrap(err, "failed to read adaptation_fields original_program_clock_reference_extension")
 		}
