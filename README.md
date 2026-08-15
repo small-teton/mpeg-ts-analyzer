@@ -2,26 +2,26 @@
 
 ![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/small-teton/9d60b1e4226ac2926940b20ce3381621/raw/coverage.json)
 
-mpeg-ts-analyzer is an analyzer for MPEG-2 Transport Stream (ISO/IEC 13818-1).
+mpeg-ts-analyzer is an MPEG-2 Transport Stream analyzer (ISO/IEC 13818-1).
 
 It parses TS packets and checks whether the stream conforms to the following requirements defined in the specification:
 
-- **Max PCR interval** should be no greater than 100ms (ISO/IEC 13818-1, Section 2.7.2)
-- **PCR-PTS max gap** (end-to-end delay) should be no greater than 1000ms
+- **Max PCR interval** should be no greater than 100 ms (ISO/IEC 13818-1, Section 2.7.2)
+- **PCR-PTS max gap** (end-to-end delay) should be no greater than 1000 ms
 
-In addition, it can dump various MPEG-2 TS internal structures for stream investigation purposes:
+In addition, it can dump various MPEG-2 TS internal structures for stream investigation:
 
 - TS header and payload
-- Adaptation Field (including PCR)
+- Adaptation field (including PCR)
 - PSI tables (PAT/PMT) with CRC32 validation
 - PMT ES info descriptors (ISO 639 language, registration, AVC/HEVC video, AAC audio, teletext, DVB subtitling)
 - PES header with PTS/DTS timestamps
 - PCR jitter analysis (per-interval deviation from the expected PCR)
-- continuity_counter validation
+- `continuity_counter` validation
 
 Both 188-byte TS packets and 192-byte M2TS packets (BDAV format with TP_extra_header) are supported. The packet size is auto-detected from the stream.
 
-**Note:** The correctness of the output is not guaranteed.
+**Note:** The accuracy of the output is not guaranteed.
 
 # Why mpeg-ts-analyzer?
 
@@ -30,17 +30,17 @@ mpeg-ts-analyzer is purpose-built for one job: **checking transport-layer timing
 ## Compared to other tools
 
 - **ffprobe / FFmpeg** work at the elementary-stream (codec) level. They expose PTS/DTS but **not the PCR**, which lives in the transport layer (adaptation field). PCR interval and PCR-PTS gap checks are therefore out of reach — ffprobe simply never surfaces the PCR.
-- **TSDuck** is an excellent, comprehensive TS toolkit and it *can* obtain these values (e.g. `tsp -P pcrextract` dumps PCR/PTS/DTS to CSV). But it hands you the raw timestamps — you still have to script the interval/gap computation and make the pass/fail decision yourself. TSDuck gives you the parts; it does not directly give you the answer.
+- **TSDuck** is an excellent, comprehensive TS toolkit and it *can* obtain these values (e.g. `tsp -P pcrextract` dumps PCR/PTS/DTS to CSV). However, it hands you the raw timestamps — you still have to script the interval/gap computation and make the pass/fail decision yourself. TSDuck gives you the parts; it does not directly give you the answer.
 
 mpeg-ts-analyzer instead gives you:
 
-- **Spec-level field dump** — Every field in TS headers, Adaptation Fields, PSI tables, and PES headers is printed exactly as defined in ISO/IEC 13818-1, making it easy to cross-reference with the specification.
-- **Compliance checks out of the box** — Max PCR interval (≤ 100ms) and PCR-PTS gap (≤ 1000ms) are validated automatically and reported as a direct result. No CSV, no scripting.
+- **Spec-level field dump** — Every field in TS headers, adaptation fields, PSI tables, and PES headers is printed exactly as defined in ISO/IEC 13818-1, making it easy to cross-reference with the specification.
+- **Compliance checks out of the box** — Max PCR interval (≤ 100 ms) and PCR-PTS gap (≤ 1000 ms) are validated automatically and reported as a direct result. No CSV, no scripting.
 
 ## Which tool should I use?
 
 - **Transport-layer timing compliance** (Max PCR interval / PCR-PTS gap), or a lightweight pass/fail check you can drop into CI → **mpeg-ts-analyzer**. This is what it is built for.
-- **Broad, general analysis of a stream** — full PSI/SI tables (NIT/SDT/EIT/…), bitrate breakdown, service names, scrambling state, network information, deep TR 101 290 conformance monitoring → **[TSDuck](https://tsduck.io/)** is the far more capable tool, and we recommend it for that.
+- **Broad, general analysis of a stream** — full PSI/SI tables (NIT/SDT/EIT/…), bitrate breakdown, service names, scrambling state, network information, deep TR 101 290 conformance monitoring → **[TSDuck](https://tsduck.io/)** is the far more capable tool, and we recommend it for that use case.
 
 mpeg-ts-analyzer deliberately stays small and focused on the compliance check rather than duplicating what TSDuck already does well.
 
@@ -88,9 +88,9 @@ sudo apk add --allow-untrusted mpeg-ts-analyzer_<version>_linux_amd64.apk
 
 ## Pre-built binaries
 
-Download from the [Releases](https://github.com/small-teton/mpeg-ts-analyzer/releases) page. No additional tools required.
+Download from the [Releases](https://github.com/small-teton/mpeg-ts-analyzer/releases) page. No additional tools are required.
 
-## Go install
+## Install with Go
 
 If you have a [Go](https://go.dev/dl/) environment (1.26+):
 
@@ -100,7 +100,7 @@ go install github.com/small-teton/mpeg-ts-analyzer@latest
 
 # Usage
 
-By default, it dumps all timestamps (PCR/PTS/DTS) including PCR interval and PCR-PTS gap. To dump more details, add the corresponding command-line flags.
+By default, mpeg-ts-analyzer dumps all timestamps (PCR/PTS/DTS), including the PCR interval and PCR-PTS gap. To dump more details, add the corresponding command-line flags.
 
 ```
 Usage:
@@ -141,7 +141,7 @@ Program 2: PMT PID 0x1001, PCR PID 0x0110
 PMT : Program Info : elementary_PID     : 0x120, stream_type : 0x02 (1seg video ...)
 
 $ ./mpeg-ts-analyzer capture.ts --program 1     # analyze one program fully
-$ ./mpeg-ts-analyzer capture.ts --list-programs # always just list, even for one program
+$ ./mpeg-ts-analyzer capture.ts --list-programs # list only the programs, even when there is just one
 ```
 
 Listing only parses each program's PMT (no PES analysis), so it stays lightweight.
@@ -154,12 +154,13 @@ mpeg-ts-analyzer large.ts --dump-ts-header --limit 1000000 > dump.txt
 
 # Result Examples
 
-## No option
+## No options
 
 ```
 $ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
 Input file:  sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
-Detected PAT: PMT pid = 0x1000
+Packet size: 188 bytes
+Detected PAT: 1 program(s)
 Detected PMT
 PMT : Program Info : elementary_PID     : 0x100, stream_type : 0x02 (13818-2 video or 11172-2 constrained parameter video stream)
 PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x03 (11172 audio)
@@ -207,7 +208,8 @@ continuity_counter              : 0
 ```
 $ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts --dump-psi
 Input file:  sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
-Detected PAT: PMT pid = 0x1000
+Packet size: 188 bytes
+Detected PAT: 1 program(s)
 
 ===========================================
  PAT
@@ -279,7 +281,8 @@ descriptor_tag range decides which one applies):
 ```
 $ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts --dump-timestamp
 Input file:  sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
-Detected PAT: PMT pid = 0x1000
+Packet size: 188 bytes
+Detected PAT: 1 program(s)
 Detected PMT
 PMT : Program Info : elementary_PID     : 0x100, stream_type : 0x02 (13818-2 video or 11172-2 constrained parameter video stream)
 PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x03 (11172 audio)
@@ -330,14 +333,14 @@ PCR Jitter Summary (per-interval, byte-position model):
   Discontinuities  : 0
 ```
 
-Jitter magnitudes are printed in milliseconds (six decimals, so 1 ns resolves).
+Jitter magnitudes are printed in milliseconds (six decimals, so 1 ns is resolvable).
 `Status` grades the worst-case `|jitter|` against the two standard limits:
 
 - **OK** — within ±500 ns (ISO/IEC 13818-1 accuracy limit)
 - **WARNING** — beyond ±500 ns but within ±25 µs (DVB receiver tolerance)
 - **NG** — beyond ±25 µs
 
-How it works, and its limits:
+How it works and its limits:
 
 - **No arrival timestamps in a file.** A hardware analyzer measures PCR accuracy
   against the real byte-arrival time. A file has none, so the expected time is
@@ -345,8 +348,8 @@ How it works, and its limits:
   (locally) constant byte rate — byte position stands in for time. The premise
   holds for CBR delivery; the result is a file-based estimate, not a hardware
   TR 101 290 (§5.3.2, "PCR_AC") measurement.
-- **Per-interval, to survive VBR.** Rather than fitting one global line, each PCR
-  is compared to the value interpolated from its two neighbours by byte position.
+- **Per-interval analysis for VBR.** Rather than fitting one global line, each PCR
+  is compared to the value interpolated from its two neighbors by byte position.
   Over three consecutive PCRs the rate is ~constant even if it drifts across the
   stream, so a smooth rate change cancels out and only genuine PCR error remains.
 - **Discontinuities are segmented and reported.** An intentional clock reset
@@ -374,9 +377,9 @@ make clean      # remove build/coverage artifacts
 
 The version string is managed in the `VERSION` file and injected at build time.
 
-Coverage is measured for `bitbuffer` and `tsparser` packages only. CLI entrypoint (`cmd`, `main.go`) is excluded from coverage targets. Both packages should maintain 100% coverage.
+Coverage is measured for `bitbuffer` and `tsparser` packages only. The CLI entry point (`cmd`, `main.go`) is excluded from coverage targets. Both packages should maintain 100% coverage.
 
-A pre-push hook (`make setup` to enable) runs build, test, and coverage checks before every push. Push is rejected if coverage drops below 100%.
+A pre-push hook (`make setup` to enable) runs the build, test, and coverage checks before every push. Push is rejected if coverage drops below 100%.
 
 ## Release
 
@@ -391,7 +394,7 @@ fails the release.
    (`workflow_dispatch`, so only users with write access can start it). It reads
    `VERSION`, checks that `v<VERSION>` does not already exist, creates and pushes
    the tag, then runs GoReleaser in the same job to cross-compile for
-   linux/windows/darwin and publish the GitHub Release with the archives attached.
+   Linux, Windows, and Darwin and publish the GitHub Release with the archives attached.
 
 That is the whole flow — bump `VERSION` in a PR, then trigger the workflow.
 
