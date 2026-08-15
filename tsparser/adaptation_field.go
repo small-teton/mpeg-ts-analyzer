@@ -39,7 +39,7 @@ type AdaptationField struct {
 	ltwOffset                              uint16
 	piecewiseRate                          uint32
 	spliceType                             uint8
-	dtsNextAu                              uint32
+	dtsNextAu                              uint64
 }
 
 // NewAdaptationField create new adaptation_field instance.
@@ -216,10 +216,12 @@ func (af *AdaptationField) Parse() (uint8, error) {
 			if af.spliceType, err = bb.ReadUint8(4); err != nil {
 				return 0, errors.Wrap(err, "failed to read adaptation_fields splice_type")
 			}
-			if af.dtsNextAu, err = bb.ReadUint32(3); err != nil {
+			// DTS_next_AU is 33 bits (3 + 15 + 15); it must not be truncated to 32.
+			first, err := bb.ReadUint32(3)
+			if err != nil {
 				return 0, errors.Wrap(err, "failed to read adaptation_fields dts_next_au first")
 			}
-			af.dtsNextAu <<= 30
+			af.dtsNextAu = uint64(first) << 30
 			if err := bb.Skip(1); err != nil {
 				return 0, errors.Wrap(err, "failed to skip in adaptation_fields dts_next_au: first")
 			} // marker_bit
@@ -227,7 +229,7 @@ func (af *AdaptationField) Parse() (uint8, error) {
 			if err != nil {
 				return 0, errors.Wrap(err, "failed to read adaptation_fields dts_next_au second")
 			}
-			af.dtsNextAu |= second << 15
+			af.dtsNextAu |= uint64(second) << 15
 			if err := bb.Skip(1); err != nil {
 				return 0, errors.Wrap(err, "failed to skip in adaptation_fields dts_next_au: second")
 			} // marker_bit
@@ -235,7 +237,7 @@ func (af *AdaptationField) Parse() (uint8, error) {
 			if err != nil {
 				return 0, errors.Wrap(err, "failed to read adaptation_fields dts_next_au third")
 			}
-			af.dtsNextAu |= third
+			af.dtsNextAu |= uint64(third)
 			if err := bb.Skip(1); err != nil {
 				return 0, errors.Wrap(err, "failed to skip in adaptation_fields dts_next_au: third")
 			} // marker_bit

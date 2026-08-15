@@ -10,9 +10,11 @@ type BitBuffer struct {
 	pos uint32
 }
 
-// Set set the data in the buffer.
+// Set set the data in the buffer and rewind to the first bit, so a reused
+// BitBuffer does not keep reading from a previous offset.
 func (b *BitBuffer) Set(src []byte) {
 	b.buf = src
+	b.pos = 0
 }
 
 // Skip advances the bit position without reading.

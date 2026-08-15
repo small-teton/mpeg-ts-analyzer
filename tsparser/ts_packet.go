@@ -84,6 +84,9 @@ func (tp *TsPacket) Parse() error {
 	if tp.syncByte, err = bb.ReadUint8(8); err != nil {
 		return err
 	}
+	if tp.syncByte != 0x47 {
+		return fmt.Errorf("invalid sync_byte: 0x%02x", tp.syncByte)
+	}
 	if tp.transportErrorIndicator, err = bb.ReadUint8(1); err != nil {
 		return err
 	}

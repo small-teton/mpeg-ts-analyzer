@@ -137,6 +137,32 @@ func TestPcr(t *testing.T) {
 	}
 }
 
+func TestParseAdaptationFieldParseError(t *testing.T) {
+	// afc=10 (AF only) with transport_private_data_length exceeding the packet
+	// makes AdaptationField.Parse fail; TsPacket.Parse must return that error.
+	pkt := make([]byte, 188)
+	pkt[0] = 0x47
+	pkt[3] = 0x20 // afc=10 (AF only)
+	pkt[4] = 183  // adaptation_field_length
+	pkt[5] = 0x02 // transport_private_data_flag=1
+	pkt[6] = 0xFF // transport_private_data_length=255 (past the remaining AF bytes)
+	tp := NewTsPacket()
+	tp.Append(pkt)
+	if err := tp.Parse(); err == nil {
+		t.Error("expected error when adaptation_field parse fails, got nil")
+	}
+}
+
+func TestParseInvalidSyncByte(t *testing.T) {
+	pkt := make([]byte, 188)
+	pkt[0] = 0x48 // not the required sync_byte 0x47
+	tp := NewTsPacket()
+	tp.Append(pkt)
+	if err := tp.Parse(); err == nil {
+		t.Error("expected error for invalid sync_byte, got nil")
+	}
+}
+
 func TestParseInvalidAfLength(t *testing.T) {
 	// afc=11 (AF + payload) with an adaptation_field_length that pushes the
 	// payload start past the packet must error, not panic.

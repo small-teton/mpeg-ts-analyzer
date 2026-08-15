@@ -215,3 +215,21 @@ func TestReadBitsTailPartial(t *testing.T) {
 		t.Errorf("expected 0x00, got 0x%02X", val)
 	}
 }
+
+func TestSetResetsPosition(t *testing.T) {
+	// Reusing a BitBuffer must rewind: after reading, Set on new data reads
+	// from the start, not the previous bit offset.
+	bb := new(BitBuffer)
+	bb.Set([]byte{0xFF})
+	if _, err := bb.ReadUint8(8); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	bb.Set([]byte{0xAB})
+	val, err := bb.ReadUint8(8)
+	if err != nil {
+		t.Fatalf("unexpected error after reuse: %s", err)
+	}
+	if val != 0xAB {
+		t.Errorf("expected 0xAB after Set, got 0x%02X (position not reset)", val)
+	}
+}
