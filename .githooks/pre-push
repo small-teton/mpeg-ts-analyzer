@@ -1,5 +1,14 @@
 #!/bin/sh
 
+echo "=== pre-push: gofmt ==="
+UNFORMATTED=$(gofmt -l .)
+if [ -n "$UNFORMATTED" ]; then
+    echo "FAILED: the following files are not gofmt-formatted:"
+    echo "$UNFORMATTED"
+    echo "Run 'gofmt -w .' to fix."
+    exit 1
+fi
+
 echo "=== pre-push: build ==="
 go build ./... || { echo "FAILED: build"; exit 1; }
 
