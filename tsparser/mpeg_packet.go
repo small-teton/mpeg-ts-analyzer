@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sort"
 
 	"github.com/cockroachdb/errors"
 	"github.com/small-teton/mpeg-ts-analyzer/options"
@@ -174,6 +175,28 @@ func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []Progr
 
 		*pos += int64(size)
 	}
+
+	// The final PES of each elementary stream never sees a following PUSI, so
+	// parse and emit it here (best effort) rather than dropping it at EOF.
+	pids := make([]uint16, 0, len(pesMap))
+	for pid := range pesMap {
+		pids = append(pids, pid)
+	}
+	sort.Slice(pids, func(i, j int) bool { return pids[i] < pids[j] })
+	for _, pid := range pids {
+		pes := pesMap[pid]
+		if pes == nil || len(pes.buf) == 0 {
+			continue
+		}
+		_ = pes.Parse()
+		if options.DumpTimestamp {
+			maxDelay = math.Max(maxDelay, pes.DumpTimestamp())
+		}
+		if options.DumpPesHeader {
+			pes.DumpHeader()
+		}
+	}
+
 	if options.DumpTimestamp {
 		fmt.Println("-----------------------------")
 		fmt.Printf("Max PCR interval: %fms\n", maxPcrInterval/300/90)

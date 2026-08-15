@@ -210,8 +210,8 @@ func TestParseTsFile_EmptyFile(t *testing.T) {
 
 	var opt options.Options
 	err = ParseTsFile(f.Name(), opt)
-	if err != nil {
-		t.Errorf("expected nil error for empty file, got: %s", err)
+	if err == nil {
+		t.Error("expected error for empty file (no PAT detected), got nil")
 	}
 }
 
@@ -231,8 +231,8 @@ func TestParseTsFile_GarbageOnly(t *testing.T) {
 
 	var opt options.Options
 	err = ParseTsFile(f.Name(), opt)
-	if err != nil {
-		t.Errorf("expected nil error for garbage-only file, got: %s", err)
+	if err == nil {
+		t.Error("expected error for garbage-only file (no PAT detected), got nil")
 	}
 }
 
@@ -892,10 +892,10 @@ func TestParseTsReader_LimitZeroRemaining(t *testing.T) {
 	// Limit of 1 byte means on second iteration remaining <= 0 after first read
 	r := &errReadSeeker{data: buildValidStreamBuf(), failAt: -1}
 	opts := options.Options{Limit: 1}
-	// Should exit cleanly without error
+	// With so tiny a limit no PAT is found, so it reports no valid TS.
 	err := parseTsReader(r, opts)
-	if err != nil {
-		t.Errorf("expected nil error with tiny limit, got: %s", err)
+	if err == nil {
+		t.Error("expected error with tiny limit (no PAT detected), got nil")
 	}
 }
 

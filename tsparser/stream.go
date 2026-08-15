@@ -24,6 +24,7 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 	const patPid = 0x0
 	const bufSize = 65536
 	var fileOffset int64
+	patDetected := false
 	buf := make([]byte, bufSize)
 	packetSize := 0
 
@@ -84,6 +85,7 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 			fileOffset = pos
 			continue
 		}
+		patDetected = true
 		pmtPid := pat.PmtPid()
 
 		if _, err = reader.Seek(pos, 0); err != nil {
@@ -125,7 +127,12 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 			fileOffset = maxInt64(pos, readStart+patOffset+int64(packetSize))
 			continue
 		}
-		break
+		return nil
+	}
+	// Reaching EOF is fine once a PAT was seen (the tool degrades gracefully on
+	// later errors); but a stream with no PAT at all is not a transport stream.
+	if !patDetected {
+		return errors.New("no valid transport stream found (PAT not detected)")
 	}
 	return nil
 }
