@@ -128,9 +128,27 @@ func TestPcrJitterDump_Normal(t *testing.T) {
 		j.Add(s.pos, s.pcr, s.discontinuity)
 	}
 	out := captureStdout(t, j.Dump)
-	for _, want := range []string{"Max jitter", "Avg |jitter|", "Within +/-500ns", "Discontinuities  : 0"} {
+	for _, want := range []string{"Max jitter", "Avg |jitter|", "Within +/-500ns", "Status           : OK", "Discontinuities  : 0"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestPcrJitterVerdict(t *testing.T) {
+	cases := []struct {
+		maxAbsNs float64
+		want     string
+	}{
+		{0, "OK"},
+		{pcrAccuracyLimitNs, "OK"}, // exactly ±500ns is still OK
+		{10_000, "WARNING"},        // 10us: over ISO, under DVB
+		{pcrDvbLimitNs, "WARNING"}, // exactly ±25us is still within DVB
+		{pcrDvbLimitNs + 1, "NG"},  // just over ±25us
+	}
+	for _, c := range cases {
+		if got := pcrJitterVerdict(c.maxAbsNs); !strings.HasPrefix(got, c.want) {
+			t.Errorf("pcrJitterVerdict(%.0f) = %q, want prefix %q", c.maxAbsNs, got, c.want)
 		}
 	}
 }
