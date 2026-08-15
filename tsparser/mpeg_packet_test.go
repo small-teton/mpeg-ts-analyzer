@@ -44,6 +44,23 @@ func TestBufferPsiReadError(t *testing.T) {
 	}
 }
 
+func TestBufferPsiInvalidPointerField(t *testing.T) {
+	// PUSI packet whose pointer_field runs past the payload must error, not panic.
+	pkt := make([]byte, 188)
+	pkt[0] = 0x47
+	pkt[1] = 0x40 // PUSI=1, pid=0x0000
+	pkt[2] = 0x00
+	pkt[3] = 0x10 // adaptation_field_control=01 (payload only), cc=0
+	pkt[4] = 200  // pointer_field=200 (payload is only 184 bytes)
+	r := &errReader{data: pkt, failAt: -1}
+	var pos int64
+	pat := NewPat()
+	var opts options.Options
+	if err := BufferPsi(r, &pos, 0x0000, pat, opts, 188, 0); err == nil {
+		t.Error("expected error for invalid pointer_field, got nil")
+	}
+}
+
 func TestBufferPesReadError(t *testing.T) {
 	r := &errReader{failAt: 0}
 	var pos int64
