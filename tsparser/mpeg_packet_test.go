@@ -44,6 +44,23 @@ func TestBufferPsiReadError(t *testing.T) {
 	}
 }
 
+func TestBufferPsiInvalidPointerField(t *testing.T) {
+	// PUSI packet whose pointer_field runs past the payload must error, not panic.
+	pkt := make([]byte, 188)
+	pkt[0] = 0x47
+	pkt[1] = 0x40 // PUSI=1, pid=0x0000
+	pkt[2] = 0x00
+	pkt[3] = 0x10 // adaptation_field_control=01 (payload only), cc=0
+	pkt[4] = 200  // pointer_field=200 (payload is only 184 bytes)
+	r := &errReader{data: pkt, failAt: -1}
+	var pos int64
+	pat := NewPat()
+	var opts options.Options
+	if err := BufferPsi(r, &pos, 0x0000, pat, opts, 188, 0); err == nil {
+		t.Error("expected error for invalid pointer_field, got nil")
+	}
+}
+
 func TestBufferPesReadError(t *testing.T) {
 	r := &errReader{failAt: 0}
 	var pos int64
@@ -413,6 +430,21 @@ func TestBufferPsiSkipsAfOnlyPacket(t *testing.T) {
 	var opts options.Options
 	err = BufferPsi(f2, &pos, 0x0000, pat, opts, 188, 0)
 	if err != nil {
+		t.Errorf("unexpected error: %s", err)
+	}
+}
+
+func TestBufferPesFinalPesMultiPid(t *testing.T) {
+	// Two elementary PIDs so the end-of-stream final-PES pass sorts more than one
+	// PID (covers the sort comparator). Immediate EOF, no pending data.
+	r := &errReader{data: nil, failAt: -1}
+	var pos int64
+	programInfos := []ProgramInfo{
+		{streamType: 0x1B, elementaryPid: 0x31},
+		{streamType: 0x0F, elementaryPid: 0x32},
+	}
+	var opts options.Options
+	if err := BufferPes(r, &pos, 0x31, programInfos, opts, 188, 0); err != nil {
 		t.Errorf("unexpected error: %s", err)
 	}
 }

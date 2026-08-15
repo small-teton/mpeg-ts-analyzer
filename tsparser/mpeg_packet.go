@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sort"
 
 	"github.com/cockroachdb/errors"
 	"github.com/small-teton/mpeg-ts-analyzer/options"
@@ -57,6 +58,10 @@ func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, 
 			continue
 		}
 		if tsPacket.PayloadUnitStartIndicator() {
+			// buf[0] is the pointer_field; reject values that run past the payload.
+			if 1+int(buf[0]) > len(buf) {
+				return errors.Newf("invalid pointer_field %d at pos:0x%08x", buf[0], *pos)
+			}
 			if isBuffering {
 				mpegPacket.Append(buf[1 : 1+buf[0]]) // read until pointer_field
 				break
@@ -114,7 +119,9 @@ func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []Progr
 			if options.DumpPcrJitter {
 				pcrJitter.Add(*pos, tsPacket.Pcr(), tsPacket.adaptationField.DiscontinuityIndicator())
 			}
-			if lastPcr != 0 {
+			// Skip PCR wrap/reset (a smaller PCR than the previous one) so the
+			// unsigned subtraction does not underflow into a huge interval.
+			if lastPcr != 0 && tsPacket.Pcr() >= lastPcr {
 				maxPcrInterval = math.Max(maxPcrInterval, float64(tsPacket.Pcr()-lastPcr))
 			}
 			lastPcr = tsPacket.Pcr()
@@ -168,6 +175,28 @@ func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []Progr
 
 		*pos += int64(size)
 	}
+
+	// The final PES of each elementary stream never sees a following PUSI, so
+	// parse and emit it here (best effort) rather than dropping it at EOF.
+	pids := make([]uint16, 0, len(pesMap))
+	for pid := range pesMap {
+		pids = append(pids, pid)
+	}
+	sort.Slice(pids, func(i, j int) bool { return pids[i] < pids[j] })
+	for _, pid := range pids {
+		pes := pesMap[pid]
+		if pes == nil || len(pes.buf) == 0 {
+			continue
+		}
+		_ = pes.Parse()
+		if options.DumpTimestamp {
+			maxDelay = math.Max(maxDelay, pes.DumpTimestamp())
+		}
+		if options.DumpPesHeader {
+			pes.DumpHeader()
+		}
+	}
+
 	if options.DumpTimestamp {
 		fmt.Println("-----------------------------")
 		fmt.Printf("Max PCR interval: %fms\n", maxPcrInterval/300/90)

@@ -214,3 +214,11 @@ func TestPatParseErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestPatParseInvalidTableId(t *testing.T) {
+	pat := NewPat()
+	pat.Append([]byte{0x01, 0xB0, 0x0D}) // table_id=0x01 (PAT must be 0x00)
+	if err := pat.Parse(); err == nil {
+		t.Error("expected error for invalid pat table_id, got nil")
+	}
+}

@@ -84,6 +84,9 @@ func (tp *TsPacket) Parse() error {
 	if tp.syncByte, err = bb.ReadUint8(8); err != nil {
 		return err
 	}
+	if tp.syncByte != 0x47 {
+		return fmt.Errorf("invalid sync_byte: 0x%02x", tp.syncByte)
+	}
 	if tp.transportErrorIndicator, err = bb.ReadUint8(1); err != nil {
 		return err
 	}
@@ -101,6 +104,9 @@ func (tp *TsPacket) Parse() error {
 	}
 	if tp.adaptationFieldControl, err = bb.ReadUint8(2); err != nil {
 		return err
+	}
+	if tp.adaptationFieldControl == 0 {
+		return fmt.Errorf("invalid adaptation_field_control: 0 (reserved)")
 	}
 	if tp.continuityCounter, err = bb.ReadUint8(4); err != nil {
 		return err
@@ -121,6 +127,11 @@ func (tp *TsPacket) Parse() error {
 		tp.payload = tp.buf[tsHeaderSize:]
 	}
 	if tp.adaptationFieldControl == 3 {
+		// afLength (adaptation_field_length) is attacker-controlled; reject one
+		// that would place the payload start past the packet.
+		if tsHeaderSize+int(afLength)+1 > len(tp.buf) {
+			return fmt.Errorf("invalid adaptation_field_length: %d", afLength)
+		}
 		tp.payload = tp.buf[tsHeaderSize+afLength+1:]
 	}
 
