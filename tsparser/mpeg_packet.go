@@ -118,7 +118,9 @@ func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []Progr
 			if options.DumpPcrJitter {
 				pcrJitter.Add(*pos, tsPacket.Pcr(), tsPacket.adaptationField.DiscontinuityIndicator())
 			}
-			if lastPcr != 0 {
+			// Skip PCR wrap/reset (a smaller PCR than the previous one) so the
+			// unsigned subtraction does not underflow into a huge interval.
+			if lastPcr != 0 && tsPacket.Pcr() >= lastPcr {
 				maxPcrInterval = math.Max(maxPcrInterval, float64(tsPacket.Pcr()-lastPcr))
 			}
 			lastPcr = tsPacket.Pcr()
