@@ -27,7 +27,7 @@ func TestSkip(t *testing.T) {
 	bb := new(BitBuffer)
 	bb.Set(data)
 
-	bb.Skip(16)
+	_ = bb.Skip(16)
 	if bb.pos != 16 {
 		t.Errorf("pos is invalid(actual: 2, But got %d)", bb.pos)
 	}
@@ -36,7 +36,7 @@ func TestSkip(t *testing.T) {
 		t.Errorf("data is invalid(actual: 0x%02x, But got 0x%02x)", data[2], getByte)
 	}
 
-	bb.Skip(3)
+	_ = bb.Skip(3)
 	if bb.pos != 27 {
 		t.Errorf("pos is invalid(actual: 2, But got %d)", bb.pos)
 	}
@@ -158,7 +158,7 @@ func TestReadBitsPartialHead(t *testing.T) {
 	bb := new(BitBuffer)
 	bb.Set([]byte{0xAB, 0xCD}) // 10101011 11001101
 	// Skip 4 bits, then read 8 bits across byte boundary
-	bb.Skip(4)
+	_ = bb.Skip(4)
 	val, err := bb.ReadUint8(8)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
@@ -184,7 +184,7 @@ func TestReadBitsHeadOnlyPartial(t *testing.T) {
 	// Read fewer bits than remaining in the first byte (bitsFromFirst > remaining)
 	bb := new(BitBuffer)
 	bb.Set([]byte{0xAB}) // 10101011
-	bb.Skip(2)           // pos=2, bitOffset=2, 6 bits remaining in byte
+	_ = bb.Skip(2)       // pos=2, bitOffset=2, 6 bits remaining in byte
 	// Read only 3 bits (< 6 remaining) → triggers bitsFromFirst > remaining
 	val, err := bb.ReadUint8(3)
 	if err != nil {
