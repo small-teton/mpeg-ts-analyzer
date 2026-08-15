@@ -45,7 +45,12 @@ const (
 	// pcrTicksPerMs is 27 MHz expressed per millisecond.
 	pcrTicksPerMs = pcrClockHz / 1000
 	// pcrAccuracyLimitNs is the PCR accuracy limit from ISO/IEC 13818-1: ±500 ns.
+	// Max |jitter| within this is a pass (OK).
 	pcrAccuracyLimitNs = 500.0
+	// pcrDvbLimitNs is the ±25 µs jitter tolerance DVB expects compliant
+	// receivers to handle. Max |jitter| between the ISO limit and this is a
+	// warning; beyond it is a failure (NG).
+	pcrDvbLimitNs = 25_000.0
 	// pcrDiscontinuityJumpMs: a PCR-to-PCR gap larger than this is treated as a
 	// discontinuity rather than jitter. ISO/IEC 13818-1 caps the legal PCR
 	// interval at 100 ms, so a jump beyond 1000 ms cannot be a normal interval.
@@ -197,13 +202,33 @@ func (j *PcrJitter) Dump() {
 		return
 	}
 
+	maxAbsNs := math.Max(math.Abs(res.maxNs), math.Abs(res.minNs))
 	fmt.Printf("  Samples          : %d PCR in %d segment(s)\n", len(j.samples), res.segments)
 	fmt.Printf("  Measured         : %d interior samples\n", res.measured)
-	fmt.Printf("  Max jitter       : %+.3fus at 0x%08x\n", res.maxNs/1000, res.maxPos)
-	fmt.Printf("  Min jitter       : %+.3fus at 0x%08x\n", res.minNs/1000, res.minPos)
-	fmt.Printf("  Avg |jitter|     : %.3fus\n", res.avgAbsNs/1000)
+	fmt.Printf("  Max jitter       : %+.6fms at 0x%08x\n", res.maxNs/1e6, res.maxPos)
+	fmt.Printf("  Min jitter       : %+.6fms at 0x%08x\n", res.minNs/1e6, res.minPos)
+	fmt.Printf("  Avg |jitter|     : %.6fms\n", res.avgAbsNs/1e6)
 	fmt.Printf("  Within +/-500ns  : %.1f%% (ISO/IEC 13818-1 accuracy limit)\n", res.within500Pct)
+	fmt.Printf("  Status           : %s\n", pcrJitterVerdict(maxAbsNs))
 	printPcrDiscontinuities(res.discontinuities)
+}
+
+// pcrJitterVerdict classifies the worst-case |jitter| (in ns) against the
+// ISO/IEC 13818-1 accuracy limit (±500 ns) and the DVB receiver tolerance
+// (±25 µs):
+//
+//	OK      max |jitter| within ±500 ns (ISO/IEC 13818-1)
+//	WARNING beyond ±500 ns but within ±25 µs (DVB)
+//	NG      beyond ±25 µs
+func pcrJitterVerdict(maxAbsNs float64) string {
+	switch {
+	case maxAbsNs <= pcrAccuracyLimitNs:
+		return "OK (max |jitter| within the +/-500ns ISO/IEC 13818-1 limit)"
+	case maxAbsNs <= pcrDvbLimitNs:
+		return "WARNING (max |jitter| exceeds +/-500ns (ISO) but within +/-25 microsec (DVB))"
+	default:
+		return "NG (max |jitter| exceeds the +/-25 microsec DVB limit)"
+	}
 }
 
 // printPcrDiscontinuities prints the discontinuity count and, if any, where each

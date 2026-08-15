@@ -284,12 +284,20 @@ PCR Jitter Summary (per-interval, byte-position model):
   (file-based estimate; assumes ~constant delivery rate, not a TR 101 290 measurement)
   Samples          : 60 PCR in 1 segment(s)
   Measured         : 58 interior samples
-  Max jitter       : +23333.333us at 0x00026244
-  Min jitter       : -28679.245us at 0x00008664
-  Avg |jitter|     : 16822.812us
+  Max jitter       : +23.333333ms at 0x00026244
+  Min jitter       : -28.679245ms at 0x00008664
+  Avg |jitter|     : 16.822812ms
   Within +/-500ns  : 0.0% (ISO/IEC 13818-1 accuracy limit)
+  Status           : NG (max |jitter| exceeds the +/-25 microsec DVB limit)
   Discontinuities  : 0
 ```
+
+Jitter magnitudes are printed in milliseconds (six decimals, so 1 ns resolves).
+`Status` grades the worst-case `|jitter|` against the two standard limits:
+
+- **OK** — within ±500 ns (ISO/IEC 13818-1 accuracy limit)
+- **WARNING** — beyond ±500 ns but within ±25 µs (DVB receiver tolerance)
+- **NG** — beyond ±25 µs
 
 How it works, and its limits:
 
