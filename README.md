@@ -16,6 +16,7 @@ In addition, it can dump various MPEG-2 TS internal structures for stream invest
 - PSI tables (PAT/PMT) with CRC32 validation
 - PMT ES info descriptors (ISO 639 language, registration, AVC/HEVC video, AAC audio, teletext, DVB subtitling)
 - PES header with PTS/DTS timestamps
+- PCR jitter analysis (per-interval deviation from the expected PCR)
 - continuity_counter validation
 
 Both 188-byte TS packets and 192-byte M2TS packets (BDAV format with TP_extra_header) are supported. The packet size is auto-detected from the stream.
@@ -95,6 +96,7 @@ Usage:
 
 Flags:
       --dump-adaptation-field   Dump TS packet adaptation_field detail.
+      --dump-pcr-jitter         Analyze PCR jitter (per-interval deviation from the expected PCR).
       --dump-pes-header         Dump PES packet header detail.
       --dump-psi                Dump PSI(PAT/PMT) detail.
       --dump-timestamp          Dump PCR/PTS/DTS timestamps.
@@ -265,6 +267,50 @@ PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x03 (11172 audio
 Max PCR interval: 80.000000ms
 PCR-PTS max gap: 729.563591ms
 ```
+
+## Dump PCR jitter
+
+`--dump-pcr-jitter` reports **PCR jitter** — the error in each PCR *value*, i.e.
+how far the stamped clock is from the time that byte was actually delivered. This
+is a different concern from the PCR *interval* check above (how often a PCR
+appears): a PCR can arrive on time yet carry a wrong value, which upsets the
+decoder's clock recovery (audio pops, video stutter).
+
+```
+$ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts --dump-pcr-jitter
+...
+-----------------------------
+PCR Jitter Summary (per-interval, byte-position model):
+  (file-based estimate; assumes ~constant delivery rate, not a TR 101 290 measurement)
+  Samples          : 60 PCR in 1 segment(s)
+  Measured         : 58 interior samples
+  Max jitter       : +23333.333us at 0x00026244
+  Min jitter       : -28679.245us at 0x00008664
+  Avg |jitter|     : 16822.812us
+  Within +/-500ns  : 0.0% (ISO/IEC 13818-1 accuracy limit)
+  Discontinuities  : 0
+```
+
+How it works, and its limits:
+
+- **No arrival timestamps in a file.** A hardware analyzer measures PCR accuracy
+  against the real byte-arrival time. A file has none, so the expected time is
+  approximated from the **byte position**, assuming the stream is delivered at a
+  (locally) constant byte rate — byte position stands in for time. The premise
+  holds for CBR delivery; the result is a file-based estimate, not a hardware
+  TR 101 290 (§5.3.2, "PCR_AC") measurement.
+- **Per-interval, to survive VBR.** Rather than fitting one global line, each PCR
+  is compared to the value interpolated from its two neighbours by byte position.
+  Over three consecutive PCRs the rate is ~constant even if it drifts across the
+  stream, so a smooth rate change cancels out and only genuine PCR error remains.
+- **Discontinuities are segmented and reported.** An intentional clock reset
+  (`discontinuity_indicator`) or an implausible jump splits the samples into
+  segments; jitter is measured within a segment, and each discontinuity is listed
+  with its size. If the stream is too discontinuous, the analysis is skipped.
+
+> The bundled sample shows large jitter because its PCR PID also carries VBR video,
+> so the byte rate between PCRs varies a lot — not a clean CBR mux. A compliant
+> CBR broadcast multiplex reports sub-microsecond jitter.
 
 # Development
 
