@@ -6,12 +6,66 @@ name: Go
 on:
   push:
   pull_request:
+  schedule:
+    # Weekly, so govulncheck catches advisories published against unchanged deps.
+    - cron: "0 6 * * 1"
 
 permissions:
   contents: read
   pull-requests: write
+  issues: write
 
 jobs:
+
+  golangci-lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version-file: './go.mod'
+
+    - name: golangci-lint
+      run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run ./...
+
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version-file: './go.mod'
+
+    - name: govulncheck
+      run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+    # On a scheduled run, a failure means a new advisory landed against otherwise
+    # unchanged code (no push/PR would surface it), so open/refresh an issue.
+    - name: Open an issue on scheduled failure
+      if: failure() && github.event_name == 'schedule'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const title = 'govulncheck: vulnerabilities detected';
+          const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+          const body = `The scheduled \`govulncheck\` run reported vulnerabilities.\n\nRun: ${runUrl}`;
+          const { data: issues } = await github.rest.issues.listForRepo({
+            owner: context.repo.owner, repo: context.repo.repo, state: 'open', labels: 'security',
+          });
+          const existing = issues.find(i => i.title === title);
+          if (existing) {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: existing.number, body,
+            });
+          } else {
+            await github.rest.issues.create({
+              owner: context.repo.owner, repo: context.repo.repo, title, body, labels: ['security'],
+            });
+          }
 
   gofmt:
     runs-on: ubuntu-latest

@@ -1,0 +1,8 @@
+version: "2"
+
+# Default linters (errcheck, govet, ineffassign, staticcheck, unused) stay on.
+# Report every finding rather than capping duplicates, so CI and the pre-commit
+# run surface the full list.
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

@@ -80,7 +80,7 @@ Download from the [Releases](https://github.com/small-teton/mpeg-ts-analyzer/rel
 
 ## Go install
 
-If you have a [Go](https://go.dev/dl/) environment (1.21+):
+If you have a [Go](https://go.dev/dl/) environment (1.26+):
 
 ```bash
 go install github.com/small-teton/mpeg-ts-analyzer@latest

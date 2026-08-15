@@ -80,7 +80,7 @@ func TestBufferPes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	programInfos := []ProgramInfo{
 		{streamType: 0x1B, elementaryPid: 0x31, esInfoLength: 0},
@@ -96,27 +96,27 @@ func TestBufferPes(t *testing.T) {
 	}
 
 	// Write PCR packet
-	f.Write(buildPcrPacket(0x0031, 13500))
+	_, _ = f.Write(buildPcrPacket(0x0031, 13500))
 
 	// Write PES start packet (cc=1)
-	f.Write(buildTsPacket(0x0031, true, 1, pesHeader))
+	_, _ = f.Write(buildTsPacket(0x0031, true, 1, pesHeader))
 
 	// Write continuation packet (cc=2)
-	f.Write(buildTsPacket(0x0031, false, 2, []byte{0x00, 0x01}))
+	_, _ = f.Write(buildTsPacket(0x0031, false, 2, []byte{0x00, 0x01}))
 
 	// Write another PCR packet (different value to trigger interval calc)
-	f.Write(buildPcrPacket(0x0031, 27000))
+	_, _ = f.Write(buildPcrPacket(0x0031, 27000))
 
 	// Write another PES start (triggers parse of previous PES, cc=3)
-	f.Write(buildTsPacket(0x0031, true, 3, pesHeader))
+	_, _ = f.Write(buildTsPacket(0x0031, true, 3, pesHeader))
 
-	f.Close()
+	_ = f.Close()
 
 	f2, err := os.Open(f.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f2.Close()
+	defer func() { _ = f2.Close() }()
 
 	var pos int64
 	var opts options.Options
@@ -131,7 +131,7 @@ func TestBufferPesWithTimestamp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	programInfos := []ProgramInfo{
 		{streamType: 0x1B, elementaryPid: 0x31, esInfoLength: 0},
@@ -147,27 +147,27 @@ func TestBufferPesWithTimestamp(t *testing.T) {
 	}
 
 	// Write PCR packet
-	f.Write(buildPcrPacket(0x0031, 13500))
+	_, _ = f.Write(buildPcrPacket(0x0031, 13500))
 
 	// Write PES start packet (cc=1)
-	f.Write(buildTsPacket(0x0031, true, 1, pesHeader))
+	_, _ = f.Write(buildTsPacket(0x0031, true, 1, pesHeader))
 
 	// Write continuation packet (cc=2)
-	f.Write(buildTsPacket(0x0031, false, 2, []byte{0x00, 0x01}))
+	_, _ = f.Write(buildTsPacket(0x0031, false, 2, []byte{0x00, 0x01}))
 
 	// Write another PCR packet
-	f.Write(buildPcrPacket(0x0031, 27000))
+	_, _ = f.Write(buildPcrPacket(0x0031, 27000))
 
 	// Write another PES start (triggers parse + dump of previous PES)
-	f.Write(buildTsPacket(0x0031, true, 3, pesHeader))
+	_, _ = f.Write(buildTsPacket(0x0031, true, 3, pesHeader))
 
-	f.Close()
+	_ = f.Close()
 
 	f2, err := os.Open(f.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f2.Close()
+	defer func() { _ = f2.Close() }()
 
 	var pos int64
 	opts := options.Options{DumpTimestamp: true}
@@ -182,23 +182,23 @@ func TestBufferPesNonPesPacketSkip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	programInfos := []ProgramInfo{
 		{streamType: 0x1B, elementaryPid: 0x31, esInfoLength: 0},
 	}
 
 	// Write packets on a PID not in programInfos (should be skipped)
-	f.Write(buildTsPacket(0x0100, true, 0, []byte{0xAA, 0xBB}))
-	f.Write(buildTsPacket(0x0100, false, 1, []byte{0xCC, 0xDD}))
+	_, _ = f.Write(buildTsPacket(0x0100, true, 0, []byte{0xAA, 0xBB}))
+	_, _ = f.Write(buildTsPacket(0x0100, false, 1, []byte{0xCC, 0xDD}))
 
-	f.Close()
+	_ = f.Close()
 
 	f2, err := os.Open(f.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f2.Close()
+	defer func() { _ = f2.Close() }()
 
 	var pos int64
 	var opts options.Options
@@ -213,7 +213,7 @@ func TestBufferPesPacketLoss(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	programInfos := []ProgramInfo{
 		{streamType: 0x1B, elementaryPid: 0x31, esInfoLength: 0},
@@ -229,21 +229,21 @@ func TestBufferPesPacketLoss(t *testing.T) {
 	}
 
 	// Write PCR packet
-	f.Write(buildPcrPacket(0x0031, 13500))
+	_, _ = f.Write(buildPcrPacket(0x0031, 13500))
 
 	// Write PES start packet (cc=0)
-	f.Write(buildTsPacket(0x0031, true, 0, pesHeader))
+	_, _ = f.Write(buildTsPacket(0x0031, true, 0, pesHeader))
 
 	// Write continuation with cc gap (cc=5, expected 1) -> triggers packet loss printf
-	f.Write(buildTsPacket(0x0031, false, 5, []byte{0x00, 0x01}))
+	_, _ = f.Write(buildTsPacket(0x0031, false, 5, []byte{0x00, 0x01}))
 
-	f.Close()
+	_ = f.Close()
 
 	f2, err := os.Open(f.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f2.Close()
+	defer func() { _ = f2.Close() }()
 
 	var pos int64
 	var opts options.Options
@@ -258,17 +258,17 @@ func TestBufferPsi_192(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
-	f.Write(wrapM2TS(buildTsPacket(0x0000, true, 0, patPayload)))
-	f.Write(wrapM2TS(buildStuffingPacket()))
-	f.Write(wrapM2TS(buildStuffingPacket()))
-	f.Write(wrapM2TS(buildTsPacket(0x0000, true, 1, patPayload)))
-	f.Close()
+	_, _ = f.Write(wrapM2TS(buildTsPacket(0x0000, true, 0, patPayload)))
+	_, _ = f.Write(wrapM2TS(buildStuffingPacket()))
+	_, _ = f.Write(wrapM2TS(buildStuffingPacket()))
+	_, _ = f.Write(wrapM2TS(buildTsPacket(0x0000, true, 1, patPayload)))
+	_ = f.Close()
 
 	file, _ := os.Open(f.Name())
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var pos int64
 	var opt options.Options
@@ -284,7 +284,7 @@ func TestBufferPes_192(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	programInfos := []ProgramInfo{
 		{streamType: 0x1B, elementaryPid: 0x31, esInfoLength: 0},
@@ -299,18 +299,18 @@ func TestBufferPes_192(t *testing.T) {
 		0x21, 0x00, 0x07, 0xD8, 0x61,
 	}
 
-	f.Write(wrapM2TS(buildPcrPacket(0x0031, 13500)))
-	f.Write(wrapM2TS(buildTsPacket(0x0031, true, 1, pesHeader)))
-	f.Write(wrapM2TS(buildTsPacket(0x0031, false, 2, []byte{0x00, 0x01})))
-	f.Write(wrapM2TS(buildPcrPacket(0x0031, 27000)))
-	f.Write(wrapM2TS(buildTsPacket(0x0031, true, 3, pesHeader)))
-	f.Close()
+	_, _ = f.Write(wrapM2TS(buildPcrPacket(0x0031, 13500)))
+	_, _ = f.Write(wrapM2TS(buildTsPacket(0x0031, true, 1, pesHeader)))
+	_, _ = f.Write(wrapM2TS(buildTsPacket(0x0031, false, 2, []byte{0x00, 0x01})))
+	_, _ = f.Write(wrapM2TS(buildPcrPacket(0x0031, 27000)))
+	_, _ = f.Write(wrapM2TS(buildTsPacket(0x0031, true, 3, pesHeader)))
+	_ = f.Close()
 
 	f2, err := os.Open(f.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f2.Close()
+	defer func() { _ = f2.Close() }()
 
 	var pos int64
 	var opts options.Options
@@ -325,19 +325,19 @@ func TestBufferPsi_EndOffset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
-	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
-	f.Write(buildStuffingPacket())
-	f.Write(buildTsPacket(0x0000, true, 1, patPayload))
-	f.Close()
+	_, _ = f.Write(buildTsPacket(0x0000, true, 0, patPayload))
+	_, _ = f.Write(buildStuffingPacket())
+	_, _ = f.Write(buildTsPacket(0x0000, true, 1, patPayload))
+	_ = f.Close()
 
 	f2, err := os.Open(f.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f2.Close()
+	defer func() { _ = f2.Close() }()
 
 	var pos int64
 	var opts options.Options
@@ -355,7 +355,7 @@ func TestBufferPes_EndOffset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	programInfos := []ProgramInfo{
 		{streamType: 0x1B, elementaryPid: 0x31, esInfoLength: 0},
@@ -365,16 +365,16 @@ func TestBufferPes_EndOffset(t *testing.T) {
 		0x21, 0x00, 0x07, 0xD8, 0x61,
 	}
 
-	f.Write(buildPcrPacket(0x0031, 13500))
-	f.Write(buildTsPacket(0x0031, true, 1, pesHeader))
-	f.Write(buildTsPacket(0x0031, false, 2, []byte{0x00, 0x01}))
-	f.Close()
+	_, _ = f.Write(buildPcrPacket(0x0031, 13500))
+	_, _ = f.Write(buildTsPacket(0x0031, true, 1, pesHeader))
+	_, _ = f.Write(buildTsPacket(0x0031, false, 2, []byte{0x00, 0x01}))
+	_ = f.Close()
 
 	f2, err := os.Open(f.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f2.Close()
+	defer func() { _ = f2.Close() }()
 
 	var pos int64
 	opts := options.Options{DumpTimestamp: true}
@@ -391,22 +391,22 @@ func TestBufferPsiSkipsAfOnlyPacket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
 	// PAT start
-	f.Write(buildTsPacket(0x0000, true, 0, patPayload))
+	_, _ = f.Write(buildTsPacket(0x0000, true, 0, patPayload))
 	// AF-only packet on PAT PID (afc=2, no payload)
-	f.Write(buildPcrPacket(0x0000, 13500))
+	_, _ = f.Write(buildPcrPacket(0x0000, 13500))
 	// Second PAT to terminate buffering
-	f.Write(buildTsPacket(0x0000, true, 1, patPayload))
-	f.Close()
+	_, _ = f.Write(buildTsPacket(0x0000, true, 1, patPayload))
+	_ = f.Close()
 
 	f2, err := os.Open(f.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f2.Close()
+	defer func() { _ = f2.Close() }()
 
 	var pos int64
 	pat := NewPat()
