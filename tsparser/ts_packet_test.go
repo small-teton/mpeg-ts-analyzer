@@ -224,7 +224,7 @@ func TestTsPacketDumpHeader(t *testing.T) {
 	}
 	tp := NewTsPacket()
 	tp.Append(data)
-	tp.Parse()
+	_ = tp.Parse()
 	// Should not panic
 	tp.DumpHeader()
 }
@@ -240,7 +240,7 @@ func TestTsPacketDumpPayload(t *testing.T) {
 	}
 	tp := NewTsPacket()
 	tp.Append(data)
-	tp.Parse()
+	_ = tp.Parse()
 	// Should not panic
 	tp.DumpPayload()
 }
@@ -297,7 +297,7 @@ func TestPayload(t *testing.T) {
 	}
 	tp := NewTsPacket()
 	tp.Append(data)
-	tp.Parse()
+	_ = tp.Parse()
 
 	payload := tp.Payload()
 	if len(data)-4 != len(payload) {
