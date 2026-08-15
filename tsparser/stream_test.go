@@ -1048,3 +1048,142 @@ func buildPcrPacket(pid uint16, pcr uint64) []byte {
 	}
 	return pkt
 }
+
+func buildPatMulti() []byte {
+	body := []byte{
+		0x00, 0x01, // transport_stream_id
+		0xC1, 0x00, 0x00, // version/current_next, section_number, last_section_number
+		0x00, 0x01, 0xE0, 0x64, // program_number 1 -> PMT PID 0x0064
+		0x00, 0x02, 0xE0, 0x65, // program_number 2 -> PMT PID 0x0065
+	}
+	sectionLen := len(body) + 4
+	full := append([]byte{0x00, 0xB0 | byte(sectionLen>>8), byte(sectionLen)}, body...)
+	crc := crc32(full)
+	return append(full, byte(crc>>24), byte(crc>>16), byte(crc>>8), byte(crc))
+}
+
+func buildPatNetworkOnly() []byte {
+	body := []byte{
+		0x00, 0x01, // transport_stream_id
+		0xC1, 0x00, 0x00,
+		0x00, 0x00, 0xE0, 0x10, // program_number 0 (network) -> network_pid 0x0010
+	}
+	sectionLen := len(body) + 4
+	full := append([]byte{0x00, 0xB0 | byte(sectionLen>>8), byte(sectionLen)}, body...)
+	crc := crc32(full)
+	return append(full, byte(crc>>24), byte(crc>>16), byte(crc>>8), byte(crc))
+}
+
+func buildPmtFor(pcrPid uint16) []byte {
+	body := []byte{
+		0x00, 0x01, // program_number
+		0xC1, 0x00, 0x00,
+		0xE0 | byte((pcrPid>>8)&0x1F), byte(pcrPid), // PCR_PID
+		0xF0, 0x00, // program_info_length=0
+		0x1B, 0xE0 | byte((pcrPid>>8)&0x1F), byte(pcrPid), 0xF0, 0x00, // one stream on the same PID
+	}
+	sectionLen := len(body) + 4
+	full := append([]byte{0x02, 0xB0 | byte(sectionLen>>8), byte(sectionLen)}, body...)
+	crc := crc32(full)
+	return append(full, byte(crc>>24), byte(crc>>16), byte(crc>>8), byte(crc))
+}
+
+// writeMultiProgramStream writes a 2-program TS. When dropSecondPmt is true, the
+// second program's PMT packets are omitted (that program can't be parsed).
+func writeMultiProgramStream(f *os.File, dropSecondPmt bool) {
+	pat := buildPatMulti()
+	pmtA := buildPmtFor(0x0031)
+	pmtB := buildPmtFor(0x0032)
+	pesHeader := []byte{0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x80, 0x05, 0x21, 0x00, 0x07, 0xD8, 0x61}
+
+	_, _ = f.Write(buildTsPacket(0x0000, true, 0, pat))
+	_, _ = f.Write(buildStuffingPacket())
+	_, _ = f.Write(buildStuffingPacket())
+	_, _ = f.Write(buildTsPacket(0x0000, true, 1, pat)) // 2nd PAT terminates buffering
+	_, _ = f.Write(buildTsPacket(0x0064, true, 0, pmtA))
+	_, _ = f.Write(buildTsPacket(0x0064, true, 1, pmtA))
+	if !dropSecondPmt {
+		_, _ = f.Write(buildTsPacket(0x0065, true, 0, pmtB))
+		_, _ = f.Write(buildTsPacket(0x0065, true, 1, pmtB))
+	}
+	_, _ = f.Write(buildPcrPacket(0x0031, 13500))
+	_, _ = f.Write(buildTsPacket(0x0031, true, 1, pesHeader))
+	_, _ = f.Write(buildPcrPacket(0x0032, 13500))
+	_, _ = f.Write(buildTsPacket(0x0032, true, 1, pesHeader))
+}
+
+func multiProgramFile(t *testing.T, dropSecondPmt bool) string {
+	t.Helper()
+	f, err := os.CreateTemp("", "multiprog*.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeMultiProgramStream(f, dropSecondPmt)
+	_ = f.Close()
+	return f.Name()
+}
+
+func TestParseTsFile_MultiProgramAutoList(t *testing.T) {
+	// No option + multiple programs -> list and stop (do not analyze one).
+	name := multiProgramFile(t, false)
+	defer func() { _ = os.Remove(name) }()
+	var opt options.Options
+	if err := ParseTsFile(name, opt); err != nil {
+		t.Errorf("expected nil, got: %s", err)
+	}
+}
+
+func TestParseTsFile_ListPrograms(t *testing.T) {
+	name := multiProgramFile(t, false)
+	defer func() { _ = os.Remove(name) }()
+	opt := options.Options{ListPrograms: true}
+	if err := ParseTsFile(name, opt); err != nil {
+		t.Errorf("expected nil, got: %s", err)
+	}
+}
+
+func TestParseTsFile_ListProgramsMissingPmt(t *testing.T) {
+	name := multiProgramFile(t, true) // second program's PMT missing
+	defer func() { _ = os.Remove(name) }()
+	opt := options.Options{ListPrograms: true}
+	if err := ParseTsFile(name, opt); err != nil {
+		t.Errorf("expected nil, got: %s", err)
+	}
+}
+
+func TestParseTsFile_SelectProgram(t *testing.T) {
+	name := multiProgramFile(t, false)
+	defer func() { _ = os.Remove(name) }()
+	opt := options.Options{Program: 1} // analyze program_number 1
+	if err := ParseTsFile(name, opt); err != nil {
+		t.Errorf("expected nil, got: %s", err)
+	}
+}
+
+func TestParseTsFile_SelectProgramNotFound(t *testing.T) {
+	name := multiProgramFile(t, false)
+	defer func() { _ = os.Remove(name) }()
+	opt := options.Options{Program: 99} // not in the PAT
+	if err := ParseTsFile(name, opt); err == nil {
+		t.Error("expected error for unknown program, got nil")
+	}
+}
+
+func TestParseTsFile_NetworkOnlyPat(t *testing.T) {
+	// A PAT with only the network entry has no analyzable program.
+	f, err := os.CreateTemp("", "netonly*.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Remove(f.Name()) }()
+	pat := buildPatNetworkOnly()
+	_, _ = f.Write(buildTsPacket(0x0000, true, 0, pat))
+	_, _ = f.Write(buildStuffingPacket())
+	_, _ = f.Write(buildStuffingPacket())
+	_, _ = f.Write(buildTsPacket(0x0000, true, 1, pat))
+	_ = f.Close()
+	var opt options.Options
+	if err := ParseTsFile(f.Name(), opt); err != nil {
+		t.Errorf("expected nil (PAT seen but no program), got: %s", err)
+	}
+}

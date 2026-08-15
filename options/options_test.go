@@ -39,4 +39,14 @@ func TestOptions(t *testing.T) {
 	if !opt.DumpPcrJitter {
 		t.Errorf("DumpPcrJitter: expected true, got false")
 	}
+
+	opt.ListPrograms = true
+	if !opt.ListPrograms {
+		t.Errorf("ListPrograms: expected true, got false")
+	}
+
+	opt.Program = 3
+	if opt.Program != 3 {
+		t.Errorf("Program: expected 3, got %d", opt.Program)
+	}
 }

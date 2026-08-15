@@ -41,6 +41,8 @@ func init() {
 	rootCmd.Flags().BoolVar(&opt.DumpPesHeader, "dump-pes-header", false, "Dump PES packet header detail.")
 	rootCmd.Flags().BoolVar(&opt.DumpTimestamp, "dump-timestamp", false, "Dump PCR/PTS/DTS timestamps.")
 	rootCmd.Flags().BoolVar(&opt.DumpPcrJitter, "dump-pcr-jitter", false, "Analyze PCR jitter (per-interval deviation from the expected PCR).")
+	rootCmd.Flags().BoolVar(&opt.ListPrograms, "list-programs", false, "List every program (program_number, PMT PID, elementary streams) and exit.")
+	rootCmd.Flags().IntVar(&opt.Program, "program", 0, "Analyze only this program_number (default: the sole program; a multi-program stream is listed instead).")
 	rootCmd.Flags().Int64Var(&opt.Offset, "offset", 0, "Start reading from this byte offset.")
 	rootCmd.Flags().Int64Var(&opt.Limit, "limit", 0, "Stop reading after this many bytes (0 = no limit).")
 }

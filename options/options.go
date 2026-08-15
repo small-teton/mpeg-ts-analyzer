@@ -9,6 +9,8 @@ type Options struct {
 	DumpPesHeader       bool
 	DumpTimestamp       bool
 	DumpPcrJitter       bool
+	ListPrograms        bool
+	Program             int
 	Offset              int64
 	Limit               int64
 }

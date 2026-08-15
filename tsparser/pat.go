@@ -45,6 +45,26 @@ func (p *Pat) SetContinuityCounter(continuityCounter uint8) { p.continuityCounte
 // PmtPid return PMT pid.
 func (p *Pat) PmtPid() uint16 { return p.pmtPid }
 
+// Program is one PAT entry for an actual program (program_number != 0, which is
+// the network PID).
+type Program struct {
+	ProgramNumber uint16
+	PmtPid        uint16
+}
+
+// Programs returns every program listed in the PAT. A multi-program transport
+// stream — e.g. a raw ISDB-T capture carrying a main service plus 1seg — has
+// more than one.
+func (p *Pat) Programs() []Program {
+	programs := make([]Program, 0, len(p.programInfo))
+	for _, info := range p.programInfo {
+		if info.programNumber != 0 {
+			programs = append(programs, Program{ProgramNumber: info.programNumber, PmtPid: info.programMapPid})
+		}
+	}
+	return programs
+}
+
 // Append append ts payload data for buffer.
 func (p *Pat) Append(buf []byte) {
 	p.buf = append(p.buf, buf...)
