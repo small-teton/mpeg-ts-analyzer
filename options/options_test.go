@@ -34,4 +34,9 @@ func TestOptions(t *testing.T) {
 	if !opt.DumpTimestamp {
 		t.Errorf("DumpTimestamp: expected true, got false")
 	}
+
+	opt.DumpPcrJitter = true
+	if !opt.DumpPcrJitter {
+		t.Errorf("DumpPcrJitter: expected true, got false")
+	}
 }

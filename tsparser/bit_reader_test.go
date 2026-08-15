@@ -18,7 +18,7 @@ func newMockFactory(failAt int) func() bitReader {
 	}
 }
 
-func (m *mockBitReader) Set(b []byte)          { m.real.Set(b) }
+func (m *mockBitReader) Set(b []byte) { m.real.Set(b) }
 func (m *mockBitReader) Skip(n uint32) error {
 	m.callNum++
 	if m.callNum == m.failAt {
@@ -62,12 +62,12 @@ func TestAdaptationFieldParseMockErrors(t *testing.T) {
 		0x1C, 0xFF,
 		0x00, 0x00, 0x00, 0x32, 0x7E, 0x32, // PCR
 		0x00, 0x00, 0x00, 0x32, 0x7E, 0x32, // OPCR
-		0xAB,                               // splice
-		0x01, 0xDD,                         // private data
-		0x0B, 0xE0,                         // ext length + flags
-		0x92, 0x34,                         // LTW
-		0x01, 0x86, 0xA0,                   // piecewise
-		0x35, 0x00, 0xC9, 0x01, 0x91,       // seamless
+		0xAB,       // splice
+		0x01, 0xDD, // private data
+		0x0B, 0xE0, // ext length + flags
+		0x92, 0x34, // LTW
+		0x01, 0x86, 0xA0, // piecewise
+		0x35, 0x00, 0xC9, 0x01, 0x91, // seamless
 	}
 
 	// Verify full parse succeeds

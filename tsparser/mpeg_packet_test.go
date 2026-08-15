@@ -89,9 +89,9 @@ func TestBufferPes(t *testing.T) {
 	pesHeader := []byte{
 		0x00, 0x00, 0x01, 0xE0, // start code + video stream_id
 		0x00, 0x00, // pes_packet_length=0
-		0x80,       // '10' marker
-		0x80,       // PTS only
-		0x05,       // header data length
+		0x80,                         // '10' marker
+		0x80,                         // PTS only
+		0x05,                         // header data length
 		0x21, 0x00, 0x07, 0xD8, 0x61, // PTS
 	}
 

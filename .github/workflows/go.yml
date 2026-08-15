@@ -13,6 +13,26 @@ permissions:
 
 jobs:
 
+  gofmt:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version-file: './go.mod'
+
+    - name: Check gofmt
+      run: |
+        unformatted=$(gofmt -l .)
+        if [ -n "$unformatted" ]; then
+          echo "The following files are not gofmt-formatted:"
+          echo "$unformatted"
+          echo "Run 'gofmt -w .' to fix."
+          exit 1
+        fi
+
   build:
     runs-on: ubuntu-latest
     steps:

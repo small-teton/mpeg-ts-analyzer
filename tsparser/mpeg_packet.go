@@ -19,7 +19,7 @@ type MpegPacket interface {
 }
 
 const (
-	tsPayloadSize    = 188
+	tsPayloadSize     = 188
 	tpExtraHeaderSize = 4
 )
 
@@ -88,6 +88,7 @@ func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []Progr
 	var lastPcrPos int64
 	var maxDelay float64
 	var maxPcrInterval float64
+	var pcrJitter PcrJitter
 	tsPacket := NewTsPacket()
 
 	for {
@@ -115,6 +116,9 @@ func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []Progr
 		if tsPacket.HasAf() && tsPacket.adaptationField.PcrFlag() && pcrPid != 0 && pid == pcrPid {
 			if options.DumpTimestamp {
 				tsPacket.adaptationField.DumpPcr(lastPcr)
+			}
+			if options.DumpPcrJitter {
+				pcrJitter.Add(*pos, tsPacket.Pcr(), tsPacket.adaptationField.DiscontinuityIndicator())
 			}
 			if lastPcr != 0 {
 				maxPcrInterval = math.Max(maxPcrInterval, float64(tsPacket.Pcr()-lastPcr))
@@ -174,6 +178,9 @@ func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []Progr
 		fmt.Println("-----------------------------")
 		fmt.Printf("Max PCR interval: %fms\n", maxPcrInterval/300/90)
 		fmt.Printf("PCR-PTS max gap: %fms\n", maxDelay)
+	}
+	if options.DumpPcrJitter {
+		pcrJitter.Dump()
 	}
 
 	return nil
