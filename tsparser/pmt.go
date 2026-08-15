@@ -6,7 +6,7 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Pmt Progran Map Table
+// Pmt Program Map Table
 type Pmt struct {
 	// startFlag         bool
 	continuityCounter uint8
@@ -114,7 +114,7 @@ func (p *Pmt) Parse() error {
 		return errors.Wrap(err, "failed to skip in pmt reserved")
 	} // reserved
 	if p.programInfoLength, err = bb.ReadUint16(12); err != nil {
-		return errors.Wrap(err, "failed to read pmt pragram_info_length")
+		return errors.Wrap(err, "failed to read pmt program_info_length")
 	}
 	if err := bb.Skip(8 * uint32(p.programInfoLength)); err != nil {
 		return errors.Wrap(err, "failed to skip in pmt")

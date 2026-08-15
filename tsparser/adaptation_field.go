@@ -247,11 +247,12 @@ func (af *AdaptationField) Parse() (uint8, error) {
 	return af.adaptationFieldLength, nil
 }
 
-// DumpPcr prints PCR. If prevPcr is non-zero, the interval is also shown.
+// DumpPcr prints PCR. When prevPcr is non-zero and this PCR is not smaller than
+// it (i.e. no wrap/reset), the interval is also shown.
 func (af *AdaptationField) DumpPcr(prevPcr uint64) {
 	if af.pcrFlag == 1 {
 		pcrMilisec := float64(af.pcr) / 300 / 90
-		if prevPcr != 0 {
+		if prevPcr != 0 && af.pcr >= prevPcr {
 			pcrInterval := float64(af.pcr-prevPcr) / 300 / 90
 			fmt.Printf("0x%08x PCR: 0x%08x[%012fms] (Interval:%012fms)\n", af.pos, af.pcr, pcrMilisec, pcrInterval)
 		} else {

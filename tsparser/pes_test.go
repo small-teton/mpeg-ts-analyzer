@@ -191,6 +191,16 @@ func TestPesParseSpecialStreamId(t *testing.T) {
 	}
 }
 
+func TestPesParseInvalidStartCode(t *testing.T) {
+	// packet_start_code_prefix must be 0x000001.
+	data := []byte{0x00, 0x00, 0x02, 0xE0, 0x00, 0x00}
+	pes := NewPes()
+	pes.Append(data)
+	if err := pes.Parse(); err == nil {
+		t.Error("expected error for invalid packet_start_code_prefix, got nil")
+	}
+}
+
 func TestPesParseSpecialStreamIdInvalidLength(t *testing.T) {
 	// stream_id=0xBC with pes_packet_length past the buffered data must error,
 	// not panic while slicing.
@@ -203,18 +213,17 @@ func TestPesParseSpecialStreamIdInvalidLength(t *testing.T) {
 }
 
 func TestPesParseEscr(t *testing.T) {
-	// escrFlag=1, escrBase=45000
-	// first=0, second=1, third=12232
-	// ESCR bits (37): reserved(2)=00, first(3)=000, marker=1, second(15)=000000000000001, marker=1, third(15)=010111111001000
-	// Bytes: 0x04, 0x00, 0x0D, 0x7E, 0x40
+	// escrFlag=1, escrBase=45000 (first=0, second=1, third=12232), escrExtension=100.
+	// ESCR is 48 bits: reserved(2) base(3)+m base(15)+m base(15)+m extension(9)+m.
+	// Bytes: 0x04, 0x00, 0x0D, 0x7E, 0x44, 0xC9
 	data := []byte{
 		0x00, 0x00, 0x01, // start code prefix
 		0xE0,       // stream_id
 		0x00, 0x00, // pes_packet_length
-		0x80,                         // '10' + flags=0
-		0x20,                         // ptsDts=00, escr=1, others=0
-		0x05,                         // pes_header_data_length
-		0x04, 0x00, 0x0D, 0x7E, 0x40, // ESCR data
+		0x80,                               // '10' + flags=0
+		0x20,                               // ptsDts=00, escr=1, others=0
+		0x06,                               // pes_header_data_length
+		0x04, 0x00, 0x0D, 0x7E, 0x44, 0xC9, // ESCR data (6 bytes)
 	}
 	pes := NewPes()
 	pes.Append(data)
@@ -226,6 +235,9 @@ func TestPesParseEscr(t *testing.T) {
 	}
 	if pes.escrBase != 45000 {
 		t.Errorf("expected escrBase=45000, got %d", pes.escrBase)
+	}
+	if pes.escrExtension != 100 {
+		t.Errorf("expected escrExtension=100, got %d", pes.escrExtension)
 	}
 }
 
@@ -426,7 +438,7 @@ func TestPesParseErrors(t *testing.T) {
 		},
 		{
 			"escr",
-			[]byte{0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x20, 0x05, 0x04, 0x00, 0x0D, 0x7E, 0x40},
+			[]byte{0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x20, 0x06, 0x04, 0x00, 0x0D, 0x7E, 0x44, 0xC9},
 		},
 		{
 			"esRate",

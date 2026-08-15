@@ -147,11 +147,14 @@ func (p *Pes) Parse() error {
 	if p.packetStartCodePrefix, err = bb.ReadUint32(24); err != nil {
 		return errors.Wrap(err, "failed to read pes packet_start_code_prefix")
 	}
+	if p.packetStartCodePrefix != 0x000001 {
+		return errors.Newf("invalid pes packet_start_code_prefix: 0x%06x", p.packetStartCodePrefix)
+	}
 	if p.streamID, err = bb.ReadUint8(8); err != nil {
 		return errors.Wrap(err, "failed to read pes stream_id")
 	}
 	if p.pesPacketLength, err = bb.ReadUint16(16); err != nil {
-		return errors.Wrap(err, "failed to read pes pes_packed_length")
+		return errors.Wrap(err, "failed to read pes pes_packet_length")
 	}
 	switch p.streamID {
 	case 0xBC, 0xBF, 0xF0, 0xF1, 0xFF, 0xF2, 0xF8:
@@ -200,7 +203,7 @@ func (p *Pes) Parse() error {
 		return errors.Wrap(err, "failed to read pes pes_crc_flag")
 	}
 	if p.pesExtensionFlag, err = bb.ReadUint8(1); err != nil {
-		return errors.Wrap(err, "failed to read pes pes_extention_flag")
+		return errors.Wrap(err, "failed to read pes pes_extension_flag")
 	}
 	if p.pesHeaderDataLength, err = bb.ReadUint8(8); err != nil {
 		return errors.Wrap(err, "failed to read pes pes_header_data_length")
@@ -307,6 +310,15 @@ func (p *Pes) Parse() error {
 			return errors.Wrap(err, "failed to read pes escr third")
 		}
 		p.escrBase |= third
+		if err = bb.Skip(1); err != nil {
+			return errors.Wrap(err, "failed to skip in pes: third escr marker_bit")
+		} // marker_bit
+		if p.escrExtension, err = bb.ReadUint16(9); err != nil {
+			return errors.Wrap(err, "failed to read pes escr_extension")
+		}
+		if err = bb.Skip(1); err != nil {
+			return errors.Wrap(err, "failed to skip in pes: escr_extension marker_bit")
+		} // marker_bit
 	}
 	if p.esRateFlag == 1 {
 		if err = bb.Skip(1); err != nil {
@@ -413,13 +425,13 @@ func (p *Pes) DumpHeader() {
 	pesField("dsm_trick_mode_flag", "%d", p.dsmTrickModeFlag)
 	pesField("additional_copy_info_flag", "%d", p.additionalCopyInfoFlag)
 	pesField("pes_crc_flag", "%d", p.pesCrcFlag)
-	pesField("pes_extention_flag", "%d", p.pesExtensionFlag)
+	pesField("pes_extension_flag", "%d", p.pesExtensionFlag)
 	pesField("pes_header_data_length", "%d", p.pesHeaderDataLength)
 	pesField("pts", "%d", p.pts)
 	pesField("dts", "%d", p.dts)
 	pesField("escr", "%d", p.escr)
 	pesField("escr_base", "%d", p.escrBase)
-	pesField("escr_extention", "%d", p.escrExtension)
+	pesField("escr_extension", "%d", p.escrExtension)
 	pesField("es_rate", "%d", p.esRate)
 	pesField("trick_mode_control", "%d", p.trickModeControl)
 	pesField("field_id", "%d", p.fieldID)
@@ -432,11 +444,11 @@ func (p *Pes) DumpHeader() {
 	pesField("pack_header_field_flag", "%d", p.packHeaderFieldFlag)
 	pesField("program_packet_sequence_counter_flag", "%d", p.programPacketSequenceCounterFlag)
 	pesField("p-std_buffer_flag", "%d", p.pStdBufferFlag)
-	pesField("pes_extention_flag2", "%d", p.pesExtensionFlag2)
+	pesField("pes_extension_flag2", "%d", p.pesExtensionFlag2)
 	pesField("program_packet_sequence_counter", "%d", p.programPacketSequenceCounter)
-	pesField("mpeg1_mpeg2_identifer", "%d", p.mpeg1Mpeg2Identifier)
+	pesField("mpeg1_mpeg2_identifier", "%d", p.mpeg1Mpeg2Identifier)
 	pesField("original_stuff_length", "%d", p.originalStuffLength)
 	pesField("p-std_buffer_scale", "%d", p.pStdBufferScale)
 	pesField("p-std_buffer_size", "%d", p.pStdBufferSize)
-	pesField("pes_extention_field_length", "%d", p.pesExtensionFieldLength)
+	pesField("pes_extension_field_length", "%d", p.pesExtensionFieldLength)
 }
