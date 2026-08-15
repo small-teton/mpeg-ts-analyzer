@@ -353,3 +353,17 @@ func TestAdaptationFieldParseErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestParseSeamlessSpliceDtsNextAu(t *testing.T) {
+	// AF with only the extension flag, extension with only seamless_splice_flag,
+	// and DTS_next_AU = 0x1_0000_0000 (bit 32 set). A uint32 field would truncate
+	// this to 0; a uint64 field keeps it.
+	af := NewAdaptationField()
+	af.Append([]byte{0x08, 0x01, 0x06, 0x20, 0x09, 0x00, 0x01, 0x00, 0x01})
+	if _, err := af.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	if af.dtsNextAu != 0x100000000 {
+		t.Errorf("dtsNextAu = %d, want %d (33-bit must not be truncated)", af.dtsNextAu, uint64(0x100000000))
+	}
+}
