@@ -95,7 +95,7 @@ Download from the [Releases](https://github.com/small-teton/mpeg-ts-analyzer/rel
 If you have a [Go](https://go.dev/dl/) environment (1.26+):
 
 ```bash
-go install github.com/small-teton/mpeg-ts-analyzer@latest
+go install github.com/small-teton/mpeg-ts-analyzer/v2@latest
 ```
 
 # Usage

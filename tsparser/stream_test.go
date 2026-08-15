@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/small-teton/mpeg-ts-analyzer/options"
+	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 )
 
 // errReadSeeker is a mock io.ReadSeeker that returns errors on specific Read/Seek calls.

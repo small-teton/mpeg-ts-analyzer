@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/small-teton/mpeg-ts-analyzer/options"
-	"github.com/small-teton/mpeg-ts-analyzer/tsparser"
+	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
+	"github.com/small-teton/mpeg-ts-analyzer/v2/tsparser"
 	"github.com/spf13/cobra"
 )
 
