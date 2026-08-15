@@ -1,6 +1,6 @@
 package tsparser
 
-import "github.com/small-teton/mpeg-ts-analyzer/bitbuffer"
+import "github.com/small-teton/mpeg-ts-analyzer/v2/bitbuffer"
 
 // bitReader abstracts bit-level reading for testability.
 type bitReader interface {

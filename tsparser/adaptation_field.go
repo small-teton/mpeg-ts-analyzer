@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/errors"
-	"github.com/small-teton/mpeg-ts-analyzer/options"
+	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 )
 
 // AdaptationField adaptation_field data.

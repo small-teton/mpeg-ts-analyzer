@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/small-teton/mpeg-ts-analyzer/options"
+	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 )
 
 // errReader is a mock io.Reader that returns an error after N successful reads.
