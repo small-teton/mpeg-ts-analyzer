@@ -95,6 +95,9 @@ func (af *AdaptationField) PcrFlag() bool { return af.pcrFlag == 1 }
 // Pcr return this adaptation_field PCR.
 func (af *AdaptationField) Pcr() uint64 { return af.pcr }
 
+// DiscontinuityIndicator return this adaptation_field discontinuity_indicator.
+func (af *AdaptationField) DiscontinuityIndicator() bool { return af.discontinuityIndicator == 1 }
+
 // Parse parse adaptation_field data.
 func (af *AdaptationField) Parse() (uint8, error) {
 	var bb bitReader
