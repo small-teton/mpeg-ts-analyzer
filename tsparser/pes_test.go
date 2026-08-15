@@ -1,6 +1,7 @@
 package tsparser
 
 import (
+	"math"
 	"reflect"
 	"testing"
 )
@@ -421,6 +422,46 @@ func TestPesDumpTimestampPtsDtsWithPcr(t *testing.T) {
 		t.Fatalf("Parse error: %s", err)
 	}
 	pes2.DumpTimestamp()
+}
+
+// TestPesDumpTimestampNoFollowingPcr guards the fix for a spurious PCR-PTS gap:
+// when a PES (e.g. the final one before EOF) has no following PCR, nextPcr stays
+// zero. The delay must fall back to the most recent PCR rather than interpolate
+// against the unset (zero) nextPcr, which used to yield a wildly wrong value.
+func TestPesDumpTimestampNoFollowingPcr(t *testing.T) {
+	// PTS=90000 (1000ms). prevPcr=24300000 (900ms), no following PCR.
+	data := []byte{
+		0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x80, 0x05,
+		0x21, 0x00, 0x05, 0xBF, 0x21,
+	}
+	pes := NewPes()
+	pes.Append(data)
+	pes.prevPcr = 24300000
+	pes.prevPcrPos = 500
+	pes.nextPcr = 0 // no following PCR captured
+	pes.nextPcrPos = 0
+	pes.pos = 600
+	if err := pes.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	got := pes.DumpTimestamp()
+	if math.Abs(got-100.0) > 1e-6 {
+		t.Errorf("delay: expected fallback to prevPcr (100ms), got %fms", got)
+	}
+}
+
+// TestPesDumpTimestampNoPtsDts covers a PES that carries neither PTS nor DTS.
+func TestPesDumpTimestampNoPtsDts(t *testing.T) {
+	// ptsDtsFlags=0, pes_header_data_length=0.
+	data := []byte{0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x00, 0x00}
+	pes := NewPes()
+	pes.Append(data)
+	if err := pes.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	if got := pes.DumpTimestamp(); got != 0 {
+		t.Errorf("delay: expected 0 for a PES without PTS/DTS, got %fms", got)
+	}
 }
 
 func TestPesParseErrors(t *testing.T) {
