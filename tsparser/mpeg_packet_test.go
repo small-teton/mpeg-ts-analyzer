@@ -433,3 +433,18 @@ func TestBufferPsiSkipsAfOnlyPacket(t *testing.T) {
 		t.Errorf("unexpected error: %s", err)
 	}
 }
+
+func TestBufferPesFinalPesMultiPid(t *testing.T) {
+	// Two elementary PIDs so the end-of-stream final-PES pass sorts more than one
+	// PID (covers the sort comparator). Immediate EOF, no pending data.
+	r := &errReader{data: nil, failAt: -1}
+	var pos int64
+	programInfos := []ProgramInfo{
+		{streamType: 0x1B, elementaryPid: 0x31},
+		{streamType: 0x0F, elementaryPid: 0x32},
+	}
+	var opts options.Options
+	if err := BufferPes(r, &pos, 0x31, programInfos, opts, 188, 0); err != nil {
+		t.Errorf("unexpected error: %s", err)
+	}
+}
