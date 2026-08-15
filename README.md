@@ -104,9 +104,35 @@ Flags:
       --dump-ts-payload         Dump TS packet payload binary.
   -h, --help                    help for mpeg-ts-analyzer
       --limit int               Stop reading after this many bytes (0 = no limit).
+      --list-programs           List every program (program_number, PMT PID, elementary streams) and exit.
       --offset int              Start reading from this byte offset.
+      --program int             Analyze only this program_number (default: the sole program; a multi-program stream is listed instead).
       --version                 show mpeg-ts-analyzer version.
 ```
+
+## Multi-program transport streams
+
+A single-program stream (a recording or an extracted service) is analyzed
+directly. A **multi-program** stream — e.g. a raw broadcast capture (ISDB-T
+carries a main service plus 1seg; BS/CS muxes carry many channels) — is not
+analyzed program-by-program by default: the tool lists the programs and stops,
+so you can pick one.
+
+```
+$ ./mpeg-ts-analyzer capture.ts
+Detected PAT: 2 program(s)
+Multiple programs detected; pass --program <program_number> to analyze one:
+Program 1: PMT PID 0x1000, PCR PID 0x0100
+PMT : Program Info : elementary_PID     : 0x100, stream_type : 0x1b (AVC video ...)
+PMT : Program Info : elementary_PID     : 0x110, stream_type : 0x0f (AAC audio ...)
+Program 2: PMT PID 0x1001, PCR PID 0x0110
+PMT : Program Info : elementary_PID     : 0x120, stream_type : 0x02 (1seg video ...)
+
+$ ./mpeg-ts-analyzer capture.ts --program 1     # analyze one program fully
+$ ./mpeg-ts-analyzer capture.ts --list-programs # always just list, even for one program
+```
+
+Listing only parses each program's PMT (no PES analysis), so it stays lightweight.
 
 **Tip:** For large files, dump options can produce a huge amount of output. Use `--limit` to restrict the byte range, or redirect output to a file to avoid losing the beginning of the output in your terminal scrollback:
 
