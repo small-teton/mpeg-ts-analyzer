@@ -3,7 +3,7 @@ package tsparser
 import (
 	"fmt"
 
-	"github.com/small-teton/mpeg-ts-analyzer/options"
+	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 )
 
 const tsHeaderSize = 4

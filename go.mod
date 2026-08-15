@@ -1,4 +1,4 @@
-module github.com/small-teton/mpeg-ts-analyzer
+module github.com/small-teton/mpeg-ts-analyzer/v2
 
 go 1.26.6
 

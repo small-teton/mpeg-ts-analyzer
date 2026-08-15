@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/small-teton/mpeg-ts-analyzer/options"
+	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 )
 
 // linearSamples builds n PCR samples on a perfect constant-rate line:

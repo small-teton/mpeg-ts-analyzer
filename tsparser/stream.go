@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/cockroachdb/errors"
-	"github.com/small-teton/mpeg-ts-analyzer/options"
+	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 )
 
 func ParseTsFile(filename string, options options.Options) error {
