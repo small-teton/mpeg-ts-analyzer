@@ -150,11 +150,11 @@ func TestPesParsePtsOnly(t *testing.T) {
 	// PTS bytes: 0x21, 0x00, 0x05, 0xBF, 0x21
 	data := []byte{
 		0x00, 0x00, 0x01, // start code prefix
-		0xE0,             // stream_id (video)
-		0x00, 0x00,       // pes_packet_length
-		0x80,             // '10' + flags=0
-		0x80,             // ptsDtsFlags=10, others=0
-		0x05,             // pes_header_data_length
+		0xE0,       // stream_id (video)
+		0x00, 0x00, // pes_packet_length
+		0x80,                         // '10' + flags=0
+		0x80,                         // ptsDtsFlags=10, others=0
+		0x05,                         // pes_header_data_length
 		0x21, 0x00, 0x05, 0xBF, 0x21, // PTS data
 	}
 	pes := NewPes()
@@ -174,8 +174,8 @@ func TestPesParseSpecialStreamId(t *testing.T) {
 	// stream_id=0xBC (program_stream_map), should skip header parsing
 	data := []byte{
 		0x00, 0x00, 0x01, // start code prefix
-		0xBC,             // stream_id
-		0x00, 0x04,       // pes_packet_length=4
+		0xBC,       // stream_id
+		0x00, 0x04, // pes_packet_length=4
 		0xAA, 0xBB, 0xCC, 0xDD, // data
 	}
 	pes := NewPes()
@@ -198,11 +198,11 @@ func TestPesParseEscr(t *testing.T) {
 	// Bytes: 0x04, 0x00, 0x0D, 0x7E, 0x40
 	data := []byte{
 		0x00, 0x00, 0x01, // start code prefix
-		0xE0,             // stream_id
-		0x00, 0x00,       // pes_packet_length
-		0x80,             // '10' + flags=0
-		0x20,             // ptsDts=00, escr=1, others=0
-		0x05,             // pes_header_data_length
+		0xE0,       // stream_id
+		0x00, 0x00, // pes_packet_length
+		0x80,                         // '10' + flags=0
+		0x20,                         // ptsDts=00, escr=1, others=0
+		0x05,                         // pes_header_data_length
 		0x04, 0x00, 0x0D, 0x7E, 0x40, // ESCR data
 	}
 	pes := NewPes()
@@ -224,8 +224,8 @@ func TestPesParseEsRate(t *testing.T) {
 	// Bytes: 0x81, 0x86, 0xA1
 	data := []byte{
 		0x00, 0x00, 0x01, // start code prefix
-		0xE0,             // stream_id
-		0x00, 0x00,       // pes_packet_length
+		0xE0,       // stream_id
+		0x00, 0x00, // pes_packet_length
 		0x80,             // '10' + flags=0
 		0x10,             // ptsDts=00, escr=0, esRate=1, others=0
 		0x03,             // pes_header_data_length
