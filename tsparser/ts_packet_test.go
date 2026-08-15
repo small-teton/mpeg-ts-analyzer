@@ -438,3 +438,15 @@ func TestTsPacketParseWithDumpOptions(t *testing.T) {
 		t.Fatalf("Parse error: %s", err)
 	}
 }
+
+func TestParseInvalidAfControl(t *testing.T) {
+	// adaptation_field_control=00 is reserved/forbidden.
+	pkt := make([]byte, 188)
+	pkt[0] = 0x47
+	pkt[3] = 0x00 // transport_scrambling_control=00, afc=00, cc=0
+	tp := NewTsPacket()
+	tp.Append(pkt)
+	if err := tp.Parse(); err == nil {
+		t.Error("expected error for adaptation_field_control=0, got nil")
+	}
+}

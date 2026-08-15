@@ -289,3 +289,57 @@ func TestPmtParseErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestPmtProgramLevelDescriptors(t *testing.T) {
+	// PMT carrying a program-level (whole-program) ISO 639 language descriptor.
+	body := []byte{
+		0x00, 0x01, // program_number
+		0xC1,       // reserved, version=0, current_next=1
+		0x00,       // section_number
+		0x00,       // last_section_number
+		0xE0, 0x31, // reserved, PCR_PID=0x31
+		0xF0, 0x06, // reserved, program_info_length=6
+		0x0A, 0x04, 'e', 'n', 'g', 0x00, // program-level ISO 639 language descriptor
+		0x1B, 0xE0, 0x31, 0xF0, 0x00, // one stream, no ES descriptors
+	}
+	sectionLength := len(body) + 4
+	header := []byte{0x02, 0xB0 | byte(sectionLength>>8), byte(sectionLength)}
+	full := append(header, body...)
+	crc := crc32(full)
+	data := append(full, byte(crc>>24), byte(crc>>16), byte(crc>>8), byte(crc))
+
+	pmt := NewPmt()
+	pmt.Append(data)
+	if err := pmt.Parse(); err != nil {
+		t.Fatalf("Parse error: %s", err)
+	}
+	if len(pmt.descriptors) != 1 {
+		t.Fatalf("expected 1 program-level descriptor, got %d", len(pmt.descriptors))
+	}
+	if pmt.descriptors[0].Tag() != 0x0A {
+		t.Errorf("expected tag 0x0A, got 0x%02X", pmt.descriptors[0].Tag())
+	}
+	pmt.Dump() // exercises the program-level descriptor dump path
+}
+
+func TestPmtProgramDescriptorError(t *testing.T) {
+	// program_info_length=6 but the buffer ends right after it, so parsing the
+	// program-level descriptors must fail rather than panic.
+	data := []byte{
+		0x02, 0xB0, 0x1C, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE0, 0x31,
+		0xF0, 0x06, // program_info_length=6, no descriptor bytes follow
+	}
+	pmt := NewPmt()
+	pmt.Append(data)
+	if err := pmt.Parse(); err == nil {
+		t.Error("expected error for truncated program descriptors, got nil")
+	}
+}
+
+func TestPmtParseInvalidTableId(t *testing.T) {
+	pmt := NewPmt()
+	pmt.Append([]byte{0x03, 0xB0, 0x1C}) // table_id=0x03 (PMT must be 0x02)
+	if err := pmt.Parse(); err == nil {
+		t.Error("expected error for invalid pmt table_id, got nil")
+	}
+}
