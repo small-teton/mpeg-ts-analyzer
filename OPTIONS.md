@@ -245,10 +245,7 @@ How it works and its limits:
   the last PCR (no closing PCR to bound their interval) are both dropped; the
   reported duration is `lastPCR − firstObservedPCR`. Within the window the
   trailing partial second is kept (numerator and denominator stay in step, so it
-  does not skew the average). For production-length streams this window is
-  effectively the whole file; for very short clips the trimmed head/tail is a
-  larger fraction, so numbers read a few percent low versus whole-file tools like
-  TSDuck.
+  does not skew the average).
 - **Peak** is measured over a fixed **1-second tumbling window**, not a single
   PCR interval (which is only tens of milliseconds and too noisy to be a useful
   peak). Only *full* 1-second windows count, so a partial trailing second is
