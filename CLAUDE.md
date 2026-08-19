@@ -1,2 +1,2 @@
-See @AGENTS.md for project overview, the reference-tool validation policy
-(TSDuck / gots / ffprobe), and the build/test/lint expectations.
+See @AGENTS.md for the policy on validating analyzer output against reference
+tools (TSDuck / gots / ffprobe).
