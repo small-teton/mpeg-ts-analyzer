@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
@@ -196,7 +197,14 @@ func TestParseTsFile_FileNotFound(t *testing.T) {
 	var opt options.Options
 	err := ParseTsFile("/nonexistent/file.ts", opt)
 	if err == nil {
-		t.Errorf("expected error for nonexistent file, got nil")
+		t.Fatal("expected error for nonexistent file, got nil")
+	}
+	if !strings.Contains(err.Error(), "file open error: /nonexistent/file.ts") {
+		t.Errorf("expected contextual file-open error, got %q", err)
+	}
+	var pathErr *os.PathError
+	if !errors.As(err, &pathErr) {
+		t.Errorf("expected wrapped *os.PathError, got %T", err)
 	}
 }
 
