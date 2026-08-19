@@ -6,7 +6,6 @@ import (
 	"math"
 	"sort"
 
-	"github.com/cockroachdb/errors"
 	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 )
 
@@ -35,7 +34,7 @@ func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, 
 		if err == io.EOF {
 			break
 		} else if err != nil || size != packetSize {
-			return errors.Wrap(err, "file read error")
+			return fmt.Errorf("file read error: %w", err)
 		}
 
 		tsData := tsBuffer
@@ -45,7 +44,7 @@ func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, 
 		tsPacket.Initialize(*pos, options)
 		tsPacket.Append(tsData)
 		if err := tsPacket.Parse(); err != nil {
-			return errors.Wrap(err, "failed to parse TS packet in BufferPsi")
+			return fmt.Errorf("failed to parse TS packet in BufferPsi: %w", err)
 		}
 		*pos += int64(size)
 
@@ -60,7 +59,7 @@ func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, 
 		if tsPacket.PayloadUnitStartIndicator() {
 			// buf[0] is the pointer_field; reject values that run past the payload.
 			if 1+int(buf[0]) > len(buf) {
-				return errors.Newf("invalid pointer_field %d at pos:0x%08x", buf[0], *pos)
+				return fmt.Errorf("invalid pointer_field %d at pos:0x%08x", buf[0], *pos)
 			}
 			if isBuffering {
 				mpegPacket.Append(buf[1 : 1+buf[0]]) // read until pointer_field
@@ -73,7 +72,7 @@ func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, 
 			mpegPacket.SetContinuityCounter(tsPacket.ContinuityCounter())
 			mpegPacket.Append(tsPacket.Payload())
 		} else {
-			return errors.Newf("packet loss. pos:0x%08x", *pos)
+			return fmt.Errorf("packet loss. pos:0x%08x", *pos)
 		}
 	}
 	return nil
@@ -121,7 +120,7 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		tsPacket.Initialize(*pos, options)
 		tsPacket.Append(tsData)
 		if err := tsPacket.Parse(); err != nil {
-			return errors.Wrap(err, "failed to parse TS packet in BufferPes")
+			return fmt.Errorf("failed to parse TS packet in BufferPes: %w", err)
 		}
 		pid := tsPacket.Pid()
 		if bitrate != nil {
