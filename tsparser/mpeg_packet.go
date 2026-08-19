@@ -80,7 +80,7 @@ func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, 
 }
 
 // BufferPes buffer PES data from TS payload
-func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []ProgramInfo, options options.Options, packetSize int, endOffset int64) error {
+func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos []ProgramInfo, options options.Options, packetSize int, endOffset int64) error {
 	tsBuffer := make([]byte, packetSize)
 	pesMap := make(map[uint16]*Pes)
 	for _, val := range programInfos {
@@ -91,6 +91,10 @@ func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []Progr
 	var maxDelay float64
 	var maxPcrInterval float64
 	var pcrJitter PcrJitter
+	var bitrate *BitrateStats
+	if options.DumpBitrate {
+		bitrate = NewBitrateStats(options.Program, pmtPid, pcrPid, programInfos)
+	}
 	tsPacket := NewTsPacket()
 
 	for endOffset <= 0 || *pos+int64(packetSize) <= endOffset {
@@ -111,8 +115,16 @@ func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []Progr
 			return errors.Wrap(err, "failed to parse TS packet in BufferPes")
 		}
 		pid := tsPacket.Pid()
+		if bitrate != nil {
+			bitrate.CountPacket(pid)
+		}
 		pes, exist := pesMap[pid]
-		if tsPacket.HasAf() && tsPacket.adaptationField.PcrFlag() && pcrPid != 0 && pid == pcrPid {
+		// PCR_PID 0 (unset) and 0x1FFF ("no PCR") are not real carrier PIDs, so no
+		// PCR-based analysis (bitrate, jitter, timestamps) runs against them.
+		if tsPacket.HasAf() && tsPacket.adaptationField.PcrFlag() && pcrPid != 0 && pcrPid != nullPidValue && pid == pcrPid {
+			if bitrate != nil {
+				bitrate.MarkPcr(tsPacket.Pcr(), tsPacket.adaptationField.DiscontinuityIndicator())
+			}
 			if options.DumpTimestamp {
 				tsPacket.adaptationField.DumpPcr(lastPcr)
 			}
@@ -204,6 +216,9 @@ func BufferPes(reader io.Reader, pos *int64, pcrPid uint16, programInfos []Progr
 	}
 	if options.DumpPcrJitter {
 		pcrJitter.Dump()
+	}
+	if bitrate != nil {
+		bitrate.Dump()
 	}
 
 	return nil

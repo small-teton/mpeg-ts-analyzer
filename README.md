@@ -113,6 +113,7 @@ Usage:
 
 Flags:
       --dump-adaptation-field   Dump TS packet adaptation_field detail.
+      --dump-bitrate            Summarize per-PID average/peak bitrate (PCR time base) for the analyzed program.
       --dump-pcr-jitter         Analyze PCR jitter (per-interval deviation from the expected PCR).
       --dump-pes-header         Dump PES packet header detail.
       --dump-psi                Dump PSI(PAT/PMT) detail.
@@ -365,6 +366,60 @@ How it works and its limits:
 > The bundled sample shows large jitter because its PCR PID also carries VBR video,
 > so the byte rate between PCRs varies a lot — not a clean CBR mux. A compliant
 > CBR broadcast multiplex reports sub-microsecond jitter.
+
+## Dump bitrate
+
+`--dump-bitrate` summarizes how bandwidth is distributed across the analyzed
+program's PIDs: the **average** and **peak** bitrate of each elementary stream,
+the PSI overhead (PAT/PMT), and the program total. It answers questions like
+"which stream is eating the bandwidth", "does the video meet its CBR/VBR target",
+and "where does a live HLS/DASH pipeline buffer".
+
+```
+$ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts --dump-bitrate
+...
+-----------------------------
+Bitrate Summary (PCR time base):
+  PID     Type                                                                  Avg(bps)    Peak/1s(bps)
+  0x0000  PAT                                                                     12,427          13,536
+  0x0100  13818-2 video or 11172-2 constrained parameter video stream             59,905          60,160
+  0x0101  11172 audio                                                            405,952         430,144
+  0x1000  PMT                                                                     12,427          13,536
+          Total (program)                                                        490,711         514,368
+  0x1fff  NULL (mux-wide)                                                              0               0
+  Duration: 4.72s (PCR, 1 segment(s))
+```
+
+How it works and its limits:
+
+- **PCR is the clock.** A file has no arrival timestamps, so — as with the PCR
+  jitter analysis — the elapsed stream time between two PCRs is taken as their
+  27 MHz value difference. Bytes are attributed to the PCR interval they fall in.
+- **Average** = bytes counted within valid PCR segments × 8 ÷ their summed
+  duration. Bytes seen before the first PCR are dropped (no time reference); the
+  trailing partial second is kept (numerator and denominator stay in step, so it
+  does not skew the average).
+- **Peak** is measured over a fixed **1-second tumbling window**, not a single
+  PCR interval (which is only tens of milliseconds and too noisy to be a useful
+  peak). Only *full* 1-second windows count, so a partial trailing second is
+  excluded from the peak; for streams shorter than one full second, peak is
+  reported as `N/A`. Each PCR interval's bytes are attributed to the window its
+  start falls in — with a normal PCR cadence (≤100 ms) the error where an
+  interval straddles a window boundary is bounded by one interval and negligible.
+- **Total peak** is the largest *combined* bitrate of all program PIDs in the
+  same 1-second window (the summed load in one window, not the sum of each PID's
+  independent peak).
+- **TS-layer bytes (188).** Each transport packet contributes 188 bytes even for
+  a 192-byte timestamped (M2TS) stream — the extra 4-byte header is container
+  overhead, not part of the PID's transport packet.
+- **One program at a time.** Only the analyzed program's PIDs are counted; a
+  multi-program capture interleaves other programs' PIDs in the same byte stream,
+  and those are ignored. NULL (`0x1FFF`) stuffing is mux-wide, so it is reported
+  separately and left out of the program total.
+- **Discontinuities are dropped.** A PCR reset/wrap or `discontinuity_indicator`
+  breaks the clock: the bytes waiting across the gap are dropped and the elapsed
+  clock does not advance over it, so a broken stream does not distort the numbers.
+  The segment count is shown next to the duration.
 
 # Development
 
