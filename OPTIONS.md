@@ -19,9 +19,13 @@ Continuity Counter: no errors detected
 
 ## Continuity counter summary (always on)
 
-Every continuity counter violation is still printed inline at the byte position
-where it is detected. A per-PID summary is always appended at the end so errors
-remain visible even when the analysis produces a large amount of output:
+A TS-layer tracker checks every non-null PID from the start of the selected
+program's PES analysis through the end of the analysis window. This includes
+repeated PSI/SI packets and unreferenced PIDs; PID `0x1FFF` null packets are
+excluded because their continuity counters are not required to form a sequence.
+Every violation is printed inline at the byte position where it is detected. A
+per-PID summary is always appended at the end so errors remain visible even when
+the analysis produces a large amount of output:
 
 ```
 packet loss. : pid=0x100. count=0x5, pos=0x00123456
@@ -34,8 +38,17 @@ Continuity Counter Error Summary:
   Total              : 3 errors in 2 PIDs
 ```
 
-The count is the number of violations reported by the existing PES continuity
-check. It does not estimate how many transport packets were lost.
+Counters advance modulo 16 only on packets whose header declares payload.
+Adaptation-field-only packets keep the current counter. An exact duplicate TS
+packet with the same counter is accepted and is not appended to PES data twice.
+A packet carrying `discontinuity_indicator` starts a new counter segment, and a
+PUSI packet follows the same rules as any other payload packet. After an
+undeclared mismatch, tracking resumes from the received counter so one fault
+produces one event instead of cascading warnings.
+
+The summary count is the number of discontinuity events, not an estimate of the
+number of missing transport packets. Known PAT, PMT, PCR, video, and audio PIDs
+receive labels; any other included PID is labeled `unknown`.
 
 ## Timestamp anomaly report (always on)
 
