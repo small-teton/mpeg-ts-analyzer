@@ -13,6 +13,7 @@ It parses TS packets and checks whether the stream conforms to the following req
 
 - **Max PCR interval** should be no greater than 100 ms (ISO/IEC 13818-1, Section 2.7.2)
 - **PCR-PTS max gap** (end-to-end delay) should be no greater than 1000 ms
+- **PTS/DTS anomalies** — timestamps going backward, 33-bit wraparound, large forward jumps (splicing/ad insertion), or DTS later than PTS — are detected and reported (always on; silent when the stream is healthy)
 
 In addition, it can dump various MPEG-2 TS internal structures for stream investigation:
 
