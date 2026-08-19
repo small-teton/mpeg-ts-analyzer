@@ -1,8 +1,7 @@
 # Options & output examples
 
 Annotated output for every `mpeg-ts-analyzer` flag, run against the bundled
-streams in `sample_data/`. See the [README](README.md) for install and usage,
-and [AGENTS.md](AGENTS.md) for the reference-tool validation policy.
+streams in `sample_data/`. See the [README](README.md) for install and usage.
 
 ## No options
 
@@ -249,7 +248,7 @@ How it works and its limits:
   does not skew the average). For production-length streams this window is
   effectively the whole file; for very short clips the trimmed head/tail is a
   larger fraction, so numbers read a few percent low versus whole-file tools like
-  TSDuck (see AGENTS.md).
+  TSDuck.
 - **Peak** is measured over a fixed **1-second tumbling window**, not a single
   PCR interval (which is only tens of milliseconds and too noisy to be a useful
   peak). Only *full* 1-second windows count, so a partial trailing second is
