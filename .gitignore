@@ -10,3 +10,6 @@ mpeg-ts-analyzer
 
 dist/
 out/
+
+# Local, uncommitted agent tooling (e.g. reference-tool comparison scripts)
+local/
