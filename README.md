@@ -396,9 +396,16 @@ How it works and its limits:
   jitter analysis — the elapsed stream time between two PCRs is taken as their
   27 MHz value difference. Bytes are attributed to the PCR interval they fall in.
 - **Average** = bytes counted within valid PCR segments × 8 ÷ their summed
-  duration. Bytes seen before the first PCR are dropped (no time reference); the
+  duration. The measurement window is the span the tool actually processes:
+  counting starts at the first PCR observed after PAT/PMT acquisition and ends at
+  the last PCR. Bytes before that first PCR (no time reference) and bytes after
+  the last PCR (no closing PCR to bound their interval) are both dropped; the
+  reported duration is `lastPCR − firstObservedPCR`. Within the window the
   trailing partial second is kept (numerator and denominator stay in step, so it
-  does not skew the average).
+  does not skew the average). For production-length streams this window is
+  effectively the whole file; for very short clips the trimmed head/tail is a
+  larger fraction, so numbers read a few percent low versus whole-file tools like
+  TSDuck (see AGENTS.md).
 - **Peak** is measured over a fixed **1-second tumbling window**, not a single
   PCR interval (which is only tens of milliseconds and too noisy to be a useful
   peak). Only *full* 1-second windows count, so a partial trailing second is
@@ -416,10 +423,11 @@ How it works and its limits:
   multi-program capture interleaves other programs' PIDs in the same byte stream,
   and those are ignored. NULL (`0x1FFF`) stuffing is mux-wide, so it is reported
   separately and left out of the program total.
-- **Discontinuities are dropped.** A PCR reset/wrap or `discontinuity_indicator`
-  breaks the clock: the bytes waiting across the gap are dropped and the elapsed
-  clock does not advance over it, so a broken stream does not distort the numbers.
-  The segment count is shown next to the duration.
+- **Discontinuities are dropped.** A `discontinuity_indicator`, a non-increasing
+  PCR (reset/wrap), or an implausibly large forward PCR gap (>1000 ms) breaks the
+  clock: the bytes waiting across the gap are dropped and the elapsed clock does
+  not advance over it, so a broken stream does not distort the numbers. The
+  segment count is shown next to the duration.
 
 # Development
 
