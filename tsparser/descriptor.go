@@ -2,8 +2,6 @@ package tsparser
 
 import (
 	"fmt"
-
-	"github.com/cockroachdb/errors"
 )
 
 // Descriptors are optional, self-describing metadata attached to PSI tables.
@@ -57,11 +55,11 @@ func parseDescriptors(bb bitReader, totalLength uint16) ([]Descriptor, error) {
 	for remaining >= 2 {
 		tag, err := bb.ReadUint8(8)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to read descriptor_tag")
+			return nil, fmt.Errorf("failed to read descriptor_tag: %w", err)
 		}
 		length, err := bb.ReadUint8(8)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to read descriptor_length")
+			return nil, fmt.Errorf("failed to read descriptor_length: %w", err)
 		}
 		remaining -= 2
 		n := int(length)
@@ -72,7 +70,7 @@ func parseDescriptors(bb bitReader, totalLength uint16) ([]Descriptor, error) {
 		data := make([]byte, n)
 		for i := 0; i < n; i++ {
 			if data[i], err = bb.ReadUint8(8); err != nil {
-				return nil, errors.Wrap(err, "failed to read descriptor payload")
+				return nil, fmt.Errorf("failed to read descriptor payload: %w", err)
 			}
 		}
 		remaining -= n
@@ -80,7 +78,7 @@ func parseDescriptors(bb bitReader, totalLength uint16) ([]Descriptor, error) {
 	}
 	if remaining > 0 {
 		if err := bb.Skip(8 * uint32(remaining)); err != nil {
-			return nil, errors.Wrap(err, "failed to skip trailing descriptor bytes")
+			return nil, fmt.Errorf("failed to skip trailing descriptor bytes: %w", err)
 		}
 	}
 	return descriptors, nil

@@ -1,18 +1,18 @@
 package tsparser
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 
-	"github.com/cockroachdb/errors"
 	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 )
 
 func ParseTsFile(filename string, options options.Options) error {
 	file, err := os.Open(filename)
 	if err != nil {
-		return errors.WithMessagef(err, "file open error: %s", filename)
+		return fmt.Errorf("file open error: %s: %w", filename, err)
 	}
 	defer func() { _ = file.Close() }()
 	fmt.Println("Input file: ", filename)
@@ -30,7 +30,7 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 
 	if options.Offset > 0 {
 		if _, err := reader.Seek(options.Offset, io.SeekStart); err != nil {
-			return errors.Wrap(err, "file seek error")
+			return fmt.Errorf("file seek error: %w", err)
 		}
 		fileOffset = options.Offset
 	}
@@ -54,7 +54,7 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			return errors.Wrap(err, "file read error")
+			return fmt.Errorf("file read error: %w", err)
 		}
 		fileOffset += int64(size)
 
@@ -70,7 +70,7 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 
 		pos := readStart + patOffset
 		if _, err = reader.Seek(pos, 0); err != nil {
-			return errors.Wrap(err, "file seek error")
+			return fmt.Errorf("file seek error: %w", err)
 		}
 
 		// Parse PAT
@@ -90,7 +90,7 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 		programStart := pos
 
 		if _, err = reader.Seek(pos, 0); err != nil {
-			return errors.Wrap(err, "file seek error")
+			return fmt.Errorf("file seek error: %w", err)
 		}
 		fmt.Printf("Detected PAT: %d program(s)\n", len(patPrograms))
 		if options.DumpPsi {
@@ -125,7 +125,7 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 				}
 			}
 			if !found {
-				return errors.Newf("program %d not found in PAT", options.Program)
+				return fmt.Errorf("program %d not found in PAT", options.Program)
 			}
 		}
 
@@ -145,7 +145,7 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 		pcrPid := pmt.PcrPid()
 
 		if _, err = reader.Seek(pos, 0); err != nil {
-			return errors.Wrap(err, "file seek error")
+			return fmt.Errorf("file seek error: %w", err)
 		}
 		fmt.Println("Detected PMT")
 		if options.DumpPsi {
