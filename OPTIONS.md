@@ -109,12 +109,9 @@ PMT :     profile_idc                   : 100 (High)
 PMT :     level_idc                     : 40 (4.0)
 ```
 
-mpeg-ts-analyzer decodes a deliberately small, curated set of descriptors — the
-ones most commonly encountered when debugging streams — rather than aiming for
-exhaustive coverage. ISO/IEC 13818-1 and ETSI EN 300 468 together define well
-over a hundred descriptors, but the long tail is rarely seen, so supporting all
-of them would add a lot of code for little practical benefit. Descriptors outside
-this set are still reported by tag with their raw payload, so nothing is silently
+mpeg-ts-analyzer decodes a curated set of the most commonly encountered
+descriptors rather than aiming for exhaustive coverage. Descriptors outside this
+set are still reported by tag with their raw payload, so nothing is silently
 dropped.
 
 Decoded descriptors, grouped by the standard that defines them (the
@@ -189,22 +186,8 @@ Jitter magnitudes are printed in milliseconds (six decimals, so 1 ns is resolvab
 - **WARNING** — beyond ±500 ns but within ±25 µs (DVB receiver tolerance)
 - **NG** — beyond ±25 µs
 
-How it works and its limits:
-
-- **No arrival timestamps in a file.** A hardware analyzer measures PCR accuracy
-  against the real byte-arrival time. A file has none, so the expected time is
-  approximated from the **byte position**, assuming the stream is delivered at a
-  (locally) constant byte rate — byte position stands in for time. The premise
-  holds for CBR delivery; the result is a file-based estimate, not a hardware
-  TR 101 290 (§5.3.2, "PCR_AC") measurement.
-- **Per-interval analysis for VBR.** Rather than fitting one global line, each PCR
-  is compared to the value interpolated from its two neighbors by byte position.
-  Over three consecutive PCRs the rate is ~constant even if it drifts across the
-  stream, so a smooth rate change cancels out and only genuine PCR error remains.
-- **Discontinuities are segmented and reported.** An intentional clock reset
-  (`discontinuity_indicator`) or an implausible jump splits the samples into
-  segments; jitter is measured within a segment, and each discontinuity is listed
-  with its size. If the stream is too discontinuous, the analysis is skipped.
+The result is a file-based estimate (there are no real arrival timestamps in a
+file), not a hardware TR 101 290 measurement, as noted in the output header.
 
 > The bundled sample shows large jitter because its PCR PID also carries VBR video,
 > so the byte rate between PCRs varies a lot — not a clean CBR mux. A compliant
@@ -233,38 +216,12 @@ Bitrate Summary (PCR time base):
   Duration: 4.72s (PCR, 1 segment(s))
 ```
 
-How it works and its limits:
+Reading the output:
 
-- **PCR is the clock.** A file has no arrival timestamps, so — as with the PCR
-  jitter analysis — the elapsed stream time between two PCRs is taken as their
-  27 MHz value difference. Bytes are attributed to the PCR interval they fall in.
-- **Average** = bytes counted within valid PCR segments × 8 ÷ their summed
-  duration. The measurement window is the span the tool actually processes:
-  counting starts at the first PCR observed after PAT/PMT acquisition and ends at
-  the last PCR. Bytes before that first PCR (no time reference) and bytes after
-  the last PCR (no closing PCR to bound their interval) are both dropped; the
-  reported duration is `lastPCR − firstObservedPCR`. Within the window the
-  trailing partial second is kept (numerator and denominator stay in step, so it
-  does not skew the average).
-- **Peak** is measured over a fixed **1-second tumbling window**, not a single
-  PCR interval (which is only tens of milliseconds and too noisy to be a useful
-  peak). Only *full* 1-second windows count, so a partial trailing second is
-  excluded from the peak; for streams shorter than one full second, peak is
-  reported as `N/A`. Each PCR interval's bytes are attributed to the window its
-  start falls in — with a normal PCR cadence (≤100 ms) the error where an
-  interval straddles a window boundary is bounded by one interval and negligible.
-- **Total peak** is the largest *combined* bitrate of all program PIDs in the
-  same 1-second window (the summed load in one window, not the sum of each PID's
-  independent peak).
-- **TS-layer bytes (188).** Each transport packet contributes 188 bytes even for
-  a 192-byte timestamped (M2TS) stream — the extra 4-byte header is container
-  overhead, not part of the PID's transport packet.
-- **One program at a time.** Only the analyzed program's PIDs are counted; a
-  multi-program capture interleaves other programs' PIDs in the same byte stream,
-  and those are ignored. NULL (`0x1FFF`) stuffing is mux-wide, so it is reported
-  separately and left out of the program total.
-- **Discontinuities are dropped.** A `discontinuity_indicator`, a non-increasing
-  PCR (reset/wrap), or an implausibly large forward PCR gap (>1000 ms) breaks the
-  clock: the bytes waiting across the gap are dropped and the elapsed clock does
-  not advance over it, so a broken stream does not distort the numbers. The
-  segment count is shown next to the duration.
+- **Avg** is the mean bitrate over the measured `Duration`; **Peak/1s** is the
+  busiest single 1-second window (`N/A` for streams shorter than one second).
+- **Total (program)** sums the analyzed program's PIDs. **NULL** (`0x1FFF`)
+  stuffing is mux-wide, so it is listed separately and left out of the total.
+- Byte counts are TS-layer: 188 bytes per packet, including for 192-byte M2TS.
+- The segment count next to the duration reflects PCR discontinuities found in
+  the stream.
