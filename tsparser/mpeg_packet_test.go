@@ -265,9 +265,22 @@ func TestBufferPesPacketLoss(t *testing.T) {
 
 	var pos int64
 	var opts options.Options
-	err = BufferPes(f2, &pos, 0x0030, 0x0031, programInfos, opts, 188, 0)
-	if err != nil {
-		t.Errorf("unexpected error: %s", err)
+	var bufferErr error
+	out := captureStdout(t, func() {
+		bufferErr = BufferPes(f2, &pos, 0x0030, 0x0031, programInfos, opts, 188, 0)
+	})
+	if bufferErr != nil {
+		t.Errorf("unexpected error: %s", bufferErr)
+	}
+	for _, want := range []string{
+		"packet loss. : pid=0x31. count=0x5",
+		"Continuity Counter Error Summary:",
+		"PID 0x0031 (video) : 1 error",
+		"Total              : 1 error in 1 PID",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("BufferPes output missing %q:\n%s", want, out)
+		}
 	}
 }
 
