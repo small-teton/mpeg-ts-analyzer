@@ -23,7 +23,7 @@ In addition, it can dump various MPEG-2 TS internal structures for stream invest
 - PMT ES info descriptors (ISO 639 language, registration, AVC/HEVC video, AAC audio, teletext, DVB subtitling)
 - PES header with PTS/DTS timestamps
 - PCR jitter analysis (per-interval deviation from the expected PCR)
-- `continuity_counter` validation
+- `continuity_counter` validation with an always-on per-PID error summary
 
 Both 188-byte TS packets and 192-byte M2TS packets (BDAV format with TP_extra_header) are supported. The packet size is auto-detected from the stream.
 
