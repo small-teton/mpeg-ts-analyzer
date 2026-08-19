@@ -27,6 +27,15 @@ In addition, it can dump various MPEG-2 TS internal structures for stream invest
 
 Both 188-byte TS packets and 192-byte M2TS packets (BDAV format with TP_extra_header) are supported. The packet size is auto-detected from the stream.
 
+Continuity counters are checked at the TS layer for every non-null PID observed
+during the selected program's analysis, including PSI/SI and unreferenced PIDs.
+Counters advance only on payload packets, wrap from 15 to 0, accept exact
+duplicates, and start a new segment at `discontinuity_indicator`. PUSI packets
+are checked normally, adaptation-only packets do not advance the counter, and
+the tracker resynchronizes after each reported event. Null PID `0x1FFF` is
+excluded. The summary counts discontinuity events, not estimated missing
+packets; see [OPTIONS.md](OPTIONS.md#continuity-counter-summary-always-on).
+
 **Note:** The accuracy of the output is not guaranteed.
 
 # Install
