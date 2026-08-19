@@ -13,7 +13,29 @@ Detected PAT: 1 program(s)
 Detected PMT
 PMT : Program Info : elementary_PID     : 0x100, stream_type : 0x02 (13818-2 video or 11172-2 constrained parameter video stream)
 PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x03 (11172 audio)
+-----------------------------
+Continuity Counter: no errors detected
 ```
+
+## Continuity counter summary (always on)
+
+Every continuity counter violation is still printed inline at the byte position
+where it is detected. A per-PID summary is always appended at the end so errors
+remain visible even when the analysis produces a large amount of output:
+
+```
+packet loss. : pid=0x100. count=0x5, pos=0x00123456
+packet loss. : pid=0x100. count=0x9, pos=0x00234567
+packet loss. : pid=0x101. count=0x3, pos=0x00345678
+-----------------------------
+Continuity Counter Error Summary:
+  PID 0x0100 (video) : 2 errors
+  PID 0x0101 (audio) : 1 error
+  Total              : 3 errors in 2 PIDs
+```
+
+The count is the number of violations reported by the existing PES continuity
+check. It does not estimate how many transport packets were lost.
 
 ## Timestamp anomaly report (always on)
 

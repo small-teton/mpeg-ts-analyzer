@@ -98,6 +98,7 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 	// found, so a healthy stream stays quiet. Only a cleanly parsed PES is
 	// checked — a partially parsed header would carry garbage timestamps.
 	anomaly := NewTimestampAnomaly()
+	continuity := newContinuityCounterSummary(programInfos)
 	checkAnomaly := func(perr error, pes *Pes) {
 		if perr == nil {
 			anomaly.Check(pes)
@@ -192,6 +193,7 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 			pes.Append(tsPacket.Payload())
 		} else {
 			fmt.Printf("packet loss. : pid=0x%02x. count=0x%x, pos=0x%08x\n", pid, tsPacket.ContinuityCounter(), *pos)
+			continuity.Add(pid)
 		}
 
 		*pos += int64(size)
@@ -231,6 +233,7 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		bitrate.Dump()
 	}
 	anomaly.Dump()
+	continuity.Dump()
 
 	return nil
 }
