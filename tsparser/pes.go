@@ -2,8 +2,6 @@ package tsparser
 
 import (
 	"fmt"
-
-	"github.com/cockroachdb/errors"
 )
 
 // Pes Packetized Elementary Stream.
@@ -145,228 +143,228 @@ func (p *Pes) Parse() error {
 
 	var err error
 	if p.packetStartCodePrefix, err = bb.ReadUint32(24); err != nil {
-		return errors.Wrap(err, "failed to read pes packet_start_code_prefix")
+		return fmt.Errorf("failed to read pes packet_start_code_prefix: %w", err)
 	}
 	if p.packetStartCodePrefix != 0x000001 {
-		return errors.Newf("invalid pes packet_start_code_prefix: 0x%06x", p.packetStartCodePrefix)
+		return fmt.Errorf("invalid pes packet_start_code_prefix: 0x%06x", p.packetStartCodePrefix)
 	}
 	if p.streamID, err = bb.ReadUint8(8); err != nil {
-		return errors.Wrap(err, "failed to read pes stream_id")
+		return fmt.Errorf("failed to read pes stream_id: %w", err)
 	}
 	if p.pesPacketLength, err = bb.ReadUint16(16); err != nil {
-		return errors.Wrap(err, "failed to read pes pes_packet_length")
+		return fmt.Errorf("failed to read pes pes_packet_length: %w", err)
 	}
 	switch p.streamID {
 	case 0xBC, 0xBF, 0xF0, 0xF1, 0xFF, 0xF2, 0xF8:
 		// pes_packet_length is attacker-controlled; reject a length that runs
 		// past the buffered data.
 		if 6+int(p.pesPacketLength) > len(p.buf) {
-			return errors.Newf("invalid pes_packet_length: %d", p.pesPacketLength)
+			return fmt.Errorf("invalid pes_packet_length: %d", p.pesPacketLength)
 		}
 		p.data = p.buf[6 : 6+p.pesPacketLength]
 		return nil
 	}
 	if err = bb.Skip(2); err != nil {
-		return errors.Wrap(err, "failed to skip in pes: 10")
+		return fmt.Errorf("failed to skip in pes: 10: %w", err)
 	} // '10'
 	if p.pesScramblingControl, err = bb.ReadUint8(2); err != nil {
-		return errors.Wrap(err, "failed to read pes pes_scrambling_control")
+		return fmt.Errorf("failed to read pes pes_scrambling_control: %w", err)
 	}
 	if p.pesPriority, err = bb.ReadUint8(1); err != nil {
-		return errors.Wrap(err, "failed to read pes pes_priority")
+		return fmt.Errorf("failed to read pes pes_priority: %w", err)
 	}
 	if p.dataAlignmentIndicator, err = bb.ReadUint8(1); err != nil {
-		return errors.Wrap(err, "failed to read pes data_alignment_indicator")
+		return fmt.Errorf("failed to read pes data_alignment_indicator: %w", err)
 	}
 	if p.copyright, err = bb.ReadUint8(1); err != nil {
-		return errors.Wrap(err, "failed to read pes copyright")
+		return fmt.Errorf("failed to read pes copyright: %w", err)
 	}
 	if p.originalOrCopy, err = bb.ReadUint8(1); err != nil {
-		return errors.Wrap(err, "failed to read pes original_or_copy")
+		return fmt.Errorf("failed to read pes original_or_copy: %w", err)
 	}
 	if p.ptsDtsFlags, err = bb.ReadUint8(2); err != nil {
-		return errors.Wrap(err, "failed to read pes pts_fts_flag")
+		return fmt.Errorf("failed to read pes pts_fts_flag: %w", err)
 	}
 	if p.escrFlag, err = bb.ReadUint8(1); err != nil {
-		return errors.Wrap(err, "failed to read pes escr_flag")
+		return fmt.Errorf("failed to read pes escr_flag: %w", err)
 	}
 	if p.esRateFlag, err = bb.ReadUint8(1); err != nil {
-		return errors.Wrap(err, "failed to read pes es_rate_flag")
+		return fmt.Errorf("failed to read pes es_rate_flag: %w", err)
 	}
 	if p.dsmTrickModeFlag, err = bb.ReadUint8(1); err != nil {
-		return errors.Wrap(err, "failed to read pes dsm_trick_mode_flag")
+		return fmt.Errorf("failed to read pes dsm_trick_mode_flag: %w", err)
 	}
 	if p.additionalCopyInfoFlag, err = bb.ReadUint8(1); err != nil {
-		return errors.Wrap(err, "failed to read pes additional_copy_info_flag")
+		return fmt.Errorf("failed to read pes additional_copy_info_flag: %w", err)
 	}
 	if p.pesCrcFlag, err = bb.ReadUint8(1); err != nil {
-		return errors.Wrap(err, "failed to read pes pes_crc_flag")
+		return fmt.Errorf("failed to read pes pes_crc_flag: %w", err)
 	}
 	if p.pesExtensionFlag, err = bb.ReadUint8(1); err != nil {
-		return errors.Wrap(err, "failed to read pes pes_extension_flag")
+		return fmt.Errorf("failed to read pes pes_extension_flag: %w", err)
 	}
 	if p.pesHeaderDataLength, err = bb.ReadUint8(8); err != nil {
-		return errors.Wrap(err, "failed to read pes pes_header_data_length")
+		return fmt.Errorf("failed to read pes pes_header_data_length: %w", err)
 	}
 
 	if p.ptsDtsFlags == 2 {
 		if err = bb.Skip(4); err != nil {
-			return errors.Wrap(err, "failed to skip in pes: 0011 (PtsDtsFlag=2)")
+			return fmt.Errorf("failed to skip in pes: 0011 (PtsDtsFlag=2): %w", err)
 		} // '0011'
 		var first, second, third uint64
 		if first, err = bb.ReadUint64(3); err != nil {
-			return errors.Wrap(err, "failed to read pes pts first (PtsDtsFlag=2)")
+			return fmt.Errorf("failed to read pes pts first (PtsDtsFlag=2): %w", err)
 		}
 		p.pts = first << 30
 		if err = bb.Skip(1); err != nil {
-			return errors.Wrap(err, "failed to skip in pes: first pts marker_bit (PtsDtsFlag=2)")
+			return fmt.Errorf("failed to skip in pes: first pts marker_bit (PtsDtsFlag=2): %w", err)
 		} // marker_bit
 		if second, err = bb.ReadUint64(15); err != nil {
-			return errors.Wrap(err, "failed to read pes pts second (PtsDtsFlag=2)")
+			return fmt.Errorf("failed to read pes pts second (PtsDtsFlag=2): %w", err)
 		}
 		p.pts |= second << 15
 		if err = bb.Skip(1); err != nil {
-			return errors.Wrap(err, "failed to skip in pes: second pts marker_bit (PtsDtsFlag=2)")
+			return fmt.Errorf("failed to skip in pes: second pts marker_bit (PtsDtsFlag=2): %w", err)
 		} // marker_bit
 		if third, err = bb.ReadUint64(15); err != nil {
-			return errors.Wrap(err, "failed to read pes pts third (PtsDtsFlag=2)")
+			return fmt.Errorf("failed to read pes pts third (PtsDtsFlag=2): %w", err)
 		}
 		p.pts |= third
 		if err = bb.Skip(1); err != nil {
-			return errors.Wrap(err, "failed to skip in pes: third pts marker_bit (PtsDtsFlag=2)")
+			return fmt.Errorf("failed to skip in pes: third pts marker_bit (PtsDtsFlag=2): %w", err)
 		} // marker_bit
 	}
 	if p.ptsDtsFlags == 3 {
 		if err = bb.Skip(4); err != nil {
-			return errors.Wrap(err, "failed to skip in pes: 0011 (PtsDtsFlag=3)")
+			return fmt.Errorf("failed to skip in pes: 0011 (PtsDtsFlag=3): %w", err)
 		} // '0011'
 		var first, second, third uint64
 		if first, err = bb.ReadUint64(3); err != nil {
-			return errors.Wrap(err, "failed to read pes pts first (PtsDtsFlag=3)")
+			return fmt.Errorf("failed to read pes pts first (PtsDtsFlag=3): %w", err)
 		}
 		p.pts = first << 30
 		if err = bb.Skip(1); err != nil {
-			return errors.Wrap(err, "failed to skip in pes: first pts marker_bit (PtsDtsFlag=3)")
+			return fmt.Errorf("failed to skip in pes: first pts marker_bit (PtsDtsFlag=3): %w", err)
 		} // marker_bit
 		if second, err = bb.ReadUint64(15); err != nil {
-			return errors.Wrap(err, "failed to read pes pts second (PtsDtsFlag=3)")
+			return fmt.Errorf("failed to read pes pts second (PtsDtsFlag=3): %w", err)
 		}
 		p.pts |= second << 15
 		if err = bb.Skip(1); err != nil {
-			return errors.Wrap(err, "failed to skip in pes: second pts marker_bit (PtsDtsFlag=3)")
+			return fmt.Errorf("failed to skip in pes: second pts marker_bit (PtsDtsFlag=3): %w", err)
 		} // marker_bit
 		if third, err = bb.ReadUint64(15); err != nil {
-			return errors.Wrap(err, "failed to read pes pts third (PtsDtsFlag=3)")
+			return fmt.Errorf("failed to read pes pts third (PtsDtsFlag=3): %w", err)
 		}
 		p.pts |= third
 		if err = bb.Skip(1); err != nil {
-			return errors.Wrap(err, "failed to skip in pes: third pts marker_bit (PtsDtsFlag=3)")
+			return fmt.Errorf("failed to skip in pes: third pts marker_bit (PtsDtsFlag=3): %w", err)
 		} // marker_bit
 		if err = bb.Skip(4); err != nil {
-			return errors.Wrap(err, "failed to skip in pes: pts-dts 0001 (PtsDtsFlag=3)")
+			return fmt.Errorf("failed to skip in pes: pts-dts 0001 (PtsDtsFlag=3): %w", err)
 		} // '0001'
 		if first, err = bb.ReadUint64(3); err != nil {
-			return errors.Wrap(err, "failed to read pes dts first (PtsDtsFlag=3)")
+			return fmt.Errorf("failed to read pes dts first (PtsDtsFlag=3): %w", err)
 		}
 		p.dts = first << 30
 		if err = bb.Skip(1); err != nil {
-			return errors.Wrap(err, "failed to skip in pes: first dts marker_bit (PtsDtsFlag=3)")
+			return fmt.Errorf("failed to skip in pes: first dts marker_bit (PtsDtsFlag=3): %w", err)
 		} // marker_bit
 		if second, err = bb.ReadUint64(15); err != nil {
-			return errors.Wrap(err, "failed to read pes dts second (PtsDtsFlag=3)")
+			return fmt.Errorf("failed to read pes dts second (PtsDtsFlag=3): %w", err)
 		}
 		p.dts |= second << 15
 		if err = bb.Skip(1); err != nil {
-			return errors.Wrap(err, "failed to skip in pes: second dts marker_bit (PtsDtsFlag=3)")
+			return fmt.Errorf("failed to skip in pes: second dts marker_bit (PtsDtsFlag=3): %w", err)
 		} // marker_bit
 		if third, err = bb.ReadUint64(15); err != nil {
-			return errors.Wrap(err, "failed to read pes dts third (PtsDtsFlag=3)")
+			return fmt.Errorf("failed to read pes dts third (PtsDtsFlag=3): %w", err)
 		}
 		p.dts |= third
 		if err = bb.Skip(1); err != nil {
-			return errors.Wrap(err, "failed to skip in pes: third dts marker_bit (PtsDtsFlag=3)")
+			return fmt.Errorf("failed to skip in pes: third dts marker_bit (PtsDtsFlag=3): %w", err)
 		} // marker_bit
 	}
 	if p.escrFlag == 1 {
 		if err = bb.Skip(2); err != nil {
-			return errors.Wrap(err, "failed to skip in pes: reserved(EscrFlag=1)")
+			return fmt.Errorf("failed to skip in pes: reserved(EscrFlag=1): %w", err)
 		} // reserved
 		var first, second, third uint64
 		if first, err = bb.ReadUint64(3); err != nil {
-			return errors.Wrap(err, "failed to read pes escr first")
+			return fmt.Errorf("failed to read pes escr first: %w", err)
 		}
 		p.escrBase = first << 30
 		if err = bb.Skip(1); err != nil {
-			return errors.Wrap(err, "failed to skip in pes: first ercr marker_bit")
+			return fmt.Errorf("failed to skip in pes: first ercr marker_bit: %w", err)
 		} // marker_bit
 		if second, err = bb.ReadUint64(15); err != nil {
-			return errors.Wrap(err, "failed to read pes escr second")
+			return fmt.Errorf("failed to read pes escr second: %w", err)
 		}
 		p.escrBase |= second << 15
 		if err = bb.Skip(1); err != nil {
-			return errors.Wrap(err, "failed to skip in pes: second ercr marker_bit")
+			return fmt.Errorf("failed to skip in pes: second ercr marker_bit: %w", err)
 		} // marker_bit
 		if third, err = bb.ReadUint64(15); err != nil {
-			return errors.Wrap(err, "failed to read pes escr third")
+			return fmt.Errorf("failed to read pes escr third: %w", err)
 		}
 		p.escrBase |= third
 		if err = bb.Skip(1); err != nil {
-			return errors.Wrap(err, "failed to skip in pes: third escr marker_bit")
+			return fmt.Errorf("failed to skip in pes: third escr marker_bit: %w", err)
 		} // marker_bit
 		if p.escrExtension, err = bb.ReadUint16(9); err != nil {
-			return errors.Wrap(err, "failed to read pes escr_extension")
+			return fmt.Errorf("failed to read pes escr_extension: %w", err)
 		}
 		if err = bb.Skip(1); err != nil {
-			return errors.Wrap(err, "failed to skip in pes: escr_extension marker_bit")
+			return fmt.Errorf("failed to skip in pes: escr_extension marker_bit: %w", err)
 		} // marker_bit
 	}
 	if p.esRateFlag == 1 {
 		if err = bb.Skip(1); err != nil {
-			return errors.Wrap(err, "failed to skip in pes: first es_rate marker_bit")
+			return fmt.Errorf("failed to skip in pes: first es_rate marker_bit: %w", err)
 		} // marker_bit
 		if p.esRate, err = bb.ReadUint32(22); err != nil {
-			return errors.Wrap(err, "failed to read pes es_rate")
+			return fmt.Errorf("failed to read pes es_rate: %w", err)
 		}
 		if err = bb.Skip(1); err != nil {
-			return errors.Wrap(err, "failed to skip in pes: second es_rate marker_bit")
+			return fmt.Errorf("failed to skip in pes: second es_rate marker_bit: %w", err)
 		} // marker_bit
 	}
 	if p.dsmTrickModeFlag == 1 {
 		if p.trickModeControl, err = bb.ReadUint8(3); err != nil {
-			return errors.Wrap(err, "failed to read pes trick_mode_control")
+			return fmt.Errorf("failed to read pes trick_mode_control: %w", err)
 		}
 		switch p.trickModeControl {
 		case 0x00, 0x03: // fast_forward, freeze_frame
 			if p.fieldID, err = bb.ReadUint8(2); err != nil {
-				return errors.Wrap(err, "failed to read pes field_id")
+				return fmt.Errorf("failed to read pes field_id: %w", err)
 			}
 			if p.intraSliceRefresh, err = bb.ReadUint8(1); err != nil {
-				return errors.Wrap(err, "failed to read pes intra_slice_refresh")
+				return fmt.Errorf("failed to read pes intra_slice_refresh: %w", err)
 			}
 			if p.frequencyTruncation, err = bb.ReadUint8(2); err != nil {
-				return errors.Wrap(err, "failed to read pes frequency_truncation")
+				return fmt.Errorf("failed to read pes frequency_truncation: %w", err)
 			}
 		case 0x01: // slow_motion, slow_reverse
 			if p.repCntrl, err = bb.ReadUint8(5); err != nil {
-				return errors.Wrap(err, "failed to read pes rep_cntrl")
+				return fmt.Errorf("failed to read pes rep_cntrl: %w", err)
 			}
 		default:
 			if err = bb.Skip(5); err != nil {
-				return errors.Wrap(err, "failed to skip in pes: dsm_trick_mode reserved")
+				return fmt.Errorf("failed to skip in pes: dsm_trick_mode reserved: %w", err)
 			} // reserved
 		}
 	}
 	if p.additionalCopyInfoFlag == 1 {
 		if err = bb.Skip(1); err != nil {
-			return errors.Wrap(err, "failed to skip in pes: additional_copy_info marker_bit")
+			return fmt.Errorf("failed to skip in pes: additional_copy_info marker_bit: %w", err)
 		} // marker_bit
 		if p.additionalCopyInfo, err = bb.ReadUint8(7); err != nil {
-			return errors.Wrap(err, "failed to read pes additional_copy_info")
+			return fmt.Errorf("failed to read pes additional_copy_info: %w", err)
 		}
 	}
 	if p.pesCrcFlag == 1 {
 		if p.previousPesPacketCrc, err = bb.ReadUint16(16); err != nil {
-			return errors.Wrap(err, "failed to read pes previous_pes_packet_crc")
+			return fmt.Errorf("failed to read pes previous_pes_packet_crc: %w", err)
 		}
 	}
 	return nil

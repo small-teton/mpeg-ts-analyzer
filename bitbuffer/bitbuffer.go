@@ -1,8 +1,6 @@
 package bitbuffer
 
-import (
-	"github.com/cockroachdb/errors"
-)
+import "fmt"
 
 // BitBuffer reads buffer by the bit.
 type BitBuffer struct {
@@ -20,7 +18,7 @@ func (b *BitBuffer) Set(src []byte) {
 // Skip advances the bit position without reading.
 func (b *BitBuffer) Skip(length uint32) error {
 	if (b.pos + length) > uint32(len(b.buf)*8) {
-		return errors.Newf("Length(%d) is out of range(%d)", length, len(b.buf))
+		return fmt.Errorf("Length(%d) is out of range(%d)", length, len(b.buf))
 	}
 	b.pos += length
 	return nil
@@ -32,7 +30,7 @@ func (b *BitBuffer) readBits(n uint32) (uint64, error) {
 		return 0, nil
 	}
 	if n > 64 || (b.pos+n) > uint32(len(b.buf)*8) {
-		return 0, errors.Newf("Length(%d) is out of range", n)
+		return 0, fmt.Errorf("Length(%d) is out of range", n)
 	}
 
 	var result uint64
@@ -70,7 +68,7 @@ func (b *BitBuffer) readBits(n uint32) (uint64, error) {
 // ReadUint8 reads up to 8 bits and returns them as uint8.
 func (b *BitBuffer) ReadUint8(length uint32) (uint8, error) {
 	if length > 8 {
-		return 0, errors.Newf("Length(%d) is out of range(0-8)", length)
+		return 0, fmt.Errorf("Length(%d) is out of range(0-8)", length)
 	}
 	v, err := b.readBits(length)
 	return uint8(v), err
@@ -79,7 +77,7 @@ func (b *BitBuffer) ReadUint8(length uint32) (uint8, error) {
 // ReadUint16 reads up to 16 bits and returns them as uint16.
 func (b *BitBuffer) ReadUint16(length uint32) (uint16, error) {
 	if length > 16 {
-		return 0, errors.Newf("Length(%d) is out of range(0-16)", length)
+		return 0, fmt.Errorf("Length(%d) is out of range(0-16)", length)
 	}
 	v, err := b.readBits(length)
 	return uint16(v), err
@@ -88,7 +86,7 @@ func (b *BitBuffer) ReadUint16(length uint32) (uint16, error) {
 // ReadUint32 reads up to 32 bits and returns them as uint32.
 func (b *BitBuffer) ReadUint32(length uint32) (uint32, error) {
 	if length > 32 {
-		return 0, errors.Newf("Length(%d) is out of range(0-32)", length)
+		return 0, fmt.Errorf("Length(%d) is out of range(0-32)", length)
 	}
 	v, err := b.readBits(length)
 	return uint32(v), err
@@ -97,7 +95,7 @@ func (b *BitBuffer) ReadUint32(length uint32) (uint32, error) {
 // ReadUint64 reads up to 64 bits and returns them as uint64.
 func (b *BitBuffer) ReadUint64(length uint32) (uint64, error) {
 	if length > 64 {
-		return 0, errors.Newf("Length(%d) is out of range(0-64)", length)
+		return 0, fmt.Errorf("Length(%d) is out of range(0-64)", length)
 	}
 	return b.readBits(length)
 }

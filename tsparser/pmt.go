@@ -1,9 +1,8 @@
 package tsparser
 
 import (
+	"errors"
 	"fmt"
-
-	"github.com/cockroachdb/errors"
 )
 
 // Pmt Program Map Table
@@ -73,82 +72,82 @@ func (p *Pmt) Parse() error {
 
 	var err error
 	if p.tableID, err = bb.ReadUint8(8); err != nil {
-		return errors.Wrap(err, "failed to read pmt table_id")
+		return fmt.Errorf("failed to read pmt table_id: %w", err)
 	}
 	if p.tableID != 0x02 {
-		return errors.Newf("invalid pmt table_id: 0x%02x", p.tableID)
+		return fmt.Errorf("invalid pmt table_id: 0x%02x", p.tableID)
 	}
 	if p.sectionSyntaxIndicator, err = bb.ReadUint8(1); err != nil {
-		return errors.Wrap(err, "failed to read pmt section_syntax_indicator")
+		return fmt.Errorf("failed to read pmt section_syntax_indicator: %w", err)
 	}
 	if err := bb.Skip(1); err != nil {
-		return errors.Wrap(err, "failed to skip in pmt: ()")
+		return fmt.Errorf("failed to skip in pmt: (): %w", err)
 	} // ()
 	if err := bb.Skip(2); err != nil {
-		return errors.Wrap(err, "failed to skip in pmt: reserved")
+		return fmt.Errorf("failed to skip in pmt: reserved: %w", err)
 	} // reserved
 	if p.sectionLength, err = bb.ReadUint16(12); err != nil {
-		return errors.Wrap(err, "failed to read pmt section_length")
+		return fmt.Errorf("failed to read pmt section_length: %w", err)
 	}
 	if p.programNumber, err = bb.ReadUint16(16); err != nil {
-		return errors.Wrap(err, "failed to read pmt program_number")
+		return fmt.Errorf("failed to read pmt program_number: %w", err)
 	}
 	if err := bb.Skip(2); err != nil {
-		return errors.Wrap(err, "failed to skip in pmt: reserved")
+		return fmt.Errorf("failed to skip in pmt: reserved: %w", err)
 	} // reserved
 	if p.versionNumber, err = bb.ReadUint8(5); err != nil {
-		return errors.Wrap(err, "failed to read pmt version_number")
+		return fmt.Errorf("failed to read pmt version_number: %w", err)
 	}
 	if p.currentNextIndicator, err = bb.ReadUint8(1); err != nil {
-		return errors.Wrap(err, "failed to read pmt current_next_indicator")
+		return fmt.Errorf("failed to read pmt current_next_indicator: %w", err)
 	}
 	if p.sectionNumber, err = bb.ReadUint8(8); err != nil {
-		return errors.Wrap(err, "failed to read pmt section_number")
+		return fmt.Errorf("failed to read pmt section_number: %w", err)
 	}
 	if p.lastSectionNumber, err = bb.ReadUint8(8); err != nil {
-		return errors.Wrap(err, "failed to read pmt last_section_number")
+		return fmt.Errorf("failed to read pmt last_section_number: %w", err)
 	}
 	if err := bb.Skip(3); err != nil {
-		return errors.Wrap(err, "failed to skip in pmt: reserved")
+		return fmt.Errorf("failed to skip in pmt: reserved: %w", err)
 	} // reserved
 	if p.pcrPid, err = bb.ReadUint16(13); err != nil {
-		return errors.Wrap(err, "failed to read pmt pcr_pid")
+		return fmt.Errorf("failed to read pmt pcr_pid: %w", err)
 	}
 	if err := bb.Skip(4); err != nil {
-		return errors.Wrap(err, "failed to skip in pmt reserved")
+		return fmt.Errorf("failed to skip in pmt reserved: %w", err)
 	} // reserved
 	if p.programInfoLength, err = bb.ReadUint16(12); err != nil {
-		return errors.Wrap(err, "failed to read pmt program_info_length")
+		return fmt.Errorf("failed to read pmt program_info_length: %w", err)
 	}
 	if p.descriptors, err = parseDescriptors(bb, p.programInfoLength); err != nil {
-		return errors.Wrap(err, "failed to parse pmt program descriptors")
+		return fmt.Errorf("failed to parse pmt program descriptors: %w", err)
 	}
 	remainLength := int32(p.sectionLength) - 9 - 4 - int32(p.programInfoLength)
 	for remainLength > 0 {
 		var info ProgramInfo
 		if info.streamType, err = bb.ReadUint8(8); err != nil {
-			return errors.Wrap(err, "failed to read pmt program info: stream_type")
+			return fmt.Errorf("failed to read pmt program info: stream_type: %w", err)
 		}
 		if err := bb.Skip(3); err != nil {
-			return errors.Wrap(err, "failed to skip in pmt program info: reserved")
+			return fmt.Errorf("failed to skip in pmt program info: reserved: %w", err)
 		} // reserved
 		if info.elementaryPid, err = bb.ReadUint16(13); err != nil {
-			return errors.Wrap(err, "failed to read pmt program info: elementary_pid")
+			return fmt.Errorf("failed to read pmt program info: elementary_pid: %w", err)
 		}
 		if err := bb.Skip(4); err != nil {
-			return errors.Wrap(err, "failed to skip in pmt program info: reserved")
+			return fmt.Errorf("failed to skip in pmt program info: reserved: %w", err)
 		} // reserved
 		if info.esInfoLength, err = bb.ReadUint16(12); err != nil {
-			return errors.Wrap(err, "failed to read pmt program info: es_info_length")
+			return fmt.Errorf("failed to read pmt program info: es_info_length: %w", err)
 		}
 		if info.descriptors, err = parseDescriptors(bb, info.esInfoLength); err != nil {
-			return errors.Wrap(err, "failed to parse pmt program info descriptors")
+			return fmt.Errorf("failed to parse pmt program info descriptors: %w", err)
 		}
 		remainLength = remainLength - 5 - int32(info.esInfoLength)
 		p.programInfos = append(p.programInfos, info)
 	}
 	if p.crc32, err = bb.ReadUint32(32); err != nil {
-		return errors.Wrap(err, "failed to read pmt crc32")
+		return fmt.Errorf("failed to read pmt crc32: %w", err)
 	}
 
 	if len(p.buf) >= int(3+p.sectionLength-4) && p.crc32 != crc32(p.buf[0:3+p.sectionLength-4]) {
