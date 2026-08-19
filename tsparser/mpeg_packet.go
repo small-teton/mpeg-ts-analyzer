@@ -95,6 +95,15 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 	if options.DumpBitrate {
 		bitrate = NewBitrateStats(options.Program, pmtPid, pcrPid, programInfos)
 	}
+	// PTS/DTS anomaly detection is always on; it prints only when a problem is
+	// found, so a healthy stream stays quiet. Only a cleanly parsed PES is
+	// checked — a partially parsed header would carry garbage timestamps.
+	anomaly := NewTimestampAnomaly()
+	checkAnomaly := func(perr error, pes *Pes) {
+		if perr == nil {
+			anomaly.Check(pes)
+		}
+	}
 	tsPacket := NewTsPacket()
 
 	for endOffset <= 0 || *pos+int64(packetSize) <= endOffset {
@@ -158,7 +167,7 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 
 		if tsPacket.PayloadUnitStartIndicator() {
 			if pes != nil {
-				_ = pes.Parse()
+				perr := pes.Parse()
 				if options.DumpTimestamp {
 					pcrDelay := pes.DumpTimestamp()
 					maxDelay = math.Max(maxDelay, pcrDelay)
@@ -166,6 +175,7 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 				if options.DumpPesHeader {
 					pes.DumpHeader()
 				}
+				checkAnomaly(perr, pes)
 			} else {
 				pes = NewPes()
 				pesMap[pid] = pes
@@ -200,13 +210,14 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		if pes == nil || len(pes.buf) == 0 {
 			continue
 		}
-		_ = pes.Parse()
+		perr := pes.Parse()
 		if options.DumpTimestamp {
 			maxDelay = math.Max(maxDelay, pes.DumpTimestamp())
 		}
 		if options.DumpPesHeader {
 			pes.DumpHeader()
 		}
+		checkAnomaly(perr, pes)
 	}
 
 	if options.DumpTimestamp {
@@ -220,6 +231,7 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 	if bitrate != nil {
 		bitrate.Dump()
 	}
+	anomaly.Dump()
 
 	return nil
 }

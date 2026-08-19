@@ -15,6 +15,27 @@ PMT : Program Info : elementary_PID     : 0x100, stream_type : 0x02 (13818-2 vid
 PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x03 (11172 audio)
 ```
 
+## Timestamp anomaly report (always on)
+
+PTS/DTS anomalies are checked on every run, with no flag. Nothing is printed for
+a healthy stream; when problems are found, a report is appended at the end:
+
+```
+-----------------------------
+Timestamp Anomaly Report:
+  PID 0x0100: PTS went backward at 0x00123457 (2001.000ms) after 0x00123456 (2041.000ms)
+  PID 0x0100: PTS jumped forward 5.3s at 0x00234567 (7374.333ms) after 0x00123458 (2041.000ms), expected ~40ms
+  PID 0x0101: PTS wrapped around (33-bit counter overflow) at 0x00345679
+  PID 0x0102: DTS is later than PTS in the access unit at 0x00400000 (DTS 22.222ms > PTS 11.111ms)
+```
+
+Reading the output:
+
+- Each line is one PID and the first place a problem was seen; repeats of the
+  same problem on the same PID are collapsed with `(and N more)`.
+- Checks run on the decode timeline (DTS when present, otherwise PTS), so a
+  B-frame stream — whose PTS legitimately reorders — is not falsely flagged.
+
 ## Dump TS header
 
 ```
