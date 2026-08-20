@@ -383,6 +383,37 @@ func (p *Pes) DumpTimestamp() float64 {
 	return 0
 }
 
+// TimestampDelay returns the PCR-to-PTS/DTS delay in milliseconds when the PES
+// has a timestamp and a preceding PCR reference. DTS is used when both are
+// present because it represents the decode timeline.
+func (p *Pes) TimestampDelay() (float64, bool) {
+	var stamp uint64
+	switch p.ptsDtsFlags {
+	case 2:
+		stamp = p.pts
+	case 3:
+		stamp = p.dts
+	default:
+		return 0, false
+	}
+	refPcr, ok := p.referencePcrMs()
+	if !ok {
+		return 0, false
+	}
+	return float64(stamp)/90 - refPcr, true
+}
+
+// BracketedTimestampDelay returns a delay only when PCR observations on both
+// sides of the PES position are available. Compliance evaluation uses this
+// stricter form because treating the previous PCR value as if it occurred at a
+// later PES position overstates the delay near the end of a stream.
+func (p *Pes) BracketedTimestampDelay() (float64, bool) {
+	if p.nextPcr <= p.prevPcr || p.nextPcrPos <= p.prevPcrPos {
+		return 0, false
+	}
+	return p.TimestampDelay()
+}
+
 // dumpTimestamp prints one PTS/DTS line and returns the PCR-to-timestamp delay
 // (the end-to-end buffering delay) in milliseconds.
 func (p *Pes) dumpTimestamp(label string, stamp uint64) float64 {

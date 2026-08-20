@@ -463,6 +463,23 @@ func TestBufferPesFinalPesMultiPid(t *testing.T) {
 	}
 }
 
+func TestBufferPesFailOnComplianceError(t *testing.T) {
+	var data bytes.Buffer
+	data.Write(buildPcrPacket(0x31, 27_000_000))
+	data.Write(buildPesTsPacket(0x31, 1, encodePtsOnlyPes(190_001))) // over 1000 ms after PCR interpolation
+	data.Write(buildPcrPacket(0x31, 29_700_001))                     // just over 100 ms
+	var pos int64
+	programInfos := []ProgramInfo{{streamType: 0x1B, elementaryPid: 0x31}}
+	err := BufferPes(bytes.NewReader(data.Bytes()), &pos, 0x30, 0x31, programInfos, options.Options{FailOnError: true}, 188, 0)
+	var complianceErr *ComplianceError
+	if !errors.As(err, &complianceErr) {
+		t.Fatalf("error = %v, want ComplianceError", err)
+	}
+	if len(complianceErr.Checks) != 2 || complianceErr.Checks[0] != "Max PCR interval" || complianceErr.Checks[1] != "PCR-PTS max gap" {
+		t.Errorf("failed checks = %v", complianceErr.Checks)
+	}
+}
+
 // buildPesTsPacket builds a 188-byte TS packet whose payload IS a PES (start
 // code at byte 4). Unlike buildTsPacket, it does not prepend a PSI
 // pointer_field, so the PES actually parses.

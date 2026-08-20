@@ -89,6 +89,8 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 	var lastPcrPos int64
 	var maxDelay float64
 	var maxPcrInterval float64
+	var pcrIntervals int
+	var pcrPtsSamples int
 	var pcrJitter PcrJitter
 	var bitrate *BitrateStats
 	if options.DumpBitrate {
@@ -102,6 +104,17 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 	checkAnomaly := func(perr error, pes *Pes) {
 		if perr == nil {
 			anomaly.Check(pes)
+		}
+	}
+	recordTiming := func(perr error, pes *Pes) {
+		if perr != nil {
+			return
+		}
+		if delay, ok := pes.BracketedTimestampDelay(); ok {
+			if pcrPtsSamples == 0 || delay > maxDelay {
+				maxDelay = delay
+			}
+			pcrPtsSamples++
 		}
 	}
 	tsPacket := NewTsPacket()
@@ -140,10 +153,19 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 			if options.DumpPcrJitter {
 				pcrJitter.Add(*pos, tsPacket.Pcr(), tsPacket.adaptationField.DiscontinuityIndicator())
 			}
+			// Complete the PCR bracket for every active PES, including short PES
+			// packets which have no continuation packet after this PCR.
+			for _, activePes := range pesMap {
+				if activePes != nil && activePes.nextPcr == 0 && tsPacket.Pcr() > activePes.prevPcr {
+					activePes.nextPcr = tsPacket.Pcr()
+					activePes.nextPcrPos = *pos
+				}
+			}
 			// Skip PCR wrap/reset (a smaller PCR than the previous one) so the
 			// unsigned subtraction does not underflow into a huge interval.
 			if lastPcr != 0 && tsPacket.Pcr() >= lastPcr {
 				maxPcrInterval = math.Max(maxPcrInterval, float64(tsPacket.Pcr()-lastPcr))
+				pcrIntervals++
 			}
 			lastPcr = tsPacket.Pcr()
 			lastPcrPos = *pos
@@ -169,13 +191,13 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 			if pes != nil {
 				perr := pes.Parse()
 				if options.DumpTimestamp {
-					pcrDelay := pes.DumpTimestamp()
-					maxDelay = math.Max(maxDelay, pcrDelay)
+					pes.DumpTimestamp()
 				}
 				if options.DumpPesHeader {
 					pes.DumpHeader()
 				}
 				checkAnomaly(perr, pes)
+				recordTiming(perr, pes)
 			} else {
 				pes = NewPes()
 				pesMap[pid] = pes
@@ -186,10 +208,6 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 
 		} else if tsPacket.ContinuityCounter() == (pes.ContinuityCounter()+1)&0xF {
 			pes.SetContinuityCounter(tsPacket.ContinuityCounter())
-			if pes.nextPcr == 0 && lastPcr > pes.prevPcr {
-				pes.nextPcr = lastPcr
-				pes.nextPcrPos = lastPcrPos
-			}
 			pes.Append(tsPacket.Payload())
 		} else {
 			fmt.Printf("packet loss. : pid=0x%02x. count=0x%x, pos=0x%08x\n", pid, tsPacket.ContinuityCounter(), *pos)
@@ -213,19 +231,17 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		}
 		perr := pes.Parse()
 		if options.DumpTimestamp {
-			maxDelay = math.Max(maxDelay, pes.DumpTimestamp())
+			pes.DumpTimestamp()
 		}
 		if options.DumpPesHeader {
 			pes.DumpHeader()
 		}
 		checkAnomaly(perr, pes)
+		recordTiming(perr, pes)
 	}
 
-	if options.DumpTimestamp {
-		fmt.Println("-----------------------------")
-		fmt.Printf("Max PCR interval: %fms\n", maxPcrInterval/300/90)
-		fmt.Printf("PCR-PTS max gap: %fms\n", maxDelay)
-	}
+	report := newComplianceReport(maxPcrInterval/300/90, pcrIntervals, maxDelay, pcrPtsSamples)
+	report.dump()
 	if options.DumpPcrJitter {
 		pcrJitter.Dump()
 	}
@@ -234,6 +250,9 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 	}
 	anomaly.Dump()
 	continuity.Dump()
+	if failures := report.failures(); options.FailOnError && len(failures) > 0 {
+		return &ComplianceError{Checks: failures}
+	}
 
 	return nil
 }
