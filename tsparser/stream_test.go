@@ -562,6 +562,22 @@ func TestParseTsFile_DumpTimestampOption(t *testing.T) {
 	}
 }
 
+func TestParseTsFileFailOnComplianceError(t *testing.T) {
+	f, err := os.CreateTemp("", "strict*.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Remove(f.Name()) }()
+	writeFullStream(f, 2, []uint64{27_000_000, 29_700_001})
+	_ = f.Close()
+
+	err = ParseTsFile(f.Name(), options.Options{FailOnError: true})
+	var complianceErr *ComplianceError
+	if !errors.As(err, &complianceErr) {
+		t.Fatalf("error = %v, want ComplianceError", err)
+	}
+}
+
 func TestParseTsFile_DumpPesHeaderOption(t *testing.T) {
 	f, err := os.CreateTemp("", "dumppes*.ts")
 	if err != nil {

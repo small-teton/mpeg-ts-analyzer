@@ -14,7 +14,33 @@ Detected PMT
 PMT : Program Info : elementary_PID     : 0x100, stream_type : 0x02 (13818-2 video or 11172-2 constrained parameter video stream)
 PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x03 (11172 audio)
 -----------------------------
+Compliance Check Results:
+Max PCR interval: 80.000000ms [OK, limit: <= 100.000000ms]
+PCR-PTS max gap: 726.666667ms [OK, limit: <= 1000.000000ms]
+-----------------------------
 Continuity Counter: no errors detected
+```
+
+## Timing compliance verdicts and `--fail-on-error`
+
+The maximum PCR interval and PCR-to-PTS gap verdicts are always printed. The
+limits are inclusive, so exactly 100 ms and 1000 ms are `OK`. When there are
+fewer than two comparable PCR observations, or no parsed PTS/DTS bracketed by
+PCR observations, the corresponding result is explicit and non-failing:
+
+```text
+-----------------------------
+Compliance Check Results:
+Max PCR interval: SKIPPED (need at least two comparable PCR observations)
+PCR-PTS max gap: SKIPPED (need a parsed PTS/DTS bracketed by PCR observations)
+```
+
+`--fail-on-error` is intended for CI. It preserves all normal output and exits
+with code 2 if either evaluated check is `NG`. Healthy and insufficient-data
+runs exit 0; usage, input, and parsing errors use exit 1.
+
+```sh
+mpeg-ts-analyzer input.ts --fail-on-error
 ```
 
 ## Continuity counter summary (always on)
@@ -194,8 +220,9 @@ PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x03 (11172 audio
 0x0004a728 PTS: 0x0008affa[06325.977778ms] (pid:0x101) (delay:662.486106ms)
 0x0004b0b4 PTS: 0x0008c0da[06373.977778ms] (pid:0x101) (delay:665.094372ms)
 -----------------------------
-Max PCR interval: 80.000000ms
-PCR-PTS max gap: 729.563591ms
+Compliance Check Results:
+Max PCR interval: 80.000000ms [OK, limit: <= 100.000000ms]
+PCR-PTS max gap: 726.666667ms [OK, limit: <= 1000.000000ms]
 ```
 
 ## Dump PCR jitter

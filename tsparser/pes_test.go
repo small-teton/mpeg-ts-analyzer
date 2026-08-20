@@ -464,6 +464,38 @@ func TestPesDumpTimestampNoPtsDts(t *testing.T) {
 	}
 }
 
+func TestPesTimestampDelay(t *testing.T) {
+	pes := &Pes{ptsDtsFlags: 2, pts: 90_000, prevPcr: 24_300_000}
+	if got, ok := pes.TimestampDelay(); !ok || math.Abs(got-100) > 1e-6 {
+		t.Errorf("PTS delay = %f, %v; want 100ms, true", got, ok)
+	}
+	pes.ptsDtsFlags = 3
+	pes.dts = 99_000
+	if got, ok := pes.TimestampDelay(); !ok || math.Abs(got-200) > 1e-6 {
+		t.Errorf("DTS delay = %f, %v; want 200ms, true", got, ok)
+	}
+	pes.ptsDtsFlags = 0
+	if _, ok := pes.TimestampDelay(); ok {
+		t.Error("PES without PTS/DTS must not produce a delay")
+	}
+	pes.ptsDtsFlags = 2
+	pes.prevPcr = 0
+	if _, ok := pes.TimestampDelay(); ok {
+		t.Error("PES without a PCR reference must not produce a delay")
+	}
+	if _, ok := pes.BracketedTimestampDelay(); ok {
+		t.Error("PES without bracketing PCR observations must not produce a compliance delay")
+	}
+	pes.prevPcr = 24_300_000
+	pes.nextPcr = 27_000_000
+	pes.prevPcrPos = 0
+	pes.nextPcrPos = 100
+	pes.pos = 50
+	if got, ok := pes.BracketedTimestampDelay(); !ok || math.Abs(got-50) > 1e-6 {
+		t.Errorf("bracketed delay = %f, %v; want 50ms, true", got, ok)
+	}
+}
+
 func TestPesParseErrors(t *testing.T) {
 	tests := []struct {
 		name string
