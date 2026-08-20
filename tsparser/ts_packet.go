@@ -64,6 +64,12 @@ func (tp *TsPacket) HasAf() bool {
 	return tp.adaptationFieldControl == 2 || tp.adaptationFieldControl == 3
 }
 
+// HasPayload reports whether the TS header declares a payload. Continuity
+// counter rules use adaptation_field_control, not the resulting slice length.
+func (tp *TsPacket) HasPayload() bool {
+	return tp.adaptationFieldControl == 1 || tp.adaptationFieldControl == 3
+}
+
 // Pcr return this TsPacket PCR.
 func (tp *TsPacket) Pcr() uint64 { return tp.adaptationField.Pcr() }
 

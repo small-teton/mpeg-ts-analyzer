@@ -249,10 +249,13 @@ func TestBufferPesPacketLoss(t *testing.T) {
 	// Write PCR packet
 	_, _ = f.Write(buildPcrPacket(0x0031, 13500))
 
-	// Write PES start packet (cc=0)
-	_, _ = f.Write(buildTsPacket(0x0031, true, 0, pesHeader))
+	// The PCR packet also carries payload at cc=0, so the PES start is cc=1.
+	// An exact duplicate is legal and must not be appended to the PES twice.
+	pesStart := buildTsPacket(0x0031, true, 1, pesHeader)
+	_, _ = f.Write(pesStart)
+	_, _ = f.Write(pesStart)
 
-	// Write continuation with cc gap (cc=5, expected 1) -> triggers packet loss printf
+	// Write continuation with cc gap (cc=5, expected 2) -> triggers packet loss printf
 	_, _ = f.Write(buildTsPacket(0x0031, false, 5, []byte{0x00, 0x01}))
 
 	_ = f.Close()

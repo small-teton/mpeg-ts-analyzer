@@ -98,7 +98,8 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 	// found, so a healthy stream stays quiet. Only a cleanly parsed PES is
 	// checked — a partially parsed header would carry garbage timestamps.
 	anomaly := NewTimestampAnomaly()
-	continuity := newContinuityCounterSummary(programInfos)
+	continuity := newContinuityCounterSummary(pmtPid, pcrPid, programInfos)
+	continuityTracker := newContinuityTracker()
 	checkAnomaly := func(perr error, pes *Pes) {
 		if perr == nil {
 			anomaly.Check(pes)
@@ -124,6 +125,12 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 			return fmt.Errorf("failed to parse TS packet in BufferPes: %w", err)
 		}
 		pid := tsPacket.Pid()
+		continuityResult := continuityTracker.Check(tsPacket)
+		if continuityResult.Event != nil {
+			event := continuityResult.Event
+			fmt.Printf("packet loss. : pid=0x%02x. count=0x%x, pos=0x%08x\n", event.PID, event.Actual, event.Pos)
+			continuity.Add(event.PID)
+		}
 		if bitrate != nil {
 			bitrate.CountPacket(pid)
 		}
@@ -149,6 +156,10 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 			lastPcrPos = *pos
 		}
 		if !exist {
+			*pos += int64(size)
+			continue
+		}
+		if continuityResult.Duplicate {
 			*pos += int64(size)
 			continue
 		}
@@ -181,19 +192,14 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 				pesMap[pid] = pes
 			}
 			pes.Initialize(pid, *pos, lastPcr, lastPcrPos)
-			pes.SetContinuityCounter(tsPacket.ContinuityCounter())
 			pes.Append(tsPacket.Payload()) // read until pointer_field
 
-		} else if tsPacket.ContinuityCounter() == (pes.ContinuityCounter()+1)&0xF {
-			pes.SetContinuityCounter(tsPacket.ContinuityCounter())
+		} else {
 			if pes.nextPcr == 0 && lastPcr > pes.prevPcr {
 				pes.nextPcr = lastPcr
 				pes.nextPcrPos = lastPcrPos
 			}
 			pes.Append(tsPacket.Payload())
-		} else {
-			fmt.Printf("packet loss. : pid=0x%02x. count=0x%x, pos=0x%08x\n", pid, tsPacket.ContinuityCounter(), *pos)
-			continuity.Add(pid)
 		}
 
 		*pos += int64(size)
