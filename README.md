@@ -69,7 +69,9 @@ go install github.com/small-teton/mpeg-ts-analyzer/v2@latest
 
 # Usage
 
-By default, mpeg-ts-analyzer dumps all timestamps (PCR/PTS/DTS), including the PCR interval and PCR-PTS gap. To dump more details, add the corresponding command-line flags.
+By default, mpeg-ts-analyzer prints deterministic `OK`, `NG`, or `SKIPPED`
+verdicts for the maximum PCR interval and PCR-to-PTS gap. Individual PCR,
+PTS, and DTS lines remain opt-in through `--dump-timestamp`.
 
 ```
 Usage:
@@ -84,12 +86,31 @@ Flags:
       --dump-timestamp          Dump PCR/PTS/DTS timestamps.
       --dump-ts-header          Dump TS packet header.
       --dump-ts-payload         Dump TS packet payload binary.
+      --fail-on-error           Exit with code 2 when a timing compliance check reports NG.
   -h, --help                    help for mpeg-ts-analyzer
       --limit int               Stop reading after this many bytes (0 = no limit).
       --list-programs           List every program (program_number, PMT PID, elementary streams) and exit.
       --offset int              Start reading from this byte offset.
       --program int             Analyze only this program_number (default: the sole program; a multi-program stream is listed instead).
       --version                 show mpeg-ts-analyzer version.
+```
+
+The timing checks use inclusive limits: exactly 100 ms for the maximum PCR
+interval and exactly 1000 ms for the PCR-to-PTS gap are `OK`. A check is
+`SKIPPED` when there are not enough comparable observations; `SKIPPED` does not
+make `--fail-on-error` fail. Exit codes are:
+
+- `0`: parsing completed and no evaluated timing check reported `NG`
+- `1`: usage, input, or parsing error
+- `2`: parsing completed but `--fail-on-error` found one or more `NG` checks
+
+Example default result:
+
+```text
+-----------------------------
+Compliance Check Results:
+Max PCR interval: 80.000000ms [OK, limit: <= 100.000000ms]
+PCR-PTS max gap: 726.666667ms [OK, limit: <= 1000.000000ms]
 ```
 
 ## Multi-program transport streams

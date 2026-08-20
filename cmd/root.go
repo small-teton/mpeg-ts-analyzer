@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -29,8 +30,16 @@ func Execute(version string) {
 	err := rootCmd.Execute()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		os.Exit(exitCode(err))
 	}
+}
+
+func exitCode(err error) int {
+	var complianceErr *tsparser.ComplianceError
+	if errors.As(err, &complianceErr) {
+		return 2
+	}
+	return 1
 }
 
 func init() {
@@ -42,6 +51,7 @@ func init() {
 	rootCmd.Flags().BoolVar(&opt.DumpTimestamp, "dump-timestamp", false, "Dump PCR/PTS/DTS timestamps.")
 	rootCmd.Flags().BoolVar(&opt.DumpPcrJitter, "dump-pcr-jitter", false, "Analyze PCR jitter (per-interval deviation from the expected PCR).")
 	rootCmd.Flags().BoolVar(&opt.DumpBitrate, "dump-bitrate", false, "Summarize per-PID average/peak bitrate (PCR time base) for the analyzed program.")
+	rootCmd.Flags().BoolVar(&opt.FailOnError, "fail-on-error", false, "Exit with code 2 when a timing compliance check reports NG.")
 	rootCmd.Flags().BoolVar(&opt.ListPrograms, "list-programs", false, "List every program (program_number, PMT PID, elementary streams) and exit.")
 	rootCmd.Flags().IntVar(&opt.Program, "program", 0, "Analyze only this program_number (default: the sole program; a multi-program stream is listed instead).")
 	rootCmd.Flags().Int64Var(&opt.Offset, "offset", 0, "Start reading from this byte offset.")
