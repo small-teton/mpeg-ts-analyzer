@@ -1,7 +1,6 @@
 package tsparser
 
 import (
-	"bytes"
 	"fmt"
 	"sort"
 )
@@ -23,7 +22,7 @@ type continuityResult struct {
 
 type continuityState struct {
 	cc     uint8
-	packet []byte
+	packet [tsPayloadSize]byte
 }
 
 // continuityTracker validates continuity counters independently of PSI or PES
@@ -31,11 +30,11 @@ type continuityState struct {
 // one 188-byte packet per observed PID so exact payload duplicates can be
 // distinguished from invalid same-counter packets.
 type continuityTracker struct {
-	states map[uint16]continuityState
+	states map[uint16]*continuityState
 }
 
 func newContinuityTracker() *continuityTracker {
-	return &continuityTracker{states: make(map[uint16]continuityState)}
+	return &continuityTracker{states: make(map[uint16]*continuityState)}
 }
 
 func (t *continuityTracker) Check(packet *TsPacket) continuityResult {
@@ -45,16 +44,27 @@ func (t *continuityTracker) Check(packet *TsPacket) continuityResult {
 	}
 
 	current := continuityState{
-		cc:     packet.ContinuityCounter(),
-		packet: append([]byte(nil), packet.buf...),
+		cc: packet.ContinuityCounter(),
+	}
+	copy(current.packet[:], packet.buf)
+	// Duplicate packets may refresh PCR, but every other header, adaptation
+	// field and payload byte must match. Normalize only the six PCR bytes.
+	if packet.HasAf() && packet.adaptationField.PcrFlag() {
+		clear(current.packet[6:12])
 	}
 	previous, seen := t.states[pid]
-	if !seen || packet.adaptationField.DiscontinuityIndicator() {
-		t.states[pid] = current
+	if !seen {
+		previous = new(continuityState)
+		*previous = current
+		t.states[pid] = previous
+		return continuityResult{}
+	}
+	if packet.adaptationField.DiscontinuityIndicator() {
+		*previous = current
 		return continuityResult{}
 	}
 
-	if packet.HasPayload() && current.cc == previous.cc && bytes.Equal(current.packet, previous.packet) {
+	if packet.HasPayload() && current.cc == previous.cc && current.packet == previous.packet {
 		return continuityResult{Duplicate: true}
 	}
 
@@ -62,7 +72,7 @@ func (t *continuityTracker) Check(packet *TsPacket) continuityResult {
 	if packet.HasPayload() {
 		expected = (expected + 1) & 0x0F
 	}
-	t.states[pid] = current
+	*previous = current
 	if current.cc == expected {
 		return continuityResult{}
 	}
