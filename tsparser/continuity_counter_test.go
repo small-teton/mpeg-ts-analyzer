@@ -1,12 +1,93 @@
 package tsparser
 
 import (
+	"bytes"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
+func TestContinuityTrackerPCRDuplicate(t *testing.T) {
+	base := bytes.Repeat([]byte{0xff}, 188)
+	copy(base, []byte{0x47, 0x01, 0x00, 0x30, 7, 0x10, 0, 0, 0, 0, 0x7e, 0})
+	for _, tt := range []struct {
+		name      string
+		index     int
+		duplicate bool
+	}{
+		{"PCR update", 9, true},
+		{"payload change", 12, false},
+		{"header change", 1, false},
+		{"adaptation flags change", 5, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			tracker := newContinuityTracker()
+			for i := 0; i < 2; i++ {
+				p := NewTsPacket()
+				p.Append(base)
+				if i == 1 {
+					p.buf[tt.index] ^= 0x20
+				}
+				if err := p.Parse(); err != nil {
+					t.Fatal(err)
+				}
+				result := tracker.Check(p)
+				if i == 1 && (result.Duplicate != tt.duplicate || (result.Event == nil) != tt.duplicate) {
+					t.Fatalf("result = %+v, want duplicate=%v", result, tt.duplicate)
+				}
+			}
+		})
+	}
+}
+
+func TestContinuityGeneratedFixture(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "continuity.ts")
+	if output, err := exec.Command("go", "run", "../tools/generate_continuity", "-output", path).CombinedOutput(); err != nil {
+		t.Fatalf("generate fixture: %v\n%s", err, output)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) != 14*188 {
+		t.Fatalf("fixture size = %d", len(data))
+	}
+	tracker := newContinuityTracker()
+	for i := 0; i < 14; i++ {
+		p := NewTsPacket()
+		p.pos = int64(i * 188)
+		p.Append(data[i*188 : (i+1)*188])
+		if err := p.Parse(); err != nil {
+			t.Fatal(err)
+		}
+		result := tracker.Check(p)
+		switch i {
+		case 3, 10:
+			want := continuityEvent{PID: 0x100, Expected: 1, Actual: 0, Pos: p.pos}
+			if i == 10 {
+				want.Expected, want.Actual = 12, 14
+			}
+			if result.Event == nil || *result.Event != want {
+				t.Fatalf("packet %d: got %+v, want %+v", i, result.Event, want)
+			}
+		default:
+			if result.Event != nil {
+				t.Fatalf("packet %d: unexpected %+v", i, result.Event)
+			}
+		}
+		if result.Duplicate != (i == 2) {
+			t.Fatalf("packet %d: duplicate=%v", i, result.Duplicate)
+		}
+	}
+}
+
 func TestContinuityCounterSummaryHealthy(t *testing.T) {
-	s := newContinuityCounterSummary(nil)
+	s := newContinuityCounterSummary(0x1000, 0x0100, nil)
+	if s.labels[0] != "PAT" || s.labels[0x1000] != "PMT" || s.labels[0x0100] != "PCR" {
+		t.Fatalf("standard PID labels = %#v", s.labels)
+	}
 	got := captureStdout(t, s.Dump)
 	want := "-----------------------------\nContinuity Counter: no errors detected\n"
 	if got != want {
@@ -20,7 +101,7 @@ func TestContinuityCounterSummaryErrors(t *testing.T) {
 		{streamType: 0x0F, elementaryPid: 0x101},
 		{streamType: 0x06, elementaryPid: 0x102},
 	}
-	s := newContinuityCounterSummary(infos)
+	s := newContinuityCounterSummary(0x1000, 0x0100, infos)
 	s.Add(0x101)
 	s.Add(0x100)
 	s.Add(0x100)
@@ -41,6 +122,69 @@ func TestContinuityCounterSummaryErrors(t *testing.T) {
 	if strings.Index(got, "PID 0x0100") > strings.Index(got, "PID 0x0101") {
 		t.Errorf("PIDs are not sorted:\n%s", got)
 	}
+}
+
+func continuityTestPacket(pid uint16, cc, afc uint8, pusi, discontinuity bool, content byte) *TsPacket {
+	p := NewTsPacket()
+	p.pid = pid
+	p.continuityCounter = cc
+	p.adaptationFieldControl = afc
+	p.payloadUnitStartIndicator = 0
+	if pusi {
+		p.payloadUnitStartIndicator = 1
+	}
+	if discontinuity {
+		p.adaptationField.discontinuityIndicator = 1
+	}
+	p.buf = append(p.buf, 0x47, byte(pid>>8), byte(pid), byte(afc<<4|cc), content)
+	return p
+}
+
+func TestContinuityTrackerRules(t *testing.T) {
+	tracker := newContinuityTracker()
+	checkOK := func(name string, packet *TsPacket) continuityResult {
+		t.Helper()
+		result := tracker.Check(packet)
+		if result.Event != nil {
+			t.Fatalf("%s: unexpected event: %+v", name, result.Event)
+		}
+		return result
+	}
+
+	checkOK("first payload", continuityTestPacket(0x100, 15, 1, false, false, 0x10))
+	checkOK("wraparound", continuityTestPacket(0x100, 0, 1, false, false, 0x20))
+	duplicate := checkOK("exact duplicate", continuityTestPacket(0x100, 0, 1, false, false, 0x20))
+	if !duplicate.Duplicate {
+		t.Error("exact duplicate was not identified")
+	}
+
+	invalidSame := tracker.Check(continuityTestPacket(0x100, 0, 1, false, false, 0x30))
+	if invalidSame.Event == nil || invalidSame.Event.Expected != 1 || invalidSame.Event.Actual != 0 {
+		t.Fatalf("invalid same-counter event = %+v", invalidSame.Event)
+	}
+	checkOK("resynchronized payload", continuityTestPacket(0x100, 1, 1, false, false, 0x40))
+	checkOK("adaptation only", continuityTestPacket(0x100, 1, 2, false, false, 0x50))
+	checkOK("payload after adaptation", continuityTestPacket(0x100, 2, 1, false, false, 0x60))
+	checkOK("declared discontinuity", continuityTestPacket(0x100, 9, 2, false, true, 0x70))
+	checkOK("after declared discontinuity", continuityTestPacket(0x100, 10, 1, false, false, 0x80))
+	checkOK("PUSI", continuityTestPacket(0x100, 11, 1, true, false, 0x90))
+
+	gap := tracker.Check(continuityTestPacket(0x100, 14, 1, false, false, 0xA0))
+	if gap.Event == nil || gap.Event.PID != 0x100 || gap.Event.Expected != 12 || gap.Event.Actual != 14 {
+		t.Fatalf("gap event = %+v", gap.Event)
+	}
+	if gap.Event.Pos != 0 {
+		t.Errorf("event pos = %d, want 0", gap.Event.Pos)
+	}
+	checkOK("resynchronized after gap", continuityTestPacket(0x100, 15, 1, false, false, 0xB0))
+
+	checkOK("first adaptation-only", continuityTestPacket(0x200, 3, 2, false, false, 0xC0))
+	badAdaptation := tracker.Check(continuityTestPacket(0x200, 4, 2, false, false, 0xD0))
+	if badAdaptation.Event == nil || badAdaptation.Event.Expected != 3 {
+		t.Fatalf("adaptation-only event = %+v", badAdaptation.Event)
+	}
+	checkOK("null packet excluded", continuityTestPacket(nullPidValue, 0, 1, false, false, 0xE0))
+	checkOK("null counter arbitrary", continuityTestPacket(nullPidValue, 9, 1, false, false, 0xF0))
 }
 
 func TestContinuityCounterLabelsAndPlurals(t *testing.T) {
