@@ -128,7 +128,7 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		continuityResult := continuityTracker.Check(tsPacket)
 		if continuityResult.Event != nil {
 			event := continuityResult.Event
-			fmt.Printf("packet loss. : pid=0x%02x. count=0x%x, pos=0x%08x\n", event.PID, event.Actual, event.Pos)
+			fmt.Printf("packet loss. : pid=0x%04x. count=0x%x, pos=0x%08x\n", event.PID, event.Actual, event.Pos)
 			continuity.Add(event.PID)
 		}
 		if bitrate != nil {

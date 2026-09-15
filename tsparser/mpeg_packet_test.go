@@ -276,7 +276,7 @@ func TestBufferPesPacketLoss(t *testing.T) {
 		t.Errorf("unexpected error: %s", bufferErr)
 	}
 	for _, want := range []string{
-		"packet loss. : pid=0x31. count=0x5",
+		"packet loss. : pid=0x0031. count=0x5",
 		"Continuity Counter Error Summary:",
 		"PID 0x0031 (video) : 1 error",
 		"Total              : 1 error in 1 PID",

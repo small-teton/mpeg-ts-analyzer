@@ -1,9 +1,87 @@
 package tsparser
 
 import (
+	"bytes"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestContinuityTrackerPCRDuplicate(t *testing.T) {
+	base := bytes.Repeat([]byte{0xff}, 188)
+	copy(base, []byte{0x47, 0x01, 0x00, 0x30, 7, 0x10, 0, 0, 0, 0, 0x7e, 0})
+	for _, tt := range []struct {
+		name      string
+		index     int
+		duplicate bool
+	}{
+		{"PCR update", 9, true},
+		{"payload change", 12, false},
+		{"header change", 1, false},
+		{"adaptation flags change", 5, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			tracker := newContinuityTracker()
+			for i := 0; i < 2; i++ {
+				p := NewTsPacket()
+				p.Append(base)
+				if i == 1 {
+					p.buf[tt.index] ^= 0x20
+				}
+				if err := p.Parse(); err != nil {
+					t.Fatal(err)
+				}
+				result := tracker.Check(p)
+				if i == 1 && (result.Duplicate != tt.duplicate || (result.Event == nil) != tt.duplicate) {
+					t.Fatalf("result = %+v, want duplicate=%v", result, tt.duplicate)
+				}
+			}
+		})
+	}
+}
+
+func TestContinuityGeneratedFixture(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "continuity.ts")
+	if output, err := exec.Command("go", "run", "../tools/generate_continuity", "-output", path).CombinedOutput(); err != nil {
+		t.Fatalf("generate fixture: %v\n%s", err, output)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) != 14*188 {
+		t.Fatalf("fixture size = %d", len(data))
+	}
+	tracker := newContinuityTracker()
+	for i := 0; i < 14; i++ {
+		p := NewTsPacket()
+		p.pos = int64(i * 188)
+		p.Append(data[i*188 : (i+1)*188])
+		if err := p.Parse(); err != nil {
+			t.Fatal(err)
+		}
+		result := tracker.Check(p)
+		switch i {
+		case 3, 10:
+			want := continuityEvent{PID: 0x100, Expected: 1, Actual: 0, Pos: p.pos}
+			if i == 10 {
+				want.Expected, want.Actual = 12, 14
+			}
+			if result.Event == nil || *result.Event != want {
+				t.Fatalf("packet %d: got %+v, want %+v", i, result.Event, want)
+			}
+		default:
+			if result.Event != nil {
+				t.Fatalf("packet %d: unexpected %+v", i, result.Event)
+			}
+		}
+		if result.Duplicate != (i == 2) {
+			t.Fatalf("packet %d: duplicate=%v", i, result.Duplicate)
+		}
+	}
+}
 
 func TestContinuityCounterSummaryHealthy(t *testing.T) {
 	s := newContinuityCounterSummary(0x1000, 0x0100, nil)

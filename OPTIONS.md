@@ -21,16 +21,18 @@ Continuity Counter: no errors detected
 
 A TS-layer tracker checks every non-null PID from the start of the selected
 program's PES analysis through the end of the analysis window. This includes
-repeated PSI/SI packets and unreferenced PIDs; PID `0x1FFF` null packets are
+repeated PSI/SI packets, unreferenced PIDs, and PIDs belonging to other programs.
+Checking is stream-wide within this window: `--program` does not filter the
+checked PIDs. PID `0x1FFF` null packets are
 excluded because their continuity counters are not required to form a sequence.
 Every violation is printed inline at the byte position where it is detected. A
 per-PID summary is always appended at the end so errors remain visible even when
 the analysis produces a large amount of output:
 
 ```
-packet loss. : pid=0x100. count=0x5, pos=0x00123456
-packet loss. : pid=0x100. count=0x9, pos=0x00234567
-packet loss. : pid=0x101. count=0x3, pos=0x00345678
+packet loss. : pid=0x0100. count=0x5, pos=0x00123456
+packet loss. : pid=0x0100. count=0x9, pos=0x00234567
+packet loss. : pid=0x0101. count=0x3, pos=0x00345678
 -----------------------------
 Continuity Counter Error Summary:
   PID 0x0100 (video) : 2 errors
@@ -39,8 +41,11 @@ Continuity Counter Error Summary:
 ```
 
 Counters advance modulo 16 only on packets whose header declares payload.
-Adaptation-field-only packets keep the current counter. An exact duplicate TS
+Adaptation-field-only packets keep the current counter. A duplicate TS
 packet with the same counter is accepted and is not appended to PES data twice.
+Only the PCR value may differ; other header, adaptation-field and payload bytes
+must match. PCR observations are still processed, including refreshed PCRs on
+duplicates, and duplicates still count toward bitrate packet totals.
 A packet carrying `discontinuity_indicator` starts a new counter segment, and a
 PUSI packet follows the same rules as any other payload packet. After an
 undeclared mismatch, tracking resumes from the received counter so one fault
