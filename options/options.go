@@ -10,6 +10,7 @@ type Options struct {
 	DumpTimestamp       bool
 	DumpPcrJitter       bool
 	DumpBitrate         bool
+	FailOnError         bool
 	ListPrograms        bool
 	Program             int
 	Offset              int64

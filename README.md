@@ -12,7 +12,7 @@ mpeg-ts-analyzer is an MPEG-2 Transport Stream analyzer (ISO/IEC 13818-1).
 It parses TS packets and checks whether the stream conforms to the following requirements defined in the specification:
 
 - **Max PCR interval** should be no greater than 100 ms (ISO/IEC 13818-1, Section 2.7.2)
-- **PCR-PTS max gap** (end-to-end delay) should be no greater than 1000 ms
+- **PCR-PTS/DTS max gap** (decode delay) should be no greater than 1000 ms; DTS is used when both timestamps are present, otherwise PTS is used
 - **PTS/DTS anomalies** — timestamps going backward, 33-bit wraparound, large forward jumps (splicing/ad insertion), or DTS later than PTS — are detected and reported (always on; silent when the stream is healthy)
 
 In addition, it can dump various MPEG-2 TS internal structures for stream investigation:
@@ -80,7 +80,9 @@ go install github.com/small-teton/mpeg-ts-analyzer/v2@latest
 
 # Usage
 
-By default, mpeg-ts-analyzer dumps all timestamps (PCR/PTS/DTS), including the PCR interval and PCR-PTS gap. To dump more details, add the corresponding command-line flags.
+By default, mpeg-ts-analyzer prints deterministic `OK`, `NG`, or `SKIPPED`
+verdicts for the maximum PCR interval and PCR-to-PTS/DTS gap. Individual PCR,
+PTS, and DTS lines remain opt-in through `--dump-timestamp`.
 
 ```
 Usage:
@@ -95,12 +97,31 @@ Flags:
       --dump-timestamp          Dump PCR/PTS/DTS timestamps.
       --dump-ts-header          Dump TS packet header.
       --dump-ts-payload         Dump TS packet payload binary.
+      --fail-on-error           Exit with code 2 when a timing compliance check reports NG.
   -h, --help                    help for mpeg-ts-analyzer
       --limit int               Stop reading after this many bytes (0 = no limit).
       --list-programs           List every program (program_number, PMT PID, elementary streams) and exit.
       --offset int              Start reading from this byte offset.
       --program int             Analyze only this program_number (default: the sole program; a multi-program stream is listed instead).
       --version                 show mpeg-ts-analyzer version.
+```
+
+The timing checks use inclusive limits: exactly 100 ms for the maximum PCR
+interval and exactly 1000 ms for the PCR-to-PTS/DTS gap are `OK`. A check is
+`SKIPPED` when there are not enough comparable observations; `SKIPPED` does not
+make `--fail-on-error` fail. Exit codes are:
+
+- `0`: parsing completed and no evaluated timing check reported `NG`
+- `1`: usage, input, or parsing error
+- `2`: parsing completed but `--fail-on-error` found one or more `NG` checks
+
+Example default result:
+
+```text
+-----------------------------
+Compliance Check Results:
+Max PCR interval: 80.000000ms [OK, limit: <= 100.000000ms]
+PCR-PTS/DTS max gap: 726.666667ms [OK, limit: <= 1000.000000ms]
 ```
 
 ## Multi-program transport streams
@@ -140,21 +161,21 @@ PCR jitter, and per-PID bitrate — in **[OPTIONS.md](OPTIONS.md)**.
 
 # Why mpeg-ts-analyzer?
 
-mpeg-ts-analyzer is purpose-built for one job: **checking transport-layer timing compliance** — the Max PCR interval and the PCR-PTS (end-to-end) gap — and reporting a direct pass/fail answer.
+mpeg-ts-analyzer is purpose-built for one job: **checking transport-layer timing compliance** — the Max PCR interval and the PCR-PTS/DTS (decode-timeline) gap — and reporting a direct pass/fail answer.
 
 ## Compared to other tools
 
-- **ffprobe / FFmpeg** work at the elementary-stream (codec) level. They expose PTS/DTS but **not the PCR**, which lives in the transport layer (adaptation field). PCR interval and PCR-PTS gap checks are therefore out of reach — ffprobe simply never surfaces the PCR.
+- **ffprobe / FFmpeg** work at the elementary-stream (codec) level. They expose PTS/DTS but **not the PCR**, which lives in the transport layer (adaptation field). PCR interval and PCR-PTS/DTS gap checks are therefore out of reach — ffprobe simply never surfaces the PCR.
 - **TSDuck** is an excellent, comprehensive TS toolkit and it *can* obtain these values (e.g. `tsp -P pcrextract` dumps PCR/PTS/DTS to CSV). However, it hands you the raw timestamps — you still have to script the interval/gap computation and make the pass/fail decision yourself. TSDuck gives you the parts; it does not directly give you the answer.
 
 mpeg-ts-analyzer instead gives you:
 
 - **Spec-level field dump** — Every field in TS headers, adaptation fields, PSI tables, and PES headers is printed exactly as defined in ISO/IEC 13818-1, making it easy to cross-reference with the specification.
-- **Compliance checks out of the box** — Max PCR interval (≤ 100 ms) and PCR-PTS gap (≤ 1000 ms) are validated automatically and reported as a direct result. No CSV, no scripting.
+- **Compliance checks out of the box** — Max PCR interval (≤ 100 ms) and PCR-PTS/DTS gap (≤ 1000 ms) are validated automatically and reported as a direct result. No CSV, no scripting.
 
 ## Which tool should I use?
 
-- **Transport-layer timing compliance** (Max PCR interval / PCR-PTS gap), or a lightweight pass/fail check you can drop into CI → **mpeg-ts-analyzer**. This is what it is built for.
+- **Transport-layer timing compliance** (Max PCR interval / PCR-PTS/DTS gap), or a lightweight pass/fail check you can drop into CI → **mpeg-ts-analyzer**. This is what it is built for.
 - **Broad, general analysis of a stream** — full PSI/SI tables (NIT/SDT/EIT/…), bitrate breakdown, service names, scrambling state, network information, deep TR 101 290 conformance monitoring → **[TSDuck](https://tsduck.io/)** is the far more capable tool, and we recommend it for that use case.
 
 mpeg-ts-analyzer deliberately stays small and focused on the compliance check rather than duplicating what TSDuck already does well.
