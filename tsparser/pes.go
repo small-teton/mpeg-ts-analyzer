@@ -439,13 +439,16 @@ func (p *Pes) referencePcrMs() (float64, bool) {
 	if p.prevPcr == 0 {
 		return 0, false
 	}
-	prevPcr := float64(p.prevPcr) / 300 / 90
+	prevPcr := pcrToMs(float64(p.prevPcr))
 	if p.nextPcr > p.prevPcr && p.nextPcrPos > p.prevPcrPos {
-		nextPcr := float64(p.nextPcr) / 300 / 90
+		nextPcr := pcrToMs(float64(p.nextPcr))
 		return prevPcr + (nextPcr-prevPcr)*(float64(p.pos-p.prevPcrPos)/float64(p.nextPcrPos-p.prevPcrPos)), true
 	}
 	return prevPcr, true
 }
+
+// pcrToMs converts a 27 MHz PCR value or interval to milliseconds.
+func pcrToMs(pcr float64) float64 { return pcr / 27000 }
 
 // Dump PES header detail.
 // pesColonColumn is the column where the PES header dump aligns its colons.

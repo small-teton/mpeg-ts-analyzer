@@ -60,7 +60,7 @@ func newComplianceReport(maxPcrIntervalMs float64, pcrIntervals int, maxPcrPtsGa
 			skippedWhy:   "need at least two comparable PCR observations",
 		},
 		maxPcrPtsGap: complianceCheck{
-			name:         "PCR-PTS max gap",
+			name:         "PCR-PTS/DTS max gap",
 			valueMs:      maxPcrPtsGapMs,
 			limitMs:      maxPcrPtsGapLimitMs,
 			observations: pcrPtsSamples,

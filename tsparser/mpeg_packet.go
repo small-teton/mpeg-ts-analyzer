@@ -240,7 +240,7 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		recordTiming(perr, pes)
 	}
 
-	report := newComplianceReport(maxPcrInterval/300/90, pcrIntervals, maxDelay, pcrPtsSamples)
+	report := newComplianceReport(pcrToMs(maxPcrInterval), pcrIntervals, maxDelay, pcrPtsSamples)
 	report.dump()
 	if options.DumpPcrJitter {
 		pcrJitter.Dump()

@@ -11,7 +11,7 @@ func TestComplianceBoundaryIsOK(t *testing.T) {
 		t.Errorf("PCR boundary status = %s, want OK", got)
 	}
 	if got := report.maxPcrPtsGap.status(); got != complianceOK {
-		t.Errorf("PCR-PTS boundary status = %s, want OK", got)
+		t.Errorf("PCR-PTS/DTS boundary status = %s, want OK", got)
 	}
 	if failures := report.failures(); len(failures) != 0 {
 		t.Errorf("boundary failures = %v, want none", failures)
@@ -21,7 +21,7 @@ func TestComplianceBoundaryIsOK(t *testing.T) {
 	for _, want := range []string{
 		"Compliance Check Results:",
 		"Max PCR interval: 100.000000ms [OK, limit: <= 100.000000ms]",
-		"PCR-PTS max gap: 1000.000000ms [OK, limit: <= 1000.000000ms]",
+		"PCR-PTS/DTS max gap: 1000.000000ms [OK, limit: <= 1000.000000ms]",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("boundary output missing %q:\n%s", want, out)
@@ -32,11 +32,11 @@ func TestComplianceBoundaryIsOK(t *testing.T) {
 func TestComplianceNG(t *testing.T) {
 	report := newComplianceReport(100.001, 1, 1000.001, 1)
 	failures := report.failures()
-	if len(failures) != 2 || failures[0] != "Max PCR interval" || failures[1] != "PCR-PTS max gap" {
+	if len(failures) != 2 || failures[0] != "Max PCR interval" || failures[1] != "PCR-PTS/DTS max gap" {
 		t.Fatalf("failures = %v", failures)
 	}
 	err := (&ComplianceError{Checks: failures}).Error()
-	if err != "compliance check failed: Max PCR interval, PCR-PTS max gap" {
+	if err != "compliance check failed: Max PCR interval, PCR-PTS/DTS max gap" {
 		t.Errorf("ComplianceError = %q", err)
 	}
 	out := captureStdout(t, report.dump)
@@ -56,7 +56,7 @@ func TestComplianceSkipped(t *testing.T) {
 	out := captureStdout(t, report.dump)
 	for _, want := range []string{
 		"Max PCR interval: SKIPPED (need at least two comparable PCR observations)",
-		"PCR-PTS max gap: SKIPPED (need a parsed PTS/DTS bracketed by PCR observations)",
+		"PCR-PTS/DTS max gap: SKIPPED (need a parsed PTS/DTS bracketed by PCR observations)",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("SKIPPED output missing %q:\n%s", want, out)
