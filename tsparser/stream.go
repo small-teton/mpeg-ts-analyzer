@@ -156,6 +156,10 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 
 		err = BufferPes(reader, &pos, pmtPid, pcrPid, programs, options, packetSize, endOffset)
 		if err != nil {
+			var complianceErr *ComplianceError
+			if errors.As(err, &complianceErr) {
+				return err
+			}
 			fmt.Printf("0x%08x PES parse error: %s, retrying PAT discovery...\n", pos, err)
 			fileOffset = maxInt64(pos, readStart+patOffset+int64(packetSize))
 			continue
