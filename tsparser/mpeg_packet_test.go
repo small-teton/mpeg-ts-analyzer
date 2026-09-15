@@ -475,7 +475,7 @@ func TestBufferPesFailOnComplianceError(t *testing.T) {
 	if !errors.As(err, &complianceErr) {
 		t.Fatalf("error = %v, want ComplianceError", err)
 	}
-	if len(complianceErr.Checks) != 2 || complianceErr.Checks[0] != "Max PCR interval" || complianceErr.Checks[1] != "PCR-PTS max gap" {
+	if len(complianceErr.Checks) != 2 || complianceErr.Checks[0] != "Max PCR interval" || complianceErr.Checks[1] != "PCR-PTS/DTS max gap" {
 		t.Errorf("failed checks = %v", complianceErr.Checks)
 	}
 }

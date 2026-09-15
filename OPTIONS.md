@@ -16,14 +16,16 @@ PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x03 (11172 audio
 -----------------------------
 Compliance Check Results:
 Max PCR interval: 80.000000ms [OK, limit: <= 100.000000ms]
-PCR-PTS max gap: 726.666667ms [OK, limit: <= 1000.000000ms]
+PCR-PTS/DTS max gap: 726.666667ms [OK, limit: <= 1000.000000ms]
 -----------------------------
 Continuity Counter: no errors detected
 ```
 
 ## Timing compliance verdicts and `--fail-on-error`
 
-The maximum PCR interval and PCR-to-PTS gap verdicts are always printed. The
+The maximum PCR interval and PCR-to-PTS/DTS gap verdicts are always printed.
+The gap uses DTS when both PTS and DTS are present, otherwise PTS. It measures
+the decode timeline rather than the presentation delay of reordered frames. The
 limits are inclusive, so exactly 100 ms and 1000 ms are `OK`. When there are
 fewer than two comparable PCR observations, or no parsed PTS/DTS bracketed by
 PCR observations, the corresponding result is explicit and non-failing:
@@ -32,7 +34,7 @@ PCR observations, the corresponding result is explicit and non-failing:
 -----------------------------
 Compliance Check Results:
 Max PCR interval: SKIPPED (need at least two comparable PCR observations)
-PCR-PTS max gap: SKIPPED (need a parsed PTS/DTS bracketed by PCR observations)
+PCR-PTS/DTS max gap: SKIPPED (need a parsed PTS/DTS bracketed by PCR observations)
 ```
 
 `--fail-on-error` is intended for CI. It preserves all normal output and exits
@@ -222,7 +224,7 @@ PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x03 (11172 audio
 -----------------------------
 Compliance Check Results:
 Max PCR interval: 80.000000ms [OK, limit: <= 100.000000ms]
-PCR-PTS max gap: 726.666667ms [OK, limit: <= 1000.000000ms]
+PCR-PTS/DTS max gap: 726.666667ms [OK, limit: <= 1000.000000ms]
 ```
 
 ## Dump PCR jitter
