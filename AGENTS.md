@@ -33,6 +33,8 @@ coverage target.
 
 - After changing Go code, run `make coverage` and confirm both packages report
   `100.0%`.
+- Active fuzzing commands and the regression-corpus workflow are documented in
+  [FUZZING.md](FUZZING.md).
 - Add or update tests whenever a change would otherwise reduce coverage.
 - Before pushing or opening a pull request, run `.githooks/pre-push`; do not
   treat the work as complete unless every check passes.
