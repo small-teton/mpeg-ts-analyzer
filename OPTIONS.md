@@ -45,6 +45,84 @@ runs exit 0; usage, input, and parsing errors use exit 1.
 mpeg-ts-analyzer input.ts --fail-on-error
 ```
 
+## JSON output
+
+`--format json` emits one deterministic, indented JSON document on stdout. The
+same analysis is performed as in text mode; `--dump-pcr-jitter` and
+`--dump-bitrate` add their structured summaries. Object fields have a stable
+order, PID collections are sorted numerically, and PID values use zero-padded
+hexadecimal strings. Diagnostics and the final error message use stderr.
+
+```sh
+$ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts --format json
+{
+  "schema_version": "1.0",
+  "input": {
+    "path": "sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts",
+    "packet_size_bytes": 188,
+    "offset_bytes": 0
+  },
+  "status": "complete",
+  "programs": [
+    {
+      "program_number": 1,
+      "pmt_pid": "0x1000",
+      "pcr_pid": "0x0100",
+      "elementary_streams": [
+        {
+          "pid": "0x0100",
+          "stream_type": "0x02",
+          "stream_type_description": "13818-2 video or 11172-2 constrained parameter video stream"
+        },
+        {
+          "pid": "0x0101",
+          "stream_type": "0x03",
+          "stream_type_description": "11172 audio"
+        }
+      ],
+      "status": "complete"
+    }
+  ],
+  "selected_program_number": 1,
+  "compliance": {
+    "max_pcr_interval": {
+      "status": "OK",
+      "value_ms": 80,
+      "limit_ms": 100,
+      "observations": 59
+    },
+    "max_pcr_pts_dts_gap": {
+      "status": "OK",
+      "value_ms": 726.6666666666665,
+      "limit_ms": 1000,
+      "observations": 118
+    }
+  },
+  "continuity_counter": {
+    "status": "ok",
+    "total_error_count": 0,
+    "pids": []
+  },
+  "timestamp_anomalies": {
+    "status": "ok",
+    "items": []
+  },
+  "warnings": []
+}
+```
+
+Empty arrays are retained, so “checked and healthy” is distinct from a missing
+or unrequested section. Insufficient timing samples use `SKIPPED` plus a
+`reason`; input or parsing failure uses top-level `status: "failed"` plus
+`incomplete_reason`. Automatic multi-program listing uses
+`status: "programs_listed"` and `program_selection_required`.
+
+JSON contains aggregate results only, not per-packet dumps, so output size does
+not scale with every packet in a large input. Packet-level dump flags are
+rejected with `--format json` instead of mixing human text into stdout. Schema
+`1.x` may gain fields, but does not remove or retype existing fields; incompatible
+changes increment `schema_version`.
+
 ## Continuity counter summary (always on)
 
 A TS-layer tracker checks every non-null PID from the start of the selected

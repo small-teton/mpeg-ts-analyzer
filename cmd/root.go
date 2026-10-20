@@ -43,6 +43,7 @@ func exitCode(err error) int {
 }
 
 func init() {
+	rootCmd.Flags().StringVar(&opt.Format, "format", "text", "Output format: text or json.")
 	rootCmd.Flags().BoolVar(&opt.DumpHeader, "dump-ts-header", false, "Dump TS packet header.")
 	rootCmd.Flags().BoolVar(&opt.DumpPayload, "dump-ts-payload", false, "Dump TS packet payload binary.")
 	rootCmd.Flags().BoolVar(&opt.DumpAdaptationField, "dump-adaptation-field", false, "Dump TS packet adaptation_field detail.")
