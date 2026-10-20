@@ -51,7 +51,9 @@ mpeg-ts-analyzer input.ts --fail-on-error
 same analysis is performed as in text mode; `--dump-pcr-jitter` and
 `--dump-bitrate` add their structured summaries. Object fields have a stable
 order, PID collections are sorted numerically, and PID values use zero-padded
-hexadecimal strings. Diagnostics and the final error message use stderr.
+hexadecimal strings. Diagnostics and the final error message use stderr. The
+formal Draft 2020-12 specification is
+[`docs/json-schema-v1.json`](docs/json-schema-v1.json).
 
 ```sh
 $ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts --format json
@@ -86,13 +88,13 @@ $ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_
   "selected_program_number": 1,
   "compliance": {
     "max_pcr_interval": {
-      "status": "OK",
+      "status": "ok",
       "value_ms": 80,
       "limit_ms": 100,
       "observations": 59
     },
     "max_pcr_pts_dts_gap": {
-      "status": "OK",
+      "status": "ok",
       "value_ms": 726.6666666666665,
       "limit_ms": 1000,
       "observations": 118
@@ -112,16 +114,43 @@ $ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_
 ```
 
 Empty arrays are retained, so “checked and healthy” is distinct from a missing
-or unrequested section. Insufficient timing samples use `SKIPPED` plus a
-`reason`; input or parsing failure uses top-level `status: "failed"` plus
-`incomplete_reason`. Automatic multi-program listing uses
-`status: "programs_listed"` and `program_selection_required`.
+or unrequested section. Insufficient timing samples use `skipped` plus a
+human-readable `reason`; input or parsing failure uses top-level
+`status: "failed"`, a stable `reason` code, and a human-readable `error`.
+Automatic multi-program listing uses `status: "programs_listed"` and
+`reason: "program_selection_required"`.
+
+Status and top-level reason values are:
+
+| Field | Values |
+| --- | --- |
+| top-level `status` | `complete`, `programs_listed`, `incomplete`, `failed` |
+| top-level `reason` | `program_selection_required`, `program_listing_requested`, `end_of_input_before_complete_analysis`, `incompatible_options`, `input_open_failed`, `analysis_failed` |
+| `programs[].status` | `complete`, `incomplete` |
+| incomplete program `reason` | `pmt_parse_failed` |
+| `compliance.*.status` | `ok`, `ng`, `skipped` |
+| `pcr_jitter.status` | `ok`, `warning`, `ng`, `skipped` |
+| `bitrate.status` | `ok`, `skipped` |
+| `continuity_counter.status` | `ok`, `errors` |
+| `timestamp_anomalies.status` | `ok`, `anomalies` |
+
+Top-level and per-program `reason` values are stable codes intended for machine
+matching. `error` and analysis-section `reason` values are explanatory text and
+must not be matched. `status: "incomplete"` exits 0 for compatibility with text
+mode; automation should require `status == "complete"` instead of relying on
+the exit code alone.
+
+In a bitrate result, `pids` contains only selected-program PIDs and
+`program_average_bps` / `program_peak_1s_bps` aggregate those rows. Mux-wide
+NULL stuffing is reported separately as `null_pid` and is excluded from the
+program totals.
 
 JSON contains aggregate results only, not per-packet dumps, so output size does
 not scale with every packet in a large input. Packet-level dump flags are
 rejected with `--format json` instead of mixing human text into stdout. Schema
-`1.x` may gain fields, but does not remove or retype existing fields; incompatible
-changes increment `schema_version`.
+`1.x` may gain fields and enum values. Consumers must treat unknown enum values
+as unrecognized. Existing fields are not removed or retyped, and existing enum
+meanings do not change; those incompatible changes increment `schema_version`.
 
 ## Continuity counter summary (always on)
 

@@ -36,12 +36,15 @@ func parseTsFileJSON(filename string, options options.Options) error {
 func parseTsFileJSONTo(filename string, options options.Options, output io.Writer) error {
 	report := newAnalysisReport(filename, options.Offset, options.Limit)
 	var parseErr error
+	reason := "analysis_failed"
 	if options.DumpHeader || options.DumpPayload || options.DumpAdaptationField || options.DumpPsi || options.DumpPesHeader || options.DumpTimestamp {
 		parseErr = errors.New("--format json cannot be combined with packet-level dump flags")
+		reason = "incompatible_options"
 	} else {
 		file, err := os.Open(filename)
 		if err != nil {
 			parseErr = fmt.Errorf("file open error: %s: %w", filename, err)
+			reason = "input_open_failed"
 		} else {
 			defer func() { _ = file.Close() }()
 			parseErr = parseTsReaderReport(file, options, report)
@@ -51,9 +54,8 @@ func parseTsFileJSONTo(filename string, options options.Options, output io.Write
 		var complianceErr *ComplianceError
 		if !errors.As(parseErr, &complianceErr) {
 			report.Status = "failed"
-			if report.IncompleteReason == "" {
-				report.IncompleteReason = parseErr.Error()
-			}
+			report.Reason = reason
+			report.Error = parseErr.Error()
 		}
 	}
 	if err := writeJSONReport(output, report); err != nil {
@@ -174,9 +176,9 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 			if report != nil {
 				report.Status = "programs_listed"
 				if options.ListPrograms {
-					report.IncompleteReason = "program_listing_requested"
+					report.Reason = "program_listing_requested"
 				} else {
-					report.IncompleteReason = "program_selection_required"
+					report.Reason = "program_selection_required"
 				}
 			}
 			return nil
@@ -261,7 +263,8 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 				report.Bitrate = reportBitrate(analysis.bitrate)
 			}
 			report.Status = "complete"
-			report.IncompleteReason = ""
+			report.Reason = ""
+			report.Error = ""
 		}
 		if err != nil {
 			var complianceErr *ComplianceError
@@ -286,7 +289,7 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 	}
 	if report != nil {
 		report.Status = "incomplete"
-		report.IncompleteReason = "end_of_input_before_complete_analysis"
+		report.Reason = "end_of_input_before_complete_analysis"
 	}
 	return nil
 }
@@ -302,7 +305,8 @@ func listPrograms(reader io.ReadSeeker, programs []Program, start int64, options
 		if err := pmt.Parse(); err != nil {
 			if report != nil {
 				r := reportProgram(prog.ProgramNumber, prog.PmtPid, nil)
-				r.IncompleteReason = err.Error()
+				r.Reason = "pmt_parse_failed"
+				r.Error = err.Error()
 				report.Programs = append(report.Programs, r)
 			} else {
 				fmt.Printf("Program %d: PMT PID 0x%x (PMT parse error: %s)\n", prog.ProgramNumber, prog.PmtPid, err)

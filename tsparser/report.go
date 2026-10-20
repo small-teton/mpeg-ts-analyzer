@@ -6,18 +6,21 @@ import (
 	"io"
 	"math"
 	"sort"
+	"strings"
 )
 
 const jsonSchemaVersion = "1.0"
 
 // AnalysisReport is the stable, machine-readable result emitted by
-// --format json. New fields may be added within a schema version; existing
-// fields are not removed or retyped without incrementing schema_version.
+// --format json. New fields and enum values may be added within a schema
+// version; existing fields are not removed or retyped and existing enum
+// meanings do not change without incrementing schema_version.
 type AnalysisReport struct {
 	SchemaVersion         string                    `json:"schema_version"`
 	Input                 ReportInput               `json:"input"`
 	Status                string                    `json:"status"`
-	IncompleteReason      string                    `json:"incomplete_reason,omitempty"`
+	Reason                string                    `json:"reason,omitempty"`
+	Error                 string                    `json:"error,omitempty"`
 	Programs              []ReportProgram           `json:"programs"`
 	SelectedProgramNumber *uint16                   `json:"selected_program_number,omitempty"`
 	Compliance            *ReportCompliance         `json:"compliance,omitempty"`
@@ -41,7 +44,8 @@ type ReportProgram struct {
 	PCRPID            string                   `json:"pcr_pid,omitempty"`
 	ElementaryStreams []ReportElementaryStream `json:"elementary_streams"`
 	Status            string                   `json:"status"`
-	IncompleteReason  string                   `json:"incomplete_reason,omitempty"`
+	Reason            string                   `json:"reason,omitempty"`
+	Error             string                   `json:"error,omitempty"`
 }
 
 type ReportElementaryStream struct {
@@ -122,7 +126,8 @@ type ReportBitrate struct {
 	DurationSeconds   float64            `json:"duration_seconds"`
 	SegmentCount      int                `json:"segment_count"`
 	PIDs              []ReportBitratePID `json:"pids"`
-	ProgramAverageBPS float64            `json:"program_average_bps,omitempty"`
+	NullPID           *ReportBitratePID  `json:"null_pid,omitempty"`
+	ProgramAverageBPS float64            `json:"program_average_bps"`
 	ProgramPeak1sBPS  *float64           `json:"program_peak_1s_bps,omitempty"`
 }
 
@@ -166,7 +171,7 @@ func reportProgram(programNumber, pmtPID uint16, pmt *Pmt) ReportProgram {
 }
 
 func reportCheck(c complianceCheck) ReportCheck {
-	r := ReportCheck{Status: string(c.status()), LimitMs: c.limitMs, Observations: c.observations}
+	r := ReportCheck{Status: strings.ToLower(string(c.status())), LimitMs: c.limitMs, Observations: c.observations}
 	if c.status() == complianceSkipped {
 		r.Reason = c.skippedWhy
 	} else {
@@ -288,7 +293,7 @@ func reportBitrate(b *BitrateStats) *ReportBitrate {
 			v := b.peakBps(nullPidValue)
 			row.Peak1sBPS = &v
 		}
-		r.PIDs = append(r.PIDs, row)
+		r.NullPID = &row
 	}
 	r.ProgramAverageBPS = float64(totalBytes) * 8 / seconds
 	if full {
