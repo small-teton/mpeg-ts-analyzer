@@ -45,6 +45,113 @@ runs exit 0; usage, input, and parsing errors use exit 1.
 mpeg-ts-analyzer input.ts --fail-on-error
 ```
 
+## JSON output
+
+`--format json` emits one deterministic, indented JSON document on stdout. The
+same analysis is performed as in text mode; `--dump-pcr-jitter` and
+`--dump-bitrate` add their structured summaries. Object fields have a stable
+order, PID collections are sorted numerically, and PID values use zero-padded
+hexadecimal strings. Diagnostics and the final error message use stderr. The
+formal Draft 2020-12 specification is
+[`docs/json-schema-v1.json`](docs/json-schema-v1.json).
+
+```sh
+$ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts --format json
+{
+  "schema_version": "1.0",
+  "input": {
+    "path": "sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts",
+    "packet_size_bytes": 188,
+    "offset_bytes": 0
+  },
+  "status": "complete",
+  "programs": [
+    {
+      "program_number": 1,
+      "pmt_pid": "0x1000",
+      "pcr_pid": "0x0100",
+      "elementary_streams": [
+        {
+          "pid": "0x0100",
+          "stream_type": "0x02",
+          "stream_type_description": "13818-2 video or 11172-2 constrained parameter video stream"
+        },
+        {
+          "pid": "0x0101",
+          "stream_type": "0x03",
+          "stream_type_description": "11172 audio"
+        }
+      ],
+      "status": "complete"
+    }
+  ],
+  "selected_program_number": 1,
+  "compliance": {
+    "max_pcr_interval": {
+      "status": "ok",
+      "value_ms": 80,
+      "limit_ms": 100,
+      "observations": 59
+    },
+    "max_pcr_pts_dts_gap": {
+      "status": "ok",
+      "value_ms": 726.6666666666665,
+      "limit_ms": 1000,
+      "observations": 118
+    }
+  },
+  "continuity_counter": {
+    "status": "ok",
+    "total_error_count": 0,
+    "pids": []
+  },
+  "timestamp_anomalies": {
+    "status": "ok",
+    "items": []
+  },
+  "warnings": []
+}
+```
+
+Empty arrays are retained, so “checked and healthy” is distinct from a missing
+or unrequested section. Insufficient timing samples use `skipped` plus a
+human-readable `reason`; input or parsing failure uses top-level
+`status: "failed"`, a stable `reason` code, and a human-readable `error`.
+Automatic multi-program listing uses `status: "programs_listed"` and
+`reason: "program_selection_required"`.
+
+Status and top-level reason values are:
+
+| Field | Values |
+| --- | --- |
+| top-level `status` | `complete`, `programs_listed`, `incomplete`, `failed` |
+| top-level `reason` | `program_selection_required`, `program_listing_requested`, `end_of_input_before_complete_analysis`, `incompatible_options`, `input_open_failed`, `analysis_failed` |
+| `programs[].status` | `complete`, `incomplete` |
+| incomplete program `reason` | `pmt_parse_failed` |
+| `compliance.*.status` | `ok`, `ng`, `skipped` |
+| `pcr_jitter.status` | `ok`, `warning`, `ng`, `skipped` |
+| `bitrate.status` | `ok`, `skipped` |
+| `continuity_counter.status` | `ok`, `errors` |
+| `timestamp_anomalies.status` | `ok`, `anomalies` |
+
+Top-level and per-program `reason` values are stable codes intended for machine
+matching. `error` and analysis-section `reason` values are explanatory text and
+must not be matched. `status: "incomplete"` exits 0 for compatibility with text
+mode; automation should require `status == "complete"` instead of relying on
+the exit code alone.
+
+In a bitrate result, `pids` contains only selected-program PIDs and
+`program_average_bps` / `program_peak_1s_bps` aggregate those rows. Mux-wide
+NULL stuffing is reported separately as `null_pid` and is excluded from the
+program totals.
+
+JSON contains aggregate results only, not per-packet dumps, so output size does
+not scale with every packet in a large input. Packet-level dump flags are
+rejected with `--format json` instead of mixing human text into stdout. Schema
+`1.x` may gain fields and enum values. Consumers must treat unknown enum values
+as unrecognized. Existing fields are not removed or retyped, and existing enum
+meanings do not change; those incompatible changes increment `schema_version`.
+
 ## Continuity counter summary (always on)
 
 A TS-layer tracker checks every non-null PID from the start of the selected
