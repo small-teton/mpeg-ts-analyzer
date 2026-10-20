@@ -4,6 +4,10 @@ import "testing"
 
 func TestOptions(t *testing.T) {
 	var opt Options
+	opt.Format = "json"
+	if opt.Format != "json" {
+		t.Errorf("Format: expected json, got %s", opt.Format)
+	}
 
 	opt.DumpHeader = true
 	if !opt.DumpHeader {

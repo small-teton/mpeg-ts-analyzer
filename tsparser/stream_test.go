@@ -2,6 +2,7 @@ package tsparser
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"strings"
@@ -9,6 +10,111 @@ import (
 
 	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 )
+
+func decodeJSONReport(t *testing.T, run func() error) (AnalysisReport, error) {
+	t.Helper()
+	var runErr error
+	out := captureStdout(t, func() { runErr = run() })
+	var report AnalysisReport
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("JSON output did not decode: %v\n%s", err, out)
+	}
+	return report, runErr
+}
+
+func parseTextWithoutOutput(t *testing.T, path string) error {
+	t.Helper()
+	var err error
+	captureStdout(t, func() { err = ParseTsFile(path, options.Options{}) })
+	return err
+}
+
+func TestParseTsFileJSON(t *testing.T) {
+	path := "../sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts"
+	report, err := decodeJSONReport(t, func() error {
+		return ParseTsFile(path, options.Options{Format: "json", DumpPcrJitter: true, DumpBitrate: true})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.SchemaVersion != "1.0" || report.Status != "complete" || report.Input.PacketSizeBytes != 188 {
+		t.Fatalf("unexpected report header: %+v", report)
+	}
+	if len(report.Programs) != 1 || report.Programs[0].PMTPID != "0x1000" || report.Programs[0].ElementaryStreams[0].PID != "0x0100" {
+		t.Fatalf("unexpected programs: %+v", report.Programs)
+	}
+	if report.Compliance == nil || report.Compliance.MaxPCRInterval.Status != "ok" || report.Compliance.MaxPCRInterval.ValueMs == nil {
+		t.Fatalf("unexpected compliance: %+v", report.Compliance)
+	}
+	if report.ContinuityCounter == nil || report.ContinuityCounter.Status != "ok" {
+		t.Fatalf("unexpected continuity report: %+v", report.ContinuityCounter)
+	}
+	if report.TimestampAnomalies == nil || report.TimestampAnomalies.Status != "ok" {
+		t.Fatalf("unexpected anomaly report: %+v", report.TimestampAnomalies)
+	}
+	if report.PCRJitter == nil || report.PCRJitter.MeasuredSampleCount == 0 {
+		t.Fatalf("unexpected jitter report: %+v", report.PCRJitter)
+	}
+	if report.Bitrate == nil || report.Bitrate.Status != "ok" || len(report.Bitrate.PIDs) == 0 {
+		t.Fatalf("unexpected bitrate report: %+v", report.Bitrate)
+	}
+	if report.Bitrate.NullPID == nil || report.Bitrate.NullPID.PID != "0x1fff" {
+		t.Fatalf("unexpected NULL bitrate: %+v", report.Bitrate.NullPID)
+	}
+}
+
+func TestParseTsFileJSONDeterministic(t *testing.T) {
+	path := "../sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts"
+	run := func() string {
+		return captureStdout(t, func() {
+			if err := ParseTsFile(path, options.Options{Format: "json", DumpPcrJitter: true, DumpBitrate: true}); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	first, second := run(), run()
+	if first != second {
+		t.Fatal("JSON output changed between identical runs")
+	}
+}
+
+func TestParseTsFileJSONFailureIsStructured(t *testing.T) {
+	report, err := decodeJSONReport(t, func() error { return ParseTsFile("/nonexistent/input.ts", options.Options{Format: "json"}) })
+	if err == nil || report.Status != "failed" || report.Reason != "input_open_failed" || report.Error == "" {
+		t.Fatalf("expected structured failure, report=%+v err=%v", report, err)
+	}
+
+	report, err = decodeJSONReport(t, func() error { return ParseTsFile("unused.ts", options.Options{Format: "json", DumpHeader: true}) })
+	if err == nil || report.Reason != "incompatible_options" || !strings.Contains(report.Error, "packet-level dump") {
+		t.Fatalf("expected incompatible-option failure, report=%+v err=%v", report, err)
+	}
+
+	if err := ParseTsFile("unused.ts", options.Options{Format: "yaml"}); err == nil {
+		t.Fatal("expected unsupported-format error")
+	}
+}
+
+func TestParseTsFileJSONProgramListing(t *testing.T) {
+	name := multiProgramFile(t, false)
+	defer func() { _ = os.Remove(name) }()
+	report, err := decodeJSONReport(t, func() error { return ParseTsFile(name, options.Options{Format: "json"}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Status != "programs_listed" || report.Reason != "program_selection_required" || len(report.Programs) != 2 {
+		t.Fatalf("unexpected listing: %+v", report)
+	}
+
+	missing := multiProgramFile(t, true)
+	defer func() { _ = os.Remove(missing) }()
+	report, err = decodeJSONReport(t, func() error { return ParseTsFile(missing, options.Options{Format: "json", ListPrograms: true}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Reason != "program_listing_requested" || report.Programs[1].Status != "incomplete" || report.Programs[1].Reason != "pmt_parse_failed" || report.Programs[1].Error == "" {
+		t.Fatalf("unexpected incomplete listing: %+v", report)
+	}
+}
 
 // errReadSeeker is a mock io.ReadSeeker that returns errors on specific Read/Seek calls.
 type errReadSeeker struct {
@@ -296,10 +402,12 @@ func TestParseTsFile_CorruptPatThenValid(t *testing.T) {
 	writeFullStream(f, 1, []uint64{13500})
 	_ = f.Close()
 
-	var opt options.Options
-	err = ParseTsFile(f.Name(), opt)
+	_, err = decodeJSONReport(t, func() error { return ParseTsFile(f.Name(), options.Options{Format: "json"}) })
 	if err != nil {
 		t.Errorf("expected recovery from corrupt PAT, got: %s", err)
+	}
+	if err := parseTextWithoutOutput(t, f.Name()); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -334,10 +442,12 @@ func TestParseTsFile_CorruptPmtThenValid(t *testing.T) {
 	writeFullStream(f, 1, []uint64{13500})
 	_ = f.Close()
 
-	var opt options.Options
-	err = ParseTsFile(f.Name(), opt)
+	_, err = decodeJSONReport(t, func() error { return ParseTsFile(f.Name(), options.Options{Format: "json"}) })
 	if err != nil {
 		t.Errorf("expected recovery from corrupt PMT, got: %s", err)
+	}
+	if err := parseTextWithoutOutput(t, f.Name()); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -576,6 +686,12 @@ func TestParseTsFileFailOnComplianceError(t *testing.T) {
 	if !errors.As(err, &complianceErr) {
 		t.Fatalf("error = %v, want ComplianceError", err)
 	}
+	report, err := decodeJSONReport(t, func() error {
+		return ParseTsFile(f.Name(), options.Options{Format: "json", FailOnError: true})
+	})
+	if !errors.As(err, &complianceErr) || report.Status != "complete" || report.Reason != "" || report.Error != "" {
+		t.Fatalf("JSON compliance failure should be a complete analysis: report=%+v err=%v", report, err)
+	}
 }
 
 func TestParseTsFile_DumpPesHeaderOption(t *testing.T) {
@@ -735,10 +851,12 @@ func TestParseTsFile_PatBufferingErrorThenValid(t *testing.T) {
 	writeFullStream(f, 1, []uint64{13500})
 	_ = f.Close()
 
-	var opt options.Options
-	err = ParseTsFile(f.Name(), opt)
+	_, err = decodeJSONReport(t, func() error { return ParseTsFile(f.Name(), options.Options{Format: "json"}) })
 	if err != nil {
 		t.Errorf("expected recovery from PAT buffering error, got: %s", err)
+	}
+	if err := parseTextWithoutOutput(t, f.Name()); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -775,10 +893,12 @@ func TestParseTsFile_PmtBufferingErrorThenValid(t *testing.T) {
 	writeFullStream(f, 1, []uint64{13500})
 	_ = f.Close()
 
-	var opt options.Options
-	err = ParseTsFile(f.Name(), opt)
+	_, err = decodeJSONReport(t, func() error { return ParseTsFile(f.Name(), options.Options{Format: "json"}) })
 	if err != nil {
 		t.Errorf("expected recovery from PMT buffering error, got: %s", err)
+	}
+	if err := parseTextWithoutOutput(t, f.Name()); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -827,10 +947,12 @@ func TestParseTsFile_PesErrorThenValid(t *testing.T) {
 	writeFullStream(f, 1, []uint64{13500})
 	_ = f.Close()
 
-	var opt options.Options
-	err = ParseTsFile(f.Name(), opt)
+	_, err = decodeJSONReport(t, func() error { return ParseTsFile(f.Name(), options.Options{Format: "json"}) })
 	if err != nil {
 		t.Errorf("expected recovery from PES error, got: %s", err)
+	}
+	if err := parseTextWithoutOutput(t, f.Name()); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -1206,8 +1328,10 @@ func TestParseTsFile_NetworkOnlyPat(t *testing.T) {
 	_, _ = f.Write(buildStuffingPacket())
 	_, _ = f.Write(buildTsPacket(0x0000, true, 1, pat))
 	_ = f.Close()
-	var opt options.Options
-	if err := ParseTsFile(f.Name(), opt); err != nil {
+	if _, err := decodeJSONReport(t, func() error { return ParseTsFile(f.Name(), options.Options{Format: "json"}) }); err != nil {
 		t.Errorf("expected nil (PAT seen but no program), got: %s", err)
+	}
+	if err := parseTextWithoutOutput(t, f.Name()); err != nil {
+		t.Fatal(err)
 	}
 }

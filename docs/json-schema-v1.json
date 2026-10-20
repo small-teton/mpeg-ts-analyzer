@@ -1,0 +1,456 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/small-teton/mpeg-ts-analyzer/blob/master/docs/json-schema-v1.json",
+  "title": "mpeg-ts-analyzer JSON report v1",
+  "description": "Schema for --format json. Objects permit additive fields and status strings permit additive lowercase values within schema version 1.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "input",
+    "status",
+    "programs",
+    "warnings"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "input": {
+      "$ref": "#/$defs/input"
+    },
+    "status": {
+      "$ref": "#/$defs/status",
+      "description": "Current values: complete, programs_listed, incomplete, failed."
+    },
+    "reason": {
+      "$ref": "#/$defs/reasonCode",
+      "description": "Stable machine-readable reason code."
+    },
+    "error": {
+      "type": "string",
+      "description": "Human-readable error detail; not a stable matching interface."
+    },
+    "programs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/program"
+      }
+    },
+    "selected_program_number": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "compliance": {
+      "$ref": "#/$defs/compliance"
+    },
+    "continuity_counter": {
+      "$ref": "#/$defs/continuity"
+    },
+    "timestamp_anomalies": {
+      "$ref": "#/$defs/timestampAnomalies"
+    },
+    "pcr_jitter": {
+      "$ref": "#/$defs/pcrJitter"
+    },
+    "bitrate": {
+      "$ref": "#/$defs/bitrate"
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/warning"
+      }
+    }
+  },
+  "$defs": {
+    "nonNegativeInteger": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "status": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "reasonCode": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "pid": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{4}$"
+    },
+    "streamType": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{2}$"
+    },
+    "input": {
+      "type": "object",
+      "required": [
+        "path",
+        "offset_bytes"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "packet_size_bytes": {
+          "type": "integer",
+          "enum": [188, 192]
+        },
+        "offset_bytes": {
+          "type": "integer"
+        },
+        "limit_bytes": {
+          "type": "integer"
+        }
+      }
+    },
+    "program": {
+      "type": "object",
+      "required": [
+        "program_number",
+        "pmt_pid",
+        "elementary_streams",
+        "status"
+      ],
+      "properties": {
+        "program_number": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "pmt_pid": {
+          "$ref": "#/$defs/pid"
+        },
+        "pcr_pid": {
+          "$ref": "#/$defs/pid"
+        },
+        "elementary_streams": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/elementaryStream"
+          }
+        },
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: complete, incomplete."
+        },
+        "reason": {
+          "$ref": "#/$defs/reasonCode",
+          "description": "Stable machine-readable reason code. Current value: pmt_parse_failed."
+        },
+        "error": {
+          "type": "string",
+          "description": "Human-readable error detail; not a stable matching interface."
+        }
+      }
+    },
+    "elementaryStream": {
+      "type": "object",
+      "required": [
+        "pid",
+        "stream_type",
+        "stream_type_description"
+      ],
+      "properties": {
+        "pid": {
+          "$ref": "#/$defs/pid"
+        },
+        "stream_type": {
+          "$ref": "#/$defs/streamType"
+        },
+        "stream_type_description": {
+          "type": "string"
+        }
+      }
+    },
+    "check": {
+      "type": "object",
+      "required": [
+        "status",
+        "limit_ms",
+        "observations"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: ok, ng, skipped."
+        },
+        "value_ms": {
+          "type": "number"
+        },
+        "limit_ms": {
+          "type": "number"
+        },
+        "observations": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Human-readable skip explanation; not a stable matching interface."
+        }
+      }
+    },
+    "compliance": {
+      "type": "object",
+      "required": [
+        "max_pcr_interval",
+        "max_pcr_pts_dts_gap"
+      ],
+      "properties": {
+        "max_pcr_interval": {
+          "$ref": "#/$defs/check"
+        },
+        "max_pcr_pts_dts_gap": {
+          "$ref": "#/$defs/check"
+        }
+      }
+    },
+    "continuityPID": {
+      "type": "object",
+      "required": [
+        "pid",
+        "label",
+        "error_count"
+      ],
+      "properties": {
+        "pid": {
+          "$ref": "#/$defs/pid"
+        },
+        "label": {
+          "type": "string"
+        },
+        "error_count": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        }
+      }
+    },
+    "continuity": {
+      "type": "object",
+      "required": [
+        "status",
+        "total_error_count",
+        "pids"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: ok, errors."
+        },
+        "total_error_count": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "pids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/continuityPID"
+          }
+        }
+      }
+    },
+    "timestampAnomaly": {
+      "type": "object",
+      "required": [
+        "pid",
+        "kind",
+        "count",
+        "message"
+      ],
+      "properties": {
+        "pid": {
+          "$ref": "#/$defs/pid"
+        },
+        "kind": {
+          "type": "string",
+          "description": "Current values: backward, wraparound, forward_gap, dts_after_pts."
+        },
+        "count": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "timestampAnomalies": {
+      "type": "object",
+      "required": [
+        "status",
+        "items"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: ok, anomalies."
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/timestampAnomaly"
+          }
+        }
+      }
+    },
+    "pcrDiscontinuity": {
+      "type": "object",
+      "required": [
+        "offset_bytes",
+        "jump_ms",
+        "from_segment",
+        "to_segment"
+      ],
+      "properties": {
+        "offset_bytes": {
+          "type": "integer"
+        },
+        "jump_ms": {
+          "type": "number"
+        },
+        "from_segment": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "to_segment": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        }
+      }
+    },
+    "pcrJitter": {
+      "type": "object",
+      "required": [
+        "status",
+        "sample_count",
+        "segment_count",
+        "measured_sample_count",
+        "discontinuities"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: ok, warning, ng, skipped."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Human-readable skip explanation; not a stable matching interface."
+        },
+        "sample_count": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "segment_count": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "measured_sample_count": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "max_jitter_ns": {
+          "type": "number"
+        },
+        "max_jitter_offset_bytes": {
+          "type": "integer"
+        },
+        "min_jitter_ns": {
+          "type": "number"
+        },
+        "min_jitter_offset_bytes": {
+          "type": "integer"
+        },
+        "average_absolute_jitter_ns": {
+          "type": "number",
+          "minimum": 0
+        },
+        "within_500ns_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "discontinuities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pcrDiscontinuity"
+          }
+        }
+      }
+    },
+    "bitratePID": {
+      "type": "object",
+      "required": [
+        "pid",
+        "label",
+        "average_bps"
+      ],
+      "properties": {
+        "pid": {
+          "$ref": "#/$defs/pid"
+        },
+        "label": {
+          "type": "string"
+        },
+        "average_bps": {
+          "type": "number",
+          "minimum": 0
+        },
+        "peak_1s_bps": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "bitrate": {
+      "type": "object",
+      "required": [
+        "status",
+        "duration_seconds",
+        "segment_count",
+        "pids",
+        "program_average_bps"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: ok, skipped."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Human-readable skip explanation; not a stable matching interface."
+        },
+        "duration_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "segment_count": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "pids": {
+          "type": "array",
+          "description": "Selected-program PIDs included in program totals.",
+          "items": {
+            "$ref": "#/$defs/bitratePID"
+          }
+        },
+        "null_pid": {
+          "$ref": "#/$defs/bitratePID",
+          "description": "Mux-wide NULL stuffing, excluded from program totals."
+        },
+        "program_average_bps": {
+          "type": "number",
+          "minimum": 0
+        },
+        "program_peak_1s_bps": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "warning": {
+      "type": "object",
+      "required": [
+        "offset_bytes",
+        "message"
+      ],
+      "properties": {
+        "offset_bytes": {
+          "type": "integer"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
