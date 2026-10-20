@@ -98,6 +98,7 @@ Flags:
       --dump-ts-header          Dump TS packet header.
       --dump-ts-payload         Dump TS packet payload binary.
       --fail-on-error           Exit with code 2 when a timing compliance check reports NG.
+      --format string           Output format: text or json. (default "text")
   -h, --help                    help for mpeg-ts-analyzer
       --limit int               Stop reading after this many bytes (0 = no limit).
       --list-programs           List every program (program_number, PMT PID, elementary streams) and exit.
@@ -105,6 +106,39 @@ Flags:
       --program int             Analyze only this program_number (default: the sole program; a multi-program stream is listed instead).
       --version                 show mpeg-ts-analyzer version.
 ```
+
+## JSON output for automation
+
+Use `--format json` when the result will be consumed by CI, monitoring, or
+another program:
+
+```sh
+mpeg-ts-analyzer input.ts --format json
+mpeg-ts-analyzer input.ts --format json --dump-pcr-jitter --dump-bitrate
+```
+
+JSON mode writes exactly one JSON document to stdout. Errors and Cobra usage
+diagnostics go to stderr, so redirecting or piping stdout remains safe. A failed
+analysis still emits a valid document with `status: "failed"` and an
+`incomplete_reason`, then exits with the usual non-zero status. Multi-program
+listing and insufficient-data checks are represented separately by
+`status: "programs_listed"` and per-check `SKIPPED` states.
+
+The document contains summaries, not one object per transport packet. Its size
+therefore does not grow with the input file's packet count (apart from naturally
+variable summary collections such as encountered PIDs, warnings, and detected
+anomalies). Analysis remains streaming, making JSON suitable for large files.
+Packet-level flags (`--dump-ts-header`, `--dump-ts-payload`,
+`--dump-adaptation-field`, `--dump-psi`, `--dump-pes-header`, and
+`--dump-timestamp`) are intentionally incompatible with JSON mode; their large,
+human-oriented output remains available in the default text mode.
+
+PID values are zero-padded hexadecimal strings such as `"0x0100"`. Numeric
+units are part of field names, for example `value_ms`, `offset_bytes`, and
+`average_bps`. The top-level `schema_version` is currently `"1.0"`. Within one
+schema version, new fields may be added, but existing fields will not be removed
+or change type. A removal or type change requires a schema-version increment.
+See [OPTIONS.md](OPTIONS.md#json-output) for an annotated example.
 
 The timing checks use inclusive limits: exactly 100 ms for the maximum PCR
 interval and exactly 1000 ms for the PCR-to-PTS/DTS gap are `OK`. A check is

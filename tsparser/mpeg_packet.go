@@ -80,6 +80,19 @@ func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, 
 
 // BufferPes buffer PES data from TS payload
 func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos []ProgramInfo, options options.Options, packetSize int, endOffset int64) error {
+	_, err := bufferPes(reader, pos, pmtPid, pcrPid, programInfos, options, packetSize, endOffset, false)
+	return err
+}
+
+type pesAnalysis struct {
+	compliance complianceReport
+	continuity *continuityCounterSummary
+	anomalies  *TimestampAnomaly
+	jitter     *PcrJitter
+	bitrate    *BitrateStats
+}
+
+func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos []ProgramInfo, options options.Options, packetSize int, endOffset int64, quiet bool) (*pesAnalysis, error) {
 	tsBuffer := make([]byte, packetSize)
 	pesMap := make(map[uint16]*Pes)
 	for _, val := range programInfos {
@@ -125,7 +138,7 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		if err == io.EOF {
 			break
 		} else if err != nil || size != packetSize {
-			return fmt.Errorf("file read error: %s", err)
+			return nil, fmt.Errorf("file read error: %s", err)
 		}
 
 		tsData := tsBuffer
@@ -135,13 +148,15 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		tsPacket.Initialize(*pos, options)
 		tsPacket.Append(tsData)
 		if err := tsPacket.Parse(); err != nil {
-			return fmt.Errorf("failed to parse TS packet in BufferPes: %w", err)
+			return nil, fmt.Errorf("failed to parse TS packet in BufferPes: %w", err)
 		}
 		pid := tsPacket.Pid()
 		continuityResult := continuityTracker.Check(tsPacket)
 		if continuityResult.Event != nil {
 			event := continuityResult.Event
-			fmt.Printf("packet loss. : pid=0x%04x. count=0x%x, pos=0x%08x\n", event.PID, event.Actual, event.Pos)
+			if !quiet {
+				fmt.Printf("packet loss. : pid=0x%04x. count=0x%x, pos=0x%08x\n", event.PID, event.Actual, event.Pos)
+			}
 			continuity.Add(event.PID)
 		}
 		if bitrate != nil {
@@ -247,20 +262,29 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 	}
 
 	report := newComplianceReport(pcrToMs(maxPcrInterval), pcrIntervals, maxDelay, pcrPtsSamples)
-	report.dump()
+	result := &pesAnalysis{compliance: report, continuity: continuity, anomalies: anomaly}
 	if options.DumpPcrJitter {
-		pcrJitter.Dump()
+		result.jitter = &pcrJitter
 	}
 	if bitrate != nil {
-		bitrate.Dump()
+		result.bitrate = bitrate
 	}
-	anomaly.Dump()
-	continuity.Dump()
+	if !quiet {
+		report.dump()
+		if options.DumpPcrJitter {
+			pcrJitter.Dump()
+		}
+		if bitrate != nil {
+			bitrate.Dump()
+		}
+		anomaly.Dump()
+		continuity.Dump()
+	}
 	if failures := report.failures(); options.FailOnError && len(failures) > 0 {
-		return &ComplianceError{Checks: failures}
+		return result, &ComplianceError{Checks: failures}
 	}
 
-	return nil
+	return result, nil
 }
 
 func crc32(buf []byte) uint32 {
