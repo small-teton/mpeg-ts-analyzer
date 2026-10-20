@@ -43,7 +43,7 @@ func TestParseTsFileJSON(t *testing.T) {
 	if len(report.Programs) != 1 || report.Programs[0].PMTPID != "0x1000" || report.Programs[0].ElementaryStreams[0].PID != "0x0100" {
 		t.Fatalf("unexpected programs: %+v", report.Programs)
 	}
-	if report.Compliance == nil || report.Compliance.MaxPCRInterval.Status != "OK" || report.Compliance.MaxPCRInterval.ValueMs == nil {
+	if report.Compliance == nil || report.Compliance.MaxPCRInterval.Status != "ok" || report.Compliance.MaxPCRInterval.ValueMs == nil {
 		t.Fatalf("unexpected compliance: %+v", report.Compliance)
 	}
 	if report.ContinuityCounter == nil || report.ContinuityCounter.Status != "ok" {
@@ -57,6 +57,9 @@ func TestParseTsFileJSON(t *testing.T) {
 	}
 	if report.Bitrate == nil || report.Bitrate.Status != "ok" || len(report.Bitrate.PIDs) == 0 {
 		t.Fatalf("unexpected bitrate report: %+v", report.Bitrate)
+	}
+	if report.Bitrate.NullPID == nil || report.Bitrate.NullPID.PID != "0x1fff" {
+		t.Fatalf("unexpected NULL bitrate: %+v", report.Bitrate.NullPID)
 	}
 }
 
@@ -77,12 +80,12 @@ func TestParseTsFileJSONDeterministic(t *testing.T) {
 
 func TestParseTsFileJSONFailureIsStructured(t *testing.T) {
 	report, err := decodeJSONReport(t, func() error { return ParseTsFile("/nonexistent/input.ts", options.Options{Format: "json"}) })
-	if err == nil || report.Status != "failed" || report.IncompleteReason == "" {
+	if err == nil || report.Status != "failed" || report.Reason != "input_open_failed" || report.Error == "" {
 		t.Fatalf("expected structured failure, report=%+v err=%v", report, err)
 	}
 
 	report, err = decodeJSONReport(t, func() error { return ParseTsFile("unused.ts", options.Options{Format: "json", DumpHeader: true}) })
-	if err == nil || !strings.Contains(report.IncompleteReason, "packet-level dump") {
+	if err == nil || report.Reason != "incompatible_options" || !strings.Contains(report.Error, "packet-level dump") {
 		t.Fatalf("expected incompatible-option failure, report=%+v err=%v", report, err)
 	}
 
@@ -98,7 +101,7 @@ func TestParseTsFileJSONProgramListing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Status != "programs_listed" || report.IncompleteReason != "program_selection_required" || len(report.Programs) != 2 {
+	if report.Status != "programs_listed" || report.Reason != "program_selection_required" || len(report.Programs) != 2 {
 		t.Fatalf("unexpected listing: %+v", report)
 	}
 
@@ -108,7 +111,7 @@ func TestParseTsFileJSONProgramListing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.IncompleteReason != "program_listing_requested" || report.Programs[1].Status != "incomplete" {
+	if report.Reason != "program_listing_requested" || report.Programs[1].Status != "incomplete" || report.Programs[1].Reason != "pmt_parse_failed" || report.Programs[1].Error == "" {
 		t.Fatalf("unexpected incomplete listing: %+v", report)
 	}
 }
@@ -686,7 +689,7 @@ func TestParseTsFileFailOnComplianceError(t *testing.T) {
 	report, err := decodeJSONReport(t, func() error {
 		return ParseTsFile(f.Name(), options.Options{Format: "json", FailOnError: true})
 	})
-	if !errors.As(err, &complianceErr) || report.Status != "complete" || report.IncompleteReason != "" {
+	if !errors.As(err, &complianceErr) || report.Status != "complete" || report.Reason != "" || report.Error != "" {
 		t.Fatalf("JSON compliance failure should be a complete analysis: report=%+v err=%v", report, err)
 	}
 }

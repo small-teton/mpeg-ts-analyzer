@@ -120,9 +120,12 @@ mpeg-ts-analyzer input.ts --format json --dump-pcr-jitter --dump-bitrate
 JSON mode writes exactly one JSON document to stdout. Errors and Cobra usage
 diagnostics go to stderr, so redirecting or piping stdout remains safe. A failed
 analysis still emits a valid document with `status: "failed"` and an
-`incomplete_reason`, then exits with the usual non-zero status. Multi-program
+stable `reason` code plus a human-readable `error`, then exits with the usual
+non-zero status. Multi-program
 listing and insufficient-data checks are represented separately by
-`status: "programs_listed"` and per-check `SKIPPED` states.
+`status: "programs_listed"` and per-check `skipped` states. An `incomplete`
+result exits 0 for compatibility with text mode; automation should require
+`status == "complete"` rather than relying on the exit code alone.
 
 The document contains summaries, not one object per transport packet. Its size
 therefore does not grow with the input file's packet count (apart from naturally
@@ -137,8 +140,13 @@ PID values are zero-padded hexadecimal strings such as `"0x0100"`. Numeric
 units are part of field names, for example `value_ms`, `offset_bytes`, and
 `average_bps`. The top-level `schema_version` is currently `"1.0"`. Within one
 schema version, new fields may be added, but existing fields will not be removed
-or change type. A removal or type change requires a schema-version increment.
+or change type or enum meaning. New enum values may be added, so consumers must
+treat unknown values as unrecognized. Removing or retyping a field, or changing
+an existing enum's meaning, requires a schema-version increment.
 See [OPTIONS.md](OPTIONS.md#json-output) for an annotated example.
+The machine-readable contract is published as
+[`docs/json-schema-v1.json`](docs/json-schema-v1.json) (JSON Schema Draft
+2020-12).
 
 The timing checks use inclusive limits: exactly 100 ms for the maximum PCR
 interval and exactly 1000 ms for the PCR-to-PTS/DTS gap are `OK`. A check is

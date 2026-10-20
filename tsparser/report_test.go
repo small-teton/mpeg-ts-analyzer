@@ -1,19 +1,35 @@
 package tsparser
 
 import (
+	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 )
 
+func TestJSONSchemaDocument(t *testing.T) {
+	data, err := os.ReadFile("../docs/json-schema-v1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(data, &schema); err != nil {
+		t.Fatalf("invalid JSON Schema document: %v", err)
+	}
+	if schema["$schema"] != "https://json-schema.org/draft/2020-12/schema" {
+		t.Fatalf("unexpected JSON Schema dialect: %v", schema["$schema"])
+	}
+}
+
 type failingWriter struct{}
 
 func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("write failed") }
 
 func TestReportConversions(t *testing.T) {
-	if got := reportCheck(complianceCheck{limitMs: 1, skippedWhy: "missing"}); got.Status != "SKIPPED" || got.Reason != "missing" || got.ValueMs != nil {
+	if got := reportCheck(complianceCheck{limitMs: 1, skippedWhy: "missing"}); got.Status != "skipped" || got.Reason != "missing" || got.ValueMs != nil {
 		t.Fatalf("skipped check: %+v", got)
 	}
 
@@ -52,8 +68,14 @@ func TestReportConversions(t *testing.T) {
 		t.Fatalf("ok: %+v", got)
 	}
 
-	if got := reportBitrate(NewBitrateStats(0, 0x20, 0x31, nil)); got.Status != "skipped" || got.Reason == "" {
+	skippedBitrate := reportBitrate(NewBitrateStats(0, 0x20, 0x31, nil))
+	if skippedBitrate.Status != "skipped" || skippedBitrate.Reason == "" || skippedBitrate.ProgramAverageBPS != 0 {
+		got := skippedBitrate
 		t.Fatalf("bitrate skipped: %+v", got)
+	}
+	encodedBitrate, err := json.Marshal(skippedBitrate)
+	if err != nil || !strings.Contains(string(encodedBitrate), `"program_average_bps":0`) {
+		t.Fatalf("zero program average must remain explicit: %s, %v", encodedBitrate, err)
 	}
 
 	if err := writeJSONReport(failingWriter{}, newAnalysisReport("x.ts", 0, 0)); err == nil {
