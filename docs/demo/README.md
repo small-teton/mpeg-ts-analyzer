@@ -52,6 +52,13 @@ container's temporary disk when needed. The four optimized scenes are then
 joined without another whole-animation optimization pass. The command rewrites
 both `docs/demo.gif` and `docs/demo/manifest.sha256`.
 
+The base filesystem is digest-pinned, while the Alpine packages are
+intentionally not version-pinned. A later image build can therefore resolve a
+newer ImageMagick or font package and produce a different GIF even when the
+source fingerprint is unchanged. After rebuilding, inspect the animation and
+commit the updated GIF and manifest together. When the Go version in `go.mod`
+changes, update the matching Go image tag and digest in the Dockerfile.
+
 Some full-tunnel VPN clients currently break Apple container's outbound vmnet
 NAT. If `apk add` reports DNS timeouts while the host is online, pause the VPN,
 run `make demo`, and reconnect it afterward. This is tracked in
