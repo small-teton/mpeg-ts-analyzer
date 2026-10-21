@@ -9,6 +9,8 @@
 
 mpeg-ts-analyzer is an MPEG-2 Transport Stream analyzer (ISO/IEC 13818-1).
 
+![mpeg-ts-analyzer terminal demo](docs/demo.gif)
+
 It parses TS packets and checks whether the stream conforms to the following requirements defined in the specification:
 
 - **Max PCR interval** should be no greater than 100 ms (ISO/IEC 13818-1, Section 2.7.2)
@@ -119,7 +121,7 @@ mpeg-ts-analyzer input.ts --format json --dump-pcr-jitter --dump-bitrate
 
 JSON mode writes exactly one JSON document to stdout. Errors and Cobra usage
 diagnostics go to stderr, so redirecting or piping stdout remains safe. A failed
-analysis still emits a valid document with `status: "failed"` and an
+analysis still emits a valid document with `status: "failed"` and a
 stable `reason` code plus a human-readable `error`, then exits with the usual
 non-zero status. Multi-program
 listing and insufficient-data checks are represented separately by
@@ -247,6 +249,8 @@ make setup      # configure git hooks (run once after clone)
 make build      # build binary
 make test       # run all tests
 make coverage   # run tests with coverage report
+make check-demo # verify that the README GIF matches the current CLI output
+make demo       # regenerate the README GIF (requires ImageMagick 7)
 make install    # install to $GOPATH/bin
 make uninstall  # remove from $GOPATH/bin
 make clean      # remove build/coverage artifacts
@@ -256,7 +260,26 @@ The version string is managed in the `VERSION` file and injected at build time.
 
 Coverage is measured for `bitbuffer` and `tsparser` packages only. The CLI entry point (`cmd`, `main.go`) is excluded from coverage targets. Both packages should maintain 100% coverage.
 
-A pre-push hook (`make setup` to enable) runs the build, test, and coverage checks before every push. Push is rejected if coverage drops below 100%.
+A pre-push hook (`make setup` to enable) runs the build, test, coverage, and
+README demo checks before every push. Push is rejected if coverage drops below
+100% or the committed GIF is stale.
+
+## README demo
+
+The animated terminal demo near the top of this README is generated from the
+current binary and the bundled 188-byte sample:
+
+```sh
+make check-demo # check the recorded CLI output fingerprint and GIF checksum
+make demo       # regenerate docs/demo.gif and its manifest
+```
+
+Regeneration requires ImageMagick 7 (`magick`) and uses Menlo on macOS or
+DejaVu Sans Mono on Linux. The lightweight check requires only Go, runs in
+GitHub Actions and the pre-push hook, and fails when displayed CLI output or the
+render script changes without a matching regenerated GIF. Inspect the complete
+animation before committing it. See [docs/demo/README.md](docs/demo/README.md)
+for the generation and verification details.
 
 ## Release
 

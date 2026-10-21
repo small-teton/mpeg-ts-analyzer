@@ -1,4 +1,4 @@
-.PHONY: build test coverage clean setup install uninstall release
+.PHONY: build test coverage demo check-demo clean setup install uninstall release
 
 build:
 	go build -v ./...
@@ -14,6 +14,12 @@ coverage:
 	@go tool cover -func=out/bitbuffer.out | tail -1
 	@echo "=== tsparser ==="
 	@go tool cover -func=out/tsparser.out | tail -1
+
+demo:
+	./docs/demo/render.sh
+
+check-demo:
+	./docs/demo/render.sh --check
 
 clean:
 	rm -rf out/ dist/

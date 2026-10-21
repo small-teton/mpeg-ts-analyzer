@@ -87,6 +87,19 @@ jobs:
           exit 1
         fi
 
+  readme-demo:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version-file: './go.mod'
+
+    - name: Verify README demo is current
+      run: make check-demo
+
   build:
     runs-on: ubuntu-latest
     steps:

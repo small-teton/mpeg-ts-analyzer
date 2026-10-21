@@ -40,4 +40,7 @@ if [ "$TS" != "100.0" ]; then
     exit 1
 fi
 
+echo "=== pre-push: README demo ==="
+./docs/demo/render.sh --check || { echo "FAILED: README demo is stale"; exit 1; }
+
 echo "=== pre-push: all checks passed ==="
