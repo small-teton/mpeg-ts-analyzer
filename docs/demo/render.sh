@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Regenerate from the repository root with `docs/demo/render.sh`.
-# Requires Go and ImageMagick 7 (`magick`).
+# Renderer invoked inside the generation container.
 
 script_dir="$(dirname "$0")"
-repo_dir="$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_PREFIX git -C "$script_dir" rev-parse --show-toplevel)"
+repo_dir="$(realpath "${script_dir}/../..")"
 output="${repo_dir}/docs/demo.gif"
 manifest="${repo_dir}/docs/demo/manifest.sha256"
 sample="${repo_dir}/sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts"
@@ -43,6 +42,12 @@ if [[ "$mode" == "render" ]]; then
   elif [[ -r /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf ]]; then
     font_regular="/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
     font_bold="/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"
+  elif [[ -r /usr/share/fonts/TTF/DejaVuSansMono.ttf ]]; then
+    font_regular="/usr/share/fonts/TTF/DejaVuSansMono.ttf"
+    font_bold="/usr/share/fonts/TTF/DejaVuSansMono-Bold.ttf"
+  elif [[ -r /usr/share/fonts/dejavu/DejaVuSansMono.ttf ]]; then
+    font_regular="/usr/share/fonts/dejavu/DejaVuSansMono.ttf"
+    font_bold="/usr/share/fonts/dejavu/DejaVuSansMono-Bold.ttf"
   else
     echo "a Menlo or DejaVu Sans Mono font file is required" >&2
     exit 1
@@ -76,8 +81,10 @@ sha256_file() {
 }
 
 {
-  printf 'demo-source-v1\n'
+  printf 'demo-source-v2\n'
   printf 'render_script_sha256=%s\n' "$(sha256_file "${repo_dir}/docs/demo/render.sh")"
+  printf 'container_script_sha256=%s\n' "$(sha256_file "${repo_dir}/docs/demo/render-container.sh")"
+  printf 'dockerfile_sha256=%s\n' "$(sha256_file "${repo_dir}/docs/demo/Dockerfile")"
   printf '\n[ts-header]\n%s\n' "$header_output"
   printf '\n[adaptation-field]\n%s\n' "$adaptation_output"
   printf '\n[psi]\n%s\n' "$psi_output"
@@ -94,7 +101,7 @@ if [[ "$mode" == "--check" ]]; then
   recorded_gif_hash="$(awk '$1 == "gif_sha256" { print $2 }' "$manifest")"
   actual_gif_hash="$(sha256_file "$output")"
   if [[ "$source_hash" != "$recorded_source_hash" ]]; then
-    echo "README demo is stale: the displayed CLI output or render script changed." >&2
+    echo "README demo is stale: its CLI output, render scripts, or container definition changed." >&2
     echo "Run 'make demo', inspect docs/demo.gif, and commit it with docs/demo/manifest.sha256." >&2
     exit 1
   fi

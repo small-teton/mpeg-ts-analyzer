@@ -16,7 +16,7 @@ coverage:
 	@go tool cover -func=out/tsparser.out | tail -1
 
 demo:
-	./docs/demo/render.sh
+	./docs/demo/render-container.sh
 
 check-demo:
 	./docs/demo/render.sh --check

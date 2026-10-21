@@ -250,7 +250,7 @@ make build      # build binary
 make test       # run all tests
 make coverage   # run tests with coverage report
 make check-demo # verify that the README GIF matches the current CLI output
-make demo       # regenerate the README GIF (requires ImageMagick 7)
+make demo       # regenerate in Docker or Apple container
 make install    # install to $GOPATH/bin
 make uninstall  # remove from $GOPATH/bin
 make clean      # remove build/coverage artifacts
@@ -271,15 +271,27 @@ current binary and the bundled 188-byte sample:
 
 ```sh
 make check-demo # check the recorded CLI output fingerprint and GIF checksum
-make demo       # regenerate docs/demo.gif and its manifest
+make demo       # regenerate using Docker or Apple container
 ```
 
-Regeneration requires ImageMagick 7 (`magick`) and uses Menlo on macOS or
-DejaVu Sans Mono on Linux. The lightweight check requires only Go, runs in
-GitHub Actions and the pre-push hook, and fails when displayed CLI output or the
-render script changes without a matching regenerated GIF. Inspect the complete
-animation before committing it. See [docs/demo/README.md](docs/demo/README.md)
-for the generation and verification details.
+The canonical regeneration path supports Docker and
+[Apple container](https://github.com/apple/container). On macOS it prefers
+Apple container and falls back to Docker; elsewhere it prefers Docker. Set
+`DEMO_CONTAINER_RUNTIME=container` or
+`DEMO_CONTAINER_RUNTIME=docker` to select one explicitly. Both build the same
+image, which pins the Go/Alpine base by digest and installs ImageMagick 7 and
+DejaVu Sans Mono, so contributors do not need those rendering dependencies on
+the host. Apple container requires Apple silicon and macOS 26; run
+`container system start` once after installing it. If a full-tunnel VPN causes
+DNS timeouts during an Apple container build, pause it for the generation and
+reconnect it afterward; see
+[apple/container#1881](https://github.com/apple/container/issues/1881).
+The lightweight check requires only Go, runs in GitHub Actions and the pre-push
+hook, and fails when displayed CLI output, rendering code, or the container
+definition changes without a matching regenerated GIF. Inspect the complete
+animation before committing it. See
+[docs/demo/README.md](docs/demo/README.md) for generation and verification
+details.
 
 ## Release
 
