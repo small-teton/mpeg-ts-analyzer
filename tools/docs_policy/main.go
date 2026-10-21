@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -145,7 +144,7 @@ func evaluate(root string, changed map[string]bool, patches map[string]string, b
 			result.failures = append(result.failures, "Could not read `OPTIONS.md` to verify documented flags.")
 		} else {
 			for _, name := range definedFlags(string(rootSource)) {
-				if !strings.Contains(string(optionsText), "--"+name) {
+				if !documentedFlag(string(optionsText), name) {
 					result.failures = append(result.failures, fmt.Sprintf("CLI flag `--%s` is not documented in `OPTIONS.md`.", name))
 				}
 			}
@@ -202,6 +201,11 @@ func definedFlags(source string) []string {
 	return names
 }
 
+func documentedFlag(document, name string) bool {
+	pattern := regexp.MustCompile(`--` + regexp.QuoteMeta(name) + `(?:[^a-z0-9-]|$)`)
+	return pattern.MatchString(strings.ToLower(document))
+}
+
 func patchMatches(patch string, pattern *regexp.Regexp) bool {
 	for _, line := range changedLines(patch) {
 		if pattern.MatchString(line) {
@@ -235,7 +239,7 @@ func changedLines(patch string) []string {
 func requireDocumentation(result *findings, changed map[string]bool, body, kind string, required []string) {
 	section := sectionBody(body, "Documentation")
 	for _, name := range required {
-		mentioned := strings.Contains(strings.ToLower(section), strings.ToLower(name))
+		mentioned := mentionedFile(section, name)
 		if !changed[name] && !documentedAsUnaffected(section, name) {
 			result.failures = append(result.failures, fmt.Sprintf("The %s changed, but `%s` was not updated. Update it or explain why it is unaffected in the PR `Documentation` section.", kind, name))
 		}
@@ -246,22 +250,24 @@ func requireDocumentation(result *findings, changed map[string]bool, body, kind 
 }
 
 func documentedAsUnaffected(section, name string) bool {
-	lower := strings.ToLower(section)
-	index := strings.Index(lower, strings.ToLower(name))
-	if index < 0 {
-		return false
-	}
-	end := index + len(name) + 160
-	if end > len(lower) {
-		end = len(lower)
-	}
-	context := lower[index:end]
-	for _, phrase := range []string{"not affected", "not applicable", "no update", "does not need", "unchanged"} {
-		if strings.Contains(context, phrase) {
-			return true
+	contextRE := regexp.MustCompile(`[;]|\.(?:\s+|$)`)
+	for _, context := range contextRE.Split(strings.ReplaceAll(section, "\r\n", "\n"), -1) {
+		if !mentionedFile(context, name) {
+			continue
+		}
+		lower := strings.ToLower(context)
+		for _, phrase := range []string{"not affected", "not applicable", "no update", "does not need", "unchanged"} {
+			if strings.Contains(lower, phrase) {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+func mentionedFile(text, name string) bool {
+	pattern := regexp.MustCompile(`(?i)(?:^|[^a-z0-9_./-])` + regexp.QuoteMeta(name) + `(?:$|[^a-z0-9_./-])`)
+	return pattern.MatchString(text)
 }
 
 func hasHeading(body, heading string) bool {
@@ -292,48 +298,52 @@ func sectionBody(body, heading string) string {
 }
 
 func brokenLocalLinks(root string) []string {
-	var markdownFiles []string
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() && (entry.Name() == ".git" || entry.Name() == "out") {
-			return filepath.SkipDir
-		}
-		if !entry.IsDir() && strings.EqualFold(filepath.Ext(entry.Name()), ".md") {
-			markdownFiles = append(markdownFiles, path)
-		}
-		return nil
-	})
+	out, err := exec.Command("git", "-C", root, "ls-files", "-z", "--", "*.md").Output()
 	if err != nil {
 		return []string{"Could not list Markdown files for local-link validation."}
 	}
-	var broken []string
-	for _, path := range markdownFiles {
-		name, relativeErr := filepath.Rel(root, path)
-		if relativeErr != nil {
-			broken = append(broken, fmt.Sprintf("Could not resolve Markdown path `%s`.", path))
-			continue
+	var markdownFiles []string
+	for _, name := range strings.Split(string(out), "\x00") {
+		if name != "" {
+			markdownFiles = append(markdownFiles, filepath.ToSlash(name))
 		}
-		name = filepath.ToSlash(name)
+	}
+	return brokenLocalLinksInFiles(root, markdownFiles)
+}
+
+func brokenLocalLinksInFiles(root string, markdownFiles []string) []string {
+	var broken []string
+	for _, name := range markdownFiles {
+		path := filepath.Join(root, filepath.FromSlash(name))
 		data, readErr := os.ReadFile(path)
 		if readErr != nil {
 			broken = append(broken, fmt.Sprintf("Could not read `%s` for local-link validation.", name))
 			continue
 		}
-		for _, match := range markdownLinkRE.FindAllStringSubmatch(string(data), -1) {
-			fields := strings.Fields(match[1])
-			if len(fields) == 0 {
+		inFence := false
+		for _, line := range strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+				inFence = !inFence
 				continue
 			}
-			target := strings.Trim(fields[0], "<>")
-			target = strings.SplitN(target, "#", 2)[0]
-			if target == "" || strings.HasPrefix(target, "/") || strings.Contains(target, "://") || strings.HasPrefix(target, "mailto:") {
+			if inFence {
 				continue
 			}
-			path := filepath.Join(root, filepath.Dir(filepath.FromSlash(name)), filepath.FromSlash(target))
-			if _, statErr := os.Stat(path); errors.Is(statErr, os.ErrNotExist) {
-				broken = append(broken, fmt.Sprintf("`%s` links to missing local path `%s`.", name, target))
+			for _, match := range markdownLinkRE.FindAllStringSubmatch(line, -1) {
+				fields := strings.Fields(match[1])
+				if len(fields) == 0 {
+					continue
+				}
+				target := strings.Trim(fields[0], "<>")
+				target = strings.SplitN(target, "#", 2)[0]
+				if target == "" || strings.HasPrefix(target, "/") || strings.Contains(target, "://") || strings.HasPrefix(target, "mailto:") {
+					continue
+				}
+				path := filepath.Join(root, filepath.Dir(filepath.FromSlash(name)), filepath.FromSlash(target))
+				if _, statErr := os.Stat(path); errors.Is(statErr, os.ErrNotExist) {
+					broken = append(broken, fmt.Sprintf("`%s` links to missing local path `%s`.", name, target))
+				}
 			}
 		}
 	}

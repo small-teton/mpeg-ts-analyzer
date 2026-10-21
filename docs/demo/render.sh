@@ -4,7 +4,7 @@ set -euo pipefail
 # Renderer invoked inside the generation container.
 
 script_dir="$(dirname "$0")"
-repo_dir="$(realpath "${script_dir}/../..")"
+repo_dir="$(cd "${script_dir}/../.." && pwd -P)"
 output="${repo_dir}/docs/demo.gif"
 manifest="${repo_dir}/docs/demo/manifest.sha256"
 sample="${repo_dir}/sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts"

@@ -40,14 +40,25 @@ jobs:
       - name: Create Pull Request
         run: |
           BRANCH="chore/bump-v${{ steps.bump.outputs.new_version }}"
+          PR_BODY=$(mktemp)
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
           git add VERSION
           git commit -m "bump version to ${{ steps.bump.outputs.new_version }}"
           git push origin "$BRANCH"
+          {
+            printf '## Why\n\nPrepare the next release version.\n\n'
+            printf '## What changed\n\nBump `VERSION` from `%s` to `%s` (%s).\n\n' \
+              '${{ steps.bump.outputs.old_version }}' \
+              '${{ steps.bump.outputs.new_version }}' \
+              '${{ inputs.bump }}'
+            printf '## Compatibility\n\nNo CLI, output, schema, or transport-stream compatibility impact.\n\n'
+            printf '## Documentation\n\n`README.md`, `OPTIONS.md`, and `docs/json-schema-v1.json` are unchanged because this PR only updates the release version.\n\n'
+            printf '## Validation\n\n- The version was derived from the existing `VERSION` value.\n- The documentation-policy check runs on this PR.\n'
+          } > "$PR_BODY"
           gh pr create \
             --title "bump version to ${{ steps.bump.outputs.new_version }}" \
-            --body "Bump version from ${{ steps.bump.outputs.old_version }} to ${{ steps.bump.outputs.new_version }} (${{ inputs.bump }})."
+            --body-file "$PR_BODY"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
