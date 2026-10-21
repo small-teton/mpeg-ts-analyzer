@@ -250,6 +250,7 @@ make build      # build binary
 make test       # run all tests
 make coverage   # run tests with coverage report
 make check-demo # verify that the README GIF matches the current CLI output
+make check-docs-policy # check interface/documentation changes against origin/master
 make demo       # regenerate in Docker or Apple container
 make install    # install to $GOPATH/bin
 make uninstall  # remove from $GOPATH/bin
@@ -263,6 +264,15 @@ Coverage is measured for `bitbuffer` and `tsparser` packages only. The CLI entry
 A pre-push hook (`make setup` to enable) runs the build, test, coverage, and
 README demo checks before every push. Push is rejected if coverage drops below
 100% or the committed GIF is stale.
+
+Pull requests also run a deterministic documentation-policy check. It verifies
+the PR template sections, CLI flag coverage in `OPTIONS.md`, local Markdown
+links, and required README, OPTIONS, schema, and demo maintenance when a public
+interface changes. Definite omissions fail the check. Possible text-output
+changes that need human judgment remain non-blocking and are posted as a single
+updatable PR warning comment as well as to the Actions summary. The check uses
+no external AI or API key. Run it locally against another base with, for
+example, `make check-docs-policy DOCS_POLICY_BASE=origin/master`.
 
 ## README demo
 
