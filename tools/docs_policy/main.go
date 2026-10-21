@@ -80,7 +80,7 @@ func main() {
 
 func loadDiff(base, head string) (map[string]bool, map[string]string, error) {
 	rangeArg := base + "..." + head
-	out, err := exec.Command("git", "diff", "--name-only", "--diff-filter=ACMR", "-z", rangeArg).Output()
+	out, err := gitCommand("diff", "--name-only", "--diff-filter=ACMR", "-z", rangeArg).Output()
 	if err != nil {
 		return nil, nil, fmt.Errorf("list changed files: %w", err)
 	}
@@ -96,7 +96,7 @@ func loadDiff(base, head string) (map[string]bool, map[string]string, error) {
 		if !strings.HasSuffix(name, ".go") {
 			continue
 		}
-		patch, err := exec.Command("git", "diff", "--unified=0", rangeArg, "--", name).Output()
+		patch, err := gitCommand("diff", "--unified=0", rangeArg, "--", name).Output()
 		if err != nil {
 			return nil, nil, fmt.Errorf("read diff for %s: %w", name, err)
 		}
@@ -122,6 +122,19 @@ func pullRequestBody(eventPath string) (string, error) {
 		return "", fmt.Errorf("decode GitHub event: %w", err)
 	}
 	return event.PullRequest.Body, nil
+}
+
+func gitCommand(args ...string) *exec.Cmd {
+	command := exec.Command("git", args...)
+	for _, entry := range os.Environ() {
+		key := strings.SplitN(entry, "=", 2)[0]
+		switch key {
+		case "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_PREFIX", "GIT_WORK_TREE":
+			continue
+		}
+		command.Env = append(command.Env, entry)
+	}
+	return command
 }
 
 func evaluate(root string, changed map[string]bool, patches map[string]string, body string) findings {
@@ -298,7 +311,7 @@ func sectionBody(body, heading string) string {
 }
 
 func brokenLocalLinks(root string) []string {
-	out, err := exec.Command("git", "-C", root, "ls-files", "-z", "--", "*.md").Output()
+	out, err := gitCommand("-C", root, "ls-files", "-z", "--", "*.md").Output()
 	if err != nil {
 		return []string{"Could not list Markdown files for local-link validation."}
 	}
