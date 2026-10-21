@@ -38,6 +38,11 @@ coverage target.
 - Add or update tests whenever a change would otherwise reduce coverage.
 - Before pushing or opening a pull request, run `.githooks/pre-push`; do not
   treat the work as complete unless every check passes.
+- Pull requests run the deterministic documentation policy in
+  `.github/workflows/docs-policy.yml`. Blocking findings identify definite
+  interface/documentation omissions; advisory findings are posted as a sticky
+  PR comment and in the Actions summary. Resolve or explicitly assess both.
+  Run `make check-docs-policy` locally when changing interfaces or docs.
 
 ## Compatibility and documentation
 
