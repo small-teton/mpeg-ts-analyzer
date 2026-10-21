@@ -25,9 +25,12 @@ jobs:
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version-file: './go.mod'
+        cache-dependency-path: |
+          go.sum
+          .github/tools/go.sum
 
     - name: golangci-lint
-      run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
+      run: go tool -modfile=.github/tools/go.mod golangci-lint run ./...
 
   govulncheck:
     runs-on: ubuntu-latest
@@ -41,9 +44,12 @@ jobs:
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version-file: './go.mod'
+        cache-dependency-path: |
+          go.sum
+          .github/tools/go.sum
 
     - name: govulncheck
-      run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+      run: go tool -modfile=.github/tools/go.mod govulncheck ./...
 
     # On a scheduled run, a failure means a new advisory landed against otherwise
     # unchanged code (no push/PR would surface it), so open/refresh an issue.
@@ -188,27 +194,31 @@ jobs:
             '```\n' + output + '```\n\n' +
             `</details>`;
 
-          const { data: comments } = await github.rest.issues.listComments({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            issue_number: context.issue.number,
-          });
-          const existing = comments.find(c =>
-            c.user.login === 'github-actions[bot]' &&
-            c.body.includes('## Test Coverage Report')
-          );
-          if (existing) {
-            await github.rest.issues.updateComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              comment_id: existing.id,
-              body,
-            });
-          } else {
-            await github.rest.issues.createComment({
+          try {
+            const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body,
             });
+            const existing = comments.find(c =>
+              c.user.login === 'github-actions[bot]' &&
+              c.body.includes('## Test Coverage Report')
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+          } catch (error) {
+            core.warning(`Could not update the coverage PR comment: ${error.message}`);
           }

@@ -14,7 +14,7 @@ body:
     id: version
     attributes:
       label: Version or commit
-      description: Output from `mpeg-ts-analyzer version`, a release tag, or a commit SHA.
+      description: Output from `mpeg-ts-analyzer --version`, a release tag, or a commit SHA.
       placeholder: v2.2.0
     validations:
       required: true
@@ -24,7 +24,7 @@ body:
     attributes:
       label: Command
       description: The complete command, with sensitive paths or values redacted.
-      placeholder: mpeg-ts-analyzer analyze --program 1 sample.ts
+      placeholder: mpeg-ts-analyzer sample.ts --program 1 --dump-psi
     validations:
       required: true
 

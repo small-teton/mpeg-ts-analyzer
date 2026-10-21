@@ -35,6 +35,7 @@ jobs:
           go run ./tools/docs_policy \
             --base "$BASE_SHA" \
             --head "$HEAD_SHA" \
+            --skip-pr-body-check=${{ github.actor == 'dependabot[bot]' }} \
             --warnings-file "$WARNINGS_FILE" \
             --summary-file "$GITHUB_STEP_SUMMARY"
           status=$?

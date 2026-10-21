@@ -30,6 +30,7 @@ func main() {
 	base := flag.String("base", "", "base commit for the pull-request diff")
 	head := flag.String("head", "HEAD", "head commit for the pull-request diff")
 	prBodyFile := flag.String("pr-body-file", "", "optional pull-request body file for local verification")
+	skipPRBodyCheck := flag.Bool("skip-pr-body-check", false, "skip pull-request template sections while retaining all repository checks")
 	warningsFile := flag.String("warnings-file", "", "path for warning-only Markdown")
 	summaryFile := flag.String("summary-file", "", "path to append the complete Markdown summary")
 	flag.Parse()
@@ -46,7 +47,10 @@ func main() {
 	}
 	body := ""
 	checkBody := false
-	if *prBodyFile != "" {
+	if *skipPRBodyCheck {
+		// Dependabot owns its generated PR body, so it cannot follow the
+		// repository's human-authored pull-request template.
+	} else if *prBodyFile != "" {
 		data, readErr := os.ReadFile(*prBodyFile)
 		if readErr != nil {
 			fmt.Fprintf(os.Stderr, "docs-policy: read PR body: %v\n", readErr)
