@@ -59,3 +59,26 @@ run `make demo`, and reconnect it afterward. This is tracked in
 
 Inspect the complete animation before committing both generated files with any
 related CLI, render-script, or container change.
+
+## Why the container uses 1 GB
+
+The animation contains 131 1440x760 frames. One uncompressed RGBA copy of the
+complete sequence is about 547 MiB, but ImageMagick's `-layers Optimize` may
+hold multiple pixel caches while comparing frames. Optimizing the entire
+animation in one invocation was killed by Apple container with both 1 GB and
+3 GB limits. Raising the limit to 6 GB completed successfully, but that was a
+diagnostic workaround rather than a reasonable requirement for this asset.
+
+The renderer instead optimizes each of the four scenes in a separate
+ImageMagick process. Exiting that process releases its pixel caches before the
+next scene begins. The final step only joins the four already optimized GIFs;
+it does not optimize all 131 full-size frames again. With this layout, Apple
+container 1.3.0 completed generation with a 1 GB container limit in about 156
+seconds.
+
+ImageMagick is additionally limited to 256 MiB of heap pixel cache and 512 MiB
+of memory-mapped pixel cache. Excess cache data spills into the renderer's
+temporary directory, with a 4 GiB safety ceiling. That disk value is a maximum,
+not preallocated space. If future changes materially increase the dimensions or
+frames per scene, prefer splitting the scenes further or reducing retained
+frames before raising the container memory limit.
