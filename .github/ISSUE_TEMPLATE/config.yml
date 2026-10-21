@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security report
+    url: mailto:matsuuram.kcy@gmail.com?subject=mpeg-ts-analyzer%20security%20report
+    about: Report suspected vulnerabilities privately instead of opening a public issue.

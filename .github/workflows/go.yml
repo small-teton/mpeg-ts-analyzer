@@ -5,6 +5,7 @@ name: Go
 
 on:
   push:
+    branches: [master]
   pull_request:
   schedule:
     # Weekly, so govulncheck catches advisories published against unchanged deps.
@@ -12,42 +13,43 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
-  issues: write
 
 jobs:
 
   golangci-lint:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version-file: './go.mod'
 
     - name: golangci-lint
-      run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run ./...
+      run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
 
   govulncheck:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version-file: './go.mod'
 
     - name: govulncheck
-      run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+      run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
 
     # On a scheduled run, a failure means a new advisory landed against otherwise
     # unchanged code (no push/PR would surface it), so open/refresh an issue.
     - name: Open an issue on scheduled failure
       if: failure() && github.event_name == 'schedule'
-      uses: actions/github-script@v7
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
       with:
         script: |
           const title = 'govulncheck: vulnerabilities detected';
@@ -70,10 +72,10 @@ jobs:
   gofmt:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version-file: './go.mod'
 
@@ -90,10 +92,10 @@ jobs:
   readme-demo:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version-file: './go.mod'
 
@@ -103,10 +105,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version-file: './go.mod'
 
@@ -118,11 +120,14 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version-file: './go.mod'
 
@@ -150,7 +155,7 @@ jobs:
 
     - name: Update coverage badge
       if: github.ref == 'refs/heads/master'
-      uses: schneegans/dynamic-badges-action@v1.7.0
+      uses: Schneegans/dynamic-badges-action@28b0fa8bdeb46170ac397105ece0c1fe58f68910 # v1.9.0
       with:
         auth: ${{ secrets.GIST_TOKEN }}
         gistID: 9d60b1e4226ac2926940b20ce3381621
@@ -163,7 +168,7 @@ jobs:
 
     - name: Post coverage to PR
       if: github.event_name == 'pull_request'
-      uses: actions/github-script@v7
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
       with:
         script: |
           const { execSync } = require('child_process');

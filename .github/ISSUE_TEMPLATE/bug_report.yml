@@ -1,0 +1,83 @@
+name: Bug report
+description: Report reproducible incorrect behavior or a regression
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Do not include confidential transport
+        streams, credentials, or security vulnerabilities in a public issue.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Output from `mpeg-ts-analyzer version`, a release tag, or a commit SHA.
+      placeholder: v2.2.0
+    validations:
+      required: true
+
+  - type: input
+    id: command
+    attributes:
+      label: Command
+      description: The complete command, with sensitive paths or values redacted.
+      placeholder: mpeg-ts-analyzer analyze --program 1 sample.ts
+    validations:
+      required: true
+
+  - type: dropdown
+    id: packet-format
+    attributes:
+      label: Packet format
+      options:
+        - 188-byte TS
+        - 192-byte M2TS
+        - Unknown or auto-detected
+        - Not applicable
+    validations:
+      required: true
+
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Observed behavior
+      description: Include complete relevant output and exit status.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction details
+      description: Explain how to reproduce the issue with a minimal or public sample if possible.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, architecture, installation method, and any other relevant details.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: I reproduced this with the latest release or `master`.
+          required: true
+        - label: This report does not disclose a security vulnerability or confidential media.
+          required: true
