@@ -274,6 +274,10 @@ make check-demo # check the recorded CLI output fingerprint and GIF checksum
 make demo       # regenerate using Docker or Apple container
 ```
 
+Allow about three minutes for regeneration on a recent Apple-silicon Mac;
+the first run can take longer while the container image and packages are
+downloaded. Runtime varies with the host and container engine.
+
 The canonical regeneration path supports Docker and
 [Apple container](https://github.com/apple/container). On macOS it prefers
 Apple container and falls back to Docker; elsewhere it prefers Docker. Set
