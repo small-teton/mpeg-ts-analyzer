@@ -1,0 +1,9 @@
+# Canonical author identity for historical commits made from different machines
+# and email accounts. This affects Git's author summaries without rewriting
+# commit history.
+Masahiko Matsuura <matsuura@tano.mu> <matsuuram.kcy@gmail.com>
+Masahiko Matsuura <matsuura@tano.mu> <matsuura@openlogi.com>
+Masahiko Matsuura <matsuura@tano.mu> <matsuuram@mediaedge.co.jp>
+Masahiko Matsuura <matsuura@tano.mu> <matsuuram@matsuuram-no-MacBook-Pro.local>
+Masahiko Matsuura <matsuura@tano.mu> <nisecuroro@gmail.com>
+Masahiko Matsuura <matsuura@tano.mu> <vendaval.dev@gmail.com>

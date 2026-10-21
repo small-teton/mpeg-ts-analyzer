@@ -38,6 +38,11 @@ coverage target.
 - Add or update tests whenever a change would otherwise reduce coverage.
 - Before pushing or opening a pull request, run `.githooks/pre-push`; do not
   treat the work as complete unless every check passes.
+- Pull requests run the deterministic documentation policy in
+  `.github/workflows/docs-policy.yml`. Blocking findings identify definite
+  interface/documentation omissions; advisory findings are posted as a sticky
+  PR comment and in the Actions summary. Resolve or explicitly assess both.
+  Run `make check-docs-policy` locally when changing interfaces or docs.
 
 ## Compatibility and documentation
 
@@ -49,8 +54,68 @@ coverage target.
 - Treat the documented CLI syntax and existing flag placement as public
   compatibility. Do not replace Cobra or otherwise change argument parsing as
   part of an unrelated cleanup.
-- When flags or user-visible output change, update both `README.md` and the
-  annotated examples in `OPTIONS.md` in the same pull request.
+- Treat CLI syntax, flag placement or defaults, help text, human-readable or
+  JSON output, and exit codes as public interfaces. When any of them changes,
+  audit and update `README.md`, the annotated examples in `OPTIONS.md`, CLI
+  help/examples, schemas, and the README demo as applicable in the same pull
+  request. Explicitly explain in the pull request when an expected document or
+  generated artifact does not need an update.
+- When the JSON contract changes, update `docs/json-schema-v1.json`, the README
+  contract, the complete example in `OPTIONS.md`, and decoding/compatibility
+  tests together. Preserve the documented additive-change policy within a
+  schema version; breaking field, type, or enum-meaning changes require a
+  schema-version increment.
+
+## Pull request workflow
+
+- Before implementation and again before opening a pull request, read the full
+  linked issue and inspect recent related pull requests for established
+  behavior, terminology, documentation style, and validation expectations.
+- Open ordinary changes against `master` from a focused branch that contains no
+  unrelated work. Use a concise imperative title. Write the pull request
+  description and review replies in English.
+- Follow [`.github/pull_request_template.md`](.github/pull_request_template.md)
+  when composing the description. Keep its motivation, change, compatibility,
+  and validation sections meaningful; do not leave placeholder comments as a
+  substitute for documenting an applicable concern.
+- Give the description enough context to review without reconstructing the
+  change from the diff. Cover the motivation, concrete behavior and design,
+  compatibility or migration impact, and the exact validation performed. For
+  user-visible or structured output, include representative real examples and
+  explain relevant output-size or resource characteristics.
+- For every public-interface change, include a documentation-impact audit in
+  the description. Name the updated README, `OPTIONS.md`, help/examples,
+  schema, and generated-demo artifacts, or state why each relevant item is not
+  affected.
+- Use `Closes #N` only when the pull request fully resolves the issue. Use
+  `Follow-up to #N` or a plain reference when it extends earlier work without
+  closing the original request.
+- Report commands and observed results accurately; do not claim checks that
+  were not run. When analyzer measurements change, include the independent
+  reference-tool comparison required above and explain any discrepancy.
+- After review fixes or scope changes, push the commits, update the pull request
+  description and validation list so they still describe the final diff, and
+  reply to review comments in English with the change and verification result.
+- Before opening or handing off a pull request, ensure the final pushed commit
+  passed `.githooks/pre-push`. Do not hand off a pull request with failing
+  required checks or an unexplained dirty worktree.
+
+## README demo workflow
+
+- After changing CLI output, demo rendering code, or the demo container
+  definition, run `make check-demo` to verify that the committed animation is
+  current.
+- If the check reports a stale or missing demo, follow
+  [`docs/demo/README.md`](docs/demo/README.md), run `make demo`, inspect the
+  complete animation, and commit both `docs/demo.gif` and
+  `docs/demo/manifest.sha256`.
+- Demo regeneration is container-based. On macOS it prefers Apple `container`
+  and falls back to Docker; set `DEMO_CONTAINER_RUNTIME` only when an explicit
+  runtime is needed.
+- Keep the renderer within its documented 1 GB container budget. If future
+  changes increase memory pressure, split work into smaller scenes or reduce
+  retained frames before raising the limit; document any justified change in
+  `docs/demo/README.md`.
 
 ## Release workflow
 

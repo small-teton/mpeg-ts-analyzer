@@ -1,0 +1,96 @@
+name: Documentation policy
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+concurrency:
+  group: docs-policy-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  docs-policy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Check documentation policy
+        id: policy
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          WARNINGS_FILE: ${{ runner.temp }}/docs-policy-warnings.md
+        run: |
+          set +e
+          go run ./tools/docs_policy \
+            --base "$BASE_SHA" \
+            --head "$HEAD_SHA" \
+            --warnings-file "$WARNINGS_FILE" \
+            --summary-file "$GITHUB_STEP_SUMMARY"
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Update warning comment
+        if: always() && steps.policy.outputs.status != '2' && steps.policy.outputs.status != ''
+        uses: actions/github-script@v8
+        env:
+          WARNINGS_FILE: ${{ runner.temp }}/docs-policy-warnings.md
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- docs-policy-warning -->';
+            const path = process.env.WARNINGS_FILE;
+            const warnings = fs.existsSync(path) ? fs.readFileSync(path, 'utf8').trim() : '';
+            try {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                per_page: 100,
+              });
+              const existing = comments.find(comment =>
+                comment.user.login === 'github-actions[bot]' && comment.body.includes(marker)
+              );
+              if (warnings) {
+                const body = `${marker}\n## Documentation policy warnings\n\n${warnings}\n\n` +
+                  'These findings are advisory and do not fail the required check.';
+                if (existing) {
+                  await github.rest.issues.updateComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    comment_id: existing.id,
+                    body,
+                  });
+                } else {
+                  await github.rest.issues.createComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: context.issue.number,
+                    body,
+                  });
+                }
+              } else if (existing) {
+                await github.rest.issues.deleteComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existing.id,
+                });
+              }
+            } catch (error) {
+              core.warning(`Could not update the documentation-policy PR comment: ${error.message}`);
+            }
+
+      - name: Enforce blocking findings
+        if: steps.policy.outputs.status != '0'
+        run: exit 1

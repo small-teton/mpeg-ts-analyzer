@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Regenerate from the repository root with `docs/demo/render.sh`.
-# Requires Go and ImageMagick 7 (`magick`).
+# Renderer invoked inside the generation container.
 
 script_dir="$(dirname "$0")"
-repo_dir="$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_PREFIX git -C "$script_dir" rev-parse --show-toplevel)"
+repo_dir="$(cd "${script_dir}/../.." && pwd -P)"
 output="${repo_dir}/docs/demo.gif"
 manifest="${repo_dir}/docs/demo/manifest.sha256"
 sample="${repo_dir}/sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts"
@@ -43,6 +42,12 @@ if [[ "$mode" == "render" ]]; then
   elif [[ -r /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf ]]; then
     font_regular="/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
     font_bold="/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"
+  elif [[ -r /usr/share/fonts/TTF/DejaVuSansMono.ttf ]]; then
+    font_regular="/usr/share/fonts/TTF/DejaVuSansMono.ttf"
+    font_bold="/usr/share/fonts/TTF/DejaVuSansMono-Bold.ttf"
+  elif [[ -r /usr/share/fonts/dejavu/DejaVuSansMono.ttf ]]; then
+    font_regular="/usr/share/fonts/dejavu/DejaVuSansMono.ttf"
+    font_bold="/usr/share/fonts/dejavu/DejaVuSansMono-Bold.ttf"
   else
     echo "a Menlo or DejaVu Sans Mono font file is required" >&2
     exit 1
@@ -76,8 +81,10 @@ sha256_file() {
 }
 
 {
-  printf 'demo-source-v1\n'
+  printf 'demo-source-v2\n'
   printf 'render_script_sha256=%s\n' "$(sha256_file "${repo_dir}/docs/demo/render.sh")"
+  printf 'container_script_sha256=%s\n' "$(sha256_file "${repo_dir}/docs/demo/render-container.sh")"
+  printf 'dockerfile_sha256=%s\n' "$(sha256_file "${repo_dir}/docs/demo/Dockerfile")"
   printf '\n[ts-header]\n%s\n' "$header_output"
   printf '\n[adaptation-field]\n%s\n' "$adaptation_output"
   printf '\n[psi]\n%s\n' "$psi_output"
@@ -88,23 +95,27 @@ source_hash="$(sha256_file "${work_dir}/source.txt")"
 if [[ "$mode" == "--check" ]]; then
   if [[ ! -f "$output" || ! -f "$manifest" ]]; then
     echo "README demo is missing; run 'make demo' and commit the generated files." >&2
+    echo "See docs/demo/README.md for regeneration and troubleshooting instructions." >&2
     exit 1
   fi
   recorded_source_hash="$(awk '$1 == "source_sha256" { print $2 }' "$manifest")"
   recorded_gif_hash="$(awk '$1 == "gif_sha256" { print $2 }' "$manifest")"
   actual_gif_hash="$(sha256_file "$output")"
   if [[ "$source_hash" != "$recorded_source_hash" ]]; then
-    echo "README demo is stale: the displayed CLI output or render script changed." >&2
+    echo "README demo is stale: its CLI output, render scripts, or container definition changed." >&2
     echo "Run 'make demo', inspect docs/demo.gif, and commit it with docs/demo/manifest.sha256." >&2
+    echo "See docs/demo/README.md for regeneration and troubleshooting instructions." >&2
     exit 1
   fi
   if [[ "$actual_gif_hash" != "$recorded_gif_hash" ]]; then
     echo "README demo checksum does not match docs/demo/manifest.sha256." >&2
     echo "Run 'make demo', inspect the result, and commit both generated files." >&2
+    echo "See docs/demo/README.md for regeneration and troubleshooting instructions." >&2
     exit 1
   fi
   if ! grep -Fq '](docs/demo.gif)' "${repo_dir}/README.md"; then
     echo "README.md does not reference docs/demo.gif." >&2
+    echo "See docs/demo/README.md for the expected demo layout and verification steps." >&2
     exit 1
   fi
   echo "README demo is current."
@@ -114,6 +125,14 @@ fi
 frame_number=0
 frames=()
 delays=()
+scene_number=0
+scene_gifs=()
+magick_limits=(
+  -define "registry:temporary-path=${work_dir}"
+  -limit memory 256MiB
+  -limit map 512MiB
+  -limit disk 4GiB
+)
 
 render_frame() {
   local content="$1"
@@ -173,17 +192,32 @@ play_scene() {
   render_frame "$visible_transcript" "$hold_delay"
 }
 
+encode_scene() {
+  local scene_gif
+  local scene_args=()
+  local index
+
+  scene_gif="$(printf '%s/scene-%02d.gif' "$work_dir" "$scene_number")"
+  for index in "${!frames[@]}"; do
+    scene_args+=(-delay "${delays[$index]}" "${frames[$index]}")
+  done
+  magick "${magick_limits[@]}" "${scene_args[@]}" -loop 0 -layers Optimize "$scene_gif"
+  scene_gifs+=("$scene_gif")
+  frames=()
+  delays=()
+  scene_number=$((scene_number + 1))
+}
+
 play_scene "mpeg-ts-analyzer sample.ts --dump-ts-header --limit 65536" "$header_output" 7 80
+encode_scene
 play_scene "mpeg-ts-analyzer sample.ts --dump-adaptation-field --limit 65536" "$adaptation_output" 6 80
+encode_scene
 play_scene "mpeg-ts-analyzer sample.ts --dump-psi" "$psi_output" 4 100
+encode_scene
 play_scene "mpeg-ts-analyzer sample.ts --dump-timestamp" "$timestamp_output" 8 240
+encode_scene
 
-gif_args=()
-for index in "${!frames[@]}"; do
-  gif_args+=(-delay "${delays[$index]}" "${frames[$index]}")
-done
-
-magick "${gif_args[@]}" -loop 0 -layers Optimize "$output"
+magick "${magick_limits[@]}" "${scene_gifs[@]}" -loop 0 "$output"
 gif_hash="$(sha256_file "$output")"
 {
   printf 'source_sha256 %s\n' "$source_hash"
