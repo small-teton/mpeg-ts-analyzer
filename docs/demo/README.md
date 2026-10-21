@@ -13,23 +13,46 @@ make check-demo
 
 This check requires only Go and does not render the GIF. It builds the current
 binary, runs every command represented in the animation, and fingerprints the
-visible output together with `render.sh`. It then checks that fingerprint and
-the GIF checksum against [`manifest.sha256`](manifest.sha256).
+visible output together with both render scripts and the Dockerfile. It then
+checks that fingerprint and the GIF checksum against
+[`manifest.sha256`](manifest.sha256).
 
 The same check runs in GitHub Actions and in `.githooks/pre-push`. A change to
 the displayed CLI output or animation script therefore fails until the demo is
 regenerated. Avoiding pixel-for-pixel rendering in CI keeps the check stable
 across operating systems, ImageMagick versions, and installed fonts.
 
-## Regenerate the demo
+## Regenerate in a container
 
-Install Go and ImageMagick 7, then run:
+Install Docker or [Apple container](https://github.com/apple/container), then
+run:
 
 ```sh
 make demo
 ```
 
-The script supports Menlo on macOS and DejaVu Sans Mono on Linux. It rewrites
-both `docs/demo.gif` and `docs/demo/manifest.sha256`. Inspect the complete
-animation before committing both generated files with any related CLI or
-render-script change.
+On macOS the runner prefers Apple container and falls back to Docker. On other
+platforms it prefers Docker and falls back to Apple container. Select one
+explicitly when needed:
+
+```sh
+DEMO_CONTAINER_RUNTIME=container make demo
+DEMO_CONTAINER_RUNTIME=docker make demo
+```
+
+Apple container requires Apple silicon and macOS 26. Start its services once
+after installation with `container system start`.
+
+Both paths build [`Dockerfile`](Dockerfile), which pins the Go/Alpine base image
+by digest and installs ImageMagick 7 and DejaVu Sans Mono. Rendering as the
+current user keeps the generated files writable on the host, and a 6 GB memory
+limit gives ImageMagick enough room for final GIF optimization. The command
+rewrites both `docs/demo.gif` and `docs/demo/manifest.sha256`.
+
+Some full-tunnel VPN clients currently break Apple container's outbound vmnet
+NAT. If `apk add` reports DNS timeouts while the host is online, pause the VPN,
+run `make demo`, and reconnect it afterward. This is tracked in
+[apple/container#1881](https://github.com/apple/container/issues/1881).
+
+Inspect the complete animation before committing both generated files with any
+related CLI, render-script, or container change.
