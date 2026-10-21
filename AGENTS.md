@@ -118,6 +118,10 @@ coverage target.
 
 ## Pull request workflow
 
+- `.github/CODEOWNERS` assigns the repository to `@small-teton`. Because a PR
+  author cannot approve their own PR, owner-authored PRs rely on the current
+  administrator bypass (`enforce_admins: false`). Do not enable enforcement for
+  administrators or remove that bypass until another eligible approver exists.
 - Before implementation and again before opening a pull request, read the full
   linked issue and inspect recent related pull requests for established
   behavior, terminology, documentation style, and validation expectations.
