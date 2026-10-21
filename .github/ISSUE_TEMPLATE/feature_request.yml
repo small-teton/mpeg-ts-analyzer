@@ -1,0 +1,32 @@
+name: Feature request
+description: Propose a focused analyzer or workflow improvement
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What analyzer or workflow limitation should be addressed?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Include example commands or output when the interface would change.
+    validations:
+      required: true
+
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility considerations
+      description: Note effects on CLI syntax, text or JSON output, schemas, 188-byte TS, or 192-byte M2TS.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

@@ -10,7 +10,7 @@ if [ -n "$UNFORMATTED" ]; then
 fi
 
 echo "=== pre-push: golangci-lint ==="
-go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run ./... || { echo "FAILED: golangci-lint"; exit 1; }
+go tool -modfile=.github/tools/go.mod golangci-lint run ./... || { echo "FAILED: golangci-lint"; exit 1; }
 
 echo "=== pre-push: build ==="
 go build ./... || { echo "FAILED: build"; exit 1; }

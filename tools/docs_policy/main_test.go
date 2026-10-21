@@ -156,6 +156,16 @@ func TestPullRequestBody(t *testing.T) {
 	}
 }
 
+func TestLoadPRBodySkip(t *testing.T) {
+	body, check, err := loadPRBody(true, filepath.Join(t.TempDir(), "missing-body.md"), filepath.Join(t.TempDir(), "missing-event.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body != "" || check {
+		t.Fatalf("loadPRBody(skip) = %q, %v; want empty body and no check", body, check)
+	}
+}
+
 func TestLoadDiff(t *testing.T) {
 	clearGitEnvironment(t)
 	root := t.TempDir()
