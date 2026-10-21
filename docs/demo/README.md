@@ -45,9 +45,12 @@ after installation with `container system start`.
 
 Both paths build [`Dockerfile`](Dockerfile), which pins the Go/Alpine base image
 by digest and installs ImageMagick 7 and DejaVu Sans Mono. Rendering as the
-current user keeps the generated files writable on the host, and a 6 GB memory
-limit gives ImageMagick enough room for final GIF optimization. The command
-rewrites both `docs/demo.gif` and `docs/demo/manifest.sha256`.
+current user keeps the generated files writable on the host. The runner uses a
+1 GB container limit. Each scene is optimized separately so ImageMagick can
+release its pixel cache before the next scene; bounded cache data spills to the
+container's temporary disk when needed. The four optimized scenes are then
+joined without another whole-animation optimization pass. The command rewrites
+both `docs/demo.gif` and `docs/demo/manifest.sha256`.
 
 Some full-tunnel VPN clients currently break Apple container's outbound vmnet
 NAT. If `apk add` reports DNS timeouts while the host is online, pause the VPN,

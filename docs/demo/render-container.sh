@@ -37,7 +37,7 @@ echo "Rendering with $runtime."
   "${repo_dir}/docs/demo"
 
 "$runtime" run --rm \
-  --memory 6g \
+  --memory 1g \
   --user "$(id -u):$(id -g)" \
   --volume "${repo_dir}:/workspace" \
   --workdir /workspace \
