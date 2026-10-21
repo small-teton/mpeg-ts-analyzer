@@ -1,0 +1,3 @@
+# Require the repository owner to review changes from other contributors.
+# Owner-authored PRs rely on the branch rule's administrator bypass.
+* @small-teton
