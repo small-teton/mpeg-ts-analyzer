@@ -21,6 +21,15 @@ State the effect on existing CLI syntax, output, exit codes, 188-byte TS and
 applicable. Say explicitly when there is no compatibility impact.
 -->
 
+## Documentation
+
+<!--
+For changes to CLI syntax, flags/defaults, help text, text or JSON output, or
+exit codes, describe the documentation audit and updates. Check README.md,
+OPTIONS.md, CLI help/examples, JSON schema, and the README demo as applicable.
+Explain why any expected document or generated artifact does not need a change.
+-->
+
 ## Validation
 
 <!--
@@ -35,7 +44,8 @@ Explain non-obvious N/A decisions in the sections above.
 -->
 
 - [ ] The final pushed commit passed `.githooks/pre-push`.
-- [ ] Documentation, examples, and schemas are updated where applicable.
+- [ ] Public-interface changes are reflected in README, OPTIONS, help/examples,
+      schemas, and the README demo where applicable.
 - [ ] Generated assets are current and were inspected where applicable.
 - [ ] Independent reference-tool validation is included where applicable.
 
