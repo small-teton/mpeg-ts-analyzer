@@ -45,26 +45,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "docs-policy: %v\n", err)
 		os.Exit(2)
 	}
-	body := ""
-	checkBody := false
-	if *skipPRBodyCheck {
-		// Dependabot owns its generated PR body, so it cannot follow the
-		// repository's human-authored pull-request template.
-	} else if *prBodyFile != "" {
-		data, readErr := os.ReadFile(*prBodyFile)
-		if readErr != nil {
-			fmt.Fprintf(os.Stderr, "docs-policy: read PR body: %v\n", readErr)
-			os.Exit(2)
-		}
-		body = string(data)
-		checkBody = true
-	} else if eventPath := os.Getenv("GITHUB_EVENT_PATH"); eventPath != "" {
-		body, err = pullRequestBody(eventPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "docs-policy: %v\n", err)
-			os.Exit(2)
-		}
-		checkBody = true
+	body, checkBody, err := loadPRBody(*skipPRBodyCheck, *prBodyFile, os.Getenv("GITHUB_EVENT_PATH"))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "docs-policy: %v\n", err)
+		os.Exit(2)
 	}
 	if checkBody && body == "" {
 		body = "\n"
@@ -80,6 +64,29 @@ func main() {
 	if len(result.failures) > 0 {
 		os.Exit(1)
 	}
+}
+
+func loadPRBody(skip bool, bodyFile, eventPath string) (string, bool, error) {
+	if skip {
+		// Dependabot owns its generated PR body, so it cannot follow the
+		// repository's human-authored pull-request template.
+		return "", false, nil
+	}
+	if bodyFile != "" {
+		data, err := os.ReadFile(bodyFile)
+		if err != nil {
+			return "", false, fmt.Errorf("read PR body: %w", err)
+		}
+		return string(data), true, nil
+	}
+	if eventPath != "" {
+		body, err := pullRequestBody(eventPath)
+		if err != nil {
+			return "", false, err
+		}
+		return body, true, nil
+	}
+	return "", false, nil
 }
 
 func loadDiff(base, head string) (map[string]bool, map[string]string, error) {
