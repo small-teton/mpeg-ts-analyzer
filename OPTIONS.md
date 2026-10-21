@@ -3,6 +3,28 @@
 Annotated output for every `mpeg-ts-analyzer` flag, run against the bundled
 streams in `sample_data/`. See the [README](README.md) for install and usage.
 
+## Flag reference
+
+| Flag | Default | Purpose |
+| --- | --- | --- |
+| `--format` | `text` | Select human-readable text or aggregate JSON output. |
+| `--dump-ts-header` | off | Dump each TS packet header. |
+| `--dump-ts-payload` | off | Dump TS packet payload bytes. |
+| `--dump-adaptation-field` | off | Dump adaptation-field flags and values. |
+| `--dump-psi` | off | Dump PAT and PMT details. |
+| `--dump-pes-header` | off | Dump PES header details. |
+| `--dump-timestamp` | off | Dump PCR, PTS, and DTS observations. |
+| `--dump-pcr-jitter` | off | Add the PCR jitter analysis. |
+| `--dump-bitrate` | off | Add the per-PID bitrate summary. |
+| `--fail-on-error` | off | Exit 2 when a timing compliance check is `NG`. |
+| `--list-programs` | off | List programs and stop before PES analysis. |
+| `--program` | automatic | Select one program by `program_number`. |
+| `--offset` | `0` | Start reading at a byte offset. |
+| `--limit` | `0` (unlimited) | Stop after the specified number of bytes. |
+
+The standard Cobra `--help` and `--version` flags are also available. Detailed
+examples for the analysis and dump modes follow.
+
 ## No options
 
 ```

@@ -1,4 +1,6 @@
-.PHONY: build test coverage demo check-demo clean setup install uninstall release
+.PHONY: build test coverage demo check-demo check-docs-policy clean setup install uninstall release
+
+DOCS_POLICY_BASE ?= origin/master
 
 build:
 	go build -v ./...
@@ -16,10 +18,13 @@ coverage:
 	@go tool cover -func=out/tsparser.out | tail -1
 
 demo:
-	./docs/demo/render.sh
+	./docs/demo/render-container.sh
 
 check-demo:
 	./docs/demo/render.sh --check
+
+check-docs-policy:
+	go run ./tools/docs_policy --base "$(DOCS_POLICY_BASE)" --head HEAD
 
 clean:
 	rm -rf out/ dist/
