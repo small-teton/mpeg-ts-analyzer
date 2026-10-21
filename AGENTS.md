@@ -49,8 +49,12 @@ coverage target.
 - Treat the documented CLI syntax and existing flag placement as public
   compatibility. Do not replace Cobra or otherwise change argument parsing as
   part of an unrelated cleanup.
-- When flags or user-visible output change, update both `README.md` and the
-  annotated examples in `OPTIONS.md` in the same pull request.
+- Treat CLI syntax, flag placement or defaults, help text, human-readable or
+  JSON output, and exit codes as public interfaces. When any of them changes,
+  audit and update `README.md`, the annotated examples in `OPTIONS.md`, CLI
+  help/examples, schemas, and the README demo as applicable in the same pull
+  request. Explicitly explain in the pull request when an expected document or
+  generated artifact does not need an update.
 - When the JSON contract changes, update `docs/json-schema-v1.json`, the README
   contract, the complete example in `OPTIONS.md`, and decoding/compatibility
   tests together. Preserve the documented additive-change policy within a
@@ -74,6 +78,10 @@ coverage target.
   compatibility or migration impact, and the exact validation performed. For
   user-visible or structured output, include representative real examples and
   explain relevant output-size or resource characteristics.
+- For every public-interface change, include a documentation-impact audit in
+  the description. Name the updated README, `OPTIONS.md`, help/examples,
+  schema, and generated-demo artifacts, or state why each relevant item is not
+  affected.
 - Use `Closes #N` only when the pull request fully resolves the issue. Use
   `Follow-up to #N` or a plain reference when it extends earlier work without
   closing the original request.
