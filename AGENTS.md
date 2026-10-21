@@ -52,6 +52,23 @@ coverage target.
 - When flags or user-visible output change, update both `README.md` and the
   annotated examples in `OPTIONS.md` in the same pull request.
 
+## README demo workflow
+
+- After changing CLI output, demo rendering code, or the demo container
+  definition, run `make check-demo` to verify that the committed animation is
+  current.
+- If the check reports a stale or missing demo, follow
+  [`docs/demo/README.md`](docs/demo/README.md), run `make demo`, inspect the
+  complete animation, and commit both `docs/demo.gif` and
+  `docs/demo/manifest.sha256`.
+- Demo regeneration is container-based. On macOS it prefers Apple `container`
+  and falls back to Docker; set `DEMO_CONTAINER_RUNTIME` only when an explicit
+  runtime is needed.
+- Keep the renderer within its documented 1 GB container budget. If future
+  changes increase memory pressure, split work into smaller scenes or reduce
+  retained frames before raising the limit; document any justified change in
+  `docs/demo/README.md`.
+
 ## Release workflow
 
 - `VERSION` must contain a bare `X.Y.Z` semantic version with no leading `v`.

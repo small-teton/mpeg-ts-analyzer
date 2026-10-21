@@ -95,6 +95,7 @@ source_hash="$(sha256_file "${work_dir}/source.txt")"
 if [[ "$mode" == "--check" ]]; then
   if [[ ! -f "$output" || ! -f "$manifest" ]]; then
     echo "README demo is missing; run 'make demo' and commit the generated files." >&2
+    echo "See docs/demo/README.md for regeneration and troubleshooting instructions." >&2
     exit 1
   fi
   recorded_source_hash="$(awk '$1 == "source_sha256" { print $2 }' "$manifest")"
@@ -103,15 +104,18 @@ if [[ "$mode" == "--check" ]]; then
   if [[ "$source_hash" != "$recorded_source_hash" ]]; then
     echo "README demo is stale: its CLI output, render scripts, or container definition changed." >&2
     echo "Run 'make demo', inspect docs/demo.gif, and commit it with docs/demo/manifest.sha256." >&2
+    echo "See docs/demo/README.md for regeneration and troubleshooting instructions." >&2
     exit 1
   fi
   if [[ "$actual_gif_hash" != "$recorded_gif_hash" ]]; then
     echo "README demo checksum does not match docs/demo/manifest.sha256." >&2
     echo "Run 'make demo', inspect the result, and commit both generated files." >&2
+    echo "See docs/demo/README.md for regeneration and troubleshooting instructions." >&2
     exit 1
   fi
   if ! grep -Fq '](docs/demo.gif)' "${repo_dir}/README.md"; then
     echo "README.md does not reference docs/demo.gif." >&2
+    echo "See docs/demo/README.md for the expected demo layout and verification steps." >&2
     exit 1
   fi
   echo "README demo is current."
