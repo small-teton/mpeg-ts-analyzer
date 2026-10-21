@@ -65,6 +65,10 @@ coverage target.
 - Open ordinary changes against `master` from a focused branch that contains no
   unrelated work. Use a concise imperative title. Write the pull request
   description and review replies in English.
+- Follow [`.github/pull_request_template.md`](.github/pull_request_template.md)
+  when composing the description. Keep its motivation, change, compatibility,
+  and validation sections meaningful; do not leave placeholder comments as a
+  substitute for documenting an applicable concern.
 - Give the description enough context to review without reconstructing the
   change from the diff. Cover the motivation, concrete behavior and design,
   compatibility or migration impact, and the exact validation performed. For
