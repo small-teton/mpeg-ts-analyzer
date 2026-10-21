@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -158,10 +157,11 @@ func TestPullRequestBody(t *testing.T) {
 }
 
 func TestLoadDiff(t *testing.T) {
+	clearGitEnvironment(t)
 	root := t.TempDir()
 	writeFile(t, root, "example.go", "package example\n")
 	writeFile(t, root, "README.md", "# Before\n")
-	if err := exec.Command("git", "-C", root, "init", "--quiet").Run(); err != nil {
+	if err := gitCommand("-C", root, "init", "--quiet").Run(); err != nil {
 		t.Fatal(err)
 	}
 	runGit(t, root, "config", "user.name", "Test")
@@ -181,6 +181,32 @@ func TestLoadDiff(t *testing.T) {
 	}
 	if !changed["example.go"] || !changed["README.md"] || !strings.Contains(patches["example.go"], "const changed") {
 		t.Fatalf("changed=%v patches=%v", changed, patches)
+	}
+}
+
+func clearGitEnvironment(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{
+		"GIT_ALTERNATE_OBJECT_DIRECTORIES",
+		"GIT_COMMON_DIR",
+		"GIT_DIR",
+		"GIT_INDEX_FILE",
+		"GIT_OBJECT_DIRECTORY",
+		"GIT_PREFIX",
+		"GIT_WORK_TREE",
+	} {
+		value, ok := os.LookupEnv(key)
+		if !ok {
+			continue
+		}
+		if err := os.Unsetenv(key); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := os.Setenv(key, value); err != nil {
+				t.Errorf("restore %s: %v", key, err)
+			}
+		})
 	}
 }
 
@@ -221,7 +247,7 @@ func policyFixture(t *testing.T) string {
 	writeFile(t, root, "cmd/root.go", `rootCmd.Flags().BoolVar(&opt.Dump, "dump", false, "Dump.")`)
 	writeFile(t, root, "OPTIONS.md", "Use `--dump`.\n")
 	writeFile(t, root, "README.md", "# Test\n")
-	if err := exec.Command("git", "-C", root, "init", "--quiet").Run(); err != nil {
+	if err := gitCommand("-C", root, "init", "--quiet").Run(); err != nil {
 		t.Fatal(err)
 	}
 	trackFiles(t, root)
@@ -230,7 +256,7 @@ func policyFixture(t *testing.T) string {
 
 func trackFiles(t *testing.T, root string) {
 	t.Helper()
-	if output, err := exec.Command("git", "-C", root, "add", ".").CombinedOutput(); err != nil {
+	if output, err := gitCommand("-C", root, "add", ".").CombinedOutput(); err != nil {
 		t.Fatalf("git add: %v: %s", err, output)
 	}
 }
@@ -238,7 +264,7 @@ func trackFiles(t *testing.T, root string) {
 func runGit(t *testing.T, root string, args ...string) string {
 	t.Helper()
 	commandArgs := append([]string{"-C", root}, args...)
-	output, err := exec.Command("git", commandArgs...).CombinedOutput()
+	output, err := gitCommand(commandArgs...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v: %v: %s", args, err, output)
 	}
