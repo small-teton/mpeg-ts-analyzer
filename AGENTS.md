@@ -1,5 +1,55 @@
 # Agent guide — mpeg-ts-analyzer
 
+## Repository-local agent rules
+
+- At the start of every task, and again immediately before creating a commit,
+  check whether `local/rules/` exists. If it does, list and read every regular
+  file matching `local/rules/*` in lexical order. Treat those files as private
+  repository instructions in addition to this guide.
+- `local/` is intentionally gitignored. Never stage or force-add files under
+  `local/rules/`; they may contain machine-specific or private instructions.
+- Do not commit until all applicable repository-local rules have been followed.
+- If a repository-local rule conflicts with this file or a higher-priority
+  instruction, follow the higher-priority instruction and report the conflict
+  instead of silently ignoring either rule.
+
+## Commit identity
+
+All human commits created by an AI agent in this repository must use exactly
+`Masahiko Matsuura <matsuuram.kcy@gmail.com>` for both author and committer.
+GitHub-generated merge commits and declared bot commits may retain their real
+platform identities; an agent must never create a local commit using a bot,
+test, machine-local, former-employer, or alternate personal identity.
+
+Immediately before committing, set and verify the repository-local identity:
+
+```sh
+git config --local user.name "Masahiko Matsuura"
+git config --local user.email "matsuuram.kcy@gmail.com"
+git var GIT_AUTHOR_IDENT
+git var GIT_COMMITTER_IDENT
+```
+
+Both `git var` results must begin with the exact canonical identity. Do not use
+`git commit --author`, `GIT_AUTHOR_*`, or `GIT_COMMITTER_*` to override it.
+Immediately after committing, verify both recorded identities with:
+
+```sh
+git show -s --format='author=%an <%ae>%ncommitter=%cn <%ce>' HEAD
+```
+
+Before pushing, inspect every commit introduced by the branch relative to its
+upstream, or relative to `origin/master` when it has no upstream:
+
+```sh
+git log --format='%H  author=%an <%ae>  committer=%cn <%ce>' '@{upstream}..HEAD'
+```
+
+If any human identity differs, do not push. Correct unpublished commits,
+re-run the checks, and then run the required pre-push validation. Never rewrite
+published history for an identity repair without the repository owner's
+explicit approval and a rollback plan.
+
 ## Validate analyzer output against reference tools
 
 When you add or change any analysis (bitrate, PCR jitter, timestamps, PSI, etc.),
