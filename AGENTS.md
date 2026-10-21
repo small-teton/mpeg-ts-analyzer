@@ -51,6 +51,37 @@ coverage target.
   part of an unrelated cleanup.
 - When flags or user-visible output change, update both `README.md` and the
   annotated examples in `OPTIONS.md` in the same pull request.
+- When the JSON contract changes, update `docs/json-schema-v1.json`, the README
+  contract, the complete example in `OPTIONS.md`, and decoding/compatibility
+  tests together. Preserve the documented additive-change policy within a
+  schema version; breaking field, type, or enum-meaning changes require a
+  schema-version increment.
+
+## Pull request workflow
+
+- Before implementation and again before opening a pull request, read the full
+  linked issue and inspect recent related pull requests for established
+  behavior, terminology, documentation style, and validation expectations.
+- Open ordinary changes against `master` from a focused branch that contains no
+  unrelated work. Use a concise imperative title. Write the pull request
+  description and review replies in English.
+- Give the description enough context to review without reconstructing the
+  change from the diff. Cover the motivation, concrete behavior and design,
+  compatibility or migration impact, and the exact validation performed. For
+  user-visible or structured output, include representative real examples and
+  explain relevant output-size or resource characteristics.
+- Use `Closes #N` only when the pull request fully resolves the issue. Use
+  `Follow-up to #N` or a plain reference when it extends earlier work without
+  closing the original request.
+- Report commands and observed results accurately; do not claim checks that
+  were not run. When analyzer measurements change, include the independent
+  reference-tool comparison required above and explain any discrepancy.
+- After review fixes or scope changes, push the commits, update the pull request
+  description and validation list so they still describe the final diff, and
+  reply to review comments in English with the change and verification result.
+- Before opening or handing off a pull request, ensure the final pushed commit
+  passed `.githooks/pre-push`. Do not hand off a pull request with failing
+  required checks or an unexplained dirty worktree.
 
 ## README demo workflow
 
