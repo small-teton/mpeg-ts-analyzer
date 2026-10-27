@@ -3,7 +3,7 @@ set -euo pipefail
 
 script_dir="$(dirname "$0")"
 repo_dir="$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_PREFIX git -C "$script_dir" rev-parse --show-toplevel)"
-image="mpeg-ts-analyzer-demo:go1.26.6-alpine3.24"
+image="mpeg-ts-analyzer-demo:go1.27.3-alpine3.24"
 runtime="${DEMO_CONTAINER_RUNTIME:-}"
 
 if [[ -z "$runtime" ]]; then
