@@ -284,7 +284,7 @@ build the image and open a shell:
 
 ```bash
 container system start
-container build --file Dockerfile.dev --tag mpeg-ts-analyzer-dev .
+container build --file docker/Dockerfile --tag mpeg-ts-analyzer-dev .
 container run --rm -it \
   --volume "$PWD:/workspace" \
   --volume mpeg-ts-analyzer-go-mod:/go/pkg/mod \
