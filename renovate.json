@@ -25,13 +25,18 @@
       "groupName": "Go toolchain"
     },
     {
-      "description": "Group mise and container Go runtime pins",
+      "description": "Group the mise Go runtime pin",
       "matchManagers": [
-        "mise",
+        "mise"
+      ],
+      "groupName": "Go toolchain"
+    },
+    {
+      "description": "Group Go container image pins",
+      "matchManagers": [
         "dockerfile"
       ],
       "matchPackageNames": [
-        "go",
         "golang"
       ],
       "groupName": "Go toolchain"
