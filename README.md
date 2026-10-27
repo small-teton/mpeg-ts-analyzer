@@ -242,6 +242,72 @@ ffmpeg -f lavfi -i "color=c=red:s=320x240:d=2,format=yuv420p" \
 
 # Development
 
+## Docker development environment
+
+The development image provides the Go toolchain, FFmpeg (`ffprobe`), and TSDuck
+(`tsanalyze`, `tsbitrate`) on both amd64 and arm64 hosts. The source tree is
+bind-mounted into the container, while Go module and build caches are kept in
+named volumes.
+
+### Docker Compose
+
+Build the image and open a shell:
+
+```bash
+docker compose build dev
+docker compose run --rm dev
+```
+
+Then run the normal development commands from inside the container:
+
+```bash
+make build
+make test
+make coverage
+.githooks/pre-push
+```
+
+To run a single command without opening a shell:
+
+```bash
+docker compose run --rm dev make coverage
+```
+
+Docker Compose v2 is required. VS Code users can instead install the Dev
+Containers extension, open the repository, and select **Reopen in Container**.
+
+### Apple container
+
+[Apple container](https://github.com/apple/container) users on Apple silicon
+and macOS 26 can build the same OCI image. Start its system service once, then
+build the image and open a shell:
+
+```bash
+container system start
+container build --file Dockerfile.dev --tag mpeg-ts-analyzer-dev .
+container run --rm -it \
+  --volume "$PWD:/workspace" \
+  --volume mpeg-ts-analyzer-go-mod:/go/pkg/mod \
+  --volume mpeg-ts-analyzer-go-build:/root/.cache/go-build \
+  --workdir /workspace \
+  mpeg-ts-analyzer-dev
+```
+
+The two named cache volumes are created automatically on first use. To run one
+command without opening a shell, append it after the image name, for example:
+
+```bash
+container run --rm \
+  --volume "$PWD:/workspace" \
+  --volume mpeg-ts-analyzer-go-mod:/go/pkg/mod \
+  --volume mpeg-ts-analyzer-go-build:/root/.cache/go-build \
+  --workdir /workspace \
+  mpeg-ts-analyzer-dev make coverage
+```
+
+Apple container does not consume `compose.yaml`; the commands above mirror its
+source and cache mounts directly.
+
 ## Test & Coverage
 
 ```bash
