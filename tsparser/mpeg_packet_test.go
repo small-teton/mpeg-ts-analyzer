@@ -619,3 +619,58 @@ func TestBufferPesAnomalyParseErrorSkipped(t *testing.T) {
 		t.Errorf("no anomaly should be reported here:\n%s", out)
 	}
 }
+
+// buildPcrPacketDI is buildPcrPacket with discontinuity_indicator set.
+func buildPcrPacketDI(pid uint16, pcr uint64) []byte {
+	pkt := buildPcrPacket(pid, pcr)
+	pkt[5] |= 0x80
+	return pkt
+}
+
+func TestBufferPesMaxPcrIntervalSegments(t *testing.T) {
+	const ms = uint64(pcrTicksPerMs)
+	tests := []struct {
+		name      string
+		packets   [][]byte
+		wantMaxMs float64
+		wantCount int
+	}{
+		{
+			name: "forward jump with discontinuity_indicator",
+			packets: [][]byte{
+				buildPcrPacket(0x31, 1000*ms),
+				buildPcrPacket(0x31, 1040*ms),
+				buildPcrPacketDI(0x31, 61_040*ms),
+				buildPcrPacket(0x31, 61_080*ms),
+			},
+			wantMaxMs: 40,
+			wantCount: 2,
+		},
+		{
+			name: "wraparound",
+			packets: [][]byte{
+				buildPcrPacket(0x31, pcrWrapTicks-30*ms),
+				buildPcrPacket(0x31, 10*ms),
+			},
+			wantMaxMs: 40,
+			wantCount: 1,
+		},
+	}
+	programInfos := []ProgramInfo{{streamType: 0x1B, elementaryPid: 0x31}}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var pos int64
+			analysis, err := bufferPes(bytes.NewReader(bytes.Join(tt.packets, nil)), &pos, 0x30, 0x31, programInfos, options.Options{FailOnError: true}, 188, 0, true)
+			if err != nil {
+				t.Fatalf("bufferPes error = %v", err)
+			}
+			check := analysis.compliance.maxPcrInterval
+			if check.valueMs != tt.wantMaxMs || check.observations != tt.wantCount {
+				t.Errorf("max PCR interval = %f ms over %d intervals, want %f ms over %d", check.valueMs, check.observations, tt.wantMaxMs, tt.wantCount)
+			}
+			if check.status() != complianceOK {
+				t.Errorf("status = %s, want OK", check.status())
+			}
+		})
+	}
+}

@@ -3,7 +3,6 @@ package tsparser
 import (
 	"fmt"
 	"io"
-	"math"
 	"sort"
 
 	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
@@ -101,8 +100,7 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 	var lastPcr uint64
 	var lastPcrPos int64
 	var maxDelay float64
-	var maxPcrInterval float64
-	var pcrIntervals int
+	var pcrInterval pcrIntervalTracker
 	var pcrPtsSamples int
 	var pcrJitter PcrJitter
 	var bitrate *BitrateStats
@@ -183,12 +181,7 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 					activePes.nextPcrPos = *pos
 				}
 			}
-			// Skip PCR wrap/reset (a smaller PCR than the previous one) so the
-			// unsigned subtraction does not underflow into a huge interval.
-			if lastPcr != 0 && tsPacket.Pcr() >= lastPcr {
-				maxPcrInterval = math.Max(maxPcrInterval, float64(tsPacket.Pcr()-lastPcr))
-				pcrIntervals++
-			}
+			pcrInterval.Add(tsPacket.Pcr(), tsPacket.adaptationField.DiscontinuityIndicator())
 			lastPcr = tsPacket.Pcr()
 			lastPcrPos = *pos
 		}
@@ -261,7 +254,7 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		recordTiming(perr, pes)
 	}
 
-	report := newComplianceReport(pcrToMs(maxPcrInterval), pcrIntervals, maxDelay, pcrPtsSamples)
+	report := newComplianceReport(pcrInterval.maxMs(), pcrInterval.intervals, maxDelay, pcrPtsSamples)
 	result := &pesAnalysis{compliance: report, continuity: continuity, anomalies: anomaly}
 	if options.DumpPcrJitter {
 		result.jitter = &pcrJitter

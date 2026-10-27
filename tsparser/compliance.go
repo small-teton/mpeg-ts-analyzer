@@ -10,6 +10,55 @@ const (
 	maxPcrPtsGapLimitMs   = 1000.0
 )
 
+// pcrWrapTicks is the PCR modulus. program_clock_reference_base is a 33-bit
+// 90 kHz counter and the extension counts 0..299 at 27 MHz, so the combined
+// 27 MHz value wraps from 2^33*300-1 back to 0.
+const pcrWrapTicks = (uint64(1) << 33) * 300
+
+// pcrIntervalTracker measures the maximum interval between consecutive PCRs on
+// the selected program's PCR PID. The segment-boundary policy is:
+//
+//   - discontinuity_indicator on the current PCR packet starts a new segment;
+//     no interval is measured across a declared discontinuity, whichever way
+//     the clock jumped.
+//   - A smaller PCR within pcrDiscontinuityJumpMs of the previous one across
+//     the 2^33*300 boundary is a normal wraparound and is measured.
+//   - Any other smaller PCR is an undeclared backward reset; it has no
+//     meaningful interval, so it starts a new segment.
+//   - An undeclared forward jump is measured as is. Without a time reference
+//     it cannot be told apart from a genuinely late PCR, and either way the
+//     stream violates the 100 ms requirement.
+type pcrIntervalTracker struct {
+	prev      uint64
+	hasPrev   bool
+	maxTicks  uint64
+	intervals int
+}
+
+// Add records one PCR observation. discontinuity is the PCR packet's
+// adaptation_field discontinuity_indicator.
+func (t *pcrIntervalTracker) Add(pcr uint64, discontinuity bool) {
+	prev, hasPrev := t.prev, t.hasPrev
+	t.prev, t.hasPrev = pcr, true
+	if !hasPrev || discontinuity {
+		return
+	}
+	var delta uint64
+	if pcr >= prev {
+		delta = pcr - prev
+	} else {
+		delta = pcr + pcrWrapTicks - prev
+		if delta > pcrDiscontinuityJumpMs*pcrTicksPerMs {
+			return
+		}
+	}
+	t.maxTicks = max(t.maxTicks, delta)
+	t.intervals++
+}
+
+// maxMs returns the largest measured interval in milliseconds.
+func (t *pcrIntervalTracker) maxMs() float64 { return pcrToMs(float64(t.maxTicks)) }
+
 type complianceStatus string
 
 const (

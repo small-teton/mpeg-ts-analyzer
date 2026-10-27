@@ -59,6 +59,21 @@ Max PCR interval: SKIPPED (need at least two comparable PCR observations)
 PCR-PTS/DTS max gap: SKIPPED (need a parsed PTS/DTS bracketed by PCR observations)
 ```
 
+The maximum PCR interval is measured between consecutive PCRs on the selected
+program's PCR PID, one segment at a time:
+
+- A PCR packet with `discontinuity_indicator` starts a new segment, so no
+  interval is measured across a declared clock discontinuity, forward or
+  backward.
+- A PCR that wraps from the top of the 2^33 × 300 range back toward zero is a
+  normal interval and is measured across the wrap, as long as the wrapped
+  interval is at most 1000 ms.
+- Any other backward PCR without `discontinuity_indicator` is an undeclared
+  reset. It starts a new segment without producing an interval.
+- A forward jump without `discontinuity_indicator` is measured as is, because
+  a file has no arrival time that could distinguish it from a genuinely late
+  PCR. A large undeclared jump therefore reports `NG`.
+
 `--fail-on-error` is intended for CI. It preserves all normal output and exits
 with code 2 if either evaluated check is `NG`. Healthy and insufficient-data
 runs exit 0; usage, input, and parsing errors use exit 1.
