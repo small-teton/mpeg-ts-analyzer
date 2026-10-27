@@ -1,4 +1,4 @@
-version: 1
+version: 2
 
 project_name: mpeg-ts-analyzer
 
@@ -22,7 +22,8 @@ builds:
       - -s -w
 
 archives:
-  - format: tar.gz
+  - formats:
+      - tar.gz
     # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
       {{ .ProjectName }}_
@@ -34,7 +35,8 @@ archives:
     # use zip for windows archives
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
 
 nfpms:
   - package_name: mpeg-ts-analyzer
