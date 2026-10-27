@@ -13,7 +13,7 @@ mpeg-ts-analyzer is an MPEG-2 Transport Stream analyzer (ISO/IEC 13818-1).
 
 It parses TS packets and checks whether the stream conforms to the following requirements defined in the specification:
 
-- **Max PCR interval** should be no greater than 100 ms (ISO/IEC 13818-1, Section 2.7.2)
+- **Max PCR interval** should be no greater than 100 ms (ISO/IEC 13818-1, Section 2.7.2); intervals are not measured across a PCR that carries `discontinuity_indicator`, and a PCR wraparound is measured as a normal interval (see [OPTIONS.md](OPTIONS.md#timing-compliance-verdicts-and---fail-on-error))
 - **PCR-PTS/DTS max gap** (decode delay) should be no greater than 1000 ms; DTS is used when both timestamps are present, otherwise PTS is used
 - **PTS/DTS anomalies** — timestamps going backward, 33-bit wraparound, large forward jumps (splicing/ad insertion), or DTS later than PTS — are detected and reported (always on; silent when the stream is healthy)
 
