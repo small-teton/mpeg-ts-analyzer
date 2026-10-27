@@ -13,7 +13,8 @@
       "description": "Keep all Go runtime pins on the latest stable release",
       "matchPackageNames": [
         "go",
-        "golang"
+        "golang",
+        "golang/go"
       ],
       "rangeStrategy": "bump",
       "groupName": "Go toolchain"
