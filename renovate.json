@@ -15,30 +15,11 @@
   "packageRules": [
     {
       "description": "Keep all Go runtime pins on the latest stable release",
-      "matchManagers": [
-        "gomod"
-      ],
-      "matchDepTypes": [
+      "matchPackageNames": [
+        "go",
         "golang"
       ],
       "rangeStrategy": "bump",
-      "groupName": "Go toolchain"
-    },
-    {
-      "description": "Group the mise Go runtime pin",
-      "matchManagers": [
-        "mise"
-      ],
-      "groupName": "Go toolchain"
-    },
-    {
-      "description": "Group Go container image pins",
-      "matchManagers": [
-        "dockerfile"
-      ],
-      "matchPackageNames": [
-        "golang"
-      ],
       "groupName": "Go toolchain"
     },
     {
