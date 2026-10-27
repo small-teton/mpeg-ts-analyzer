@@ -9,23 +9,51 @@ The development image provides the Go toolchain, FFmpeg (`ffprobe`), and TSDuck
 bind-mounted into the container, while Go module and build caches are kept in
 named volumes.
 
+### How the container workspace works
+
+The container is a disposable Linux environment around the repository on your
+host. It does not contain a separate copy of the source code.
+
+| Host resource | Container path | Purpose and lifetime |
+| --- | --- | --- |
+| Repository root | `/workspace` | Read-write source mount. Changes made on either side are immediately visible on the other. |
+| Go module cache volume | `/go/pkg/mod` | Downloaded modules. Preserved after the container exits. |
+| Go build cache volume | `/root/.cache/go-build` | Compiled package cache. Preserved after the container exits. |
+| Container writable layer | Paths outside the mounts | Files created or changed at runtime are removed with the container. Tools remain available because they are stored in the image. |
+
+Commands run from `/workspace`, so generated repository files such as `out/`
+also appear in the host checkout. The `--rm` option removes the temporary
+container after its shell or command exits; it does not remove the source tree
+or named cache volumes.
+
 ### Docker Compose
 
-Build the image and open a shell:
+Docker with Compose v2 is required. Build the image, then start a temporary
+container and open its Bash shell:
 
 ```bash
 docker compose build dev
 docker compose run --rm dev
 ```
 
-Then run the normal development commands from inside the container:
+The first command downloads and installs the development tools into a reusable
+local image. Run it again after `docker/Dockerfile` changes. The second command
+uses that image to start the shell.
+
+The prompt changes to something similar to `root@abc123:/workspace#`. Commands
+entered at that prompt run inside the container:
 
 ```bash
+pwd              # /workspace
+ls               # the repository files from the host
 make build
 make test
 make coverage
 .githooks/pre-push
 ```
+
+Run `exit` or press Control-D to leave the shell. The source files and Go caches
+remain available for the next container.
 
 To run a single command without opening a shell:
 
@@ -33,8 +61,11 @@ To run a single command without opening a shell:
 docker compose run --rm dev make coverage
 ```
 
-Docker Compose v2 is required. VS Code users can instead install the Dev
-Containers extension, open the repository, and select **Reopen in Container**.
+VS Code users can instead install the Dev Containers extension, open the
+repository, and select **Reopen in Container**. After it opens, select
+**Terminal → New Terminal**; that terminal starts in `/workspace`, and the same
+`make` commands can be used there. Files edited in VS Code are the bind-mounted
+files in the host checkout.
 
 ### Apple container
 
@@ -53,8 +84,10 @@ container run --rm -it \
   mpeg-ts-analyzer-dev
 ```
 
-The two named cache volumes are created automatically on first use. To run one
-command without opening a shell, append it after the image name, for example:
+This opens the same kind of shell in `/workspace`; use `exit` or Control-D to
+leave it. The two named cache volumes are created automatically on first use.
+To run one command without opening a shell, append it after the image name, for
+example:
 
 ```bash
 container run --rm \
