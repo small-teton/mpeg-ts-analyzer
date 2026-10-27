@@ -22,7 +22,7 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Build development container
-      run: docker compose build dev
+      run: DEV_UID="$(id -u)" docker compose build dev
 
     - name: Check development tools and coverage
       run: |

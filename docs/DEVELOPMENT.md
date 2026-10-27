@@ -18,7 +18,7 @@ host. It does not contain a separate copy of the source code.
 | --- | --- | --- |
 | Repository root | `/workspace` | Read-write source mount. Changes made on either side are immediately visible on the other. |
 | Go module cache volume | `/go/pkg/mod` | Downloaded modules. Preserved after the container exits. |
-| Go build cache volume | `/root/.cache/go-build` | Compiled package cache. Preserved after the container exits. |
+| Go build cache volume | `/go/cache/go-build` | Compiled package cache. Preserved after the container exits. |
 | Container writable layer | Paths outside the mounts | Files created or changed at runtime are removed with the container. Tools remain available because they are stored in the image. |
 
 Commands run from `/workspace`, so generated repository files such as `out/`
@@ -32,16 +32,18 @@ Docker with Compose v2 is required. Build the image, then start a temporary
 container and open its Bash shell:
 
 ```bash
-docker compose build dev
+DEV_UID="$(id -u)" docker compose build dev
 docker compose run --rm dev
 ```
 
 The first command downloads and installs the development tools into a reusable
-local image. Run it again after `docker/Dockerfile` changes. The second command
-uses that image to start the shell.
+local image. It also gives the image's `developer` user the same user ID as the
+host account, so files created in the bind-mounted checkout retain the correct
+owner on Linux. Run it again after `docker/Dockerfile` changes. The second
+command uses that image to start the shell.
 
-The prompt changes to something similar to `root@abc123:/workspace#`. Commands
-entered at that prompt run inside the container:
+The prompt changes to something similar to `developer@abc123:/workspace$`.
+Commands entered at that prompt run inside the container:
 
 ```bash
 pwd              # /workspace
@@ -75,11 +77,14 @@ build the image and open a shell:
 
 ```bash
 container system start
-container build --file docker/Dockerfile --tag mpeg-ts-analyzer-dev .
+container build \
+  --build-arg USER_UID="$(id -u)" \
+  --file docker/Dockerfile \
+  --tag mpeg-ts-analyzer-dev .
 container run --rm -it \
   --volume "$PWD:/workspace" \
   --volume mpeg-ts-analyzer-go-mod:/go/pkg/mod \
-  --volume mpeg-ts-analyzer-go-build:/root/.cache/go-build \
+  --volume mpeg-ts-analyzer-go-build:/go/cache/go-build \
   --workdir /workspace \
   mpeg-ts-analyzer-dev
 ```
@@ -93,7 +98,7 @@ example:
 container run --rm \
   --volume "$PWD:/workspace" \
   --volume mpeg-ts-analyzer-go-mod:/go/pkg/mod \
-  --volume mpeg-ts-analyzer-go-build:/root/.cache/go-build \
+  --volume mpeg-ts-analyzer-go-build:/go/cache/go-build \
   --workdir /workspace \
   mpeg-ts-analyzer-dev make coverage
 ```
@@ -110,9 +115,9 @@ make test       # run all tests
 make coverage   # run tests with coverage report
 make check-demo # verify that the README GIF matches the current CLI output
 make check-docs-policy # check interface/documentation changes against origin/master
-make demo       # regenerate in Docker or Apple container
-make install    # install to $GOPATH/bin
-make uninstall  # remove from $GOPATH/bin
+make demo       # regenerate in Docker or Apple container (run on the host)
+make install    # install to $GOPATH/bin (run on the host)
+make uninstall  # remove from $GOPATH/bin (run on the host)
 make clean      # remove build/coverage artifacts
 ```
 

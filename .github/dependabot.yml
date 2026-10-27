@@ -25,6 +25,14 @@ updates:
         patterns:
           - "*"
 
+  - package-ecosystem: docker
+    directory: "/docker"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:45"
+      timezone: Asia/Tokyo
+
   - package-ecosystem: gomod
     directory: "/.github/tools"
     schedule:

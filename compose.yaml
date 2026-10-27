@@ -3,11 +3,13 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      args:
+        USER_UID: "${DEV_UID:-1000}"
     working_dir: /workspace
     volumes:
       - .:/workspace
       - go-mod-cache:/go/pkg/mod
-      - go-build-cache:/root/.cache/go-build
+      - go-build-cache:/go/cache/go-build
     stdin_open: true
     tty: true
 
