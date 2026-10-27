@@ -63,3 +63,42 @@ func TestComplianceSkipped(t *testing.T) {
 		}
 	}
 }
+
+func TestPcrIntervalTracker(t *testing.T) {
+	const ms = uint64(pcrTicksPerMs)
+	type obs struct {
+		pcr           uint64
+		discontinuity bool
+	}
+	tests := []struct {
+		name      string
+		obs       []obs
+		wantMaxMs float64
+		wantCount int
+	}{
+		{"single PCR", []obs{{27_000_000, false}}, 0, 0},
+		{"ordinary intervals", []obs{{0, false}, {40 * ms, false}, {80 * ms, false}}, 40, 2},
+		{"exact 100 ms boundary", []obs{{1000 * ms, false}, {1100 * ms, false}}, 100, 1},
+		{"forward jump with discontinuity_indicator", []obs{{0, false}, {40 * ms, false}, {10_040 * ms, true}, {10_080 * ms, false}}, 40, 2},
+		{"backward reset with discontinuity_indicator", []obs{{5000 * ms, false}, {5040 * ms, false}, {100 * ms, true}, {150 * ms, false}}, 50, 2},
+		{"wraparound", []obs{{pcrWrapTicks - 20*ms, false}, {20 * ms, false}, {60 * ms, false}}, 40, 2},
+		{"wraparound at the 1000 ms limit", []obs{{pcrWrapTicks - 600*ms, false}, {400 * ms, false}}, 1000, 1},
+		{"undeclared backward reset", []obs{{5000 * ms, false}, {5040 * ms, false}, {100 * ms, false}, {130 * ms, false}}, 40, 2},
+		{"backward beyond the wrap limit", []obs{{pcrWrapTicks - 600*ms, false}, {401 * ms, false}, {441 * ms, false}}, 40, 1},
+		{"undeclared forward jump", []obs{{0, false}, {2000 * ms, false}}, 2000, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var tracker pcrIntervalTracker
+			for _, o := range tt.obs {
+				tracker.Add(o.pcr, o.discontinuity)
+			}
+			if got := tracker.maxMs(); got != tt.wantMaxMs {
+				t.Errorf("maxMs = %f, want %f", got, tt.wantMaxMs)
+			}
+			if tracker.intervals != tt.wantCount {
+				t.Errorf("intervals = %d, want %d", tracker.intervals, tt.wantCount)
+			}
+		})
+	}
+}
