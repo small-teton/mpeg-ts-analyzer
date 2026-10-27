@@ -5,10 +5,6 @@
     ":enableVulnerabilityAlerts",
     "helpers:pinGitHubActionDigests"
   ],
-  "timezone": "Asia/Tokyo",
-  "schedule": [
-    "* * * * 1"
-  ],
   "major": {
     "dependencyDashboardApproval": true
   },
