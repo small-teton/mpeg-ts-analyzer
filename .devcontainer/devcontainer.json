@@ -1,0 +1,9 @@
+{
+  "name": "mpeg-ts-analyzer",
+  "dockerComposeFile": "../compose.yaml",
+  "service": "dev",
+  "workspaceFolder": "/workspace",
+  "remoteUser": "developer",
+  "updateRemoteUserUID": true,
+  "shutdownAction": "stopCompose"
+}

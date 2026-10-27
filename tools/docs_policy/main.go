@@ -68,8 +68,8 @@ func main() {
 
 func loadPRBody(skip bool, bodyFile, eventPath string) (string, bool, error) {
 	if skip {
-		// Dependabot owns its generated PR body, so it cannot follow the
-		// repository's human-authored pull-request template.
+		// Dependency-update bots own their generated PR bodies, so they cannot
+		// follow the repository's human-authored pull-request template.
 		return "", false, nil
 	}
 	if bodyFile != "" {
