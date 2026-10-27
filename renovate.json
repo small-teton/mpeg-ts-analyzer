@@ -1,0 +1,59 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":enableVulnerabilityAlerts",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "major": {
+    "dependencyDashboardApproval": true
+  },
+  "packageRules": [
+    {
+      "description": "Keep all Go runtime pins on the latest stable release",
+      "matchPackageNames": [
+        "go",
+        "golang",
+        "golang/go"
+      ],
+      "rangeStrategy": "bump",
+      "groupName": "Go toolchain"
+    },
+    {
+      "description": "Group application Go dependencies",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchFileNames": [
+        "/^go\\.mod$/"
+      ],
+      "matchDepTypes": [
+        "require",
+        "indirect"
+      ],
+      "groupName": "Go dependencies"
+    },
+    {
+      "description": "Group CI tool dependencies",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchFileNames": [
+        "/^\\.github\\/tools\\/go\\.mod$/"
+      ],
+      "matchDepTypes": [
+        "tool",
+        "require",
+        "indirect"
+      ],
+      "groupName": "CI tools"
+    },
+    {
+      "description": "Group GitHub Actions updates",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "GitHub Actions"
+    }
+  ]
+}
