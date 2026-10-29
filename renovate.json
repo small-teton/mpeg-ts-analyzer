@@ -3,7 +3,9 @@
   "extends": [
     "config:recommended",
     ":enableVulnerabilityAlerts",
-    "helpers:pinGitHubActionDigests"
+    "helpers:pinGitHubActionDigests",
+    ":timezone(Asia/Tokyo)",
+    "schedule:weekly"
   ],
   "major": {
     "dependencyDashboardApproval": true
@@ -18,6 +20,16 @@
       ],
       "rangeStrategy": "bump",
       "groupName": "Go toolchain"
+    },
+    {
+      "description": "Skip digest-only rebuilds of the dev and demo base images; version bumps still update the digest",
+      "matchManagers": [
+        "dockerfile"
+      ],
+      "matchUpdateTypes": [
+        "digest"
+      ],
+      "enabled": false
     },
     {
       "description": "Group application Go dependencies",
