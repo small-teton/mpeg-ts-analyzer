@@ -16,7 +16,38 @@ permissions:
 
 jobs:
 
+  # Required checks must report on every pull request, so changes that touch
+  # only the GUI skip these jobs (a skipped job counts as passing) instead of
+  # filtering the workflow by path.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.filter.outputs.go }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+
+    - name: Detect non-GUI changes
+      id: filter
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      run: |
+        if [ "$EVENT_NAME" != "pull_request" ]; then
+          echo "go=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        if git diff --name-only "$BASE_SHA" HEAD \
+          | grep -Ev '^(gui/|docs/gui/|\.github/workflows/gui\.yml$)' | grep -q .; then
+          echo "go=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "go=false" >> "$GITHUB_OUTPUT"
+        fi
+
   development-container:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -32,6 +63,8 @@ jobs:
         docker compose run --rm dev make coverage
 
   golangci-lint:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -48,6 +81,8 @@ jobs:
       run: go tool -modfile=.github/tools/go.mod golangci-lint run ./...
 
   govulncheck:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -91,6 +126,8 @@ jobs:
           }
 
   gofmt:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -111,6 +148,8 @@ jobs:
         fi
 
   readme-demo:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -124,6 +163,8 @@ jobs:
       run: make check-demo
 
   build:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -140,6 +181,8 @@ jobs:
       run: go test -v ./...
 
   coverage:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
