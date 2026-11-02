@@ -9,15 +9,29 @@ import (
 	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 )
 
-func ParseTsFile(filename string, options options.Options) error {
-	if options.Format == "" {
-		options.Format = "text"
-	}
-	if options.Format != "text" && options.Format != "json" {
+// ValidateOptions rejects option values that no output mode accepts.
+func ValidateOptions(options options.Options) error {
+	if options.Format != "" && options.Format != "text" && options.Format != "json" {
 		return fmt.Errorf("unsupported output format %q (expected text or json)", options.Format)
 	}
 	if options.Progress != "" && options.Progress != "json" {
 		return fmt.Errorf("unsupported progress format %q (expected json)", options.Progress)
+	}
+	if options.Offset < 0 {
+		return fmt.Errorf("--offset must not be negative (got %d)", options.Offset)
+	}
+	if options.Limit < 0 {
+		return fmt.Errorf("--limit must not be negative (got %d; 0 means no limit)", options.Limit)
+	}
+	return nil
+}
+
+func ParseTsFile(filename string, options options.Options) error {
+	if err := ValidateOptions(options); err != nil {
+		return err
+	}
+	if options.Format == "" {
+		options.Format = "text"
 	}
 	if options.Format == "json" {
 		return parseTsFileJSON(filename, options)

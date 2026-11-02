@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"math"
 	"os"
 	"strings"
 	"testing"
@@ -149,6 +150,40 @@ func TestParseTsFileRejectsUnknownProgressFormat(t *testing.T) {
 	err := ParseTsFile(sample188Path, options.Options{Progress: "xml"})
 	if err == nil || !strings.Contains(err.Error(), `unsupported progress format "xml"`) {
 		t.Errorf("err = %v", err)
+	}
+}
+
+func TestParseTsFileRejectsNegativeRanges(t *testing.T) {
+	for _, tt := range []struct {
+		options options.Options
+		message string
+	}{
+		{options.Options{Offset: -1}, "--offset must not be negative"},
+		{options.Options{Limit: math.MinInt64}, "--limit must not be negative"},
+		{options.Options{Format: "xml"}, `unsupported output format "xml"`},
+	} {
+		err := ParseTsFile(sample188Path, tt.options)
+		if err == nil || !strings.Contains(err.Error(), tt.message) {
+			t.Errorf("%+v: err = %v", tt.options, err)
+		}
+	}
+}
+
+// An operation that has its answer before the end of the range, such as
+// listing programs, ends with done=true while processed_bytes < total_bytes.
+func TestParseTsFileProgressEndsEarly(t *testing.T) {
+	out, _ := captureProgress(t, 0)
+	var err error
+	captureStdout(t, func() {
+		err = ParseTsFile(sample188Path, options.Options{Format: "json", Progress: "json", ListPrograms: true})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := decodeProgress(t, out)
+	last := events[len(events)-1]
+	if !last.Done || last.ProcessedBytes >= last.TotalBytes {
+		t.Errorf("final event = %+v, want done before the end of the range", last)
 	}
 }
 

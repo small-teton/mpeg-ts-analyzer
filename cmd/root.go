@@ -4,10 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 	"github.com/small-teton/mpeg-ts-analyzer/v2/tsparser"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 var opt options.Options
@@ -23,6 +25,20 @@ var rootCmd = &cobra.Command{
 	},
 	Short: "An analyzer for MPEG-2 Transport Stream (ISO/IEC 13818-1)",
 	Long:  "It can parse TS header, Adaptation Field, PSI (PAT/PMT) and PES header. It also validates continuity_counter (TS header) and CRC32 (PSI).",
+	PreRunE: func(cmd *cobra.Command, _ []string) error {
+		if opt.Capabilities {
+			var others []string
+			cmd.Flags().Visit(func(f *pflag.Flag) {
+				if f.Name != "capabilities" {
+					others = append(others, "--"+f.Name)
+				}
+			})
+			if len(others) > 0 {
+				return fmt.Errorf("--capabilities cannot be combined with %s", strings.Join(others, ", "))
+			}
+		}
+		return tsparser.ValidateOptions(opt)
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if opt.Capabilities {
 			return tsparser.WriteCapabilities(cmd.OutOrStdout(), cmd.Root().Version)

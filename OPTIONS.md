@@ -19,8 +19,8 @@ streams in `sample_data/`. See the [README](README.md) for install and usage.
 | `--fail-on-error` | off | Exit 2 when a timing compliance check is `NG`. |
 | `--list-programs` | off | List programs and stop before PES analysis. |
 | `--program` | automatic | Select one program by `program_number`. |
-| `--offset` | `0` | Start reading at a byte offset. |
-| `--limit` | `0` (unlimited) | Stop after the specified number of bytes. |
+| `--offset` | `0` | Start reading at a byte offset. Negative values are rejected. |
+| `--limit` | `0` (unlimited) | Stop after the specified number of bytes. Negative values are rejected. |
 | `--progress` | off | Write progress events to stderr (`json`). |
 | `--capabilities` | off | Print the supported machine-readable outputs as JSON and exit. |
 
@@ -218,6 +218,9 @@ $ mpeg-ts-analyzer large.ts --format json --progress json > report.json
   decreases, even when the analyzer seeks back to rediscover PAT/PMT.
 - Events are written at most every 250 ms. A final event with `"done": true`
   follows when reading ends; on failure, the normal error handling follows it.
+- `done` means the operation has ended, not that the whole range was read. An
+  operation that has its answer early, such as listing the programs of a
+  multi-program stream, ends with `processed_bytes` below `total_bytes`.
 - Lines carry a `type` field so they can be told apart from other diagnostics on
   stderr. Without `--progress`, nothing is written.
 
@@ -247,8 +250,8 @@ $ mpeg-ts-analyzer --capabilities
 
 `outputs` lists each output with its schema version; `summary` is the `--format
 json` report described above. New outputs and fields may be added; existing
-entries keep their meaning. Passing an input file together with
-`--capabilities` is an error.
+entries keep their meaning. Passing an input file or any other option together
+with `--capabilities` is an error.
 
 ## Continuity counter summary (always on)
 
