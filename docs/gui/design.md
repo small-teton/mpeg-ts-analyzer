@@ -151,6 +151,10 @@ Per program: bitrate per PID over time as steps over the CLI's windows (the
 last one may be shorter than 1 s), the program total without null packets;
 PCR jitter over time and its histogram; table of averages, 1-second peaks and
 shares of the program average.
+- Like Timeline, the bitrate and PCR jitter plots zoom, scroll and pan along
+  time only. Their Y axes are fixed: from 0 to above the highest window for
+  bitrate, symmetric around 0 for jitter, computed once per program of an
+  analysis (a reset returns to them). The histogram does not zoom or pan.
 
 ### Packets
 
