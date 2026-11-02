@@ -189,6 +189,14 @@ Language, packets per page and cached pages are laid out but not applied yet.
 
 - Fonts: Inter (UI; SemiBold for headings), JetBrains Mono (data), Phosphor
   icons. All bundled under `gui/assets/fonts/` with their licenses.
+- Japanese file names and paths use a font the OS ships, added as the last
+  fallback of every family: Hiragino Sans (or Hiragino Sans GB) on macOS; Yu Gothic, Meiryo or MS
+  Gothic on Windows; Noto Sans CJK or Droid Sans Fallback on Linux, then
+  whatever `fc-match sans-serif:lang=ja` returns (run only when none of those
+  paths can be read). Only one font is added, so Chinese and Korean text shows
+  as far as that font covers it (Noto Sans CJK covers both; Hiragino Sans does
+  not cover Hangul). Without a font, Japanese characters show as boxes; the
+  rest of the GUI is unaffected.
 - Phosphor is registered as its own font family `icons` and always selected
   explicitly (`icons::text`, `icons::font`). As a fallback font its Private Use
   Area codepoints collide with glyphs in other fonts.
@@ -238,11 +246,11 @@ Language, packets per page and cached pages are laid out but not applied yet.
 | Packets: one flat list | The PES view had no clear use; unit info is in the Unit column and detail pane | Separate PES/section list; lanes connecting packets of a unit |
 | English UI only for now | Most text is standard field names and values that are not translated | Fluent-based i18n (kept as a later option) |
 | No menu bar | Every action is reachable from the screens; a menu only duplicated them | File/View/Analyze/Tools/Help menus |
+| Japanese from an OS font at runtime, by file path (no new dependency) | No size cost; every desktop OS the GUI targets ships one; reading it (about 8 MB for Hiragino W3) adds only a file read at startup | Bundling Noto Sans CJK (10–20 MB, cannot be subset in advance because file names are arbitrary); `fontdb` (another dependency for the same lookup) |
 | Modal progress dialog during analysis | Results of every analysis screen are being replaced; one clear place to wait and cancel | Per-screen overlays while other screens stay usable |
 
 ## Open questions
 
-- Japanese file names: bundle a CJK font or load OS fonts at runtime (#98).
 - Multi-program and PMT changes need CLI support (see
   [cli-interface.md](cli-interface.md)).
 - Service names from the SDT (#92); ARIB text for Japanese broadcasts is not
