@@ -34,7 +34,7 @@ pub fn apply(ctx: &egui::Context) {
 
 /// Inter for UI text, JetBrains Mono for data, Phosphor for icons (all bundled under
 /// `assets/fonts` with their licenses). egui's default fonts stay as fallbacks, and
-/// an installed CJK font comes last so file names in any script can be shown.
+/// a Japanese font the OS ships comes last so Japanese file names can be shown.
 fn install_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
     for (name, bytes) in [
@@ -76,7 +76,7 @@ fn install_fonts(ctx: &egui::Context) {
 
     if let Some(bytes) = cjk_candidates()
         .into_iter()
-        .chain(fontconfig_cjk())
+        .chain(std::iter::once_with(fontconfig_cjk).flatten())
         .find_map(|path| std::fs::read(path).ok())
     {
         fonts.font_data.insert(
@@ -100,9 +100,10 @@ fn install_fonts(ctx: &egui::Context) {
 
 const CJK_FONT: &str = "CJK fallback";
 
-/// Fonts with Japanese, Chinese and Korean glyphs that the OS usually ships, in
-/// order of preference. The first one that can be read is used; bundling one
-/// would add 10 MB or more to the GUI. Collections (`.ttc`) use their first face.
+/// Fonts with Japanese glyphs that the OS usually ships, in order of
+/// preference. Only the first one that can be read is used, so Chinese or
+/// Korean text shows only as far as that font covers it. Bundling a font would
+/// add 10 MB or more to the GUI. Collections (`.ttc`) use their first face.
 fn cjk_candidates() -> Vec<PathBuf> {
     if cfg!(target_os = "macos") {
         [
@@ -141,8 +142,8 @@ fn cjk_candidates() -> Vec<PathBuf> {
     }
 }
 
-/// On Linux, asks fontconfig for a Japanese sans-serif font when none of the
-/// usual paths exists.
+/// On Linux, asks fontconfig for a Japanese sans-serif font. Called only when
+/// none of the usual paths can be read.
 fn fontconfig_cjk() -> Option<PathBuf> {
     if cfg!(any(target_os = "macos", windows)) {
         return None;
