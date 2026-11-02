@@ -379,7 +379,7 @@
       "properties": {
         "sections": {
           "type": "array",
-          "description": "PAT sections on PID 0x0000 and PMT sections on every PMT PID a valid PAT section announced, from the first packet of the range to the end of the scan, ordered by first occurrence. A section identical to the previous one with the same pid, table, table_id_extension, current_next_indicator and section_number is counted in that entry instead of adding one; invalid sections are counted per pid, table and invalid_reason.",
+          "description": "PAT sections on PID 0x0000 and PMT sections (table_id 0x02) on every PMT PID that the first complete PAT or an applied PAT change announced, including PMT sections sent before that PAT, from the first packet of the range to the end of the scan, ordered by first occurrence. A section identical to the previous one with the same pid, table, table_id_extension, current_next_indicator and section_number is counted in that entry instead of adding one; invalid sections are counted per pid, table and invalid_reason. An entry is a bounded summary, not a per-packet index: copies of other sections on the same PID can lie between its offset_bytes and last_offset_bytes. The packet-level sections of --output packets identify the section a packet starts.",
           "items": {
             "$ref": "#/$defs/psiSection"
           }

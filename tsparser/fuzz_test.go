@@ -228,7 +228,7 @@ func FuzzPsiTracking(f *testing.F) {
 		continuity := newContinuityCounterSummary(0x1000, pmt.pcrPid, pmt.programInfos)
 		tracker := newPsiTracker(pat, continuity, opts, tsPayloadSize, true)
 		tracker.addProgram(1, 0x1000, pmt, analyzer)
-		tracker.layout = newPsiLayoutRecorder(pat)
+		tracker.layout = newPsiLayoutRecorder()
 		var pos int64
 		if _, err := scanPrograms(bytes.NewReader(data), &pos, []*programAnalyzer{analyzer}, continuity, tracker, opts, tsPayloadSize, 0, true); err != nil {
 			return

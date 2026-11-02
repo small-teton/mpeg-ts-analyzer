@@ -269,7 +269,7 @@ func TestPsiLayoutSyntheticStream(t *testing.T) {
 }
 
 func TestObserveLeadReadError(t *testing.T) {
-	recorder := newPsiLayoutRecorder(&patTable{})
+	recorder := newPsiLayoutRecorder()
 	err := observeLead(&errReadSeeker{data: make([]byte, 376), failAt: 0}, 0, 376, recorder, options.Options{}, 188)
 	if err == nil || !strings.Contains(err.Error(), "file read error") {
 		t.Errorf("read: err = %v", err)
@@ -277,5 +277,40 @@ func TestObserveLeadReadError(t *testing.T) {
 	err = observeLead(&errReadSeeker{data: make([]byte, 376), failAt: -1, seekFailAt: 1}, 0, 376, recorder, options.Options{}, 188)
 	if err == nil || !strings.Contains(err.Error(), "file seek error") {
 		t.Errorf("seek: err = %v", err)
+	}
+}
+
+// TestPsiLayoutPmtBeforeItsPat sends the PMT on a new PID before the PAT that
+// announces it, then again; both copies are logged. A table_id 0x02 section on
+// a PID no applied PAT announced is not.
+func TestPsiLayoutPmtBeforeItsPat(t *testing.T) {
+	pmt0 := pmtSectionN(1, 0, 0, 0, 0x100, [2]uint16{0x02, 0x100})
+	pmt1 := pmtSectionN(1, 1, 0, 0, 0x100, [2]uint16{0x02, 0x100}, [2]uint16{0x03, 0x101})
+	s := newTrackingStream().start(patSectionN(0, 0, 0, [2]uint16{1, 0x1000}), map[uint16][]byte{0x1000: pmt0}, 0x1000)
+	s.pcr(0x100, 0).pes(0x100, 0)
+	s.section(0x1100, pmt1).section(0x1200, pmt1)
+	s.section(0x0000, patSectionN(1, 0, 0, [2]uint16{1, 0x1100}))
+	s.section(0x1100, pmt1)
+	s.pcr(0x100, 40).pes(0x100, 40)
+	for _, m2ts := range []bool{false, true} {
+		packetSize := int64(188)
+		if m2ts {
+			packetSize = 192
+		}
+		report, err := decodeRangeAnalysis(t, s.write(t, m2ts), options.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		checkSummary(t, "sections", sectionSummary(report.PSILayout.Sections, packetSize), strings.Join([]string{
+			"0x0000 pat applied 2 0..1 v0 0/0 cni1",
+			"0x1000 pmt applied 2 2..3 v0 0/0 cni1",
+			"0x1100 pmt applied 2 6..9 v1 0/0 cni1",
+			"0x0000 pat applied 1 8..8 v1 0/0 cni1",
+		}, "\n"))
+		checkSummary(t, "layouts", layoutSummary(report.PSILayout.Layouts, packetSize), strings.Join([]string{
+			"0..9 [] PAT v0@0 | 1 0x1000 v0@2 PCR 0x0100 0x0100:0x02",
+			"9..10 [0] PAT v1@8 | 1 0x1100 v0@2 PCR 0x0100 0x0100:0x02",
+			"10..12 [1] PAT v1@8 | 1 0x1100 v1@9 PCR 0x0100 0x0100:0x02 0x0101:0x03",
+		}, "\n"))
 	}
 }

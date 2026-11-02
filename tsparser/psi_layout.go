@@ -12,12 +12,17 @@ import (
 //
 // psiLayoutRecorder sees every packet of the range once, from the first packet
 // of the range to the end of the scan. It counts the packets of each PID and
-// logs the PAT sections on PID 0 and the PMT sections on every PMT PID that a
-// valid PAT section announced. A section identical to the previous one with
-// the same PID, table_id, table_id_extension, current_next_indicator and
-// section_number extends that entry (a run) instead of adding one, and broken
-// sections are counted per PID, table and fault, so the log grows with table
-// changes, not with retransmissions.
+// logs the PAT sections on PID 0 and the table_id 0x02 sections on any other
+// PID, from the first packet of that PID whose first section starts with
+// table_id 0x02. Which PIDs are PMT PIDs is only known at the end, because a
+// PMT may be sent on a PID before a later PAT announces it, so the report
+// keeps the PMT sections of the PIDs an applied PAT announced. A section
+// identical to the previous one with the same PID, table_id,
+// table_id_extension, current_next_indicator and section_number extends that
+// entry (a run) instead of adding one, and broken sections are counted per
+// PID, table and fault, so the log grows with table changes, not with
+// retransmissions. A run's first and last offsets bound its copies; they do
+// not say which section a packet in between carries (--output packets does).
 //
 // The layouts are not decoded again from the log: they are the first complete
 // PAT/PMT the analysis started from and the changes psiTracker applied, so they
@@ -64,21 +69,10 @@ type psiLayoutRecorder struct {
 	applied map[string]bool // section bytes of every applied table
 }
 
-// newPsiLayoutRecorder follows the PAT and the PMT PIDs of the first complete
-// PAT, so PMT sections before the first PAT section of the range are logged.
-func newPsiLayoutRecorder(pat *patTable) *psiLayoutRecorder {
+func newPsiLayoutRecorder() *psiLayoutRecorder {
 	r := &psiLayoutRecorder{byKey: make(map[psiRunKey][]*psiSectionRun), applied: make(map[string]bool)}
 	r.readers[patPidValue] = &psiSectionReader{}
-	r.follow(pat.Programs())
 	return r
-}
-
-func (r *psiLayoutRecorder) follow(programs []Program) {
-	for _, program := range programs {
-		if pid := program.PmtPid; pid != patPidValue && pid != nullPidValue && r.readers[pid] == nil {
-			r.readers[pid] = &psiSectionReader{}
-		}
-	}
 }
 
 // observe passes one packet of the range at offset pos.
@@ -92,7 +86,11 @@ func (r *psiLayoutRecorder) observe(tsPacket *TsPacket, pos int64) {
 	o.last = pos
 	reader := r.readers[pid]
 	if reader == nil {
-		return
+		if !startsPmtSection(tsPacket) {
+			return
+		}
+		reader = &psiSectionReader{}
+		r.readers[pid] = reader
 	}
 	// Damaged packets are reported by the discovery and the tracker.
 	sections, _ := reader.push(tsPacket, pos)
@@ -114,10 +112,6 @@ func (r *psiLayoutRecorder) addSection(pid uint16, section psiSectionData) {
 	key := psiRunKey{pid: pid, tableID: tableID, fault: psiSectionFault(data)}
 	if key.fault == "" {
 		key.extension, key.currentNext, key.sectionNumber = uint16(data[3])<<8|uint16(data[4]), data[5]&0x01, data[6]
-		if tableID == 0x00 {
-			pat, _ := parsePatSection(data)
-			r.follow(pat.Programs())
-		}
 	}
 	runs := r.byKey[key]
 	if n := len(runs); n > 0 && (key.fault != "" || bytes.Equal(runs[n-1].data, data)) {
@@ -129,6 +123,17 @@ func (r *psiLayoutRecorder) addSection(pid uint16, section psiSectionData) {
 	run := &psiSectionRun{key: key, pos: section.pos, last: section.pos, count: 1, data: data}
 	r.runs = append(r.runs, run)
 	r.byKey[key] = append(runs, run)
+}
+
+// startsPmtSection reports whether the first section starting in a packet has
+// table_id 0x02. PES packets never do: their payload starts with 0x00 0x00 0x01.
+func startsPmtSection(tsPacket *TsPacket) bool {
+	payload := tsPacket.Payload()
+	if !tsPacket.PayloadUnitStartIndicator() || len(payload) == 0 {
+		return false
+	}
+	at := 1 + int(payload[0])
+	return at < len(payload) && payload[at] == 0x02
 }
 
 // psiSectionFault returns why a section cannot be used, or "" for a valid one.
@@ -317,8 +322,22 @@ type pidRole struct {
 // applied changes, and attaches the section log and the observed PIDs.
 func reportPsiLayout(analysis *rangeAnalysis) *ReportPSILayout {
 	r := &ReportPSILayout{Sections: []ReportPSISection{}, Layouts: []ReportPSILayoutEntry{}, PIDs: []ReportObservedPID{}}
+	// Sections other than PAT sections are kept for the PMT PIDs of the PATs
+	// the analysis applied.
+	announced := map[uint16]bool{patPidValue: true}
+	pats := [][]Program{analysis.pat.Programs()}
+	for _, tr := range analysis.psi.transitions {
+		pats = append(pats, tr.programs)
+	}
+	for _, programs := range pats {
+		for _, program := range programs {
+			announced[program.PmtPid] = true
+		}
+	}
 	for _, run := range analysis.psi.layout.runs {
-		r.Sections = append(r.Sections, reportPsiSection(run))
+		if announced[run.key.pid] {
+			r.Sections = append(r.Sections, reportPsiSection(run))
+		}
 	}
 
 	patVersion, patPos := analysis.pat.sections[0].versionNumber, analysis.pat.pos

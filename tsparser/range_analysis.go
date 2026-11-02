@@ -50,7 +50,7 @@ func analyzeAllPrograms(reader io.ReadSeeker, pat *patTable, leadStart, programS
 	analysis.pat, analysis.leadStart, analysis.packetSize = pat, leadStart, packetSize
 	analysis.continuity = &continuityCounterSummary{counts: make(map[uint16]int), labels: make(map[uint16]string)}
 	analysis.psi = newPsiTracker(pat, analysis.continuity, options, packetSize, true)
-	analysis.psi.layout = newPsiLayoutRecorder(pat)
+	analysis.psi.layout = newPsiLayoutRecorder()
 	// Programs() already leaves out program_number 0 (the network PID).
 	for _, prog := range pat.Programs() {
 		entry := rangeProgram{program: prog, pmtPid: prog.PmtPid}
