@@ -239,6 +239,9 @@ pub struct JitterPoint {
 #[serde(default)]
 pub struct BitrateWindows {
     pub window_seconds: u32,
+    /// Length of each window; the last one is shorter when the measured
+    /// duration is not a whole number of seconds.
+    pub duration_seconds: Vec<f64>,
     pub pids: Vec<BitrateWindowPid>,
 }
 
@@ -247,6 +250,7 @@ pub struct BitrateWindows {
 pub struct BitrateWindowPid {
     pub pid: String,
     pub label: String,
+    pub bytes: Vec<u64>,
     pub bps: Vec<f64>,
 }
 
@@ -330,6 +334,10 @@ mod tests {
         let series = program.series.as_ref().expect("series");
         assert!(!series.pcr.is_empty() && !series.pes.is_empty());
         assert_eq!(series.bitrate.window_seconds, 1);
+        assert_eq!(series.bitrate.duration_seconds, [1.0, 0.76]);
+        let video = &series.bitrate.pids[1];
+        assert_eq!(video.bytes.len(), 2);
+        assert_eq!(video.bps.len(), 2);
         assert!(
             program
                 .compliance

@@ -299,6 +299,13 @@
             "pcr_gap_ms": 718.9473684210527
           },
           {
+            "pid": "0x0101",
+            "offset_bytes": 49256,
+            "elapsed_ms": 160,
+            "pts_ms": 1429.9777777777779,
+            "pcr_gap_ms": 374.8900584795322
+          },
+          {
             "pid": "0x0100",
             "offset_bytes": 55272,
             "elapsed_ms": 240,
@@ -359,18 +366,18 @@
             "pcr_gap_ms": 705.7142857142858
           },
           {
-            "pid": "0x0101",
-            "offset_bytes": 49256,
-            "elapsed_ms": 160,
-            "pts_ms": 1429.9777777777779,
-            "pcr_gap_ms": 374.8900584795322
-          },
-          {
             "pid": "0x0100",
             "offset_bytes": 83096,
             "elapsed_ms": 560,
             "pts_ms": 2160,
             "dts_ms": 2120
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 84788,
+            "elapsed_ms": 560,
+            "pts_ms": 1789.9777777777779,
+            "pcr_gap_ms": 356.39287211740043
           },
           {
             "pid": "0x0100",
@@ -433,19 +440,19 @@
             "dts_ms": 2440
           },
           {
-            "pid": "0x0101",
-            "offset_bytes": 84788,
-            "elapsed_ms": 560,
-            "pts_ms": 1789.9777777777779,
-            "pcr_gap_ms": 356.39287211740043
-          },
-          {
             "pid": "0x0100",
             "offset_bytes": 118440,
             "elapsed_ms": 880,
             "pts_ms": 2520,
             "dts_ms": 2480,
             "pcr_gap_ms": 721.5384615384614
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 119944,
+            "elapsed_ms": 880,
+            "pts_ms": 2149.9777777777776,
+            "pcr_gap_ms": 379.20854700854693
           },
           {
             "pid": "0x0100",
@@ -508,18 +515,18 @@
             "pcr_gap_ms": 706.3157894736842
           },
           {
-            "pid": "0x0101",
-            "offset_bytes": 119944,
-            "elapsed_ms": 880,
-            "pts_ms": 2149.9777777777776,
-            "pcr_gap_ms": 379.20854700854693
-          },
-          {
             "pid": "0x0100",
             "offset_bytes": 140248,
             "elapsed_ms": 1280,
             "pts_ms": 2880,
             "dts_ms": 2840
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 151152,
+            "elapsed_ms": 1280,
+            "pts_ms": 2509.9777777777776,
+            "pcr_gap_ms": 324.9292340884572
           },
           {
             "pid": "0x0100",
@@ -582,19 +589,19 @@
             "dts_ms": 3160
           },
           {
-            "pid": "0x0101",
-            "offset_bytes": 151152,
-            "elapsed_ms": 1280,
-            "pts_ms": 2509.9777777777776,
-            "pcr_gap_ms": 324.9292340884572
-          },
-          {
             "pid": "0x0100",
             "offset_bytes": 173712,
             "elapsed_ms": 1600,
             "pts_ms": 3240,
             "dts_ms": 3200,
             "pcr_gap_ms": 720.7407407407409
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 175404,
+            "elapsed_ms": 1600,
+            "pts_ms": 2869.9777777777776,
+            "pcr_gap_ms": 377.38518518518504
           },
           {
             "pid": "0x0100",
@@ -617,13 +624,6 @@
             "elapsed_ms": 1760,
             "pts_ms": 3360,
             "dts_ms": 3320
-          },
-          {
-            "pid": "0x0101",
-            "offset_bytes": 175404,
-            "elapsed_ms": 1600,
-            "pts_ms": 2869.9777777777776,
-            "pcr_gap_ms": 377.38518518518504
           },
           {
             "pid": "0x0100",
@@ -728,39 +728,68 @@
         ],
         "bitrate": {
           "window_seconds": 1,
+          "duration_seconds": [
+            1,
+            0.76
+          ],
           "pids": [
             {
               "pid": "0x0000",
               "label": "PAT",
+              "bytes": [
+                2068,
+                1316
+              ],
               "bps": [
-                16544
+                16544,
+                13852.631578947368
               ]
             },
             {
               "pid": "0x0100",
               "label": "13818-2 video or 11172-2 constrained parameter video stream",
+              "bytes": [
+                30268,
+                18988
+              ],
               "bps": [
-                242144
+                242144,
+                199873.68421052632
               ]
             },
             {
               "pid": "0x0101",
               "label": "11172 audio",
+              "bytes": [
+                9024,
+                6016
+              ],
               "bps": [
-                72192
+                72192,
+                63326.31578947369
               ]
             },
             {
               "pid": "0x1000",
               "label": "PMT",
+              "bytes": [
+                2068,
+                1316
+              ],
               "bps": [
-                16544
+                16544,
+                13852.631578947368
               ]
             },
             {
               "pid": "0x1fff",
               "label": "NULL (mux-wide)",
+              "bytes": [
+                0,
+                0
+              ],
               "bps": [
+                0,
                 0
               ]
             }
@@ -1050,6 +1079,13 @@
             "pcr_gap_ms": 718.9473684210527
           },
           {
+            "pid": "0x0103",
+            "offset_bytes": 52264,
+            "elapsed_ms": 160,
+            "pts_ms": 1429.9777777777779,
+            "pcr_gap_ms": 356.6444444444446
+          },
+          {
             "pid": "0x0102",
             "offset_bytes": 55836,
             "elapsed_ms": 240,
@@ -1110,18 +1146,18 @@
             "pcr_gap_ms": 705.7142857142858
           },
           {
-            "pid": "0x0103",
-            "offset_bytes": 52264,
-            "elapsed_ms": 160,
-            "pts_ms": 1429.9777777777779,
-            "pcr_gap_ms": 356.6444444444446
-          },
-          {
             "pid": "0x0102",
             "offset_bytes": 83660,
             "elapsed_ms": 560,
             "pts_ms": 2160,
             "dts_ms": 2120
+          },
+          {
+            "pid": "0x0103",
+            "offset_bytes": 87796,
+            "elapsed_ms": 560,
+            "pts_ms": 1789.9777777777779,
+            "pcr_gap_ms": 336.7702306079666
           },
           {
             "pid": "0x0102",
@@ -1184,19 +1220,19 @@
             "dts_ms": 2440
           },
           {
-            "pid": "0x0103",
-            "offset_bytes": 87796,
-            "elapsed_ms": 560,
-            "pts_ms": 1789.9777777777779,
-            "pcr_gap_ms": 336.7702306079666
-          },
-          {
             "pid": "0x0102",
             "offset_bytes": 119004,
             "elapsed_ms": 880,
             "pts_ms": 2520,
             "dts_ms": 2480,
             "pcr_gap_ms": 722.7450980392157
+          },
+          {
+            "pid": "0x0103",
+            "offset_bytes": 122952,
+            "elapsed_ms": 880,
+            "pts_ms": 2149.9777777777776,
+            "pcr_gap_ms": 359.78169934640505
           },
           {
             "pid": "0x0102",
@@ -1259,18 +1295,18 @@
             "pcr_gap_ms": 728.1481481481483
           },
           {
-            "pid": "0x0103",
-            "offset_bytes": 122952,
-            "elapsed_ms": 880,
-            "pts_ms": 2149.9777777777776,
-            "pcr_gap_ms": 359.78169934640505
-          },
-          {
             "pid": "0x0102",
             "offset_bytes": 147392,
             "elapsed_ms": 1280,
             "pts_ms": 2880,
             "dts_ms": 2840
+          },
+          {
+            "pid": "0x0103",
+            "offset_bytes": 154160,
+            "elapsed_ms": 1280,
+            "pts_ms": 2509.9777777777776,
+            "pcr_gap_ms": 328.23864734299514
           },
           {
             "pid": "0x0102",
@@ -1333,19 +1369,19 @@
             "dts_ms": 3160
           },
           {
-            "pid": "0x0103",
-            "offset_bytes": 154160,
-            "elapsed_ms": 1280,
-            "pts_ms": 2509.9777777777776,
-            "pcr_gap_ms": 328.23864734299514
-          },
-          {
             "pid": "0x0102",
             "offset_bytes": 174464,
             "elapsed_ms": 1600,
             "pts_ms": 3240,
             "dts_ms": 3200,
             "pcr_gap_ms": 720.7407407407409
+          },
+          {
+            "pid": "0x0103",
+            "offset_bytes": 178412,
+            "elapsed_ms": 1600,
+            "pts_ms": 2869.9777777777776,
+            "pcr_gap_ms": 359.6074074074072
           },
           {
             "pid": "0x0102",
@@ -1368,13 +1404,6 @@
             "elapsed_ms": 1760,
             "pts_ms": 3360,
             "dts_ms": 3320
-          },
-          {
-            "pid": "0x0103",
-            "offset_bytes": 178412,
-            "elapsed_ms": 1600,
-            "pts_ms": 2869.9777777777776,
-            "pcr_gap_ms": 359.6074074074072
           },
           {
             "pid": "0x0102",
@@ -1479,39 +1508,68 @@
         ],
         "bitrate": {
           "window_seconds": 1,
+          "duration_seconds": [
+            1,
+            0.76
+          ],
           "pids": [
             {
               "pid": "0x0000",
               "label": "PAT",
+              "bytes": [
+                2068,
+                1504
+              ],
               "bps": [
-                16544
+                16544,
+                15831.578947368422
               ]
             },
             {
               "pid": "0x0102",
               "label": "13818-2 video or 11172-2 constrained parameter video stream",
+              "bytes": [
+                44932,
+                20492
+              ],
               "bps": [
-                359456
+                359456,
+                215705.26315789475
               ]
             },
             {
               "pid": "0x0103",
               "label": "11172 audio",
+              "bytes": [
+                9024,
+                6016
+              ],
               "bps": [
-                72192
+                72192,
+                63326.31578947369
               ]
             },
             {
               "pid": "0x1001",
               "label": "PMT",
+              "bytes": [
+                2068,
+                1504
+              ],
               "bps": [
-                16544
+                16544,
+                15831.578947368422
               ]
             },
             {
               "pid": "0x1fff",
               "label": "NULL (mux-wide)",
+              "bytes": [
+                0,
+                0
+              ],
               "bps": [
+                0,
                 0
               ]
             }
