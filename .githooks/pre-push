@@ -43,11 +43,12 @@ fi
 echo "=== pre-push: README demo ==="
 ./docs/demo/render.sh --check || { echo "FAILED: README demo is stale"; exit 1; }
 
-# The GUI checks need a Rust toolchain, so they run only when gui/ changed.
+# The GUI checks need a Rust toolchain, so they run only when gui/ or the
+# Makefile that defines them changed.
 GUI_BASE=$(git merge-base HEAD origin/master 2>/dev/null || echo "")
-if [ -n "$GUI_BASE" ] && [ -n "$(git diff --name-only "$GUI_BASE" HEAD -- gui/)" ]; then
+if [ -n "$GUI_BASE" ] && [ -n "$(git diff --name-only "$GUI_BASE" HEAD -- gui/ Makefile)" ]; then
     echo "=== pre-push: GUI ==="
-    command -v cargo > /dev/null || { echo "FAILED: gui/ changed but cargo is not installed (see docs/DEVELOPMENT.md)"; exit 1; }
+    command -v cargo > /dev/null || { echo "FAILED: gui/ or Makefile changed but cargo is not installed (see docs/DEVELOPMENT.md)"; exit 1; }
     make gui-lint || { echo "FAILED: GUI lint"; exit 1; }
     make gui-test || { echo "FAILED: GUI test"; exit 1; }
 fi

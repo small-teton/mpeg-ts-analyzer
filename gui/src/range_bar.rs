@@ -36,11 +36,21 @@ struct Drag {
 }
 
 impl AnalysisRange {
-    /// Keeps the range inside the file.
+    /// Keeps the range inside the file. A file shorter than one packet gets
+    /// the whole file, which [`Self::is_analyzable`] then rejects.
     pub fn clamp(&mut self, file_size: u64) {
-        let max_limit = file_size.max(MIN_LIMIT);
-        self.limit = self.limit.clamp(MIN_LIMIT, max_limit);
-        self.offset = self.offset.min(file_size.saturating_sub(self.limit));
+        if file_size < MIN_LIMIT {
+            self.offset = 0;
+            self.limit = file_size;
+            return;
+        }
+        self.limit = self.limit.clamp(MIN_LIMIT, file_size);
+        self.offset = self.offset.min(file_size - self.limit);
+    }
+
+    /// Whether the file can hold a packet at all.
+    pub fn is_analyzable(file_size: u64) -> bool {
+        file_size >= MIN_LIMIT
     }
 
     /// Draws the bar. Dragging a handle resizes the range, dragging the middle
@@ -281,6 +291,8 @@ pub fn bytes(value: u64) -> String {
 mod tests {
     use super::*;
 
+    const INITIAL_TEST_LIMIT: u64 = 64 * 1024 * 1024;
+
     #[test]
     fn clamp_keeps_range_inside_file() {
         let mut range = AnalysisRange {
@@ -298,6 +310,30 @@ mod tests {
         range.clamp(5_000_000);
         assert!(range.offset + range.limit <= 5_000_000);
         assert_eq!(range.limit, 1_000_000);
+    }
+
+    #[test]
+    fn clamp_keeps_tiny_files_whole() {
+        for (file_size, analyzable) in [
+            (0, false),
+            (1, false),
+            (187, false),
+            (188, false),
+            (191, false),
+            (192, true),
+        ] {
+            let mut range = AnalysisRange {
+                offset: 50,
+                limit: INITIAL_TEST_LIMIT,
+            };
+            range.clamp(file_size);
+            assert_eq!(
+                (range.offset, range.limit),
+                (0, file_size),
+                "size {file_size}"
+            );
+            assert_eq!(AnalysisRange::is_analyzable(file_size), analyzable);
+        }
     }
 
     #[test]

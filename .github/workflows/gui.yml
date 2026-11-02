@@ -5,10 +5,12 @@ on:
     branches: [master]
     paths:
       - "gui/**"
+      - "Makefile"
       - ".github/workflows/gui.yml"
   pull_request:
     paths:
       - "gui/**"
+      - "Makefile"
       - ".github/workflows/gui.yml"
 
 permissions:

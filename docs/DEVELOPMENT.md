@@ -169,8 +169,9 @@ Editors using rust-analyzer need the GUI manifest declared, because
 { "rust-analyzer.linkedProjects": ["gui/Cargo.toml"] }
 ```
 
-The pre-push hook runs `make gui-lint` and `make gui-test` when `gui/` changed.
-In CI, the `GUI` workflow runs for changes under `gui/`; the Go jobs are
+The pre-push hook runs `make gui-lint` and `make gui-test` when `gui/` or the
+`Makefile` changed.
+In CI, the `GUI` workflow runs for changes under `gui/` and to the `Makefile`; the Go jobs are
 skipped for pull requests that change only `gui/` and `docs/gui/`.
 
 ## README demo

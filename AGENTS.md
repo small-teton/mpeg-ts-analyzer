@@ -165,7 +165,7 @@ coverage target.
   docs policy) must stay unaffected by the directory.
 - Before pushing GUI changes, `make gui-lint` (rustfmt and clippy with
   `-D warnings`) and `make gui-test` must pass; `.githooks/pre-push` runs them
-  when `gui/` changed. The Rust toolchain is pinned in `gui/rust-toolchain.toml`.
+  when `gui/` or the `Makefile` changed. The Rust toolchain is pinned in `gui/rust-toolchain.toml`.
 - Write all repository content in English, including GUI strings, comments and
   documentation.
 - GUI release tags are `gui-v*`, never `gui/v*` (Go would read the latter as a

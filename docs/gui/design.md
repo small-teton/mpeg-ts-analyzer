@@ -57,7 +57,8 @@ separate Analyze step per screen.
   inside the file but are not snapped to packets: the packet size (188 or 192)
   is unknown until the CLI has read the file, and the CLI synchronizes on
   packets itself. After Start the GUI uses the packet size and sync offset the
-  CLI reports.
+  CLI reports. A file shorter than one 192-byte packet, or one whose size cannot
+  be read, is shown with the reason and Start stays disabled.
 - **Range bar**: the whole file, with the selected range drawn between two
   handles. Drag a handle to resize, drag the middle to move, click elsewhere to
   jump there, scroll to grow or shrink the Limit. The bar shows the range size

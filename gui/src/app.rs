@@ -26,6 +26,8 @@ pub struct App {
     cli_path: PathBuf,
     input: Option<PathBuf>,
     file_size: u64,
+    /// Why the opened file cannot be analyzed, if it cannot.
+    file_problem: Option<String>,
     range: AnalysisRange,
     /// The range of the last started analysis.
     analyzed: Option<(u64, u64)>,
@@ -48,6 +50,7 @@ impl Default for App {
             cli_path: cli::locate(),
             input: None,
             file_size: mock::FILE_SIZE,
+            file_problem: None,
             range: AnalysisRange {
                 offset: 0,
                 limit: INITIAL_LIMIT,
@@ -68,7 +71,14 @@ impl Default for App {
 
 impl App {
     fn open(&mut self, path: PathBuf) {
-        self.file_size = std::fs::metadata(&path).map_or(0, |m| m.len());
+        (self.file_size, self.file_problem) = match std::fs::metadata(&path) {
+            Ok(meta) if AnalysisRange::is_analyzable(meta.len()) => (meta.len(), None),
+            Ok(meta) => (
+                meta.len(),
+                Some("The file is too small to hold a packet".to_owned()),
+            ),
+            Err(err) => (0, Some(format!("Cannot read the file: {err}"))),
+        };
         self.range = AnalysisRange {
             offset: 0,
             limit: INITIAL_LIMIT,
@@ -171,6 +181,9 @@ impl App {
                 None => ui.monospace(mock::FILE_PATH),
             };
             ui.weak(range_bar::bytes(self.file_size));
+            if let Some(problem) = &self.file_problem {
+                ui.colored_label(ui.visuals().error_fg_color, problem);
+            }
         });
         ui.horizontal(|ui| {
             ui.strong("Scan range");
@@ -180,9 +193,16 @@ impl App {
             self.range.fields(ui, self.file_size);
             let changed = self.analyzed != Some((self.range.offset, self.range.limit));
             let start = egui::Button::new((icons::text(icons::PLAY), "Start"));
+            let blocked = match &self.file_problem {
+                Some(problem) => Some(problem.as_str()),
+                None if !changed && self.analyzed.is_some() => {
+                    Some("This range is already analyzed")
+                }
+                None => None,
+            };
             if ui
-                .add_enabled(changed || self.analyzed.is_none(), start)
-                .on_disabled_hover_text("This range is already analyzed")
+                .add_enabled(blocked.is_none(), start)
+                .on_disabled_hover_text(blocked.unwrap_or_default())
                 .clicked()
             {
                 if load == Load::NeedsConfirmation {
