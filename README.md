@@ -21,7 +21,7 @@ In addition, it can dump various MPEG-2 TS internal structures for stream invest
 
 - TS header and payload
 - Adaptation field (including PCR)
-- PSI tables (PAT/PMT) with CRC32 validation
+- PSI tables (PAT/PMT) with CRC32 validation, assembled across every section of the table
 - PMT ES info descriptors (ISO 639 language, registration, AVC/HEVC video, AAC audio, teletext, DVB subtitling)
 - PES header with PTS/DTS timestamps
 - PCR jitter analysis (per-interval deviation from the expected PCR)
@@ -210,6 +210,12 @@ $ ./mpeg-ts-analyzer capture.ts --list-programs # list only the programs, even w
 ```
 
 Listing only parses each program's PMT (no PES analysis), so it stays lightweight.
+
+PAT and PMT tables split into several sections are collected completely before
+programs are listed or selected, and programs are listed in `program_number`
+order. Missing sections, inconsistent section sets, and invalid CRCs are
+reported as warnings instead of producing a partial table; see
+[OPTIONS.md](OPTIONS.md#multi-section-pat-and-pmt).
 
 **Tip:** For large files, dump options can produce a huge amount of output. Use `--limit` to restrict the byte range, or redirect output to a file to avoid losing the beginning of the output in your terminal scrollback:
 
