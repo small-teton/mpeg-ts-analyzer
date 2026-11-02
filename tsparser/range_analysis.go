@@ -49,15 +49,12 @@ func analyzeAllPrograms(reader io.ReadSeeker, patPrograms []Program, programStar
 		if _, err := reader.Seek(pos, io.SeekStart); err != nil {
 			return fmt.Errorf("file seek error: %w", err)
 		}
-		pmt := NewPmt()
-		err := BufferPsi(reader, &pos, prog.PmtPid, pmt, options, packetSize, endOffset)
-		if err == nil {
-			err = pmt.Parse()
-		}
+		pmt, diagnostics, err := acquirePmt(reader, &pos, prog.PmtPid, prog.ProgramNumber, options, packetSize, endOffset)
+		reportPsiDiagnostics(report, diagnostics)
 		if err != nil {
 			entry.err = err
 		} else {
-			entry.pmt = pmt
+			entry.pmt = pmt.Pmt
 			entry.analyzer = newProgramAnalyzer(options, pos, prog.ProgramNumber, prog.PmtPid, pmt.PcrPid(), pmt.ProgramInfos(), true)
 			analysis.continuity.addProgramLabels(prog.PmtPid, pmt.PcrPid(), pmt.ProgramInfos())
 			analyzers = append(analyzers, entry.analyzer)

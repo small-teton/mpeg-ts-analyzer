@@ -121,7 +121,6 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 }
 
 func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *AnalysisReport) error {
-	const patPid = 0x0
 	const bufSize = 65536
 	var fileOffset int64
 	patDetected := false
@@ -177,26 +176,12 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 			return fmt.Errorf("file seek error: %w", err)
 		}
 
-		// Parse PAT
-		pat := NewPat()
-		if err = BufferPsi(reader, &pos, patPid, pat, options, packetSize, endOffset); err != nil {
-			message := fmt.Sprintf("PAT buffering error: %s; retrying PAT discovery", err)
-			if report != nil {
-				report.Warnings = append(report.Warnings, ReportWarning{pos, message})
-			} else {
-				fmt.Printf("0x%08x PAT buffering error: %s, retrying PAT discovery...\n", pos, err)
-			}
+		// Collect every section of the PAT.
+		pat, diagnostics, err := acquirePat(reader, &pos, options, packetSize, endOffset)
+		reportPsiDiagnostics(report, diagnostics)
+		if err != nil {
+			reportWarning(report, pos, fmt.Sprintf("%s; retrying PAT discovery", err), fmt.Sprintf("%s, retrying PAT discovery...", err))
 			fileOffset = maxInt64(pos, readStart+patOffset+int64(packetSize))
-			continue
-		}
-		if err = pat.Parse(); err != nil {
-			message := fmt.Sprintf("PAT parse error: %s; retrying PAT discovery", err)
-			if report != nil {
-				report.Warnings = append(report.Warnings, ReportWarning{pos, message})
-			} else {
-				fmt.Printf("0x%08x PAT parse error: %s, retrying PAT discovery...\n", pos, err)
-			}
-			fileOffset = pos
 			continue
 		}
 		patDetected = true
@@ -263,26 +248,12 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 			}
 		}
 
-		// Parse PMT
-		pmt := NewPmt()
-		if err = BufferPsi(reader, &pos, pmtPid, pmt, options, packetSize, endOffset); err != nil {
-			message := fmt.Sprintf("PMT buffering error: %s; retrying PAT discovery", err)
-			if report != nil {
-				report.Warnings = append(report.Warnings, ReportWarning{pos, message})
-			} else {
-				fmt.Printf("0x%08x PMT buffering error: %s, retrying PAT discovery...\n", pos, err)
-			}
+		// Collect every section of the selected program's PMT.
+		pmt, diagnostics, err := acquirePmt(reader, &pos, pmtPid, selectedProgram, options, packetSize, endOffset)
+		reportPsiDiagnostics(report, diagnostics)
+		if err != nil {
+			reportWarning(report, pos, fmt.Sprintf("%s; retrying PAT discovery", err), fmt.Sprintf("%s, retrying PAT discovery...", err))
 			fileOffset = maxInt64(pos, readStart+patOffset+int64(packetSize))
-			continue
-		}
-		if err = pmt.Parse(); err != nil {
-			message := fmt.Sprintf("PMT parse error: %s; retrying PAT discovery", err)
-			if report != nil {
-				report.Warnings = append(report.Warnings, ReportWarning{pos, message})
-			} else {
-				fmt.Printf("0x%08x PMT parse error: %s, retrying PAT discovery...\n", pos, err)
-			}
-			fileOffset = pos
 			continue
 		}
 		programs := pmt.ProgramInfos()
@@ -303,7 +274,7 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 		var analysis *pesAnalysis
 		analysis, err = bufferPes(reader, &pos, pmtPid, pcrPid, programs, options, packetSize, endOffset, report != nil)
 		if report != nil && analysis != nil {
-			report.Programs = []ReportProgram{reportProgram(selectedProgram, pmtPid, pmt)}
+			report.Programs = []ReportProgram{reportProgram(selectedProgram, pmtPid, pmt.Pmt)}
 			report.SelectedProgramNumber = &selectedProgram
 			report.Compliance = reportCompliance(analysis.compliance)
 			report.ContinuityCounter = reportContinuity(analysis.continuity)
@@ -355,9 +326,9 @@ func listPrograms(reader io.ReadSeeker, programs []Program, start int64, options
 	for _, prog := range programs {
 		pos := start
 		_, _ = reader.Seek(pos, 0)
-		pmt := NewPmt()
-		_ = BufferPsi(reader, &pos, prog.PmtPid, pmt, options, packetSize, endOffset)
-		if err := pmt.Parse(); err != nil {
+		pmt, diagnostics, err := acquirePmt(reader, &pos, prog.PmtPid, prog.ProgramNumber, options, packetSize, endOffset)
+		reportPsiDiagnostics(report, diagnostics)
+		if err != nil {
 			if report != nil {
 				r := reportProgram(prog.ProgramNumber, prog.PmtPid, nil)
 				r.Reason = "pmt_parse_failed"
@@ -369,11 +340,29 @@ func listPrograms(reader io.ReadSeeker, programs []Program, start int64, options
 			continue
 		}
 		if report != nil {
-			report.Programs = append(report.Programs, reportProgram(prog.ProgramNumber, prog.PmtPid, pmt))
+			report.Programs = append(report.Programs, reportProgram(prog.ProgramNumber, prog.PmtPid, pmt.Pmt))
 		} else {
 			fmt.Printf("Program %d: PMT PID 0x%x, PCR PID 0x%x\n", prog.ProgramNumber, prog.PmtPid, pmt.PcrPid())
 			pmt.DumpProgramInfos(false)
 		}
+	}
+}
+
+// reportWarning records a warning in the JSON report, or prints it in text
+// mode, where some messages are worded differently.
+func reportWarning(report *AnalysisReport, pos int64, jsonMessage, textMessage string) {
+	if report != nil {
+		report.Warnings = append(report.Warnings, ReportWarning{pos, jsonMessage})
+	} else {
+		fmt.Printf("0x%08x %s\n", pos, textMessage)
+	}
+}
+
+// reportPsiDiagnostics records the problems found while collecting a PAT or
+// PMT as warnings.
+func reportPsiDiagnostics(report *AnalysisReport, diagnostics []psiDiagnostic) {
+	for _, d := range diagnostics {
+		reportWarning(report, d.pos, d.message, d.message)
 	}
 }
 
