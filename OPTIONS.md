@@ -414,7 +414,8 @@ updates on a timeline. For
   combines the two documents. The layout in effect at the packet's offset gives
   what its PID carries. For a packet that starts a section, take each entry of
   the packet's own `sections` (from `--output packets`) and look for the
-  `psi_layout.sections` entry with the packet's PID, the same
+  `psi_layout.sections` entry with the packet's PID, a matching table
+  (`table_id` 0x00 for `pat`, 0x02 for `pmt`), the same
   `table_id_extension` (`transport_stream_id` or `program_number`),
   `version_number`, `current_next_indicator`, `section_number` and
   `last_section_number`, and `offset_bytes <= offset <= last_offset_bytes`. By

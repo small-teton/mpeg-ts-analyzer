@@ -120,8 +120,11 @@ func (r *psiLayoutRecorder) addSection(pid uint16, section psiSectionData) {
 	if pid == patPidValue {
 		tableID = 0x00
 	}
-	// Other tables on these PIDs are not part of the PSI layout.
+	// Other tables on these PIDs are not part of the PSI layout, but they
+	// end a run of invalid copies: an invalid run covers only consecutive
+	// sections of the PID. Valid runs may still span them.
 	if data[0] != tableID {
+		r.latest[pid] = nil
 		return
 	}
 	if fault := psiSectionFault(data); fault != "" {

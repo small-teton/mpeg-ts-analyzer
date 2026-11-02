@@ -326,7 +326,9 @@ func lookupSections(page PacketsPage, sections []ReportPSISection, packetSize in
 		for _, header := range packet.Sections {
 			var matches []string
 			for _, s := range sections {
-				if s.PID != packet.PID || s.ReportPSISectionHeader == nil || packet.OffsetBytes < s.OffsetBytes || packet.OffsetBytes > s.LastOffsetBytes {
+				tableID := map[string]string{"pat": "0x00", "pmt": "0x02"}[s.Table]
+				if s.PID != packet.PID || s.ReportPSISectionHeader == nil || header.TableID != tableID ||
+					packet.OffsetBytes < s.OffsetBytes || packet.OffsetBytes > s.LastOffsetBytes {
 					continue
 				}
 				extension := s.TransportStreamID
@@ -435,6 +437,25 @@ func TestPsiLayoutRecorderRunBoundaries(t *testing.T) {
 		got = append(got, fmt.Sprintf("%d..%d x%d %s", run.pos, run.last, run.count, run.fault))
 	}
 	if want := "0..1 x2 |3..3 x1 |4..5 x2 malformed|6..7 x2 malformed"; strings.Join(got, "|") != want {
+		t.Errorf("runs %q, want %q", strings.Join(got, "|"), want)
+	}
+}
+
+// A section of another table on the PID ends a run of invalid copies, so two
+// identical invalid copies around it are separate entries.
+func TestPsiLayoutOtherTableEndsInvalidRuns(t *testing.T) {
+	broken := patSection([2]uint16{1, 0x1000})
+	broken[len(broken)-1] ^= 0xFF // CRC32
+	other := psiSection(0x42, 1, []byte{0x00, 0x01, 0xFF, 0xFF, 0xFF})
+	r := newPsiLayoutRecorder()
+	for i, section := range [][]byte{broken, other, broken} {
+		r.observe(parsedTsPacket(t, rawPsiPacket(0, true, uint8(i), append([]byte{0x00}, section...))), int64(i))
+	}
+	var got []string
+	for _, run := range r.runs {
+		got = append(got, fmt.Sprintf("%d..%d x%d %s", run.pos, run.last, run.count, run.fault))
+	}
+	if want := "0..0 x1 invalid_crc32|2..2 x1 invalid_crc32"; strings.Join(got, "|") != want {
 		t.Errorf("runs %q, want %q", strings.Join(got, "|"), want)
 	}
 }
