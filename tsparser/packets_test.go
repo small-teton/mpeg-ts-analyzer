@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -492,5 +493,66 @@ func TestFindUnitReadErrors(t *testing.T) {
 	// Packets after the third cannot be read and are skipped.
 	if u := findUnit(f, tp, 376, 0, int64(len(data))); !u.StartedBeforeRange || u.Position != 3 || u.NextOffsetBytes != nil {
 		t.Errorf("unit = %+v", u)
+	}
+}
+
+func TestPacketsPageAtTheEndOfTheFile(t *testing.T) {
+	info, _ := os.Stat(sample192Path)
+	size := info.Size()
+	// Without a hint, the packet size is still detected from the last packet.
+	page, err := decodePacketsPage(t, sample192Path, options.Options{Offset: size - 192, Count: 1})
+	if err != nil || page.Input.PacketSizeBytes != 192 || *page.FirstOffsetBytes != size-192 || page.TotalPackets != size/192 || len(page.Packets) != 1 || !page.Packets[0].Valid {
+		t.Errorf("last packet page = %+v %v", page, err)
+	}
+	// The terminal cursor gives an empty page.
+	page, err = decodePacketsPage(t, sample192Path, options.Options{Offset: size, Count: 1})
+	if err != nil || page.Status != "complete" || !page.EndOfFile || len(page.Packets) != 0 || page.FirstOffsetBytes != nil || page.NextOffsetBytes != nil || page.TotalPackets != size/192 {
+		t.Errorf("page at EOF = %+v %v", page, err)
+	}
+}
+
+func TestPacketsPageOfAnEmptyFile(t *testing.T) {
+	path := t.TempDir() + "/empty.ts"
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	page, err := decodePacketsPage(t, path, options.Options{Count: 100})
+	if err != nil || page.Status != "complete" || !page.EndOfFile || len(page.Packets) != 0 || page.TotalPackets != 0 || page.Input.PacketSizeBytes != 0 {
+		t.Errorf("empty file page = %+v %v", page, err)
+	}
+	if page, err := decodePacketsPage(t, path, options.Options{Count: 1, PacketSize: 204}); err == nil || !strings.Contains(page.Error, "unsupported packet size 204") {
+		t.Errorf("empty file with a bad hint = %+v %v", page, err)
+	}
+	if page, err := decodePacketDetail(t, path, options.Options{}); err == nil || !strings.Contains(page.Error, "outside the file") {
+		t.Errorf("detail of an empty file = %+v %v", page, err)
+	}
+}
+
+// adaptationOnlyPacket builds an adaptation_field_control 2 packet on pid.
+func adaptationOnlyPacket(pid uint16, cc uint8) []byte {
+	pkt := bytes.Repeat([]byte{0xFF}, 188)
+	pkt[0], pkt[1], pkt[2], pkt[3] = 0x47, byte(pid>>8), byte(pid), 0x20|cc
+	pkt[4], pkt[5] = 183, 0x00
+	return pkt
+}
+
+func TestPacketDetailSkipsPacketsWithoutPayload(t *testing.T) {
+	pesStart := []byte{0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x00, 0x00}
+	packets := [][]byte{
+		packetWithPayload(0x100, true, 0, pesStart),
+		adaptationOnlyPacket(0x100, 0),
+		packetWithPayload(0x100, false, 1, []byte{0xAA}),
+		packetWithPayload(0x100, true, 2, pesStart),
+	}
+	if u := writeDetailFixture(t, packets, options.Options{Offset: 188}).Unit; u.Kind != "none" || u.PacketsInRange != 0 {
+		t.Errorf("unit of the adaptation-only packet = %+v", u)
+	}
+	u := writeDetailFixture(t, packets, options.Options{Offset: 2 * 188}).Unit
+	if u.Kind != "pes" || u.Position != 2 || u.PacketsInRange != 2 || *u.PreviousOffsetBytes != 0 || !reflect.DeepEqual(u.HeaderPacketOffsets, []int64{0}) {
+		t.Errorf("unit of the continuation packet = %+v", u)
+	}
+	u = writeDetailFixture(t, packets, options.Options{Offset: 0}).Unit
+	if u.PacketsInRange != 2 || *u.NextOffsetBytes != 2*188 {
+		t.Errorf("unit of the first packet = %+v", u)
 	}
 }

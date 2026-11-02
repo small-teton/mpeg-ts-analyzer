@@ -274,7 +274,7 @@
       "properties": {
         "kind": {
           "type": "string",
-          "description": "Current values: pes, psi, unknown (started before the range), none (null packet)."
+          "description": "Current values: pes, psi, unknown (started before the range), none (null packet or a packet without payload)."
         },
         "first_offset_bytes": {
           "$ref": "#/$defs/offset"

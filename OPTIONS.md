@@ -346,9 +346,10 @@ $ mpeg-ts-analyzer sample_data/sample_188byte_two_programs_mpeg2_160x120_25fps_m
 ```
 
 - Request the next page with `--offset` set to `next_offset_bytes`; it is absent
-  at `end_of_file`. Paging this way visits every packet once.
-- The packet size is detected from the bytes at `--offset`; a short range may
-  be too small to tell 188 from 192, so `--packet-size` can force it. For 192-byte
+  at `end_of_file`. Paging this way visits every packet once. `--offset` equal
+  to the file size, or an empty file, gives an empty page at `end_of_file`.
+- The packet size is detected from the bytes at `--offset`, or from the last
+  64 KiB of the file near its end; `--packet-size` can force it. For 192-byte
   M2TS, offsets point at the 4-byte arrival timestamp that starts each packet.
 - A packet without a sync byte is listed with `"valid": false`. An incomplete
   last packet ends the page with a warning.
@@ -414,6 +415,9 @@ among packets of the same PID within the scan range `--range-offset` /
 can span thousands of packets, so the full member list is not returned. For a
 PES, `stream_id` and PTS/DTS come from its header, gathered across the first
 packets when the header does not fit in one (`header_packet_offsets`).
+Packets without payload, such as adaptation-field-only packets, carry no unit
+bytes: they are not counted as members, and for such a packet (or a null
+packet) `unit.kind` is `none`.
 
 ## Continuity counter summary (always on)
 

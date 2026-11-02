@@ -353,9 +353,11 @@ func pmtRows(b *fieldBuilder, at, end int, fields *[]PacketField) [][]PacketFiel
 
 // findUnit locates the PES packet or PSI section that contains the packet at
 // offset, scanning packets of the same PID within [rangeStart, rangeEnd).
+// Packets without payload, such as adaptation-field-only ones, carry no unit
+// bytes and belong to no unit.
 func findUnit(f *packetFile, tp *TsPacket, offset, rangeStart, rangeEnd int64) *PacketUnit {
 	pid := tp.Pid()
-	if pid == nullPidValue {
+	if pid == nullPidValue || len(tp.Payload()) == 0 {
 		return &PacketUnit{Kind: "none"}
 	}
 	ps := int64(f.packetSize)
@@ -365,7 +367,7 @@ func findUnit(f *packetFile, tp *TsPacket, offset, rangeStart, rangeEnd int64) *
 			return nil, nil, false
 		}
 		other, err := f.parsePacket(raw, at)
-		if err != nil || other.Pid() != pid {
+		if err != nil || other.Pid() != pid || len(other.Payload()) == 0 {
 			return nil, nil, false
 		}
 		return other, raw, true

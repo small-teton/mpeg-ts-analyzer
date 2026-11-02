@@ -71,18 +71,29 @@ type packetFile struct {
 	phase int64
 }
 
-// openPacketFile detects the packet size and packet boundaries around offset.
-// hint forces the packet size when it is 188 or 192.
-func openPacketFile(r io.ReaderAt, size, offset int64, hint int) (*packetFile, error) {
+func checkPacketSizeHint(hint int) error {
 	if hint != 0 && hint != tsPayloadSize && hint != tsPayloadSize+tpExtraHeaderSize {
-		return nil, fmt.Errorf("unsupported packet size %d (expected 188 or 192)", hint)
+		return fmt.Errorf("unsupported packet size %d (expected 188 or 192)", hint)
 	}
-	if offset < 0 || offset >= size {
+	return nil
+}
+
+// openPacketFile detects the packet size and packet boundaries around offset,
+// which may be the end of a non-empty file. hint forces the packet size when
+// it is 188 or 192.
+func openPacketFile(r io.ReaderAt, size, offset int64, hint int) (*packetFile, error) {
+	if err := checkPacketSizeHint(hint); err != nil {
+		return nil, err
+	}
+	if offset < 0 || offset > size || size == 0 {
 		return nil, fmt.Errorf("offset %d is outside the file (size %d)", offset, size)
 	}
+	// Near the end of the file, probe the packets before offset as well, so
+	// that the packet size is detected from several sync bytes.
 	const probe = 65536
-	buf := make([]byte, min(probe, size-offset))
-	n, err := r.ReadAt(buf, offset)
+	probeOffset := max(0, min(offset, size-probe))
+	buf := make([]byte, min(probe, size-probeOffset))
+	n, err := r.ReadAt(buf, probeOffset)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("file read error: %w", err)
 	}
@@ -93,9 +104,9 @@ func openPacketFile(r io.ReaderAt, size, offset int64, hint int) (*packetFile, e
 	}
 	start, ok := findSync(buf, packetSize)
 	if !ok {
-		return nil, fmt.Errorf("no TS sync byte found from offset %d", offset)
+		return nil, fmt.Errorf("no TS sync byte found from offset %d", probeOffset)
 	}
-	first := offset + int64(start)
+	first := probeOffset + int64(start)
 	return &packetFile{r: r, size: size, packetSize: packetSize, phase: first % int64(packetSize)}, nil
 }
 
@@ -192,6 +203,14 @@ func readPacketsPage(r io.ReaderAt, size int64, opts options.Options, page *Pack
 	if opts.Count <= 0 || opts.Count > maxPageCount {
 		return fmt.Errorf("--count must be between 1 and %d", maxPageCount)
 	}
+	if size == 0 && opts.Offset == 0 {
+		if err := checkPacketSizeHint(opts.PacketSize); err != nil {
+			return err
+		}
+		page.EndOfFile = true
+		page.Status = "complete"
+		return nil
+	}
 	f, err := openPacketFile(r, size, opts.Offset, opts.PacketSize)
 	if err != nil {
 		return err
@@ -199,8 +218,10 @@ func readPacketsPage(r io.ReaderAt, size int64, opts options.Options, page *Pack
 	page.Input.PacketSizeBytes = f.packetSize
 	page.TotalPackets = f.packetCount()
 	offset := f.alignUp(opts.Offset)
-	first := offset
-	page.FirstOffsetBytes = &first
+	if offset < size {
+		first := offset
+		page.FirstOffsetBytes = &first
+	}
 	for len(page.Packets) < opts.Count {
 		raw, err := f.readPacket(offset)
 		if errors.Is(err, io.EOF) {
