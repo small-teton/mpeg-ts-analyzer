@@ -91,8 +91,20 @@ jobs:
     - name: Install the toolchain from rust-toolchain.toml
       run: rustup toolchain install
 
+    - name: Set up Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: './go.mod'
+
+    # The GUI's CLI integration tests run against the CLI of the same commit.
+    - name: Build the CLI
+      working-directory: .
+      shell: bash
+      run: go build -o "$RUNNER_TEMP/mpeg-ts-analyzer$(go env GOEXE)" .
+
     - name: Build and test
-      run: cargo test --locked
+      shell: bash
+      run: MPEG_TS_ANALYZER_CLI="$RUNNER_TEMP/mpeg-ts-analyzer$(go env GOEXE)" cargo test --locked
 
   # RustSec advisories for gui/Cargo.lock. Runs on GUI changes, on every push
   # to master and weekly; a vulnerability fails the job. Unmaintained, unsound

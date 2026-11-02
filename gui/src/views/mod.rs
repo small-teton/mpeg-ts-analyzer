@@ -55,18 +55,37 @@ pub fn badge(ui: &mut egui::Ui, text: &str, verdict: Verdict) {
         });
 }
 
-/// Program choice shared by Overview, Timeline and Bitrate. Returns true when it changed.
+/// Program choice shared by Overview, Timeline and Bitrate, over the sample
+/// programs. Returns true when it changed.
 pub fn program_selector(ui: &mut egui::Ui, selected: &mut usize) -> bool {
-    let programs = crate::mock_programs::programs();
+    let labels: Vec<String> = crate::mock_programs::programs()
+        .iter()
+        .map(|p| p.label())
+        .collect();
+    program_selector_labels(ui, &labels, selected)
+}
+
+/// Program choice over the given labels. Returns true when it changed.
+pub fn program_selector_labels(ui: &mut egui::Ui, labels: &[String], selected: &mut usize) -> bool {
     let before = *selected;
+    *selected = (*selected).min(labels.len().saturating_sub(1));
     ui.label("Program");
     egui::ComboBox::from_id_salt(ui.scope_id().with("program"))
-        .selected_text(programs[*selected].label())
+        .selected_text(labels.get(*selected).map_or("none", String::as_str))
         .show_ui(ui, |ui| {
-            for (index, program) in programs.iter().enumerate() {
-                ui.selectable_value(selected, index, program.label());
+            for (index, label) in labels.iter().enumerate() {
+                ui.selectable_value(selected, index, label);
             }
         });
-    ui.weak(format!("{} programs in this range", programs.len()));
+    ui.weak(format!("{} programs in this range", labels.len()));
     *selected != before
+}
+
+/// Badge colors for a status string from the CLI.
+pub fn status_verdict(status: &str) -> Verdict {
+    match status {
+        "ok" | "complete" => Verdict::Ok,
+        "ng" | "errors" | "failed" => Verdict::Ng,
+        _ => Verdict::Warn,
+    }
 }

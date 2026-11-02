@@ -45,10 +45,6 @@ pub const AUDIO_COLOR: Color32 = Color32::from_rgb(0x7f, 0xd6, 0x8a);
 pub const PSI_COLOR: Color32 = Color32::from_rgb(0xc7, 0x92, 0xea);
 pub const LIMIT_COLOR: Color32 = Color32::from_rgb(0xff, 0x7a, 0x7a);
 
-pub const FILE_PATH: &str =
-    "~/streams/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts";
-pub const FILE_SIZE: u64 = 4_187_402_240;
-
 pub struct Check {
     pub label: &'static str,
     pub value: &'static str,

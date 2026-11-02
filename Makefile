@@ -33,8 +33,10 @@ gui-run:
 	go build -o "$(GUI_CLI)" .
 	MPEG_TS_ANALYZER_CLI="$(GUI_CLI)" cargo run --manifest-path gui/Cargo.toml
 
+# The CLI integration tests in gui/ run against the CLI built from this tree.
 gui-test:
-	cargo test --manifest-path gui/Cargo.toml --locked
+	go build -o "$(GUI_CLI)" .
+	MPEG_TS_ANALYZER_CLI="$(GUI_CLI)" cargo test --manifest-path gui/Cargo.toml --locked
 
 gui-lint:
 	cargo fmt --manifest-path gui/Cargo.toml --check
