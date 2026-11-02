@@ -4,9 +4,10 @@ Design of the desktop GUI for `mpeg-ts-analyzer`. This document describes the
 current design; [decisions](#decisions) records what was chosen and why. The
 interface between the GUI and the CLI is in [cli-interface.md](cli-interface.md).
 
-Status: screen mock-up. Overview, Timeline, Bitrate and Packets run on dummy
-data in `gui/src/mock*.rs`; no screen calls the CLI yet. Work is tracked in
-#101 (milestone GUI v0.1).
+Status: Overview, Timeline and Bitrate show the CLI's range analysis once a
+range has been analyzed; before that, and on Packets, the screens show sample
+data from `gui/src/mock*.rs`. PMT-update markers wait for the PSI layout output
+(#93). Work is tracked in #101 (milestone GUI v0.1).
 
 ## Architecture
 
@@ -26,14 +27,20 @@ data in `gui/src/mock*.rs`; no screen calls the CLI yet. Work is tracked in
 
 ### CLI discovery order
 
-1. `MPEG_TS_ANALYZER_CLI` environment variable
-2. CLI path from Settings (after v0.1, #99)
-3. CLI bundled with the GUI, located relative to the GUI executable (after
-   v0.1, #99)
+1. `MPEG_TS_ANALYZER_CLI` environment variable, when set and not empty
+2. CLI path from Settings, when not empty
+3. CLI bundled with the GUI, located relative to the GUI executable: next to it
+   (Windows install directory, Linux install prefix, macOS
+   `.app/Contents/MacOS`), in the macOS bundle's `Contents/Resources`, or under
+   `$APPDIR/usr/bin` in an AppImage; used only if the file exists
 4. `mpeg-ts-analyzer` on `PATH`
 
-The first release uses 1 and 4 only. At startup the GUI queries the CLI's
-capabilities (#89) and reports a missing or incompatible CLI.
+The first step that applies wins; the GUI does not fall through to a later
+step when that CLI turns out to be unusable, so a wrong setting is reported
+instead of silently replaced. At startup, and whenever the path in Settings
+changes, the GUI queries the CLI's capabilities (#89) and reports a missing or
+incompatible CLI. Settings shows the CLI in use, which step found it, and its
+version.
 
 On Windows the CLI is started with `CREATE_NO_WINDOW`, and the GUI binary uses
 `windows_subsystem = "windows"`, so no console window appears.
@@ -131,11 +138,18 @@ Per program, per PID:
   in the toolbar above the plots.
 - Clicking a point selects it; the side panel shows its details and "Open
   packet". Right-click offers the same actions.
+- Time is the CLI's elapsed program time (PCR time since the first PCR of the
+  program, frozen across discontinuities). Events and jitter samples, which
+  carry only a byte offset, sit at the time of the last PCR before them.
+- Series longer than 4000 points are drawn decimated, keeping each bucket's
+  minimum and maximum so spikes stay visible; picking uses every point.
 
 ### Bitrate
 
-Per program: bitrate per PID over time, total, PSI; PCR jitter over time and
-histogram; table of averages and peaks.
+Per program: bitrate per PID over time as steps over the CLI's windows (the
+last one may be shorter than 1 s), the program total without null packets;
+PCR jitter over time and its histogram; table of averages, 1-second peaks and
+shares of the program average.
 
 ### Packets
 
@@ -175,12 +189,22 @@ data is large, so the whole range is never held in memory.
 | Cached pages | 5 | Packet pages kept in memory |
 | CLI path | empty | See [CLI discovery order](#cli-discovery-order) |
 
-Settings are not persisted yet (eframe `persistence` is planned).
+Settings are saved with eframe's `persistence` feature when the GUI exits and
+loaded at startup; fields missing from an older save take their defaults.
+Language, packets per page and cached pages are laid out but not applied yet.
 
 ## Look and feel
 
 - Fonts: Inter (UI; SemiBold for headings), JetBrains Mono (data), Phosphor
   icons. All bundled under `gui/assets/fonts/` with their licenses.
+- Japanese file names and paths use a font the OS ships, added as the last
+  fallback of every family: Hiragino Sans (or Hiragino Sans GB) on macOS; Yu Gothic, Meiryo or MS
+  Gothic on Windows; Noto Sans CJK or Droid Sans Fallback on Linux, then
+  whatever `fc-match sans-serif:lang=ja` returns (run only when none of those
+  paths can be read). Only one font is added, so Chinese and Korean text shows
+  as far as that font covers it (Noto Sans CJK covers both; Hiragino Sans does
+  not cover Hangul). Without a font, Japanese characters show as boxes; the
+  rest of the GUI is unaffected.
 - Phosphor is registered as its own font family `icons` and always selected
   explicitly (`icons::text`, `icons::font`). As a fallback font its Private Use
   Area codepoints collide with glyphs in other fonts.
@@ -230,11 +254,11 @@ Settings are not persisted yet (eframe `persistence` is planned).
 | Packets: one flat list | The PES view had no clear use; unit info is in the Unit column and detail pane | Separate PES/section list; lanes connecting packets of a unit |
 | English UI only for now | Most text is standard field names and values that are not translated | Fluent-based i18n (kept as a later option) |
 | No menu bar | Every action is reachable from the screens; a menu only duplicated them | File/View/Analyze/Tools/Help menus |
+| Japanese from an OS font at runtime, by file path (no new dependency) | No size cost; every desktop OS the GUI targets ships one; reading it (about 8 MB for Hiragino W3) adds only a file read at startup | Bundling Noto Sans CJK (10–20 MB, cannot be subset in advance because file names are arbitrary); `fontdb` (another dependency for the same lookup) |
 | Modal progress dialog during analysis | Results of every analysis screen are being replaced; one clear place to wait and cancel | Per-screen overlays while other screens stay usable |
 
 ## Open questions
 
-- Japanese file names: bundle a CJK font or load OS fonts at runtime (#98).
 - Multi-program and PMT changes need CLI support (see
   [cli-interface.md](cli-interface.md)).
 - Service names from the SDT (#92); ARIB text for Japanese broadcasts is not
