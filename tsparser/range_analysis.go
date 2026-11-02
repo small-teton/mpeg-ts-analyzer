@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"fmt"
 	"io"
-	"os"
 	"slices"
 
 	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
@@ -307,13 +306,4 @@ func optionalFloat(value float64, ok bool) *float64 {
 		return nil
 	}
 	return &value
-}
-
-// fileSize returns the size of an open file, or 0 when it cannot be read.
-func fileSize(file *os.File) int64 {
-	info, err := file.Stat()
-	if err != nil {
-		return 0
-	}
-	return info.Size()
 }

@@ -374,17 +374,6 @@ func TestRangeAnalysisReaderErrors(t *testing.T) {
 	}
 }
 
-func TestFileSizeOfClosedFile(t *testing.T) {
-	f, err := os.CreateTemp(t.TempDir(), "size")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = f.Close()
-	if got := fileSize(f); got != 0 {
-		t.Errorf("fileSize(closed) = %d, want 0", got)
-	}
-}
-
 // A PCR of zero is a valid clock value (a stream starting at zero, or after
 // the 42-bit wrap), so a PES after it still has a reference time.
 func TestRangeAnalysisPcrOfZero(t *testing.T) {
