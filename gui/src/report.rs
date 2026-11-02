@@ -177,8 +177,24 @@ pub struct TimestampAnomaly {
 pub struct PcrJitter {
     pub status: String,
     pub reason: Option<String>,
+    pub sample_count: u64,
+    pub segment_count: u64,
+    pub measured_sample_count: u64,
     pub max_jitter_ns: Option<f64>,
+    pub max_jitter_offset_bytes: Option<u64>,
     pub min_jitter_ns: Option<f64>,
+    pub min_jitter_offset_bytes: Option<u64>,
+    pub average_absolute_jitter_ns: Option<f64>,
+    pub within_500ns_percent: Option<f64>,
+    pub discontinuities: Vec<PcrDiscontinuity>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PcrDiscontinuity {
+    pub offset_bytes: u64,
+    pub jump_ms: f64,
+    pub from_segment: u64,
+    pub to_segment: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -186,6 +202,7 @@ pub struct Bitrate {
     pub status: String,
     pub reason: Option<String>,
     pub duration_seconds: f64,
+    pub segment_count: u64,
     pub pids: Vec<BitratePid>,
     pub null_pid: Option<BitratePid>,
     pub program_average_bps: f64,
@@ -370,12 +387,32 @@ mod tests {
             .as_object_mut()
             .unwrap()
             .remove("file_size_bytes");
+        let mut jitter_missing: serde_json::Value = serde_json::from_str(valid).unwrap();
+        jitter_missing["programs"][0]["pcr_jitter"]
+            .as_object_mut()
+            .unwrap()
+            .remove("sample_count");
+        let mut bitrate_missing: serde_json::Value = serde_json::from_str(valid).unwrap();
+        bitrate_missing["programs"][0]["bitrate"]
+            .as_object_mut()
+            .unwrap()
+            .remove("segment_count");
         for (name, document, expected) in [
             ("empty object", "{}".to_owned(), "Unreadable"),
             ("missing programs", missing.to_string(), "Unreadable"),
             (
                 "missing input field",
                 input_missing.to_string(),
+                "Unreadable",
+            ),
+            (
+                "missing jitter field",
+                jitter_missing.to_string(),
+                "Unreadable",
+            ),
+            (
+                "missing bitrate field",
+                bitrate_missing.to_string(),
                 "Unreadable",
             ),
             ("summary output", other_output.to_string(), "Unsupported"),
