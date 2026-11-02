@@ -165,15 +165,17 @@ func acquireTable[T any](reader io.Reader, pos *int64, pid uint16, assembler *ps
 		}
 		*pos += int64(size)
 
-		if tsPacket.Pid() != pid || len(tsPacket.Payload()) == 0 {
+		if tsPacket.Pid() != pid {
 			continue
 		}
 		if table != nil {
-			if tsPacket.PayloadUnitStartIndicator() {
+			if tsPacket.PayloadUnitStartIndicator() && len(tsPacket.Payload()) > 0 {
 				return table, nil
 			}
 			continue
 		}
+		// Packets without payload go to the reader too: one marked with a
+		// transport error must still discard the section in progress.
 		sections, problems := sectionReader.push(tsPacket, packetPos)
 		for _, problem := range problems {
 			assembler.diagnostics = append(assembler.diagnostics, psiDiagnostic{packetPos, assembler.name + ": " + problem})
