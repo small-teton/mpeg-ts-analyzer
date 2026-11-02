@@ -2,28 +2,28 @@ use std::path::PathBuf;
 
 use eframe::egui;
 
-use crate::cli;
+use crate::cli::{self, AnalysisJob, JobUpdate};
 use crate::icons;
-use crate::mock;
 use crate::range_bar::{self, AnalysisRange, Load};
+use crate::report::{AnalysisReport, ProgressEvent};
 use crate::settings::Settings;
 use crate::views::{Screen, bitrate, overview, packets::PacketsView, timeline::TimelineView};
 
 /// Range selected when a file is opened: small enough to analyze quickly.
 const INITIAL_LIMIT: u64 = 64 * 1024 * 1024;
 
-/// How long the mock analysis takes, to show the progress dialog.
-const MOCK_ANALYSIS_SECONDS: f32 = 3.0;
-
 /// An analysis in progress.
 struct Running {
+    job: AnalysisJob,
     offset: u64,
     limit: u64,
     started: std::time::Instant,
+    progress: Option<ProgressEvent>,
 }
 
 pub struct App {
-    cli_path: PathBuf,
+    /// The CLI if it passed the capabilities check, or why it did not.
+    cli: Result<cli::Cli, String>,
     input: Option<PathBuf>,
     file_size: u64,
     /// Why the opened file cannot be analyzed, if it cannot.
@@ -34,6 +34,10 @@ pub struct App {
     /// Start was pressed for a range large enough to ask first.
     confirm_start: bool,
     running: Option<Running>,
+    /// Result of the last completed analysis; the screens show sample data until then.
+    analysis: Option<Box<AnalysisReport>>,
+    /// Message for the error dialog.
+    error: Option<String>,
     screen: Screen,
     /// Program shown by Overview, Timeline and Bitrate.
     program: usize,
@@ -47,9 +51,9 @@ pub struct App {
 impl Default for App {
     fn default() -> Self {
         Self {
-            cli_path: cli::locate(),
+            cli: cli::check(&cli::locate()),
             input: None,
-            file_size: mock::FILE_SIZE,
+            file_size: 0,
             file_problem: None,
             range: AnalysisRange {
                 offset: 0,
@@ -58,6 +62,8 @@ impl Default for App {
             analyzed: None,
             confirm_start: false,
             running: None,
+            analysis: None,
+            error: None,
             screen: Screen::Overview,
             program: 0,
             timeline: TimelineView::default(),
@@ -84,6 +90,7 @@ impl App {
             limit: INITIAL_LIMIT,
         };
         self.analyzed = None;
+        self.analysis = None;
         self.input = Some(path);
     }
 
@@ -104,28 +111,69 @@ impl App {
         )
     }
 
-    fn start(&mut self) {
-        self.running = Some(Running {
-            offset: self.range.offset,
-            limit: self.range.limit,
-            started: std::time::Instant::now(),
-        });
+    fn start(&mut self, ctx: &egui::Context) {
+        let (Ok(cli), Some(input)) = (&self.cli, &self.input) else {
+            return;
+        };
+        let repaint = {
+            let ctx = ctx.clone();
+            move || ctx.request_repaint()
+        };
+        match AnalysisJob::start(cli, input, self.range.offset, self.range.limit, repaint) {
+            Ok(job) => {
+                self.running = Some(Running {
+                    job,
+                    offset: self.range.offset,
+                    limit: self.range.limit,
+                    started: std::time::Instant::now(),
+                    progress: None,
+                });
+            }
+            Err(err) => self.error = Some(err),
+        }
+    }
+
+    /// Takes in the analysis result once the CLI has finished.
+    fn poll_analysis(&mut self) {
+        let Some(running) = &mut self.running else {
+            return;
+        };
+        match running.job.poll() {
+            JobUpdate::Running(progress) => running.progress = progress.or(running.progress.take()),
+            JobUpdate::Finished(Ok(report)) if report.status == "failed" => {
+                self.error = Some(
+                    report
+                        .error
+                        .or(report.reason)
+                        .unwrap_or_else(|| "The analysis failed.".to_owned()),
+                );
+                self.running = None;
+            }
+            JobUpdate::Finished(Ok(report)) => {
+                self.analyzed = Some((running.offset, running.limit));
+                self.program = self.program.min(report.programs.len().saturating_sub(1));
+                self.analysis = Some(report);
+                self.running = None;
+            }
+            JobUpdate::Finished(Err(err)) => {
+                self.error = Some(err);
+                self.running = None;
+            }
+        }
     }
 
     /// Progress dialog over a grayed-out window while the range is analyzed.
-    /// The mock advances on a timer; the real one follows the CLI's progress events.
     fn analysis_dialog(&mut self, ctx: &egui::Context) {
         let Some(running) = &self.running else {
             return;
         };
         let elapsed = running.started.elapsed();
-        let progress = (elapsed.as_secs_f32() / MOCK_ANALYSIS_SECONDS).min(1.0);
-        if progress >= 1.0 {
-            self.analyzed = Some((running.offset, running.limit));
-            self.running = None;
-            return;
-        }
         let (offset, limit) = (running.offset, running.limit);
+        let progress = running
+            .progress
+            .as_ref()
+            .filter(|p| p.total_bytes > 0)
+            .map(|p| (p.processed_bytes, p.total_bytes));
         let mut cancel = false;
         // Clicking the backdrop or pressing Escape does not dismiss it; only Cancel does.
         egui::Modal::new(egui::Id::unique("analysis_progress")).show(ctx, |ui| {
@@ -138,19 +186,29 @@ impl App {
                 range_bar::bytes(offset + limit)
             ));
             ui.add_space(8.0);
-            ui.add(
-                egui::ProgressBar::new(progress)
-                    .show_percentage()
-                    .animate(true),
-            );
-            ui.add_space(4.0);
-            ui.weak(format!(
-                "{} of {} · {:02}:{:02}",
-                range_bar::human_size((limit as f32 * progress) as u64),
-                range_bar::human_size(limit),
+            let clock = format!(
+                "{:02}:{:02}",
                 elapsed.as_secs() / 60,
                 elapsed.as_secs() % 60
-            ));
+            );
+            match progress {
+                Some((processed, total)) => {
+                    let fraction = processed as f32 / total as f32;
+                    ui.add(egui::ProgressBar::new(fraction).show_percentage());
+                    ui.add_space(4.0);
+                    ui.weak(format!(
+                        "{} of {} · {clock}",
+                        range_bar::human_size(processed),
+                        range_bar::human_size(total)
+                    ));
+                }
+                None => {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.weak(format!("Starting… {clock}"));
+                    });
+                }
+            }
             ui.add_space(10.0);
             ui.vertical_centered(|ui| {
                 if ui.button("Cancel").clicked() {
@@ -159,10 +217,32 @@ impl App {
             });
         });
         if cancel {
+            running.job.cancel();
             // The previous result, if any, stays as it was.
             self.running = None;
         }
-        ctx.request_repaint();
+        // Keeps the elapsed time moving between progress events.
+        ctx.request_repaint_after(std::time::Duration::from_millis(250));
+    }
+
+    fn error_dialog(&mut self, ctx: &egui::Context) {
+        let Some(message) = &self.error else {
+            return;
+        };
+        let mut close = false;
+        let modal = egui::Modal::new(egui::Id::unique("error")).show(ctx, |ui| {
+            ui.set_width(420.0);
+            ui.heading("Analysis failed");
+            ui.add_space(4.0);
+            ui.label(message);
+            ui.add_space(8.0);
+            if ui.button("OK").clicked() {
+                close = true;
+            }
+        });
+        if close || modal.should_close() {
+            self.error = None;
+        }
     }
 
     /// File, then the byte range to analyze, then Start.
@@ -177,14 +257,22 @@ impl App {
                 self.pick_file();
             }
             match &self.input {
-                Some(path) => ui.monospace(path.display().to_string()),
-                None => ui.monospace(mock::FILE_PATH),
-            };
-            ui.weak(range_bar::bytes(self.file_size));
-            if let Some(problem) = &self.file_problem {
-                ui.colored_label(ui.visuals().error_fg_color, problem);
+                Some(path) => {
+                    ui.monospace(path.display().to_string());
+                    ui.weak(range_bar::bytes(self.file_size));
+                    if let Some(problem) = &self.file_problem {
+                        ui.colored_label(ui.visuals().error_fg_color, problem);
+                    }
+                }
+                None => {
+                    ui.weak("Open a file or drop it here.");
+                }
             }
         });
+        if self.input.is_none() {
+            ui.add_space(6.0);
+            return;
+        }
         ui.horizontal(|ui| {
             ui.strong("Scan range");
             let controls_width = 470.0;
@@ -193,22 +281,21 @@ impl App {
             self.range.fields(ui, self.file_size);
             let changed = self.analyzed != Some((self.range.offset, self.range.limit));
             let start = egui::Button::new((icons::text(icons::PLAY), "Start"));
-            let blocked = match &self.file_problem {
-                Some(problem) => Some(problem.as_str()),
-                None if !changed && self.analyzed.is_some() => {
-                    Some("This range is already analyzed")
-                }
-                None => None,
+            let why_not = match (&self.cli, &self.file_problem) {
+                (Err(err), _) => Some(err.as_str()),
+                (Ok(_), Some(problem)) => Some(problem.as_str()),
+                (Ok(_), None) if !changed => Some("This range is already analyzed"),
+                (Ok(_), None) => None,
             };
             if ui
-                .add_enabled(blocked.is_none(), start)
-                .on_disabled_hover_text(blocked.unwrap_or_default())
+                .add_enabled(why_not.is_none(), start)
+                .on_disabled_hover_text(why_not.unwrap_or_default())
                 .clicked()
             {
                 if load == Load::NeedsConfirmation {
                     self.confirm_start = true;
                 } else {
-                    self.start();
+                    self.start(ui.ctx());
                 }
             }
         });
@@ -255,7 +342,7 @@ impl App {
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if ui.button((icons::text(icons::PLAY), "Analyze")).clicked() {
-                    self.start();
+                    self.start(ctx);
                     self.confirm_start = false;
                 }
                 if ui.button("Cancel").clicked() {
@@ -291,21 +378,24 @@ impl eframe::App for App {
             self.open(path);
         }
 
+        self.poll_analysis();
         egui::Panel::top("top_bar").show(ui, |ui| self.top_bar(ui));
         egui::Panel::bottom("status").show(ui, |ui| {
             ui.horizontal(|ui| {
-                match self.analyzed {
-                    Some((offset, limit)) => ui.weak(format!(
-                        "Analyzed {} – {} (mock data)",
+                match (&self.analysis, self.analyzed) {
+                    (Some(report), Some((offset, limit))) => ui.weak(format!(
+                        "Analyzed {} – {} · {}-byte packets",
                         range_bar::bytes(offset),
-                        range_bar::bytes(offset + limit)
+                        range_bar::bytes(offset + limit),
+                        report.input.packet_size_bytes.unwrap_or(188)
                     )),
-                    None => {
-                        ui.weak("Choose a range and press Start. Analysis screens show mock data.")
-                    }
+                    _ => ui.weak("Screens show sample data until a range is analyzed."),
                 };
                 ui.separator();
-                ui.weak(format!("CLI: {}", self.cli_path.display()));
+                match &self.cli {
+                    Ok(cli) => ui.weak(format!("CLI {} · {}", cli.version, cli.path.display())),
+                    Err(err) => ui.colored_label(ui.visuals().warn_fg_color, err),
+                };
             });
         });
         egui::Panel::left("navigation")
@@ -314,7 +404,10 @@ impl eframe::App for App {
             .show(ui, |ui| self.navigation(ui));
         egui::CentralPanel::default().show(ui, |ui| {
             let navigate = match self.screen {
-                Screen::Overview => overview::show(ui, &mut self.program),
+                Screen::Overview => match &self.analysis {
+                    Some(report) => overview::show_report(ui, report, &mut self.program),
+                    None => overview::show(ui, &mut self.program),
+                },
                 Screen::Timeline => self.timeline.show(ui, &mut self.program),
                 Screen::Bitrate => {
                     bitrate::show(ui, &mut self.program);
@@ -335,6 +428,7 @@ impl eframe::App for App {
         self.about_window(&ctx);
         self.confirm_start_dialog(&ctx);
         self.analysis_dialog(&ctx);
+        self.error_dialog(&ctx);
     }
 }
 

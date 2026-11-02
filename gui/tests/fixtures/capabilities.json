@@ -1,0 +1,29 @@
+{
+  "capabilities_version": "1.0",
+  "cli_version": "2.3.0",
+  "outputs": [
+    {
+      "name": "summary",
+      "format": "json",
+      "schema_version": "1.0"
+    },
+    {
+      "name": "analysis",
+      "format": "json",
+      "schema_version": "1.0"
+    },
+    {
+      "name": "packets",
+      "format": "json",
+      "schema_version": "1.0"
+    },
+    {
+      "name": "packet",
+      "format": "json",
+      "schema_version": "1.0"
+    }
+  ],
+  "progress_formats": [
+    "json"
+  ]
+}

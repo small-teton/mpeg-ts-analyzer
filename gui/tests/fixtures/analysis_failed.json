@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "output": "analysis",
+  "input": {
+    "path": "sample_data/sample_188byte_two_programs_mpeg2_160x120_25fps_mp2.ts",
+    "file_size_bytes": 0,
+    "offset_bytes": 0
+  },
+  "status": "failed",
+  "reason": "incompatible_options",
+  "error": "--output analysis covers every program and cannot be combined with --program, --list-programs or --fail-on-error",
+  "continuity_events": [],
+  "programs": [],
+  "warnings": []
+}

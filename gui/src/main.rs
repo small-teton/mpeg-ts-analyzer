@@ -8,6 +8,7 @@ mod mock;
 mod mock_packets;
 mod mock_programs;
 mod range_bar;
+mod report;
 mod settings;
 mod theme;
 mod views;
