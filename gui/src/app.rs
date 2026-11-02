@@ -9,7 +9,7 @@ use crate::range_bar::{self, AnalysisRange, Load};
 use crate::report::{AnalysisReport, ProgressEvent};
 use crate::settings::Settings;
 use crate::views::packet_pages::PacketPages;
-use crate::views::{Screen, bitrate, overview, packets::PacketsView, timeline::TimelineView};
+use crate::views::{Screen, bitrate, overview, timeline::TimelineView};
 
 /// Range selected when a file is opened: small enough to analyze quickly.
 const INITIAL_LIMIT: u64 = 64 * 1024 * 1024;
@@ -47,7 +47,7 @@ pub struct App {
     /// Start was pressed for a range large enough to ask first.
     confirm_start: bool,
     running: Option<Running>,
-    /// Result of the last completed analysis; the screens show sample data until then.
+    /// Result of the last completed analysis; the screens show an empty state until then.
     analysis: Option<Box<AnalysisReport>>,
     /// Plot series of `analysis`, derived once rather than every frame.
     plots: Option<Plots>,
@@ -61,7 +61,6 @@ pub struct App {
     /// Program shown by Overview, Timeline and Bitrate.
     program: usize,
     timeline: TimelineView,
-    packets: PacketsView,
     settings: Settings,
     settings_open: bool,
     about_open: bool,
@@ -107,7 +106,6 @@ impl App {
             screen: Screen::Overview,
             program: 0,
             timeline: TimelineView::default(),
-            packets: PacketsView::default(),
             settings,
             settings_open: false,
             about_open: false,
@@ -498,7 +496,7 @@ impl eframe::App for App {
                         range_bar::bytes(offset + limit),
                         report.input.packet_size_bytes.unwrap_or(188)
                     )),
-                    _ => ui.weak("Screens show sample data until a range is analyzed."),
+                    _ => ui.weak("Not analyzed yet"),
                 };
                 ui.separator();
                 match &self.cli {
@@ -512,39 +510,53 @@ impl eframe::App for App {
             .exact_size(96.0)
             .show(ui, |ui| self.navigation(ui));
         egui::CentralPanel::default().show(ui, |ui| {
-            let navigate = match self.screen {
-                Screen::Overview => match &self.analysis {
-                    Some(report) => overview::show_report(ui, report, &mut self.program),
-                    None => overview::show(ui, &mut self.program),
-                },
-                Screen::Timeline => match (&self.analysis, &self.plots) {
-                    (Some(report), Some(plots)) => self.timeline.show_report(
+            let navigate = match (&self.analysis, &self.plots) {
+                (Some(report), Some(plots)) => match self.screen {
+                    Screen::Overview => overview::show_report(ui, report, &mut self.program),
+                    Screen::Timeline => self.timeline.show_report(
                         ui,
                         report,
                         &plots.timelines,
                         self.analysis_generation,
                         &mut self.program,
                     ),
-                    _ => self.timeline.show(ui, &mut self.program),
-                },
-                Screen::Bitrate => {
-                    match (&self.analysis, &self.plots) {
-                        (Some(report), Some(plots)) => bitrate::show_report(
+                    Screen::Bitrate => {
+                        bitrate::show_report(
                             ui,
                             report,
                             &plots.bitrates,
                             self.analysis_generation,
                             &mut self.program,
-                        ),
-                        _ => bitrate::show(ui, &mut self.program),
+                        );
+                        None
                     }
-                    None
-                }
-                Screen::Packets => {
-                    match (&self.cli, &mut self.packet_pages) {
-                        (Ok(cli), Some(pages)) if cli.packet_outputs => pages.show(ui, cli),
-                        _ => self.packets.show(ui),
+                    Screen::Packets => {
+                        match (&self.cli, &mut self.packet_pages) {
+                            (Ok(cli), Some(pages)) if cli.packet_outputs => pages.show(ui, cli),
+                            (Ok(_), Some(_)) => empty_state(
+                                ui,
+                                "Packets are not available",
+                                "This CLI cannot page packets (--output packets). Choose a newer CLI in Settings.",
+                            ),
+                            (Err(err), _) => empty_state(ui, "Packets are not available", err),
+                            (Ok(_), None) => empty_state(
+                                ui,
+                                "Packets are not available",
+                                "Packet paging was not set up for this analysis. Press Start again.",
+                            ),
+                        }
+                        None
                     }
+                },
+                _ => {
+                    // Say what actually blocks Start: the CLI, the file, or nothing.
+                    let hint = match (&self.cli, &self.input, &self.file_problem) {
+                        (Err(err), _, _) => err.as_str(),
+                        (Ok(_), None, _) => "Open a file, choose the scan range and press Start.",
+                        (Ok(_), Some(_), Some(_)) => "This file cannot be analyzed. Open another MPEG-TS file.",
+                        (Ok(_), Some(_), None) => "Choose the scan range and press Start.",
+                    };
+                    empty_state(ui, "Not analyzed yet", hint);
                     None
                 }
             };
@@ -575,6 +587,17 @@ impl eframe::App for App {
         self.analysis_dialog(&ctx);
         self.error_dialog(&ctx);
     }
+}
+
+/// What a screen shows when it has nothing to show: a title and what to do.
+fn empty_state(ui: &mut egui::Ui, title: &str, hint: &str) {
+    ui.vertical_centered(|ui| {
+        ui.add_space((ui.available_height() / 3.0).max(24.0));
+        ui.label(icons::text(icons::INFO).size(40.0).weak());
+        ui.add_space(8.0);
+        ui.heading(title);
+        ui.weak(hint);
+    });
 }
 
 /// A navigation entry drawn as a raised card: a large icon over a short label.

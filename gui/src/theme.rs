@@ -1,9 +1,51 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use eframe::egui::{self, FontFamily, FontId, TextStyle};
+use eframe::egui::{self, Color32, FontFamily, FontId, TextStyle};
 
 const HEADING_FAMILY: &str = "heading";
+
+/// The verdict of a check, shown as a colored badge.
+#[derive(Clone, Copy)]
+pub enum Verdict {
+    Ok,
+    Ng,
+    Warn,
+}
+
+impl Verdict {
+    pub fn label(self) -> &'static str {
+        match self {
+            Verdict::Ok => "OK",
+            Verdict::Ng => "NG",
+            Verdict::Warn => "WARN",
+        }
+    }
+
+    /// Foreground and background colors for a verdict badge.
+    pub fn colors(self) -> (Color32, Color32) {
+        match self {
+            Verdict::Ok => (
+                Color32::from_rgb(0x9b, 0xe8, 0xa9),
+                Color32::from_rgb(0x1d, 0x4a, 0x29),
+            ),
+            Verdict::Ng => (
+                Color32::from_rgb(0xff, 0xaa, 0xaa),
+                Color32::from_rgb(0x5c, 0x1f, 0x1f),
+            ),
+            Verdict::Warn => (
+                Color32::from_rgb(0xff, 0xd5, 0x83),
+                Color32::from_rgb(0x56, 0x42, 0x0e),
+            ),
+        }
+    }
+}
+
+pub const PCR_COLOR: Color32 = Color32::from_rgb(0xf0, 0xa4, 0x3c);
+pub const VIDEO_COLOR: Color32 = Color32::from_rgb(0x4e, 0xa8, 0xff);
+pub const AUDIO_COLOR: Color32 = Color32::from_rgb(0x7f, 0xd6, 0x8a);
+pub const PSI_COLOR: Color32 = Color32::from_rgb(0xc7, 0x92, 0xea);
+pub const LIMIT_COLOR: Color32 = Color32::from_rgb(0xff, 0x7a, 0x7a);
 
 /// Larger than egui's defaults so menus, dialogs and controls are easy to read and hit.
 pub fn apply(ctx: &egui::Context) {

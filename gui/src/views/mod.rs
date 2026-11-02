@@ -7,7 +7,7 @@ pub mod timeline;
 use eframe::egui;
 
 use crate::icons;
-use crate::mock::Verdict;
+use crate::theme::Verdict;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
@@ -54,16 +54,6 @@ pub fn badge(ui: &mut egui::Ui, text: &str, verdict: Verdict) {
         .show(ui, |ui| {
             ui.label(egui::RichText::new(text).color(foreground).strong().small());
         });
-}
-
-/// Program choice shared by Overview, Timeline and Bitrate, over the sample
-/// programs. Returns true when it changed.
-pub fn program_selector(ui: &mut egui::Ui, selected: &mut usize) -> bool {
-    let labels: Vec<String> = crate::mock_programs::programs()
-        .iter()
-        .map(|p| p.label())
-        .collect();
-    program_selector_labels(ui, &labels, selected)
 }
 
 /// Program choice over the given labels. Returns true when it changed.

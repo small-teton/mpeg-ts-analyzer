@@ -8,19 +8,18 @@ use std::path::PathBuf;
 use eframe::egui;
 
 use super::packets::{
-    ByteSpan, Field, FieldSelection, MIN_LIST_WIDTH, ROW_HEIGHT, TEXT_INSET, bit_inspector,
-    field_tree, header_row, hex_dump_bytes, key_values, layer_color, paint_cells,
+    ByteLayer, ByteSpan, Field, FieldSelection, MIN_LIST_WIDTH, ROW_HEIGHT, TEXT_INSET,
+    bit_inspector, field_tree, header_row, hex_dump_bytes, key_values, layer_color, paint_cells,
     paint_row_background, row_text_color, span_table,
 };
 use crate::cli::{self, Cli, Request};
 use crate::icons;
-use crate::mock;
-use crate::mock_packets::ByteLayer;
 use crate::range_bar;
 use crate::report::{
     AnalysisReport, PacketDetail, PacketLayer, PacketSummary, PacketUnit, PacketsPage,
     stream_type_name,
 };
+use crate::theme;
 
 pub const PAGE_SIZE: u64 = 100;
 /// Pages kept in memory besides the one shown.
@@ -630,7 +629,7 @@ fn packet_row(
         egui::Align2::LEFT_CENTER,
         notes,
         egui::TextStyle::Monospace.resolve(ui.style()),
-        mock::LIMIT_COLOR,
+        theme::LIMIT_COLOR,
     );
     response
 }
