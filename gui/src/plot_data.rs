@@ -104,11 +104,10 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
         .compliance
         .as_ref()
         .map_or(100.0, |c| c.max_pcr_interval.limit_ms);
-    let pcr_over_limit = pcr_interval
-        .iter()
-        .filter(|p| p.value > limit)
-        .map(|p| [p.seconds, p.value])
-        .collect();
+    // Markers come from the reduced series, which keeps each bucket's highest
+    // interval, so they stay bounded and every bucket over the limit shows.
+    let pcr_drawn = decimate(&pcr_interval, MAX_PLOT_POINTS);
+    let pcr_over_limit = pcr_drawn.iter().copied().filter(|p| p[1] > limit).collect();
 
     let mut gaps: Vec<PidSeries> = Vec::new();
     for pes in &series.pes {
@@ -174,7 +173,7 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
     events.sort_by_key(|e| e.offset_bytes);
 
     Timeline {
-        pcr_drawn: decimate(&pcr_interval, MAX_PLOT_POINTS),
+        pcr_drawn,
         pcr_interval,
         pcr_over_limit,
         gaps,
@@ -320,20 +319,26 @@ pub fn decimate(points: &[Point], max: usize) -> Vec<[f64; 2]> {
 }
 
 /// Reduces a step series (two points per window: its start and end) to at
-/// most about `max` points, keeping the lowest and highest window of each
-/// bucket whole so steps and one-window spikes stay correct.
+/// most `max` points. Each bucket keeps its lowest and highest window, and the
+/// last window is always kept, so spikes and the end of the range stay visible.
+/// Kept windows are joined with horizontal and vertical lines only: a dropped
+/// stretch is drawn at the previous kept value up to the next kept window.
 pub fn decimate_steps(steps: &[[f64; 2]], max: usize) -> Vec<[f64; 2]> {
     let windows: &[[[f64; 2]; 2]] = steps.as_chunks::<2>().0;
-    if steps.len() <= max || max < 4 {
+    if steps.len() <= max || max < 16 {
         return steps.to_vec();
     }
-    let bucket = windows.len().div_ceil(max / 4);
-    let mut out = Vec::with_capacity(max + 4);
-    for chunk in windows.chunks(bucket) {
-        let index_by = |pick: fn(f64, f64) -> bool| {
+    // Up to two windows per bucket, plus the last window; each kept window
+    // takes at most four points.
+    let buckets = (max / 4 - 1) / 2;
+    let bucket = windows.len().div_ceil(buckets);
+    let mut kept: Vec<usize> = Vec::new();
+    for (index, chunk) in windows.chunks(bucket).enumerate() {
+        let base = index * bucket;
+        let by = |better: fn(f64, f64) -> bool| {
             (0..chunk.len())
                 .reduce(|best, i| {
-                    if pick(chunk[i][0][1], chunk[best][0][1]) {
+                    if better(chunk[i][0][1], chunk[best][0][1]) {
                         i
                     } else {
                         best
@@ -341,12 +346,30 @@ pub fn decimate_steps(steps: &[[f64; 2]], max: usize) -> Vec<[f64; 2]> {
                 })
                 .unwrap_or(0)
         };
-        let low = index_by(|a, b| a < b);
-        let high = index_by(|a, b| a > b);
-        out.extend_from_slice(&chunk[low.min(high)]);
+        let (low, high) = (by(|a, b| a < b), by(|a, b| a > b));
+        kept.push(base + low.min(high));
         if low != high {
-            out.extend_from_slice(&chunk[low.max(high)]);
+            kept.push(base + low.max(high));
         }
+    }
+    if kept.last() != Some(&(windows.len() - 1)) {
+        kept.push(windows.len() - 1);
+    }
+
+    let mut out: Vec<[f64; 2]> = Vec::with_capacity(4 * kept.len());
+    for index in kept {
+        let [[start, value], end] = windows[index];
+        if let Some(&[x, y]) = out.last() {
+            if x != start {
+                out.push([start, y]);
+            }
+            if y != value {
+                out.push([start, value]);
+            }
+        } else {
+            out.push([start, value]);
+        }
+        out.push(end);
     }
     out
 }
@@ -493,6 +516,14 @@ mod tests {
         let drawn = decimate_steps(&steps, 4000);
         assert!(drawn.len() <= 4000, "{}", drawn.len());
         assert!(drawn.contains(&[61_234.0, 9.0]) && drawn.contains(&[61_235.0, 9.0]));
+        // Only horizontal and vertical joins, ending where the range ends.
+        assert!(
+            drawn
+                .windows(2)
+                .all(|pair| pair[0][0] == pair[1][0] || pair[0][1] == pair[1][1])
+        );
+        assert_eq!(drawn.last(), steps.last());
+        assert_eq!(drawn.first(), steps.first());
         assert_eq!(decimate_steps(&steps[..20], 4000), steps[..20]);
     }
 
@@ -507,5 +538,30 @@ mod tests {
             histogram(&[2.0, 2.0], 3).iter().map(|b| b.1).sum::<f64>(),
             2.0
         );
+    }
+
+    #[test]
+    fn bounds_the_pcr_markers() {
+        let pcr: Vec<String> = (0..20_000)
+            .map(|i| {
+                format!(
+                    r#"{{"offset_bytes":{},"elapsed_ms":{},"pcr_ms":0,"interval_ms":150}}"#,
+                    i * 188,
+                    i * 150
+                )
+            })
+            .collect();
+        let mut report: serde_json::Value = serde_json::from_slice(include_bytes!(
+            "../tests/fixtures/analysis_two_programs_188.json"
+        ))
+        .unwrap();
+        report["programs"][0]["series"]["pcr"] =
+            serde_json::from_str(&format!("[{}]", pcr.join(","))).unwrap();
+        let report = crate::report::parse_analysis(report.to_string().as_bytes(), "1").unwrap();
+        let timeline = timeline(&report, &report.programs[0]);
+        assert_eq!(timeline.pcr_interval.len(), 20_000);
+        assert!(timeline.pcr_drawn.len() <= MAX_PLOT_POINTS);
+        assert!(!timeline.pcr_over_limit.is_empty());
+        assert!(timeline.pcr_over_limit.len() <= MAX_PLOT_POINTS);
     }
 }
