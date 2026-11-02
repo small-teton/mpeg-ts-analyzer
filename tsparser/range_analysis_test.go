@@ -157,8 +157,11 @@ func TestRangeAnalysisSingleProgramMatchesSummary(t *testing.T) {
 }
 
 func TestRangeAnalysisOptionErrors(t *testing.T) {
-	if err := ParseTsFile(sample188Path, options.Options{Format: "json", Output: "packets"}); err == nil || !strings.Contains(err.Error(), `unsupported output "packets"`) {
+	if err := ParseTsFile(sample188Path, options.Options{Format: "json", Output: "xml"}); err == nil || !strings.Contains(err.Error(), `unsupported output "xml"`) {
 		t.Errorf("unknown output: %v", err)
+	}
+	if err := ParseTsFile(sample188Path, options.Options{RangeOffset: -1}); err == nil || !strings.Contains(err.Error(), "--range-offset and --range-limit must not be negative") {
+		t.Errorf("negative range offset: %v", err)
 	}
 	if err := ParseTsFile(sample188Path, options.Options{Output: "analysis"}); err == nil || !strings.Contains(err.Error(), "requires --format json") {
 		t.Errorf("analysis in text mode: %v", err)

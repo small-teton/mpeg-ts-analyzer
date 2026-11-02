@@ -201,6 +201,8 @@ func TestWriteCapabilities(t *testing.T) {
 		!reflect.DeepEqual(got.Outputs, []CapabilityOutput{
 			{Name: "summary", Format: "json", SchemaVersion: jsonSchemaVersion},
 			{Name: "analysis", Format: "json", SchemaVersion: analysisSchemaVersion},
+			{Name: "packets", Format: "json", SchemaVersion: packetsSchemaVersion},
+			{Name: "packet", Format: "json", SchemaVersion: packetsSchemaVersion},
 		}) ||
 		len(got.ProgressFormats) != 1 || got.ProgressFormats[0] != "json" {
 		t.Errorf("capabilities = %+v", got)
