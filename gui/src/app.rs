@@ -4,6 +4,7 @@ use eframe::egui;
 
 use crate::cli::{self, AnalysisJob, JobUpdate};
 use crate::icons;
+use crate::plot_data;
 use crate::range_bar::{self, AnalysisRange, Load};
 use crate::report::{AnalysisReport, ProgressEvent};
 use crate::settings::Settings;
@@ -19,6 +20,12 @@ struct Running {
     limit: u64,
     started: std::time::Instant,
     progress: Option<ProgressEvent>,
+}
+
+/// Plot series of every program of the analysis, derived once per analysis.
+struct Plots {
+    timelines: Vec<plot_data::Timeline>,
+    bitrates: Vec<plot_data::Bitrate>,
 }
 
 pub struct App {
@@ -41,6 +48,10 @@ pub struct App {
     running: Option<Running>,
     /// Result of the last completed analysis; the screens show sample data until then.
     analysis: Option<Box<AnalysisReport>>,
+    /// Plot series of `analysis`, derived once rather than every frame.
+    plots: Option<Plots>,
+    /// Counts accepted analyses, so views can drop state of an older one.
+    analysis_generation: u64,
     /// Message for the error dialog.
     error: Option<String>,
     screen: Screen,
@@ -86,6 +97,8 @@ impl App {
             confirm_start: false,
             running: None,
             analysis: None,
+            plots: None,
+            analysis_generation: 0,
             error: None,
             screen: Screen::Overview,
             program: 0,
@@ -151,6 +164,7 @@ impl App {
         };
         self.analyzed = None;
         self.analysis = None;
+        self.plots = None;
         self.input = Some(path);
     }
 
@@ -193,6 +207,24 @@ impl App {
         }
     }
 
+    /// Derives the plot series of every program once an analysis arrives.
+    fn update_plots(&mut self) {
+        let Some(report) = &self.analysis else {
+            self.plots = None;
+            return;
+        };
+        if self.plots.is_none() {
+            self.plots = Some(Plots {
+                timelines: report
+                    .programs
+                    .iter()
+                    .map(|program| plot_data::timeline(report, program))
+                    .collect(),
+                bitrates: report.programs.iter().map(plot_data::bitrate).collect(),
+            });
+        }
+    }
+
     /// Takes in the analysis result once the CLI has finished.
     fn poll_analysis(&mut self) {
         let Some(running) = &mut self.running else {
@@ -213,6 +245,8 @@ impl App {
                 self.analyzed = Some((running.offset, running.limit));
                 self.program = self.program.min(report.programs.len().saturating_sub(1));
                 self.analysis = Some(report);
+                self.plots = None;
+                self.analysis_generation += 1;
                 self.running = None;
             }
             JobUpdate::Finished(Err(err)) => {
@@ -444,6 +478,7 @@ impl eframe::App for App {
 
         self.poll_cli_check();
         self.poll_analysis();
+        self.update_plots();
         egui::Panel::top("top_bar").show(ui, |ui| self.top_bar(ui));
         egui::Panel::bottom("status").show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -473,9 +508,23 @@ impl eframe::App for App {
                     Some(report) => overview::show_report(ui, report, &mut self.program),
                     None => overview::show(ui, &mut self.program),
                 },
-                Screen::Timeline => self.timeline.show(ui, &mut self.program),
+                Screen::Timeline => match (&self.analysis, &self.plots) {
+                    (Some(report), Some(plots)) => self.timeline.show_report(
+                        ui,
+                        report,
+                        &plots.timelines,
+                        self.analysis_generation,
+                        &mut self.program,
+                    ),
+                    _ => self.timeline.show(ui, &mut self.program),
+                },
                 Screen::Bitrate => {
-                    bitrate::show(ui, &mut self.program);
+                    match (&self.analysis, &self.plots) {
+                        (Some(report), Some(plots)) => {
+                            bitrate::show_report(ui, report, &plots.bitrates, &mut self.program)
+                        }
+                        _ => bitrate::show(ui, &mut self.program),
+                    }
                     None
                 }
                 Screen::Packets => {

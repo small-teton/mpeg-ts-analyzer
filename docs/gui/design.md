@@ -4,9 +4,10 @@ Design of the desktop GUI for `mpeg-ts-analyzer`. This document describes the
 current design; [decisions](#decisions) records what was chosen and why. The
 interface between the GUI and the CLI is in [cli-interface.md](cli-interface.md).
 
-Status: screen mock-up. Overview, Timeline, Bitrate and Packets run on dummy
-data in `gui/src/mock*.rs`; no screen calls the CLI yet. Work is tracked in
-#101 (milestone GUI v0.1).
+Status: Overview, Timeline and Bitrate show the CLI's range analysis once a
+range has been analyzed; before that, and on Packets, the screens show sample
+data from `gui/src/mock*.rs`. PMT-update markers wait for the PSI layout output
+(#93). Work is tracked in #101 (milestone GUI v0.1).
 
 ## Architecture
 
@@ -137,11 +138,18 @@ Per program, per PID:
   in the toolbar above the plots.
 - Clicking a point selects it; the side panel shows its details and "Open
   packet". Right-click offers the same actions.
+- Time is the CLI's elapsed program time (PCR time since the first PCR of the
+  program, frozen across discontinuities). Events and jitter samples, which
+  carry only a byte offset, sit at the time of the last PCR before them.
+- Series longer than 4000 points are drawn decimated, keeping each bucket's
+  minimum and maximum so spikes stay visible; picking uses every point.
 
 ### Bitrate
 
-Per program: bitrate per PID over time, total, PSI; PCR jitter over time and
-histogram; table of averages and peaks.
+Per program: bitrate per PID over time as steps over the CLI's windows (the
+last one may be shorter than 1 s), the program total without null packets;
+PCR jitter over time and its histogram; table of averages, 1-second peaks and
+shares of the program average.
 
 ### Packets
 

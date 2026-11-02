@@ -22,7 +22,9 @@ const (
 	tpExtraHeaderSize = 4
 )
 
-// BufferPsi buffer PSI data from TS payload
+// BufferPsi buffer PSI data from TS payload: one section, from the first
+// payload unit start on pid to the next. The analyzer itself assembles complete
+// multi-section PAT and PMT tables instead.
 func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, options options.Options, packetSize int, endOffset int64) error {
 	tsBuffer := make([]byte, packetSize)
 	isBuffering := false

@@ -45,6 +45,14 @@ func TestBufferPsiReadError(t *testing.T) {
 	}
 }
 
+func TestBufferPsiBrokenPacket(t *testing.T) {
+	var pos int64
+	err := BufferPsi(bytes.NewReader(make([]byte, 188)), &pos, 0x0000, NewPat(), options.Options{}, 188, 0)
+	if err == nil || !strings.Contains(err.Error(), "failed to parse TS packet") {
+		t.Errorf("err = %v", err)
+	}
+}
+
 func TestBufferPsiInvalidPointerField(t *testing.T) {
 	// PUSI packet whose pointer_field runs past the payload must error, not panic.
 	pkt := make([]byte, 188)
