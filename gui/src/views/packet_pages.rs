@@ -8,9 +8,9 @@ use std::path::PathBuf;
 use eframe::egui;
 
 use super::packets::{
-    ByteSpan, Field, MIN_LIST_WIDTH, ROW_HEIGHT, TEXT_INSET, field_tree, header_row,
-    hex_dump_bytes, key_values, layer_color, paint_cells, paint_row_background, row_text_color,
-    span_table,
+    ByteSpan, Field, FieldSelection, MIN_LIST_WIDTH, ROW_HEIGHT, TEXT_INSET, bit_inspector,
+    field_tree, header_row, hex_dump_bytes, key_values, layer_color, paint_cells,
+    paint_row_background, row_text_color, span_table,
 };
 use crate::cli::{self, Cli, Request};
 use crate::icons;
@@ -134,7 +134,7 @@ pub struct PacketPages {
     /// What each PID carries, and the PIDs offered in the filter.
     labels: BTreeMap<String, String>,
     hidden_pids: BTreeSet<String>,
-    highlight: Option<(u64, ByteSpan)>,
+    highlight: Option<(u64, FieldSelection)>,
 }
 
 impl PacketPages {
@@ -486,7 +486,7 @@ impl PacketPages {
             .highlight
             .clone()
             .filter(|(at, _)| *at == offset)
-            .map(|(_, span)| span);
+            .map(|(_, selection)| selection);
         let index = self.geometry.and_then(|g| g.index_of(offset));
 
         ui.horizontal(|ui| {
@@ -504,7 +504,7 @@ impl PacketPages {
 
         ui.horizontal(|ui| {
             ui.strong("This packet");
-            ui.weak("· click a field to highlight its bytes");
+            ui.weak("· click a field to inspect its bytes and bits");
         });
         for layer in &packet.layers {
             layer_fields(ui, layer, &mut highlight);
@@ -518,8 +518,13 @@ impl PacketPages {
         let raw = packet.raw();
         let colors = byte_colors(raw.len(), &packet.layers);
         let bytes: Vec<(u8, egui::Color32)> = raw.into_iter().zip(colors).collect();
-        hex_dump_bytes(ui, &bytes, highlight.as_ref());
-        self.highlight = highlight.map(|span| (offset, span));
+        ui.strong("Byte inspector");
+        hex_dump_bytes(ui, &bytes, highlight.as_ref().map(|s| &s.bytes));
+        ui.add_space(8.0);
+        ui.separator();
+        let raw: Vec<u8> = bytes.iter().map(|(byte, _)| *byte).collect();
+        bit_inspector(ui, &raw, highlight.as_ref());
+        self.highlight = highlight.map(|selection| (offset, selection));
 
         if let Some(target) = target {
             self.go_to(target);
@@ -759,23 +764,23 @@ fn layer_title(layer: &PacketLayer) -> String {
     }
 }
 
-fn layer_fields(ui: &mut egui::Ui, layer: &PacketLayer, highlight: &mut Option<ByteSpan>) {
+fn layer_fields(ui: &mut egui::Ui, layer: &PacketLayer, highlight: &mut Option<FieldSelection>) {
     let fields: Vec<Field> = layer
         .fields
         .iter()
-        .map(|f| Field::new(f.name.clone(), f.value.clone(), span(f)))
+        .map(|f| Field::new(f.name.clone(), f.value.clone(), span(f)).with_bits(f.bit_ranges()))
         .collect();
     let color = layer_color(byte_layer(&layer.name));
     field_tree(ui, &layer_title(layer), color, &fields, highlight);
     if let Some(first) = layer.rows.first() {
         let titles: Vec<&str> = first.iter().map(|f| f.name.as_str()).collect();
-        let rows: Vec<(Vec<String>, ByteSpan)> = layer
+        let rows: Vec<(Vec<String>, FieldSelection)> = layer
             .rows
             .iter()
-            .filter_map(|row| {
-                let start = row.iter().map(|f| f.byte_offset).min()?;
-                let end = row.iter().map(|f| f.byte_offset + f.byte_length).max()?;
-                Some((row.iter().map(|f| f.value.clone()).collect(), start..end))
+            .enumerate()
+            .filter_map(|(index, row)| {
+                let selection = row_selection(&layer.name, index, row)?;
+                Some((row.iter().map(|f| f.value.clone()).collect(), selection))
             })
             .collect();
         span_table(
@@ -786,6 +791,39 @@ fn layer_fields(ui: &mut egui::Ui, layer: &PacketLayer, highlight: &mut Option<B
             highlight,
         );
     }
+}
+
+/// A table row (e.g. one PMT stream) as one selection: the bytes from its
+/// first to its last field, and the bits of every field in the row.
+fn row_selection(
+    layer: &str,
+    index: usize,
+    row: &[crate::report::PacketField],
+) -> Option<FieldSelection> {
+    let start = row.iter().map(|f| f.byte_offset).min()?;
+    let end = row.iter().map(|f| f.byte_offset + f.byte_length).max()?;
+    let mut bits: Vec<std::ops::Range<usize>> = row
+        .iter()
+        .flat_map(|f| {
+            let ranges = f.bit_ranges();
+            if ranges.is_empty() {
+                std::iter::once(f.byte_offset * 8..(f.byte_offset + f.byte_length) * 8).collect()
+            } else {
+                ranges
+            }
+        })
+        .collect();
+    bits.sort_by_key(|r| r.start);
+    Some(FieldSelection {
+        key: format!("{layer} row {index}"),
+        value: row
+            .iter()
+            .map(|f| f.value.as_str())
+            .collect::<Vec<_>>()
+            .join(" · "),
+        bytes: start..end,
+        bits,
+    })
 }
 
 /// The color of each packet byte: the layer whose fields cover it, later
@@ -806,6 +844,8 @@ pub fn byte_colors(len: usize, layers: &[PacketLayer]) -> Vec<egui::Color32> {
 }
 
 #[cfg(test)]
+// Bit ranges are lists of ranges; a list of one is the common case here.
+#[allow(clippy::single_range_in_vec_init)]
 mod tests {
     use super::*;
 
@@ -854,6 +894,7 @@ mod tests {
             value: "v".into(),
             byte_offset: offset,
             byte_length: length,
+            bits: Vec::new(),
         };
         let layer = |name: &str, fields| PacketLayer {
             name: name.into(),
@@ -1015,6 +1056,90 @@ mod tests {
             [188, 376, 564]
         );
         assert_eq!(pages.selected, Some(376));
+    }
+
+    /// Runs only against a CLI named by MPEG_TS_ANALYZER_CLI (e.g. via `make gui-test`).
+    #[test]
+    fn bit_ranges_match_the_raw_bytes() {
+        let Some(path) = std::env::var_os("MPEG_TS_ANALYZER_CLI") else {
+            return;
+        };
+        let cli = cli::check(std::path::Path::new(&path)).expect("capabilities");
+        let samples = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../sample_data");
+        for (name, packet_size) in [
+            (
+                "sample_188byte_two_programs_mpeg2_160x120_25fps_mp2.ts",
+                188u64,
+            ),
+            (
+                "sample_192byte_two_programs_mpeg2_160x120_25fps_mp2.ts",
+                192,
+            ),
+        ] {
+            let pages = PacketPages {
+                packet_size,
+                ..PacketPages::new_for_test(samples.join(name))
+            };
+            let decode = |offset: u64| {
+                wait(
+                    Request::start(&cli, pages.args("packet", offset), parse_detail, || {})
+                        .unwrap(),
+                )
+                .unwrap()
+                .packet
+                .unwrap()
+            };
+            let find = |packet: &crate::report::DecodedPacket, name: &str| {
+                packet
+                    .layers
+                    .iter()
+                    .flat_map(|l| l.fields.iter())
+                    .find(|f| f.name == name)
+                    .cloned()
+                    .unwrap_or_else(|| panic!("no {name}"))
+            };
+            let value_of = |raw: &[u8], ranges: &[std::ops::Range<usize>]| {
+                ranges
+                    .iter()
+                    .flat_map(|r| r.clone())
+                    .fold(0u64, |acc, bit| {
+                        acc << 1 | u64::from(raw[bit / 8] >> (7 - bit % 8) & 1)
+                    })
+            };
+            let shift = (packet_size as usize - 188) * 8;
+
+            // The PAT is the second packet of the sample.
+            let pat = decode(packet_size);
+            let raw = pat.raw();
+            let pid = find(&pat, "PID");
+            let selection = FieldSelection {
+                bits: pid.bit_ranges(),
+                ..FieldSelection::of_bytes("PID", span(&pid))
+            };
+            let ranges = selection.bit_ranges();
+            assert_eq!(ranges, [11 + shift..24 + shift], "{name}");
+            assert_eq!(
+                super::super::packets::bit_rows(&ranges, raw.len()).0.len(),
+                2
+            );
+            assert_eq!(value_of(&raw, &ranges), 0);
+            let pusi = find(&pat, "payload_unit_start_indicator").bit_ranges();
+            assert_eq!(pusi.iter().map(|r| r.len()).sum::<usize>(), 1);
+            assert_eq!(value_of(&raw, &pusi), 1);
+
+            // version_number and current_next_indicator share a byte but not bits.
+            let version = find(&pat, "version_number");
+            let current = find(&pat, "current_next_indicator");
+            assert_eq!(span(&version), span(&current));
+            let (version_bits, current_bits) = (version.bit_ranges(), current.bit_ranges());
+            assert!(version_bits.iter().all(|v| {
+                current_bits
+                    .iter()
+                    .all(|c| v.end <= c.start || c.end <= v.start)
+            }));
+            assert_eq!(value_of(&raw, &version_bits).to_string(), version.value);
+            assert_eq!(value_of(&raw, &current_bits).to_string(), current.value);
+        }
     }
 
     #[test]

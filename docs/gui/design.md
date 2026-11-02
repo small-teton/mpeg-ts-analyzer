@@ -178,8 +178,16 @@ data is large, so the whole range is never held in memory.
     (switching pages as needed).
   - "This packet": TS header, adaptation field (PCR and interval verdict),
     payload kind, PAT/PMT section fields and tables, PES header fields.
-  - Hex dump colored by layer. Clicking a field (or a PAT/PMT table row)
-    highlights its bytes in the hex dump.
+  - Byte inspector: the hex dump colored by layer. Clicking a field (or a
+    PAT/PMT table row) highlights its bytes.
+  - Bit inspector below it: one row per byte of the selected field, in packet
+    order, with bits 7 to 0 (MSB to LSB) and the hex value; only the field's
+    bits are marked, using the `bits` ranges of the packet detail (#109). A
+    field without `bits` uses every bit of its bytes; a table row marks the bits
+    of all its fields. At most 8 bytes are shown, with a note of how many more
+    there are. The selection is the field, not its bytes, so fields that share a
+    byte (`version_number`, `current_next_indicator`) are selected one at a
+    time.
 - The GUI keeps the **PSI layout** (where PAT/PMT occur and what they say,
   including mid-range changes) from the range scan, and uses it to label
   packets. Packet pages themselves are read without PSI context.
