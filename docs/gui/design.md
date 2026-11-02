@@ -5,9 +5,10 @@ current design; [decisions](#decisions) records what was chosen and why. The
 interface between the GUI and the CLI is in [cli-interface.md](cli-interface.md).
 
 Status: once a range has been analyzed, Overview, Timeline and Bitrate show the
-CLI's range analysis and Packets reads the range's packets from the CLI; before
-that the screens show sample data from `gui/src/mock*.rs`. PMT-update markers,
-the Unit column and layout-change rows wait for the PSI layout output (#93).
+CLI's range analysis and Packets reads the range's packets from the CLI. Before
+that every screen says it is not analyzed yet and what to do; no placeholder
+data is shown. PMT-update markers, the Unit column and layout-change rows wait
+for the PSI layout output (#93).
 Work is tracked in #101 (milestone GUI v0.1).
 
 ## Architecture
@@ -48,7 +49,9 @@ On Windows the CLI is started with `CREATE_NO_WINDOW`, and the GUI binary uses
 
 ## Workflow
 
-1. **Open a file** (Open… or drag and drop). Nothing is analyzed yet.
+1. **Open a file** (Open… or drag and drop). Nothing is analyzed yet: each
+   screen shows "Not analyzed yet" with the next step, and the status bar says
+   so too. Opening another file returns to this state.
 2. **Choose the scan range** in bytes: drag it on the range bar or type exact
    Offset / Limit values.
 3. **Start.** The CLI scans the range once. Overview, Timeline and Bitrate show

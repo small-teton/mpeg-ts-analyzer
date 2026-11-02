@@ -4,9 +4,6 @@
 mod app;
 mod cli;
 mod icons;
-mod mock;
-mod mock_packets;
-mod mock_programs;
 mod plot_data;
 mod range_bar;
 mod report;
