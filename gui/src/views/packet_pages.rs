@@ -180,6 +180,23 @@ impl PacketPages {
         }
     }
 
+    /// Learns where the range's packets start from the first page and keeps
+    /// that page. The first page is read with a full page count, so packets
+    /// past the end of a short range are cut off.
+    fn accept_first_page(&mut self, mut page: PacketsPage) {
+        // An empty range has no first packet.
+        let first = page.first_offset_bytes.unwrap_or(self.range_end);
+        let geometry = Geometry::new(first, self.range_end, self.packet_size);
+        page.packets
+            .truncate(geometry.count.min(PAGE_SIZE) as usize);
+        self.geometry = Some(geometry);
+        self.pages.insert(0, Fetch::Ready(page));
+        self.recent.push_back(0);
+        if let Some(offset) = self.pending.take() {
+            self.go_to(offset);
+        }
+    }
+
     /// Shows the packet at `offset` (e.g. from Timeline's "Open packet").
     pub fn go_to(&mut self, offset: u64) {
         match self.geometry {
@@ -234,18 +251,11 @@ impl PacketPages {
                 }
                 Some(probe) => {
                     probe.poll();
-                    let Fetch::Ready(page) = probe else {
+                    if !matches!(probe, Fetch::Ready(_)) {
                         return;
-                    };
-                    // An empty range has no first packet.
-                    let first = page.first_offset_bytes.unwrap_or(self.range_end);
-                    self.geometry = Some(Geometry::new(first, self.range_end, self.packet_size));
-                    if let Some(page) = self.probe.take() {
-                        self.pages.insert(0, page);
-                        self.recent.push_back(0);
                     }
-                    if let Some(offset) = self.pending.take() {
-                        self.go_to(offset);
+                    if let Some(Fetch::Ready(page)) = self.probe.take() {
+                        self.accept_first_page(page);
                     }
                 }
             }
@@ -959,6 +969,52 @@ mod tests {
             );
             assert_eq!(pid.value.to_lowercase(), decoded);
         }
+    }
+
+    /// A range of three packets, read as a full page: only those three stay,
+    /// and a packet requested before the page arrived is selected.
+    #[test]
+    fn trims_the_first_page_to_a_short_range() {
+        let summary = |offset_bytes| PacketSummary {
+            offset_bytes,
+            valid: true,
+            pid: Some("0x0100".into()),
+            pusi: false,
+            transport_error: false,
+            scrambling_control: 0,
+            adaptation_field_control: 1,
+            continuity_counter: 0,
+            pcr_ms: None,
+        };
+        let page: PacketsPage = serde_json::from_str(
+            r#"{"schema_version":"1.0","output":"packets","input":{"path":"x","file_size_bytes":100000,"packet_size_bytes":188,"offset_bytes":100},"status":"complete","first_offset_bytes":188,"end_of_file":false,"total_packets":531,"packets":[],"warnings":[]}"#,
+        )
+        .unwrap();
+        let page = PacketsPage {
+            packets: (0..100).map(|i| summary(188 + i * 188)).collect(),
+            ..page
+        };
+        let mut pages = PacketPages {
+            range_offset: 100,
+            range_end: 100 + 3 * 188 + 150,
+            ..PacketPages::new_for_test(PathBuf::from("x"))
+        };
+        pages.go_to(376);
+        pages.accept_first_page(page);
+        let geometry = pages.geometry.unwrap();
+        assert_eq!((geometry.first, geometry.count), (188, 3));
+        let Some(Fetch::Ready(first)) = pages.pages.get(&0) else {
+            panic!("no first page");
+        };
+        assert_eq!(
+            first
+                .packets
+                .iter()
+                .map(|p| p.offset_bytes)
+                .collect::<Vec<_>>(),
+            [188, 376, 564]
+        );
+        assert_eq!(pages.selected, Some(376));
     }
 
     #[test]

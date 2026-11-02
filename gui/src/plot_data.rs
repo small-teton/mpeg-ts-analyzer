@@ -22,6 +22,8 @@ pub struct PidSeries {
     pub pid: String,
     pub label: String,
     pub points: Vec<Point>,
+    /// `points` reduced to at most about `MAX_PLOT_POINTS` for drawing.
+    pub drawn: Vec<[f64; 2]>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -37,6 +39,10 @@ pub struct Event {
 pub struct Timeline {
     /// PCR interval (ms) at each PCR that has one.
     pub pcr_interval: Vec<Point>,
+    /// `pcr_interval` reduced for drawing.
+    pub pcr_drawn: Vec<[f64; 2]>,
+    /// PCR intervals above the compliance limit, drawn as markers.
+    pub pcr_over_limit: Vec<[f64; 2]>,
     /// PCR→PTS/DTS gap (ms) per elementary-stream PID, in PID order.
     pub gaps: Vec<PidSeries>,
     /// Timestamp anomalies of the program and continuity errors on its PIDs.
@@ -48,11 +54,19 @@ pub struct Timeline {
 pub struct Bitrate {
     /// Mbps per PID as steps over the windows, in PID order.
     pub pids: Vec<PidSeries>,
-    /// The sum over the program's PIDs, without null packets.
-    pub program: Vec<[f64; 2]>,
+    /// The sum over the program's PIDs, without null packets, as steps
+    /// reduced for drawing.
+    pub program_drawn: Vec<[f64; 2]>,
     /// PCR jitter (ms) per sample.
     pub jitter: Vec<Point>,
+    /// `jitter` reduced for drawing.
+    pub jitter_drawn: Vec<[f64; 2]>,
+    /// Histogram of `jitter`: (center, count, width) per bin.
+    pub jitter_histogram: Vec<(f64, f64, f64)>,
 }
+
+/// Bins of the jitter histogram.
+const HISTOGRAM_BINS: usize = 30;
 
 /// Elapsed seconds of the last PCR at or before `offset`, or of the first PCR
 /// when `offset` comes earlier. `pcr` is in stream order.
@@ -75,7 +89,7 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
     let Some(series) = &program.series else {
         return Timeline::default();
     };
-    let pcr_interval = series
+    let pcr_interval: Vec<Point> = series
         .pcr
         .iter()
         .filter_map(|p| {
@@ -85,6 +99,15 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
                 offset_bytes: p.offset_bytes,
             })
         })
+        .collect();
+    let limit = program
+        .compliance
+        .as_ref()
+        .map_or(100.0, |c| c.max_pcr_interval.limit_ms);
+    let pcr_over_limit = pcr_interval
+        .iter()
+        .filter(|p| p.value > limit)
+        .map(|p| [p.seconds, p.value])
         .collect();
 
     let mut gaps: Vec<PidSeries> = Vec::new();
@@ -103,10 +126,14 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
                 pid: pes.pid.clone(),
                 label: pid_label(program, &pes.pid),
                 points: vec![point],
+                drawn: Vec::new(),
             }),
         }
     }
     gaps.sort_by(|a, b| a.pid.cmp(&b.pid));
+    for gap in &mut gaps {
+        gap.drawn = decimate(&gap.points, MAX_PLOT_POINTS);
+    }
 
     let program_pids: Vec<&str> = program
         .elementary_streams
@@ -147,7 +174,9 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
     events.sort_by_key(|e| e.offset_bytes);
 
     Timeline {
+        pcr_drawn: decimate(&pcr_interval, MAX_PLOT_POINTS),
         pcr_interval,
+        pcr_over_limit,
         gaps,
         events,
     }
@@ -183,10 +212,12 @@ pub fn bitrate(program: &Program) -> Bitrate {
         for (sum, bytes) in program_bytes.iter_mut().zip(&pid.bytes) {
             *sum += bytes;
         }
+        let pid_steps = steps(&|i| pid.bps.get(i).copied().unwrap_or(0.0));
         pids.push(PidSeries {
             pid: pid.pid.clone(),
             label: format!("{} {}", pid.pid, carried_by(program, &pid.pid, &pid.label)),
-            points: steps(&|i| pid.bps.get(i).copied().unwrap_or(0.0))
+            drawn: decimate_steps(&pid_steps, MAX_PLOT_POINTS),
+            points: pid_steps
                 .into_iter()
                 .map(|[seconds, value]| Point {
                     seconds,
@@ -198,7 +229,7 @@ pub fn bitrate(program: &Program) -> Bitrate {
     }
     let program_series = steps(&|i| program_bytes[i] as f64 * 8.0 / windows.duration_seconds[i]);
 
-    let jitter = series
+    let jitter: Vec<Point> = series
         .pcr_jitter
         .iter()
         .filter_map(|j| {
@@ -210,9 +241,12 @@ pub fn bitrate(program: &Program) -> Bitrate {
         })
         .collect();
 
+    let values: Vec<f64> = jitter.iter().map(|p| p.value).collect();
     Bitrate {
         pids,
-        program: program_series,
+        program_drawn: decimate_steps(&program_series, MAX_PLOT_POINTS),
+        jitter_drawn: decimate(&jitter, MAX_PLOT_POINTS),
+        jitter_histogram: histogram(&values, HISTOGRAM_BINS),
         jitter,
     }
 }
@@ -282,6 +316,38 @@ pub fn decimate(points: &[Point], max: usize) -> Vec<[f64; 2]> {
         }
     }
     out.dedup();
+    out
+}
+
+/// Reduces a step series (two points per window: its start and end) to at
+/// most about `max` points, keeping the lowest and highest window of each
+/// bucket whole so steps and one-window spikes stay correct.
+pub fn decimate_steps(steps: &[[f64; 2]], max: usize) -> Vec<[f64; 2]> {
+    let windows: &[[[f64; 2]; 2]] = steps.as_chunks::<2>().0;
+    if steps.len() <= max || max < 4 {
+        return steps.to_vec();
+    }
+    let bucket = windows.len().div_ceil(max / 4);
+    let mut out = Vec::with_capacity(max + 4);
+    for chunk in windows.chunks(bucket) {
+        let index_by = |pick: fn(f64, f64) -> bool| {
+            (0..chunk.len())
+                .reduce(|best, i| {
+                    if pick(chunk[i][0][1], chunk[best][0][1]) {
+                        i
+                    } else {
+                        best
+                    }
+                })
+                .unwrap_or(0)
+        };
+        let low = index_by(|a, b| a < b);
+        let high = index_by(|a, b| a > b);
+        out.extend_from_slice(&chunk[low.min(high)]);
+        if low != high {
+            out.extend_from_slice(&chunk[low.max(high)]);
+        }
+    }
     out
 }
 
@@ -369,8 +435,9 @@ mod tests {
                     .average_bps;
                 assert!((bits / seconds - average).abs() < 1e-6, "{}", pid.pid);
             }
+            // The fixture is short enough to be drawn without reduction.
             let program_bits: f64 = bitrate
-                .program
+                .program_drawn
                 .chunks(2)
                 .map(|step| step[0][1] * 1e6 * (step[1][0] - step[0][0]))
                 .sum();
@@ -413,6 +480,20 @@ mod tests {
         assert!(drawn.len() <= 1000);
         assert!(drawn.contains(&[4321.0, 500.0]));
         assert_eq!(decimate(&points[..10], 1000).len(), 10);
+    }
+
+    #[test]
+    fn step_decimation_keeps_spike_windows_whole() {
+        let mut steps = Vec::new();
+        for window in 0..100_000 {
+            let mbps = if window == 61_234 { 9.0 } else { 1.0 };
+            steps.push([window as f64, mbps]);
+            steps.push([window as f64 + 1.0, mbps]);
+        }
+        let drawn = decimate_steps(&steps, 4000);
+        assert!(drawn.len() <= 4000, "{}", drawn.len());
+        assert!(drawn.contains(&[61_234.0, 9.0]) && drawn.contains(&[61_235.0, 9.0]));
+        assert_eq!(decimate_steps(&steps[..20], 4000), steps[..20]);
     }
 
     #[test]
