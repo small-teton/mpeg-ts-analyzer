@@ -372,26 +372,38 @@ updates on a timeline. For
 - **`sections`** lists the PAT sections on PID 0x0000 and the PMT sections
   (`table_id` 0x02) on every PMT PID that the first complete PAT or an applied
   PAT change announced, ordered by first occurrence. PMT sections sent on a PID
-  before a later PAT announces it are included. A section identical to the previous one with the same PID,
-  table, `transport_stream_id`/`program_number`, `current_next_indicator` and
-  `section_number` is counted in that entry (`count`, `last_offset_bytes`)
-  instead of adding one, so the list grows with table changes and broken
-  sections, not with retransmissions. Offsets are those of the packet in which
-  the section starts. `status` is `applied` for the entry whose sections the
-  analysis applied (the first complete table or a `psi_transitions` change),
-  `retransmission` for a later entry identical to an applied section (for
-  example a table repeated on a moved PMT PID, or a late replay of a superseded
-  version, which is not applied again), `not_applied` for a valid section that
-  never became part of the layout (an incomplete or conflicting version, a
-  "next" table, or the PMT of a program that is not analyzed), and `invalid`
-  with an `invalid_reason` (`malformed`, `invalid_crc32`,
-  `section_number_beyond_last`, `parse_error`). Invalid sections carry no header
-  fields and are counted per PID, table and reason.
-  An entry is a bounded summary, not a per-packet index: `offset_bytes` and
-  `last_offset_bytes` are its first and last copies, and copies of other
-  sections on the same PID (another program's PMT, another section of a
-  multi-section table) can lie in between. Which section a given packet starts
-  is in that packet's `sections` in [`--output packets`](#packet-pages---output-packets).
+  before a later PAT announces it are included. Offsets are those of the packet
+  in which the section starts. Each entry is a run of copies:
+  - A valid section identical to the previous one with the same PID, table,
+    `transport_stream_id`/`program_number`, `current_next_indicator` and
+    `section_number` is counted in that entry (`count`, `last_offset_bytes`)
+    instead of adding one. Copies of other sections on the same PID (another
+    program's PMT, another section of a multi-section table) may lie in
+    between.
+  - An invalid section, or data the section reader had to drop on that PID
+    (packet loss, a transport error, a cut section), ends every valid run of
+    the PID; the next valid copy starts a new entry.
+  - Consecutive invalid copies with the same `invalid_reason` and header form
+    one invalid entry; anything else on the PID starts a new one.
+
+  The list therefore grows with table changes and PSI errors, not with
+  retransmissions or the range length. `status` is `applied` for the entry
+  whose sections the analysis applied (the first complete table or a
+  `psi_transitions` change), `retransmission` for a later entry identical to an
+  applied section (for example a table repeated on a moved PMT PID, a copy
+  after an error, or a late replay of a superseded version, which is not
+  applied again), `not_applied` for a valid section that never became part of
+  the layout (an incomplete or conflicting version, a "next" table, or the PMT
+  of a program that is not analyzed), and `invalid` with an `invalid_reason`
+  (`malformed`, `invalid_crc32`, `section_number_beyond_last`, `parse_error`).
+  Invalid entries carry the header fields when the section has a long-form
+  header (always for `invalid_crc32`, `section_number_beyond_last` and
+  `parse_error`), for example:
+
+  ```json
+  { "offset_bytes": 2820, "last_offset_bytes": 2820, "count": 1, "pid": "0x1000", "table": "pmt", "status": "invalid",
+    "invalid_reason": "invalid_crc32", "program_number": 1, "version_number": 0, "section_number": 1, "last_section_number": 1, "current_next_indicator": 1 }
+  ```
 - **`pids`** lists every PID seen in the range, in PID order, with its packet
   count and first and last packet offsets, and `roles`: what it carries in any
   layout (`pat`, `pmt`, `pcr`, `elementary_stream` with `stream_type`, `null`).
@@ -399,14 +411,20 @@ updates on a timeline. For
   elementary stream of a program whose PMT is not known). To label a packet,
   look up its PID in the layout whose interval contains its offset.
 - **Per packet.** A caller that lists packets (such as the GUI's packet list)
-  combines the two documents: the layout in effect at the packet's offset gives
-  what its PID carries, and for a packet that starts a section, the packet's
-  own `sections` (from `--output packets`) gives the `table_id`,
+  combines the two documents. The layout in effect at the packet's offset gives
+  what its PID carries. For a packet that starts a section, take each entry of
+  the packet's own `sections` (from `--output packets`) and look for the
+  `psi_layout.sections` entry with the packet's PID, the same
   `table_id_extension` (`transport_stream_id` or `program_number`),
-  `version_number` and `section_number`, which match the `psi_layout.sections`
-  entry with the same PID and values (and its `status`).
-- Size: one entry per table change or kind of broken section, one layout per
-  applied change, and one entry per PID, independent of the range length.
+  `version_number`, `current_next_indicator`, `section_number` and
+  `last_section_number`, and `offset_bytes <= offset <= last_offset_bytes`. By
+  the run rules above at most one entry matches, and its `status` (including
+  `invalid`) is that copy's. No match means the section was not logged: it is
+  not a PAT or PMT of an announced PID, it started before the range, or the
+  section reader dropped it.
+- Size: one section entry per table change or PSI error, one layout per
+  applied change, and one entry per PID, independent of the range length and
+  of retransmissions.
 
 ## Packet pages (`--output packets`)
 
@@ -473,8 +491,9 @@ $ mpeg-ts-analyzer sample_data/sample_188byte_two_programs_mpeg2_160x120_25fps_m
   in order, its `table_id`, `table_id_extension`, `version_number`,
   `current_next_indicator`, `section_number` and `last_section_number`. They
   are read from the packet's own bytes, so a page needs no PSI context. Listing
-  stops at stuffing (0xFF), a short-form section, or a header that does not fit
-  in the packet; nothing beyond the header is checked (the CRC32 may lie in a
+  stops at stuffing (0xFF), a short-form section, a header that does not fit
+  in the packet, or a `section_length` below 9, which cannot hold the long-form
+  fields and the CRC32; nothing beyond the header is checked (the CRC32 may lie in a
   later packet). The field is absent for every other packet, including packets
   with `transport_error` or a scrambled payload; PES packets never have it.
   For example, the PMT version 1 of the version-change sample:
