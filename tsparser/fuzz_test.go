@@ -34,6 +34,7 @@ func FuzzTsPacketAndAdaptationField(f *testing.F) {
 	f.Add(oversizedAdaptationField)
 	f.Add([]byte{0x47, 0x00, 0x00, 0x30, 0x01, 0x10})
 	f.Add([]byte{})
+	f.Add(rawPsiPacket(0x1000, true, 0, append([]byte{0x00}, pmtSectionN(1, 0, 0, 0, 0x100, [2]uint16{0x02, 0x100})...)))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		if len(data) > tsPayloadSize {
@@ -43,7 +44,9 @@ func FuzzTsPacketAndAdaptationField(f *testing.F) {
 		packet := NewTsPacket()
 		packet.Initialize(0, options.Options{})
 		packet.Append(data)
-		_ = packet.Parse()
+		if packet.Parse() == nil {
+			_ = packetSectionStarts(packet)
+		}
 
 		// Exercise adaptation-field parsing directly as well as through a TS
 		// packet. Its length byte and every optional-field flag are untrusted.
@@ -207,7 +210,8 @@ func FuzzPacketDiscovery(f *testing.F) {
 }
 
 // FuzzPsiTracking scans arbitrary 188-byte packets with the PAT and PMT
-// version tracking of one program that starts from a fixed layout.
+// version tracking of one program that starts from a fixed layout, and builds
+// the PSI layout report of the scan.
 func FuzzPsiTracking(f *testing.F) {
 	layout, _ := layoutChangeStream()
 	move, _, _, _ := moveStream()
@@ -227,6 +231,7 @@ func FuzzPsiTracking(f *testing.F) {
 		continuity := newContinuityCounterSummary(0x1000, pmt.pcrPid, pmt.programInfos)
 		tracker := newPsiTracker(pat, continuity, opts, tsPayloadSize, true)
 		tracker.addProgram(1, 0x1000, pmt, analyzer)
+		tracker.layout = newPsiLayoutRecorder()
 		var pos int64
 		if _, err := scanPrograms(bytes.NewReader(data), &pos, []*programAnalyzer{analyzer}, continuity, tracker, opts, tsPayloadSize, 0, true); err != nil {
 			return
@@ -234,6 +239,12 @@ func FuzzPsiTracking(f *testing.F) {
 		analyzer.finish()
 		_ = reportPsiTransitions(tracker.transitions)
 		_ = reportSeries(analyzer)
+		analysis := &rangeAnalysis{psi: tracker, pat: pat, packetSize: tsPayloadSize, scanEnd: pos, programs: []rangeProgram{
+			{program: Program{ProgramNumber: 1, PmtPid: 0x1000}, pmtPid: 0x1000, pmt: pmt.Pmt, table: pmt, analyzer: analyzer},
+			{program: Program{ProgramNumber: 2, PmtPid: 0x1001}, pmtPid: 0x1001},
+		}}
+		analysis.classifyPsiSections()
+		_ = reportPsiLayout(analysis)
 	})
 }
 

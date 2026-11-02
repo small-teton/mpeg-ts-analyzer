@@ -358,8 +358,9 @@ func TestRangeAnalysisReportsTruncatedTail(t *testing.T) {
 
 func TestRangeAnalysisReaderErrors(t *testing.T) {
 	data := syntheticStream([]syntheticProgram{{number: 1, pmtPid: 0x1000, pcrPid: 0x100, videoPid: 0x100, withPmt: true}}, nil, -1)
-	// Seek 1 locates the PAT; seek 2 starts the PMT search, seek 3 the scan.
-	for _, seek := range []int{2, 3} {
+	// Seek 1 locates the PAT; seek 2 starts the PMT search, seek 3 the PSI
+	// layout of the lead, seek 4 the scan.
+	for _, seek := range []int{2, 3, 4} {
 		report := newAnalysisReport("synthetic", 0, 0)
 		report.analysis = &rangeAnalysis{}
 		err := parseTsReaderReport(&errReadSeeker{data: data, failAt: -1, seekFailAt: seek}, options.Options{}, report)

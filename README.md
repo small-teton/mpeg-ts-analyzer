@@ -23,6 +23,7 @@ In addition, it can dump various MPEG-2 TS internal structures for stream invest
 - Adaptation field (including PCR)
 - PSI tables (PAT/PMT) with CRC32 validation, assembled across every section of the table
 - PAT/PMT version changes during the analysis (moved PMT or PCR PID, added, removed or retyped elementary streams), followed and reported with their byte offsets
+- PSI layout of an analyzed range (`--output analysis`): the PAT/PMT sections seen, the layout in effect over each byte interval, and every PID observed with what it carries
 - PMT ES info descriptors (ISO 639 language, registration, AVC/HEVC video, AAC audio, teletext, DVB subtitling)
 - PES header with PTS/DTS timestamps
 - PCR jitter analysis (per-interval deviation from the expected PCR)
@@ -139,9 +140,13 @@ result exits 0 for compatibility with text mode; automation should require
 
 For plotting, `--output analysis` analyzes every program of the range in one
 pass and adds per-program time series (PCR intervals, PTS/DTS and PCR gaps,
-jitter, 1-second bitrate windows) under its own schema; see
-[OPTIONS.md](OPTIONS.md#range-analysis-output---output-analysis). `--output
-packets` pages through packets and `--output packet` decodes one packet with
+jitter, 1-second bitrate windows) under its own schema, plus the PSI layout of
+the range (`psi_layout`: PAT/PMT sections, the layouts in effect and their byte
+intervals, and every observed PID with what it carries); see
+[OPTIONS.md](OPTIONS.md#range-analysis-output---output-analysis) and
+[OPTIONS.md](OPTIONS.md#psi-layout-of-the-range). `--output
+packets` pages through packets (with the headers of the PSI sections that
+start in each packet) and `--output packet` decodes one packet with
 the byte position of every field, plus the exact bits of fields that do not
 fill whole bytes ([OPTIONS.md](OPTIONS.md#packet-pages---output-packets)).
 
@@ -226,7 +231,8 @@ PCR timing segment (no interval, jitter or bitrate window spans the change),
 and elementary streams that are added, removed or change `stream_type` start
 or stop cleanly. Each applied change is printed with its offset in text mode
 and listed under `psi_transitions` in JSON; a program removed from the PAT
-stops being analyzed there. See
+stops being analyzed there. `--output analysis` also reports each layout with
+the byte interval it applies to (`psi_layout`). See
 [OPTIONS.md](OPTIONS.md#pat-and-pmt-version-changes).
 
 **Tip:** For large files, dump options can produce a huge amount of output. Use `--limit` to restrict the byte range, or redirect output to a file to avoid losing the beginning of the output in your terminal scrollback:
