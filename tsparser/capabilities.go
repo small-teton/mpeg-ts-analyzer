@@ -32,7 +32,10 @@ func WriteCapabilities(w io.Writer, cliVersion string) error {
 	return enc.Encode(Capabilities{
 		CapabilitiesVersion: capabilitiesVersion,
 		CLIVersion:          cliVersion,
-		Outputs:             []CapabilityOutput{{Name: "summary", Format: "json", SchemaVersion: jsonSchemaVersion}},
-		ProgressFormats:     []string{"json"},
+		Outputs: []CapabilityOutput{
+			{Name: "summary", Format: "json", SchemaVersion: jsonSchemaVersion},
+			{Name: "analysis", Format: "json", SchemaVersion: analysisSchemaVersion},
+		},
+		ProgressFormats: []string{"json"},
 	})
 }

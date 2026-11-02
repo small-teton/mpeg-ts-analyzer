@@ -171,6 +171,31 @@ func (b *BitrateStats) avgBps(pid uint16) float64 {
 	return float64(b.stats[pid].totalBytes) * 8 / seconds
 }
 
+// windowDurations returns the length in seconds of each 1-second window of
+// the measured duration, in order. The last one is shorter when the duration
+// is not a whole number of seconds.
+func (b *BitrateStats) windowDurations() []float64 {
+	full := b.fullBuckets()
+	durations := make([]float64, full, full+1)
+	for idx := range durations {
+		durations[idx] = 1
+	}
+	if rest := b.elapsedTicks % bitrateTicksPerSec; rest > 0 {
+		durations = append(durations, float64(rest)/float64(pcrClockHz))
+	}
+	return durations
+}
+
+// windowBytes returns the bytes of a PID in each window of windowDurations.
+// Windows without packets of the PID are 0.
+func (b *BitrateStats) windowBytes(pid uint16) []int64 {
+	windows := make([]int64, len(b.windowDurations()))
+	for idx, bytes := range b.stats[pid].buckets {
+		windows[idx] = bytes
+	}
+	return windows
+}
+
 // peakBps returns the highest bitrate of a PID over any full 1-second window, or
 // 0 if no full window was measured.
 func (b *BitrateStats) peakBps(pid uint16) float64 {

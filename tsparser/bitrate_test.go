@@ -3,6 +3,7 @@ package tsparser
 import (
 	"math"
 	"os"
+	"reflect"
 	"testing"
 
 	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
@@ -81,6 +82,29 @@ func TestBitrateExcludesPartialTrailingWindow(t *testing.T) {
 	// peak considers only the full first window (bucket 0 = 1880 bytes).
 	if got := b.peakBps(0x101); !approx(got, 15040) {
 		t.Errorf("peak = %v, want 15040", got)
+	}
+	// The series keeps the partial window, so it adds up to the average.
+	if got := b.windowDurations(); !reflect.DeepEqual(got, []float64{1, 0.5}) {
+		t.Errorf("window durations = %v, want [1 0.5]", got)
+	}
+	if got := b.windowBytes(0x101); !reflect.DeepEqual(got, []int64{1880, 940}) {
+		t.Errorf("window bytes = %v, want [1880 940]", got)
+	}
+	if got := b.windowBytes(0x100); !reflect.DeepEqual(got, []int64{0, 0}) {
+		t.Errorf("window bytes of a silent PID = %v, want [0 0]", got)
+	}
+}
+
+func TestBitrateWindowsOfWholeSeconds(t *testing.T) {
+	b := newTestStats()
+	if got := b.windowDurations(); len(got) != 0 {
+		t.Errorf("window durations before any PCR = %v", got)
+	}
+	b.MarkPcr(0, false)
+	countN(b, 0x101, 10)
+	b.MarkPcr(oneSecond, false)
+	if got := b.windowDurations(); !reflect.DeepEqual(got, []float64{1}) {
+		t.Errorf("window durations = %v, want [1]", got)
 	}
 }
 

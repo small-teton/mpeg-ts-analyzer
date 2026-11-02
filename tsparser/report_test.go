@@ -11,16 +11,18 @@ import (
 )
 
 func TestJSONSchemaDocument(t *testing.T) {
-	data, err := os.ReadFile("../docs/json-schema-v1.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var schema map[string]any
-	if err := json.Unmarshal(data, &schema); err != nil {
-		t.Fatalf("invalid JSON Schema document: %v", err)
-	}
-	if schema["$schema"] != "https://json-schema.org/draft/2020-12/schema" {
-		t.Fatalf("unexpected JSON Schema dialect: %v", schema["$schema"])
+	for _, path := range []string{"../docs/json-schema-v1.json", "../docs/json-schema-analysis-v1.json"} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var schema map[string]any
+		if err := json.Unmarshal(data, &schema); err != nil {
+			t.Fatalf("%s: invalid JSON Schema document: %v", path, err)
+		}
+		if schema["$schema"] != "https://json-schema.org/draft/2020-12/schema" {
+			t.Fatalf("%s: unexpected JSON Schema dialect: %v", path, schema["$schema"])
+		}
 	}
 }
 
@@ -41,7 +43,7 @@ func TestReportConversions(t *testing.T) {
 
 	anomalies := NewTimestampAnomaly()
 	for _, kind := range []anomalyKind{kindBackward, kindWraparound, kindGap, kindDtsAfterPts} {
-		anomalies.add(0x31, kind, "detail")
+		anomalies.add(0x31, 0, kind, "detail")
 	}
 	anomalyReport := reportAnomalies(anomalies)
 	if anomalyReport.Status != "anomalies" || len(anomalyReport.Items) != 4 || anomalyReport.Items[2].Kind != "forward_gap" {

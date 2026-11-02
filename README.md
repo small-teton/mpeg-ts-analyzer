@@ -106,6 +106,7 @@ Flags:
       --limit int               Stop reading after this many bytes (0 = no limit).
       --list-programs           List every program (program_number, PMT PID, elementary streams) and exit.
       --offset int              Start reading from this byte offset.
+      --output string           JSON output: summary, or analysis (every program with time series; needs --format json). (default "summary")
       --program int             Analyze only this program_number (default: the sole program; a multi-program stream is listed instead).
       --progress string         Write progress events to stderr in this format: json.
       --version                 show mpeg-ts-analyzer version.
@@ -130,6 +131,11 @@ listing and insufficient-data checks are represented separately by
 `status: "programs_listed"` and per-check `skipped` states. An `incomplete`
 result exits 0 for compatibility with text mode; automation should require
 `status == "complete"` rather than relying on the exit code alone.
+
+For plotting, `--output analysis` analyzes every program of the range in one
+pass and adds per-program time series (PCR intervals, PTS/DTS and PCR gaps,
+jitter, 1-second bitrate windows) under its own schema; see
+[OPTIONS.md](OPTIONS.md#range-analysis-output---output-analysis).
 
 The document contains summaries, not one object per transport packet. Its size
 therefore does not grow with the input file's packet count (apart from naturally

@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -197,7 +198,10 @@ func TestWriteCapabilities(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got.CapabilitiesVersion != "1.0" || got.CLIVersion != "9.9.9" ||
-		len(got.Outputs) != 1 || got.Outputs[0] != (CapabilityOutput{Name: "summary", Format: "json", SchemaVersion: jsonSchemaVersion}) ||
+		!reflect.DeepEqual(got.Outputs, []CapabilityOutput{
+			{Name: "summary", Format: "json", SchemaVersion: jsonSchemaVersion},
+			{Name: "analysis", Format: "json", SchemaVersion: analysisSchemaVersion},
+		}) ||
 		len(got.ProgressFormats) != 1 || got.ProgressFormats[0] != "json" {
 		t.Errorf("capabilities = %+v", got)
 	}

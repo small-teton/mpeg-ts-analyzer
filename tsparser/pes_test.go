@@ -15,7 +15,7 @@ func TestNewPes(t *testing.T) {
 
 func TestPesInitialize(t *testing.T) {
 	p1 := NewPes()
-	p1.Initialize(1, 2, 3, 4)
+	p1.Initialize(1, 2, 3, 4, true)
 
 	if p1.pid != 1 {
 		t.Errorf("actual: 1, But got %d", p1.pid)
@@ -29,6 +29,9 @@ func TestPesInitialize(t *testing.T) {
 	if p1.prevPcrPos != 4 {
 		t.Errorf("actual: 4, But got %d", p1.prevPcrPos)
 	}
+	if !p1.hasPrevPcr || p1.hasNextPcr {
+		t.Errorf("hasPrevPcr = %v, hasNextPcr = %v", p1.hasPrevPcr, p1.hasNextPcr)
+	}
 
 	data := []byte{
 		0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x84, 0xC0, 0x0A, 0x31, 0x00, 0x01, 0xC7, 0x3F, 0x11, 0x00,
@@ -40,7 +43,7 @@ func TestPesInitialize(t *testing.T) {
 	if err := p2.Parse(); err != nil {
 		t.Errorf("Parse error: %s", err)
 	}
-	p2.Initialize(1, 2, 3, 4)
+	p2.Initialize(1, 2, 3, 4, true)
 
 	if !reflect.DeepEqual(p1, p2) {
 		t.Errorf("Failed Initialize. Different in p1 and p2")
@@ -384,7 +387,9 @@ func TestPesDumpTimestamp(t *testing.T) {
 	pes2 := NewPes()
 	pes2.Append(data)
 	pes2.prevPcr = 1000
+	pes2.hasPrevPcr = true
 	pes2.nextPcr = 2000
+	pes2.hasNextPcr = true
 	pes2.prevPcrPos = 0
 	pes2.nextPcrPos = 100
 	pes2.pos = 50
@@ -405,7 +410,9 @@ func TestPesDumpTimestampPtsDtsWithPcr(t *testing.T) {
 	pes := NewPes()
 	pes.Append(data)
 	pes.prevPcr = 1000
+	pes.hasPrevPcr = true
 	pes.nextPcr = 2000
+	pes.hasNextPcr = true
 	pes.prevPcrPos = 0
 	pes.nextPcrPos = 100
 	pes.pos = 50
@@ -437,6 +444,7 @@ func TestPesDumpTimestampNoFollowingPcr(t *testing.T) {
 	pes := NewPes()
 	pes.Append(data)
 	pes.prevPcr = 24300000
+	pes.hasPrevPcr = true
 	pes.prevPcrPos = 500
 	pes.nextPcr = 0 // no following PCR captured
 	pes.nextPcrPos = 0
@@ -465,7 +473,7 @@ func TestPesDumpTimestampNoPtsDts(t *testing.T) {
 }
 
 func TestPesTimestampDelay(t *testing.T) {
-	pes := &Pes{ptsDtsFlags: 2, pts: 90_000, prevPcr: 24_300_000}
+	pes := &Pes{ptsDtsFlags: 2, pts: 90_000, prevPcr: 24_300_000, hasPrevPcr: true}
 	if got, ok := pes.TimestampDelay(); !ok || math.Abs(got-100) > 1e-6 {
 		t.Errorf("PTS delay = %f, %v; want 100ms, true", got, ok)
 	}
@@ -479,7 +487,7 @@ func TestPesTimestampDelay(t *testing.T) {
 		t.Error("PES without PTS/DTS must not produce a delay")
 	}
 	pes.ptsDtsFlags = 2
-	pes.prevPcr = 0
+	pes.hasPrevPcr = false
 	if _, ok := pes.TimestampDelay(); ok {
 		t.Error("PES without a PCR reference must not produce a delay")
 	}
@@ -487,7 +495,9 @@ func TestPesTimestampDelay(t *testing.T) {
 		t.Error("PES without bracketing PCR observations must not produce a compliance delay")
 	}
 	pes.prevPcr = 24_300_000
+	pes.hasPrevPcr = true
 	pes.nextPcr = 27_000_000
+	pes.hasNextPcr = true
 	pes.prevPcrPos = 0
 	pes.nextPcrPos = 100
 	pes.pos = 50

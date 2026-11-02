@@ -16,6 +16,7 @@ type Options struct {
 	Program             int
 	Offset              int64
 	Limit               int64
+	Output              string
 	Progress            string
 	Capabilities        bool
 }

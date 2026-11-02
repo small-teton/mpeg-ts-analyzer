@@ -1,0 +1,358 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/small-teton/mpeg-ts-analyzer/blob/master/docs/json-schema-analysis-v1.json",
+  "title": "mpeg-ts-analyzer range analysis v1",
+  "description": "Schema for --format json --output analysis: every program of the analyzed range in one document, with time series. Shared definitions come from the summary report schema (json-schema-v1.json). Objects permit additive fields and status strings permit additive lowercase values within schema version 1.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "output",
+    "input",
+    "status",
+    "continuity_events",
+    "programs",
+    "warnings"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "output": {
+      "const": "analysis"
+    },
+    "input": {
+      "$ref": "#/$defs/input"
+    },
+    "status": {
+      "$ref": "json-schema-v1.json#/$defs/status",
+      "description": "Current values: complete, incomplete, failed."
+    },
+    "reason": {
+      "$ref": "json-schema-v1.json#/$defs/reasonCode",
+      "description": "Stable machine-readable reason code. In addition to the summary report's codes: no_program_analyzed."
+    },
+    "error": {
+      "type": "string",
+      "description": "Human-readable error detail; not a stable matching interface."
+    },
+    "analysis_start_offset_bytes": {
+      "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger",
+      "description": "Offset where the scan started: the earliest program's analysis start. Absent when no program was analyzed."
+    },
+    "analysis_end_offset_bytes": {
+      "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger",
+      "description": "Offset where the scan ended."
+    },
+    "continuity_counter": {
+      "$ref": "json-schema-v1.json#/$defs/continuity",
+      "description": "Continuity-counter summary for the whole multiplex."
+    },
+    "continuity_events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/continuityEvent"
+      }
+    },
+    "programs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/program"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "json-schema-v1.json#/$defs/warning"
+      }
+    }
+  },
+  "$defs": {
+    "input": {
+      "type": "object",
+      "required": [
+        "path",
+        "file_size_bytes",
+        "offset_bytes"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "file_size_bytes": {
+          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+        },
+        "packet_size_bytes": {
+          "enum": [
+            188,
+            192
+          ]
+        },
+        "offset_bytes": {
+          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+        },
+        "limit_bytes": {
+          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+        }
+      }
+    },
+    "continuityEvent": {
+      "type": "object",
+      "required": [
+        "offset_bytes",
+        "pid",
+        "expected_cc",
+        "actual_cc"
+      ],
+      "properties": {
+        "offset_bytes": {
+          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+        },
+        "pid": {
+          "$ref": "json-schema-v1.json#/$defs/pid"
+        },
+        "expected_cc": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 15
+        },
+        "actual_cc": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 15
+        }
+      }
+    },
+    "program": {
+      "description": "A program of the summary report's program shape, plus its analysis. Analysis fields are absent for a program whose PMT was not found (status incomplete, reason pmt_parse_failed).",
+      "allOf": [
+        {
+          "$ref": "json-schema-v1.json#/$defs/program"
+        }
+      ],
+      "properties": {
+        "analysis_start_offset_bytes": {
+          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger",
+          "description": "Offset of the first packet analyzed for this program: just after its PMT."
+        },
+        "average_bitrate_bps": {
+          "type": "number",
+          "minimum": 0
+        },
+        "compliance": {
+          "$ref": "json-schema-v1.json#/$defs/compliance"
+        },
+        "timestamp_anomalies": {
+          "$ref": "json-schema-v1.json#/$defs/timestampAnomalies"
+        },
+        "pcr_jitter": {
+          "$ref": "json-schema-v1.json#/$defs/pcrJitter"
+        },
+        "bitrate": {
+          "$ref": "json-schema-v1.json#/$defs/bitrate"
+        },
+        "series": {
+          "$ref": "#/$defs/series"
+        }
+      }
+    },
+    "series": {
+      "description": "Time series of one program. elapsed_ms is PCR time since the program's first PCR in the range; it does not advance across a PCR discontinuity, matching the 1-second bitrate windows.",
+      "type": "object",
+      "required": [
+        "pcr",
+        "pes",
+        "timestamp_events",
+        "pcr_jitter",
+        "bitrate"
+      ],
+      "properties": {
+        "pcr": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pcrPoint"
+          }
+        },
+        "pes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pesPoint"
+          }
+        },
+        "timestamp_events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/timestampEvent"
+          }
+        },
+        "pcr_jitter": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/jitterPoint"
+          }
+        },
+        "bitrate": {
+          "$ref": "#/$defs/bitrateWindows"
+        }
+      }
+    },
+    "pcrPoint": {
+      "type": "object",
+      "required": [
+        "offset_bytes",
+        "elapsed_ms",
+        "pcr_ms"
+      ],
+      "properties": {
+        "offset_bytes": {
+          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+        },
+        "elapsed_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "pcr_ms": {
+          "type": "number",
+          "minimum": 0,
+          "description": "PCR value in milliseconds."
+        },
+        "interval_ms": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Interval to the previous PCR; absent when none was measured (first PCR, discontinuity)."
+        },
+        "discontinuity": {
+          "type": "boolean",
+          "description": "True when this PCR starts a new timing segment."
+        }
+      }
+    },
+    "pesPoint": {
+      "type": "object",
+      "required": [
+        "pid",
+        "offset_bytes"
+      ],
+      "properties": {
+        "pid": {
+          "$ref": "json-schema-v1.json#/$defs/pid"
+        },
+        "offset_bytes": {
+          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+        },
+        "elapsed_ms": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Elapsed time of the last PCR before the PES; absent before the first PCR."
+        },
+        "pts_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "dts_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "pcr_gap_ms": {
+          "type": "number",
+          "description": "PCR to DTS (or PTS) gap, when PCRs bracket the PES."
+        }
+      }
+    },
+    "timestampEvent": {
+      "type": "object",
+      "required": [
+        "pid",
+        "offset_bytes",
+        "kind",
+        "message"
+      ],
+      "properties": {
+        "pid": {
+          "$ref": "json-schema-v1.json#/$defs/pid"
+        },
+        "offset_bytes": {
+          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+        },
+        "kind": {
+          "type": "string",
+          "description": "Current values: backward, wraparound, forward_gap, dts_after_pts."
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "jitterPoint": {
+      "type": "object",
+      "required": [
+        "offset_bytes",
+        "jitter_ns"
+      ],
+      "properties": {
+        "offset_bytes": {
+          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+        },
+        "jitter_ns": {
+          "type": "number"
+        }
+      }
+    },
+    "bitrateWindows": {
+      "type": "object",
+      "required": [
+        "window_seconds",
+        "duration_seconds",
+        "pids"
+      ],
+      "properties": {
+        "window_seconds": {
+          "const": 1
+        },
+        "duration_seconds": {
+          "type": "array",
+          "description": "Length in seconds of each window of elapsed time, in order. Every window is 1 second except a shorter last one, so the sum is the measured duration.",
+          "items": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1
+          }
+        },
+        "pids": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "pid",
+              "label",
+              "bytes",
+              "bps"
+            ],
+            "properties": {
+              "pid": {
+                "$ref": "json-schema-v1.json#/$defs/pid"
+              },
+              "label": {
+                "type": "string"
+              },
+              "bytes": {
+                "type": "array",
+                "description": "Bytes of the PID in each window of duration_seconds. Their sum times 8, divided by the sum of duration_seconds, is the PID's average bitrate.",
+                "items": {
+                  "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+                }
+              },
+              "bps": {
+                "type": "array",
+                "description": "Bitrate in each window of duration_seconds (bytes * 8 / duration), in order.",
+                "items": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

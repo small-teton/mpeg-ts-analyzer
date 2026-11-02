@@ -36,12 +36,13 @@ type pcrIntervalTracker struct {
 }
 
 // Add records one PCR observation. discontinuity is the PCR packet's
-// adaptation_field discontinuity_indicator.
-func (t *pcrIntervalTracker) Add(pcr uint64, discontinuity bool) {
+// adaptation_field discontinuity_indicator. It returns the interval to the
+// previous PCR in milliseconds when one was measured.
+func (t *pcrIntervalTracker) Add(pcr uint64, discontinuity bool) (float64, bool) {
 	prev, hasPrev := t.prev, t.hasPrev
 	t.prev, t.hasPrev = pcr, true
 	if !hasPrev || discontinuity {
-		return
+		return 0, false
 	}
 	var delta uint64
 	if pcr >= prev {
@@ -49,11 +50,12 @@ func (t *pcrIntervalTracker) Add(pcr uint64, discontinuity bool) {
 	} else {
 		delta = pcr + pcrWrapTicks - prev
 		if delta > pcrDiscontinuityJumpMs*pcrTicksPerMs {
-			return
+			return 0, false
 		}
 	}
 	t.maxTicks = max(t.maxTicks, delta)
 	t.intervals++
+	return pcrToMs(float64(delta)), true
 }
 
 // maxMs returns the largest measured interval in milliseconds.
