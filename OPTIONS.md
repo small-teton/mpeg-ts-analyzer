@@ -21,6 +21,7 @@ streams in `sample_data/`. See the [README](README.md) for install and usage.
 | `--program` | automatic | Select one program by `program_number`. |
 | `--offset` | `0` | Start reading at a byte offset. |
 | `--limit` | `0` (unlimited) | Stop after the specified number of bytes. |
+| `--output` | `summary` | With `--format json`, select the summary report or the `analysis` of every program with time series. |
 
 The standard Cobra `--help` and `--version` flags are also available. Detailed
 examples for the analysis and dump modes follow.
@@ -196,6 +197,92 @@ rejected with `--format json` instead of mixing human text into stdout. Schema
 `1.x` may gain fields and enum values. Consumers must treat unknown enum values
 as unrecognized. Existing fields are not removed or retyped, and existing enum
 meanings do not change; those incompatible changes increment `schema_version`.
+
+## Range analysis output (`--output analysis`)
+
+`--format json --output analysis` analyzes **every program** of the range in a
+single pass and adds time series, for callers that plot results (such as a GUI)
+rather than only checking verdicts. It is a separate document with its own
+schema, [`docs/json-schema-analysis-v1.json`](docs/json-schema-analysis-v1.json);
+the default `--output summary` report is unchanged.
+
+```sh
+mpeg-ts-analyzer capture.ts --format json --output analysis --offset 0 --limit 67108864
+```
+
+Abridged output for the two-program sample:
+
+```json
+{
+  "schema_version": "1.0",
+  "output": "analysis",
+  "input": {
+    "path": "sample_data/sample_188byte_two_programs_mpeg2_160x120_25fps_mp2.ts",
+    "file_size_bytes": 202852,
+    "packet_size_bytes": 188,
+    "offset_bytes": 0
+  },
+  "status": "complete",
+  "analysis_start_offset_bytes": 25380,
+  "analysis_end_offset_bytes": 202852,
+  "continuity_counter": { "status": "ok", "total_error_count": 0, "pids": [] },
+  "continuity_events": [],
+  "programs": [
+    {
+      "program_number": 1,
+      "pmt_pid": "0x1000",
+      "pcr_pid": "0x0100",
+      "elementary_streams": [ ... ],
+      "status": "complete",
+      "analysis_start_offset_bytes": 25380,
+      "average_bitrate_bps": 323018.1818181818,
+      "compliance": { ... },
+      "timestamp_anomalies": { ... },
+      "pcr_jitter": { ... },
+      "bitrate": { ... },
+      "series": {
+        "pcr": [
+          { "offset_bytes": 29892, "elapsed_ms": 0, "pcr_ms": 860 },
+          { "offset_bytes": 38540, "elapsed_ms": 80, "pcr_ms": 940, "interval_ms": 80 }
+        ],
+        "pes": [
+          { "pid": "0x0100", "offset_bytes": 34592, "elapsed_ms": 0, "pts_ms": 1640, "dts_ms": 1600, "pcr_gap_ms": 696.5217391304348 }
+        ],
+        "timestamp_events": [],
+        "pcr_jitter": [ { "offset_bytes": 38540, "jitter_ns": -14358974.35897437 } ],
+        "bitrate": {
+          "window_seconds": 1,
+          "pids": [ { "pid": "0x0100", "label": "13818-2 video or 11172-2 constrained parameter video stream", "bps": [ 242144 ] } ]
+        }
+      }
+    },
+    { "program_number": 2, ... }
+  ],
+  "warnings": []
+}
+```
+
+- Programs are those of the first complete PAT/PMT set in the range. Each
+  program starts collecting just after its own PMT, so its results equal a
+  `--program N --dump-bitrate --dump-pcr-jitter` run of the same range;
+  `analysis_start_offset_bytes` reports where that was. A program whose PMT is
+  not found is listed with `status: "incomplete"` and
+  `reason: "pmt_parse_failed"`; if no program can be analyzed, the document has
+  `status: "incomplete"` and `reason: "no_program_analyzed"`.
+- Continuity counters are checked for the whole multiplex, from the earliest
+  program start, and reported once (`continuity_counter`, `continuity_events`)
+  rather than per program.
+- Bitrate and PCR jitter are always collected in this mode.
+- `elapsed_ms` is PCR time since the program's first PCR in the range. It does
+  not advance across a PCR discontinuity, which matches the 1-second bitrate
+  windows (`bps[i]` covers elapsed seconds `i` to `i+1`). A PES point uses the
+  elapsed time of the last PCR before it. Every point also carries
+  `offset_bytes`.
+- Output size grows with the range (one point per PCR, PES and jitter sample),
+  so choose `--offset`/`--limit` accordingly.
+- `--output analysis` requires `--format json` and cannot be combined with
+  `--program`, `--list-programs`, `--fail-on-error` or packet-level dump flags.
+  PAT/PMT changes within the range are not tracked yet.
 
 ## Continuity counter summary (always on)
 

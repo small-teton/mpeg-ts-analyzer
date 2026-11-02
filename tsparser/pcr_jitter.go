@@ -93,6 +93,13 @@ type pcrJitterResult struct {
 	avgAbsNs        float64
 	within500Pct    float64
 	discontinuities []pcrDiscontinuity
+	points          []pcrJitterPoint // jitter of every measured sample, in stream order
+}
+
+// pcrJitterPoint is the jitter measured at one PCR sample.
+type pcrJitterPoint struct {
+	pos int64
+	ns  float64
 }
 
 // PcrJitter accumulates PCR observations during the stream scan and estimates
@@ -156,6 +163,7 @@ func analyzePcrJitter(samples []pcrSample) pcrJitterResult {
 			predicted := float64(p0.pcr) +
 				float64(int64(p2.pcr)-int64(p0.pcr))*float64(p1.pos-p0.pos)/float64(p2.pos-p0.pos)
 			jitterNs := pcrTickNs(float64(int64(p1.pcr)) - predicted)
+			res.points = append(res.points, pcrJitterPoint{pos: p1.pos, ns: jitterNs})
 			if jitterNs > res.maxNs {
 				res.maxNs, res.maxPos = jitterNs, p1.pos
 			}

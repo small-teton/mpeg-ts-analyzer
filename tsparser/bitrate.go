@@ -171,6 +171,18 @@ func (b *BitrateStats) avgBps(pid uint16) float64 {
 	return float64(b.stats[pid].totalBytes) * 8 / seconds
 }
 
+// windowsBps returns the bitrate of a PID in each full 1-second window, in
+// order. Windows without packets of the PID are 0.
+func (b *BitrateStats) windowsBps(pid uint16) []float64 {
+	windows := make([]float64, b.fullBuckets())
+	for idx, bytes := range b.stats[pid].buckets {
+		if idx < int64(len(windows)) {
+			windows[idx] = float64(bytes) * 8
+		}
+	}
+	return windows
+}
+
 // peakBps returns the highest bitrate of a PID over any full 1-second window, or
 // 0 if no full window was measured.
 func (b *BitrateStats) peakBps(pid uint16) float64 {

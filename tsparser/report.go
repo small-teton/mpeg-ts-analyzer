@@ -29,6 +29,10 @@ type AnalysisReport struct {
 	PCRJitter             *ReportPCRJitter          `json:"pcr_jitter,omitempty"`
 	Bitrate               *ReportBitrate            `json:"bitrate,omitempty"`
 	Warnings              []ReportWarning           `json:"warnings"`
+
+	// analysis is set for --output analysis, which writes a RangeAnalysisReport
+	// built from this envelope instead of the report itself.
+	analysis *rangeAnalysis
 }
 
 type ReportInput struct {
@@ -146,7 +150,7 @@ func newAnalysisReport(path string, offset, limit int64) *AnalysisReport {
 	}
 }
 
-func writeJSONReport(w io.Writer, report *AnalysisReport) error {
+func writeJSONReport(w io.Writer, report any) error {
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")

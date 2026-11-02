@@ -57,4 +57,5 @@ func init() {
 	rootCmd.Flags().IntVar(&opt.Program, "program", 0, "Analyze only this program_number (default: the sole program; a multi-program stream is listed instead).")
 	rootCmd.Flags().Int64Var(&opt.Offset, "offset", 0, "Start reading from this byte offset.")
 	rootCmd.Flags().Int64Var(&opt.Limit, "limit", 0, "Stop reading after this many bytes (0 = no limit).")
+	rootCmd.Flags().StringVar(&opt.Output, "output", "summary", "JSON output: summary, or analysis (every program with time series; needs --format json).")
 }

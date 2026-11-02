@@ -96,6 +96,12 @@ func newContinuityCounterSummary(pmtPid, pcrPid uint16, programInfos []ProgramIn
 		counts: make(map[uint16]int),
 		labels: make(map[uint16]string),
 	}
+	s.addProgramLabels(pmtPid, pcrPid, programInfos)
+	return s
+}
+
+// addProgramLabels names the PIDs of one program in the summary.
+func (s *continuityCounterSummary) addProgramLabels(pmtPid, pcrPid uint16, programInfos []ProgramInfo) {
 	s.labels[0] = "PAT"
 	s.labels[pmtPid] = "PMT"
 	if pcrPid != 0 && pcrPid != nullPidValue {
@@ -104,7 +110,6 @@ func newContinuityCounterSummary(pmtPid, pcrPid uint16, programInfos []ProgramIn
 	for _, info := range programInfos {
 		s.labels[info.elementaryPid] = continuityCounterLabel(info.streamType)
 	}
-	return s
 }
 
 func (s *continuityCounterSummary) Add(pid uint16) { s.counts[pid]++ }

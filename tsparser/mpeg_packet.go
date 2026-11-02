@@ -121,46 +121,55 @@ func trailingBytesAtEOF(reader io.Reader, buf []byte, rest int64) int {
 }
 
 func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos []ProgramInfo, options options.Options, packetSize int, endOffset int64, quiet bool) (*pesAnalysis, error) {
-	tsBuffer := make([]byte, packetSize)
-	pesMap := make(map[uint16]*Pes)
-	for _, val := range programInfos {
-		pesMap[val.elementaryPid] = nil
-	}
-	var lastPcr uint64
-	var lastPcrPos int64
-	var maxDelay float64
-	var pcrInterval pcrIntervalTracker
-	var pcrPtsSamples int
-	var pcrJitter PcrJitter
-	var bitrate *BitrateStats
-	if options.DumpBitrate {
-		bitrate = NewBitrateStats(options.Program, pmtPid, pcrPid, programInfos)
-	}
-	// PTS/DTS anomaly detection is always on; it prints only when a problem is
-	// found, so a healthy stream stays quiet. Only a cleanly parsed PES is
-	// checked — a partially parsed header would carry garbage timestamps.
-	anomaly := NewTimestampAnomaly()
+	analyzer := newProgramAnalyzer(options, *pos, uint16(options.Program), pmtPid, pcrPid, programInfos, false)
 	continuity := newContinuityCounterSummary(pmtPid, pcrPid, programInfos)
-	continuityTracker := newContinuityTracker()
-	checkAnomaly := func(perr error, pes *Pes) {
-		if perr == nil {
-			anomaly.Check(pes)
-		}
+	scan, err := scanPrograms(reader, pos, []*programAnalyzer{analyzer}, continuity, options, packetSize, endOffset, quiet)
+	if err != nil {
+		return nil, err
 	}
-	recordTiming := func(perr error, pes *Pes) {
-		if perr != nil {
-			return
-		}
-		if delay, ok := pes.BracketedTimestampDelay(); ok {
-			if pcrPtsSamples == 0 || delay > maxDelay {
-				maxDelay = delay
-			}
-			pcrPtsSamples++
-		}
+	analyzer.finish()
+
+	report := analyzer.complianceReport()
+	result := &pesAnalysis{compliance: report, continuity: continuity, anomalies: analyzer.anomaly, truncatedBytes: scan.truncatedBytes, truncatedPos: scan.truncatedPos}
+	if options.DumpPcrJitter {
+		result.jitter = &analyzer.pcrJitter
 	}
+	if analyzer.bitrate != nil {
+		result.bitrate = analyzer.bitrate
+	}
+	if !quiet {
+		report.dump()
+		if options.DumpPcrJitter {
+			analyzer.pcrJitter.Dump()
+		}
+		if analyzer.bitrate != nil {
+			analyzer.bitrate.Dump()
+		}
+		analyzer.anomaly.Dump()
+		continuity.Dump()
+	}
+	if failures := report.failures(); options.FailOnError && len(failures) > 0 {
+		return result, &ComplianceError{Checks: failures}
+	}
+
+	return result, nil
+}
+
+// scanResult describes how a scan of packets ended.
+type scanResult struct {
+	truncatedBytes   int
+	truncatedPos     int64
+	continuityEvents []continuityEvent
+}
+
+// scanPrograms reads packets from *pos until the end of the input or endOffset
+// and feeds each one to every analyzer whose start it has reached. Continuity
+// counters are checked once for the whole multiplex.
+func scanPrograms(reader io.Reader, pos *int64, analyzers []*programAnalyzer, continuity *continuityCounterSummary, options options.Options, packetSize int, endOffset int64, quiet bool) (scanResult, error) {
+	var result scanResult
+	tsBuffer := make([]byte, packetSize)
 	tsPacket := NewTsPacket()
-	var truncatedBytes int
-	var truncatedPos int64
+	continuityTracker := newContinuityTracker()
 
 	for endOffset <= 0 || *pos+int64(packetSize) <= endOffset {
 		size, err := io.ReadFull(reader, tsBuffer)
@@ -169,10 +178,10 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		} else if err == io.ErrUnexpectedEOF {
 			// Captures cut off mid-packet are common; keep the analysis of the
 			// complete packets and report the leftover bytes.
-			truncatedBytes = size
+			result.truncatedBytes = size
 			break
 		} else if err != nil {
-			return nil, fmt.Errorf("file read error: %w", err)
+			return result, fmt.Errorf("file read error: %w", err)
 		}
 
 		tsData := tsBuffer
@@ -182,9 +191,8 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		tsPacket.Initialize(*pos, options)
 		tsPacket.Append(tsData)
 		if err := tsPacket.Parse(); err != nil {
-			return nil, fmt.Errorf("failed to parse TS packet in BufferPes: %w", err)
+			return result, fmt.Errorf("failed to parse TS packet in BufferPes: %w", err)
 		}
-		pid := tsPacket.Pid()
 		continuityResult := continuityTracker.Check(tsPacket)
 		if continuityResult.Event != nil {
 			event := continuityResult.Event
@@ -192,138 +200,179 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 				fmt.Printf("packet loss. : pid=0x%04x. count=0x%x, pos=0x%08x\n", event.PID, event.Actual, event.Pos)
 			}
 			continuity.Add(event.PID)
+			result.continuityEvents = append(result.continuityEvents, *event)
 		}
-		if bitrate != nil {
-			bitrate.CountPacket(pid)
-		}
-		pes, exist := pesMap[pid]
-		// PCR_PID 0 (unset) and 0x1FFF ("no PCR") are not real carrier PIDs, so no
-		// PCR-based analysis (bitrate, jitter, timestamps) runs against them.
-		if tsPacket.HasAf() && tsPacket.adaptationField.PcrFlag() && pcrPid != 0 && pcrPid != nullPidValue && pid == pcrPid {
-			if bitrate != nil {
-				bitrate.MarkPcr(tsPacket.Pcr(), tsPacket.adaptationField.DiscontinuityIndicator())
+		for _, analyzer := range analyzers {
+			if *pos >= analyzer.start {
+				analyzer.observe(tsPacket, *pos, continuityResult.Duplicate)
 			}
-			if options.DumpTimestamp {
-				tsPacket.adaptationField.DumpPcr(lastPcr)
-			}
-			if options.DumpPcrJitter {
-				pcrJitter.Add(*pos, tsPacket.Pcr(), tsPacket.adaptationField.DiscontinuityIndicator())
-			}
-			// Complete the PCR bracket for every active PES, including short PES
-			// packets which have no continuation packet after this PCR.
-			for _, activePes := range pesMap {
-				if activePes != nil && activePes.nextPcr == 0 && tsPacket.Pcr() > activePes.prevPcr {
-					activePes.nextPcr = tsPacket.Pcr()
-					activePes.nextPcrPos = *pos
-				}
-			}
-			pcrInterval.Add(tsPacket.Pcr(), tsPacket.adaptationField.DiscontinuityIndicator())
-			lastPcr = tsPacket.Pcr()
-			lastPcrPos = *pos
 		}
-		if !exist {
-			*pos += int64(size)
-			continue
-		}
-		if continuityResult.Duplicate {
-			*pos += int64(size)
-			continue
-		}
-
-		if pes == nil && !tsPacket.PayloadUnitStartIndicator() {
-			*pos += int64(size)
-			continue
-		}
-
-		// Skip packets without payload (e.g., AF-only packets with afc=2).
-		// Per MPEG-2 spec, these do not increment continuity_counter.
-		if len(tsPacket.Payload()) == 0 {
-			*pos += int64(size)
-			continue
-		}
-
-		if tsPacket.PayloadUnitStartIndicator() {
-			if pes != nil {
-				perr := pes.Parse()
-				if options.DumpTimestamp {
-					pes.DumpTimestamp()
-				}
-				if options.DumpPesHeader {
-					pes.DumpHeader()
-				}
-				checkAnomaly(perr, pes)
-				recordTiming(perr, pes)
-			} else {
-				pes = NewPes()
-				pesMap[pid] = pes
-			}
-			pes.Initialize(pid, *pos, lastPcr, lastPcrPos)
-			pes.Append(tsPacket.Payload()) // read until pointer_field
-
-		} else {
-			pes.Append(tsPacket.Payload())
-		}
-
 		*pos += int64(size)
 	}
 
-	if truncatedBytes == 0 && endOffset > 0 {
-		truncatedBytes = trailingBytesAtEOF(reader, tsBuffer, endOffset-*pos)
+	if result.truncatedBytes == 0 && endOffset > 0 {
+		result.truncatedBytes = trailingBytesAtEOF(reader, tsBuffer, endOffset-*pos)
 	}
-	if truncatedBytes > 0 {
-		truncatedPos = *pos
+	if result.truncatedBytes > 0 {
+		result.truncatedPos = *pos
 		if !quiet {
-			fmt.Printf("0x%08x %s\n", *pos, truncatedPacketMessage(truncatedBytes))
+			fmt.Printf("0x%08x %s\n", *pos, truncatedPacketMessage(result.truncatedBytes))
 		}
 	}
+	return result, nil
+}
 
-	// The final PES of each elementary stream never sees a following PUSI, so
-	// parse and emit it here (best effort) rather than dropping it at EOF.
-	pids := make([]uint16, 0, len(pesMap))
-	for pid := range pesMap {
+// programAnalyzer holds the per-program state of a scan: PCR timing, PES
+// timestamps, bitrate and PCR jitter of one program.
+type programAnalyzer struct {
+	options       options.Options
+	start         int64 // offset of the first packet analyzed for this program
+	pcrPid        uint16
+	pesMap        map[uint16]*Pes
+	lastPcr       uint64
+	lastPcrPos    int64
+	maxDelay      float64
+	pcrInterval   pcrIntervalTracker
+	pcrPtsSamples int
+	collectJitter bool
+	pcrJitter     PcrJitter
+	bitrate       *BitrateStats
+	anomaly       *TimestampAnomaly
+	series        *programSeries // nil unless time series are collected
+}
+
+// newProgramAnalyzer prepares the analysis of one program from offset start.
+// withSeries collects bitrate, PCR jitter and time series regardless of the
+// dump flags.
+func newProgramAnalyzer(options options.Options, start int64, programNumber, pmtPid, pcrPid uint16, programInfos []ProgramInfo, withSeries bool) *programAnalyzer {
+	a := &programAnalyzer{
+		options:       options,
+		start:         start,
+		pcrPid:        pcrPid,
+		pesMap:        make(map[uint16]*Pes),
+		collectJitter: options.DumpPcrJitter || withSeries,
+		// PTS/DTS anomaly detection is always on; it prints only when a problem is
+		// found, so a healthy stream stays quiet. Only a cleanly parsed PES is
+		// checked — a partially parsed header would carry garbage timestamps.
+		anomaly: NewTimestampAnomaly(),
+	}
+	for _, val := range programInfos {
+		a.pesMap[val.elementaryPid] = nil
+	}
+	if options.DumpBitrate || withSeries {
+		a.bitrate = NewBitrateStats(int(programNumber), pmtPid, pcrPid, programInfos)
+	}
+	if withSeries {
+		a.series = newProgramSeries()
+	}
+	return a
+}
+
+// observe processes one packet of the multiplex at offset pos.
+func (a *programAnalyzer) observe(tsPacket *TsPacket, pos int64, duplicate bool) {
+	pid := tsPacket.Pid()
+	if a.bitrate != nil {
+		a.bitrate.CountPacket(pid)
+	}
+	pes, exist := a.pesMap[pid]
+	// PCR_PID 0 (unset) and 0x1FFF ("no PCR") are not real carrier PIDs, so no
+	// PCR-based analysis (bitrate, jitter, timestamps) runs against them.
+	if tsPacket.HasAf() && tsPacket.adaptationField.PcrFlag() && a.pcrPid != 0 && a.pcrPid != nullPidValue && pid == a.pcrPid {
+		pcr, discontinuity := tsPacket.Pcr(), tsPacket.adaptationField.DiscontinuityIndicator()
+		if a.bitrate != nil {
+			a.bitrate.MarkPcr(pcr, discontinuity)
+		}
+		if a.options.DumpTimestamp {
+			tsPacket.adaptationField.DumpPcr(a.lastPcr)
+		}
+		if a.collectJitter {
+			a.pcrJitter.Add(pos, pcr, discontinuity)
+		}
+		// Complete the PCR bracket for every active PES, including short PES
+		// packets which have no continuation packet after this PCR.
+		for _, activePes := range a.pesMap {
+			if activePes != nil && activePes.nextPcr == 0 && pcr > activePes.prevPcr {
+				activePes.nextPcr = pcr
+				activePes.nextPcrPos = pos
+			}
+		}
+		intervalMs, measured := a.pcrInterval.Add(pcr, discontinuity)
+		if a.series != nil {
+			a.series.addPcr(pos, pcr, discontinuity, intervalMs, measured)
+		}
+		a.lastPcr = pcr
+		a.lastPcrPos = pos
+	}
+	if !exist || duplicate {
+		return
+	}
+	if pes == nil && !tsPacket.PayloadUnitStartIndicator() {
+		return
+	}
+	// Skip packets without payload (e.g., AF-only packets with afc=2).
+	// Per MPEG-2 spec, these do not increment continuity_counter.
+	if len(tsPacket.Payload()) == 0 {
+		return
+	}
+
+	if tsPacket.PayloadUnitStartIndicator() {
+		if pes != nil {
+			a.completePes(pes)
+		} else {
+			pes = NewPes()
+			a.pesMap[pid] = pes
+		}
+		pes.Initialize(pid, pos, a.lastPcr, a.lastPcrPos)
+		pes.Append(tsPacket.Payload()) // read until pointer_field
+	} else {
+		pes.Append(tsPacket.Payload())
+	}
+}
+
+// completePes parses a buffered PES and records its timestamps.
+func (a *programAnalyzer) completePes(pes *Pes) {
+	perr := pes.Parse()
+	if a.options.DumpTimestamp {
+		pes.DumpTimestamp()
+	}
+	if a.options.DumpPesHeader {
+		pes.DumpHeader()
+	}
+	if perr != nil {
+		return
+	}
+	a.anomaly.Check(pes)
+	delay, bracketed := pes.BracketedTimestampDelay()
+	if bracketed {
+		if a.pcrPtsSamples == 0 || delay > a.maxDelay {
+			a.maxDelay = delay
+		}
+		a.pcrPtsSamples++
+	}
+	if a.series != nil {
+		a.series.addPes(pes, delay, bracketed)
+	}
+}
+
+// finish parses the final PES of each elementary stream, which never sees a
+// following PUSI, rather than dropping it at the end of the input (best effort).
+func (a *programAnalyzer) finish() {
+	pids := make([]uint16, 0, len(a.pesMap))
+	for pid := range a.pesMap {
 		pids = append(pids, pid)
 	}
 	sort.Slice(pids, func(i, j int) bool { return pids[i] < pids[j] })
 	for _, pid := range pids {
-		pes := pesMap[pid]
+		pes := a.pesMap[pid]
 		if pes == nil || len(pes.buf) == 0 {
 			continue
 		}
-		perr := pes.Parse()
-		if options.DumpTimestamp {
-			pes.DumpTimestamp()
-		}
-		if options.DumpPesHeader {
-			pes.DumpHeader()
-		}
-		checkAnomaly(perr, pes)
-		recordTiming(perr, pes)
+		a.completePes(pes)
 	}
+}
 
-	report := newComplianceReport(pcrInterval.maxMs(), pcrInterval.intervals, maxDelay, pcrPtsSamples)
-	result := &pesAnalysis{compliance: report, continuity: continuity, anomalies: anomaly, truncatedBytes: truncatedBytes, truncatedPos: truncatedPos}
-	if options.DumpPcrJitter {
-		result.jitter = &pcrJitter
-	}
-	if bitrate != nil {
-		result.bitrate = bitrate
-	}
-	if !quiet {
-		report.dump()
-		if options.DumpPcrJitter {
-			pcrJitter.Dump()
-		}
-		if bitrate != nil {
-			bitrate.Dump()
-		}
-		anomaly.Dump()
-		continuity.Dump()
-	}
-	if failures := report.failures(); options.FailOnError && len(failures) > 0 {
-		return result, &ComplianceError{Checks: failures}
-	}
-
-	return result, nil
+func (a *programAnalyzer) complianceReport() complianceReport {
+	return newComplianceReport(a.pcrInterval.maxMs(), a.pcrInterval.intervals, a.maxDelay, a.pcrPtsSamples)
 }
 
 func crc32(buf []byte) uint32 {

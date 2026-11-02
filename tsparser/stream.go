@@ -16,6 +16,12 @@ func ParseTsFile(filename string, options options.Options) error {
 	if options.Format != "text" && options.Format != "json" {
 		return fmt.Errorf("unsupported output format %q (expected text or json)", options.Format)
 	}
+	if options.Output != "" && options.Output != "summary" && options.Output != "analysis" {
+		return fmt.Errorf("unsupported output %q (expected summary or analysis)", options.Output)
+	}
+	if options.Output == "analysis" && options.Format != "json" {
+		return errors.New("--output analysis requires --format json")
+	}
 	if options.Format == "json" {
 		return parseTsFileJSON(filename, options)
 	}
@@ -35,10 +41,16 @@ func parseTsFileJSON(filename string, options options.Options) error {
 
 func parseTsFileJSONTo(filename string, options options.Options, output io.Writer) error {
 	report := newAnalysisReport(filename, options.Offset, options.Limit)
+	if options.Output == "analysis" {
+		report.analysis = &rangeAnalysis{}
+	}
 	var parseErr error
 	reason := "analysis_failed"
 	if options.DumpHeader || options.DumpPayload || options.DumpAdaptationField || options.DumpPsi || options.DumpPesHeader || options.DumpTimestamp {
 		parseErr = errors.New("--format json cannot be combined with packet-level dump flags")
+		reason = "incompatible_options"
+	} else if report.analysis != nil && (options.Program != 0 || options.ListPrograms || options.FailOnError) {
+		parseErr = errors.New("--output analysis covers every program and cannot be combined with --program, --list-programs or --fail-on-error")
 		reason = "incompatible_options"
 	} else {
 		file, err := os.Open(filename)
@@ -47,6 +59,9 @@ func parseTsFileJSONTo(filename string, options options.Options, output io.Write
 			reason = "input_open_failed"
 		} else {
 			defer func() { _ = file.Close() }()
+			if report.analysis != nil {
+				report.analysis.fileSize = fileSize(file)
+			}
 			parseErr = parseTsReaderReport(newBufferedReadSeeker(file), options, report)
 		}
 	}
@@ -58,7 +73,11 @@ func parseTsFileJSONTo(filename string, options options.Options, output io.Write
 			report.Error = parseErr.Error()
 		}
 	}
-	if err := writeJSONReport(output, report); err != nil {
+	var document any = report
+	if report.analysis != nil {
+		document = rangeAnalysisReport(report)
+	}
+	if err := writeJSONReport(output, document); err != nil {
 		if parseErr != nil {
 			return errors.Join(parseErr, err)
 		}
@@ -154,6 +173,9 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 		patPrograms := pat.Programs()
 		programStart := pos
 
+		if report != nil && report.analysis != nil {
+			return analyzeAllPrograms(reader, patPrograms, programStart, options, packetSize, endOffset, report)
+		}
 		if _, err = reader.Seek(pos, 0); err != nil {
 			return fmt.Errorf("file seek error: %w", err)
 		}

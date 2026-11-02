@@ -68,6 +68,15 @@ type TimestampAnomaly struct {
 	order  []anomalyKey          // (PID, kind) in first-seen order
 	first  map[anomalyKey]string // first occurrence's message
 	counts map[anomalyKey]int    // total occurrences
+	events []anomalyEvent        // every occurrence, in stream order
+}
+
+// anomalyEvent is one occurrence of an anomaly at the PES at pos.
+type anomalyEvent struct {
+	pid     uint16
+	pos     int64
+	kind    anomalyKind
+	message string
 }
 
 // NewTimestampAnomaly creates an empty collector.
@@ -89,7 +98,7 @@ func (a *TimestampAnomaly) Check(p *Pes) {
 	// both are present). signedDelta folds the 33-bit wrap so a stamp straddling
 	// the wrap boundary is not misread as a violation.
 	if p.ptsDtsFlags == 3 && signedDelta(p.pts, p.dts) < 0 {
-		a.add(p.pid, kindDtsAfterPts, fmt.Sprintf(
+		a.add(p.pid, p.pos, kindDtsAfterPts, fmt.Sprintf(
 			"DTS is later than PTS in the access unit at 0x%08x (DTS %s > PTS %s)",
 			p.pos, stampMs(p.dts), stampMs(p.pts)))
 	}
@@ -115,15 +124,15 @@ func (a *TimestampAnomaly) Check(p *Pes) {
 	raw := int64(decode) - int64(st.last)
 	switch {
 	case raw <= -ptsHalfWrap:
-		a.add(p.pid, kindWraparound, fmt.Sprintf(
+		a.add(p.pid, p.pos, kindWraparound, fmt.Sprintf(
 			"%s wrapped around (33-bit counter overflow) at 0x%08x", label, p.pos))
 	case raw < 0 || raw >= ptsHalfWrap:
-		a.add(p.pid, kindBackward, fmt.Sprintf(
+		a.add(p.pid, p.pos, kindBackward, fmt.Sprintf(
 			"%s went backward at 0x%08x (%s) after 0x%08x (%s)",
 			label, p.pos, stampMs(decode), st.lastPos, stampMs(st.last)))
 	default:
 		if st.minStep > 0 && raw > int64(tsGapRatio)*st.minStep && raw-st.minStep > tsGapMinTicks {
-			a.add(p.pid, kindGap, fmt.Sprintf(
+			a.add(p.pid, p.pos, kindGap, fmt.Sprintf(
 				"%s jumped forward %s at 0x%08x (%s) after 0x%08x (%s), expected ~%s",
 				label, durTicks(raw), p.pos, stampMs(decode), st.lastPos, stampMs(st.last), durTicks(st.minStep)))
 		}
@@ -150,8 +159,10 @@ func (a *TimestampAnomaly) Dump() {
 	}
 }
 
-// add records one occurrence; only the first per (PID, kind) keeps its message.
-func (a *TimestampAnomaly) add(pid uint16, kind anomalyKind, msg string) {
+// add records one occurrence; only the first per (PID, kind) keeps its message
+// in the summary, while events keeps every occurrence.
+func (a *TimestampAnomaly) add(pid uint16, pos int64, kind anomalyKind, msg string) {
+	a.events = append(a.events, anomalyEvent{pid: pid, pos: pos, kind: kind, message: msg})
 	key := anomalyKey{pid, kind}
 	if a.counts[key] == 0 {
 		a.first[key] = msg
