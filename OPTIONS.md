@@ -370,8 +370,9 @@ updates on a timeline. For
   found, or added by a later PAT and therefore not analyzed) has only
   `program_number`, `pmt_pid` and empty `elementary_streams`.
 - **`sections`** lists the PAT sections on PID 0x0000 and the PMT sections
-  (`table_id` 0x02) on every PMT PID a valid PAT section announced, ordered by
-  first occurrence. A section identical to the previous one with the same PID,
+  (`table_id` 0x02) on every PMT PID that the first complete PAT or an applied
+  PAT change announced, ordered by first occurrence. PMT sections sent on a PID
+  before a later PAT announces it are included. A section identical to the previous one with the same PID,
   table, `transport_stream_id`/`program_number`, `current_next_indicator` and
   `section_number` is counted in that entry (`count`, `last_offset_bytes`)
   instead of adding one, so the list grows with table changes and broken
@@ -386,12 +387,24 @@ updates on a timeline. For
   with an `invalid_reason` (`malformed`, `invalid_crc32`,
   `section_number_beyond_last`, `parse_error`). Invalid sections carry no header
   fields and are counted per PID, table and reason.
+  An entry is a bounded summary, not a per-packet index: `offset_bytes` and
+  `last_offset_bytes` are its first and last copies, and copies of other
+  sections on the same PID (another program's PMT, another section of a
+  multi-section table) can lie in between. Which section a given packet starts
+  is in that packet's `sections` in [`--output packets`](#packet-pages---output-packets).
 - **`pids`** lists every PID seen in the range, in PID order, with its packet
   count and first and last packet offsets, and `roles`: what it carries in any
   layout (`pat`, `pmt`, `pcr`, `elementary_stream` with `stream_type`, `null`).
   A PID no layout lists is `unannounced` (for example SDT on 0x0011, or an
   elementary stream of a program whose PMT is not known). To label a packet,
   look up its PID in the layout whose interval contains its offset.
+- **Per packet.** A caller that lists packets (such as the GUI's packet list)
+  combines the two documents: the layout in effect at the packet's offset gives
+  what its PID carries, and for a packet that starts a section, the packet's
+  own `sections` (from `--output packets`) gives the `table_id`,
+  `table_id_extension` (`transport_stream_id` or `program_number`),
+  `version_number` and `section_number`, which match the `psi_layout.sections`
+  entry with the same PID and values (and its `status`).
 - Size: one entry per table change or kind of broken section, one layout per
   applied change, and one entry per PID, independent of the range length.
 
@@ -455,6 +468,24 @@ $ mpeg-ts-analyzer sample_data/sample_188byte_two_programs_mpeg2_160x120_25fps_m
   M2TS, offsets point at the 4-byte arrival timestamp that starts each packet.
 - A packet without a sync byte is listed with `"valid": false`. An incomplete
   last packet ends the page with a warning.
+- A packet in which PSI sections start has `sections`: for each long-form
+  section (`section_syntax_indicator` 1) starting after the `pointer_field`,
+  in order, its `table_id`, `table_id_extension`, `version_number`,
+  `current_next_indicator`, `section_number` and `last_section_number`. They
+  are read from the packet's own bytes, so a page needs no PSI context. Listing
+  stops at stuffing (0xFF), a short-form section, or a header that does not fit
+  in the packet; nothing beyond the header is checked (the CRC32 may lie in a
+  later packet). The field is absent for every other packet, including packets
+  with `transport_error` or a scrambled payload; PES packets never have it.
+  For example, the PMT version 1 of the version-change sample:
+
+  ```json
+  { "offset_bytes": 102460, "valid": true, "pid": "0x1000", "pusi": true, ..., "continuity_counter": 14,
+    "sections": [ { "table_id": "0x02", "table_id_extension": 1, "version_number": 1, "current_next_indicator": 1, "section_number": 0, "last_section_number": 0 } ] }
+  ```
+
+  Combined with the PSI layout of `--output analysis` it identifies the table
+  each packet carries; see [PSI layout of the range](#psi-layout-of-the-range).
 
 ## Packet detail (`--output packet`)
 

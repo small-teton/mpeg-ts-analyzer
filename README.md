@@ -145,7 +145,8 @@ the range (`psi_layout`: PAT/PMT sections, the layouts in effect and their byte
 intervals, and every observed PID with what it carries); see
 [OPTIONS.md](OPTIONS.md#range-analysis-output---output-analysis) and
 [OPTIONS.md](OPTIONS.md#psi-layout-of-the-range). `--output
-packets` pages through packets and `--output packet` decodes one packet with
+packets` pages through packets (with the headers of the PSI sections that
+start in each packet) and `--output packet` decodes one packet with
 the byte position of every field, plus the exact bits of fields that do not
 fill whole bytes ([OPTIONS.md](OPTIONS.md#packet-pages---output-packets)).
 

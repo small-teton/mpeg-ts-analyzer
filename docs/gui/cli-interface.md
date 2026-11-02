@@ -59,7 +59,11 @@ switching programs or screens never runs the CLI again.
   next to `psi_transitions` in the range analysis document: a packet's PID is
   looked up in the layout whose `[offset_bytes, end_offset_bytes)` contains the
   packet, and `transition_indices` links a layout to the changes that started
-  it. See OPTIONS.md, "PSI layout of the range".
+  it. `psi_layout.sections` is a bounded summary (first and last copy, count),
+  not a per-packet index; the packet page carries what each section-start
+  packet says (`sections`: `table_id`, `table_id_extension`, version and
+  section numbers), which the GUI matches to a summary entry. See OPTIONS.md,
+  "PSI layout of the range".
 - **Analysis start**: statistics start after the PAT section and the needed
   PMTs are complete, not at the first PAT. The output reports that offset (per
   program), so the GUI can show the unanalyzed lead.
@@ -74,7 +78,8 @@ from its first one.
   carry no PSI context; the GUI labels them with the PSI layout of the range
   analysis.
 - Per packet: offset, PID, PUSI, TEI, scrambling control, adaptation field
-  control, CC, PCR presence.
+  control, CC, PCR presence, and the headers of the PSI sections that start in
+  the packet (from the packet's own bytes).
 - Metadata: packet size (188/192), the synchronized start offset,
   `next_offset_bytes`, end of file, file size and total packet count.
 - Defined behavior for offsets that are not on a packet boundary, for the M2TS
