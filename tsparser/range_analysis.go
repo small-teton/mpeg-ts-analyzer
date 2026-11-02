@@ -23,6 +23,7 @@ type rangeAnalysis struct {
 	scanEnd    int64
 	scan       scanResult
 	continuity *continuityCounterSummary
+	psi        *psiTracker
 }
 
 type rangeProgram struct {
@@ -38,12 +39,13 @@ type rangeProgram struct {
 // single pass. Each program starts collecting after its own PMT, as a
 // --program run would; continuity counters are checked for the whole
 // multiplex from the earliest of those offsets.
-func analyzeAllPrograms(reader io.ReadSeeker, patPrograms []Program, programStart int64, options options.Options, packetSize int, endOffset int64, report *AnalysisReport) error {
+func analyzeAllPrograms(reader io.ReadSeeker, pat *patTable, programStart int64, options options.Options, packetSize int, endOffset int64, report *AnalysisReport) error {
 	analysis := report.analysis
 	var analyzers []*programAnalyzer
 	analysis.continuity = &continuityCounterSummary{counts: make(map[uint16]int), labels: make(map[uint16]string)}
+	analysis.psi = newPsiTracker(pat, analysis.continuity, options, packetSize, true)
 	// Programs() already leaves out program_number 0 (the network PID).
-	for _, prog := range patPrograms {
+	for _, prog := range pat.Programs() {
 		entry := rangeProgram{program: prog, pmtPid: prog.PmtPid}
 		pos := programStart
 		if _, err := reader.Seek(pos, io.SeekStart); err != nil {
@@ -57,6 +59,7 @@ func analyzeAllPrograms(reader io.ReadSeeker, patPrograms []Program, programStar
 			entry.pmt = pmt.Pmt
 			entry.analyzer = newProgramAnalyzer(options, pos, prog.ProgramNumber, prog.PmtPid, pmt.PcrPid(), pmt.ProgramInfos(), true)
 			analysis.continuity.addProgramLabels(prog.PmtPid, pmt.PcrPid(), pmt.ProgramInfos())
+			analysis.psi.addProgram(prog.ProgramNumber, prog.PmtPid, pmt, entry.analyzer)
 			analyzers = append(analyzers, entry.analyzer)
 		}
 		analysis.programs = append(analysis.programs, entry)
@@ -72,7 +75,7 @@ func analyzeAllPrograms(reader io.ReadSeeker, patPrograms []Program, programStar
 	if _, err := reader.Seek(pos, io.SeekStart); err != nil {
 		return fmt.Errorf("file seek error: %w", err)
 	}
-	scan, err := scanPrograms(reader, &pos, analyzers, analysis.continuity, options, packetSize, endOffset, true)
+	scan, err := scanPrograms(reader, &pos, analyzers, analysis.continuity, analysis.psi, options, packetSize, endOffset, true)
 	if err != nil {
 		return err
 	}
@@ -82,6 +85,7 @@ func analyzeAllPrograms(reader io.ReadSeeker, patPrograms []Program, programStar
 	analysis.scanned = true
 	analysis.scanEnd = pos
 	analysis.scan = scan
+	reportPsiDiagnostics(report, analysis.psi.warnings)
 	if scan.truncatedBytes > 0 {
 		report.Warnings = append(report.Warnings, ReportWarning{scan.truncatedPos, truncatedPacketMessage(scan.truncatedBytes)})
 	}
@@ -106,6 +110,7 @@ type RangeAnalysisReport struct {
 	ContinuityCounter        *ReportContinuity       `json:"continuity_counter,omitempty"`
 	ContinuityEvents         []ReportContinuityEvent `json:"continuity_events"`
 	Programs                 []RangeAnalysisProgram  `json:"programs"`
+	PSITransitions           []ReportPSITransition   `json:"psi_transitions,omitempty"`
 	Warnings                 []ReportWarning         `json:"warnings"`
 }
 
@@ -129,6 +134,7 @@ type ReportContinuityEvent struct {
 type RangeAnalysisProgram struct {
 	ReportProgram
 	AnalysisStartOffsetBytes *int64                    `json:"analysis_start_offset_bytes,omitempty"`
+	AnalysisEndOffsetBytes   *int64                    `json:"analysis_end_offset_bytes,omitempty"`
 	AverageBitrateBPS        *float64                  `json:"average_bitrate_bps,omitempty"`
 	Compliance               *ReportCompliance         `json:"compliance,omitempty"`
 	TimestampAnomalies       *ReportTimestampAnomalies `json:"timestamp_anomalies,omitempty"`
@@ -215,6 +221,7 @@ func rangeAnalysisReport(report *AnalysisReport) *RangeAnalysisReport {
 		start, end := analysis.scanStart, analysis.scanEnd
 		r.AnalysisStartOffsetBytes, r.AnalysisEndOffsetBytes = &start, &end
 		r.ContinuityCounter = reportContinuity(analysis.continuity)
+		r.PSITransitions = reportPsiTransitions(analysis.psi.transitions)
 		for _, e := range analysis.scan.continuityEvents {
 			r.ContinuityEvents = append(r.ContinuityEvents, ReportContinuityEvent{OffsetBytes: e.Pos, PID: reportPID(e.PID), ExpectedCC: e.Expected, ActualCC: e.Actual})
 		}
@@ -228,6 +235,10 @@ func rangeAnalysisReport(report *AnalysisReport) *RangeAnalysisReport {
 		if a := entry.analyzer; a != nil && analysis.scanned {
 			start := a.start
 			p.AnalysisStartOffsetBytes = &start
+			if a.stopped {
+				end := a.end
+				p.AnalysisEndOffsetBytes = &end
+			}
 			p.Compliance = reportCompliance(a.complianceReport())
 			p.TimestampAnomalies = reportAnomalies(a.anomaly)
 			p.PCRJitter = reportJitter(&a.pcrJitter)

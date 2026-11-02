@@ -54,6 +54,13 @@
     "bitrate": {
       "$ref": "#/$defs/bitrate"
     },
+    "psi_transitions": {
+      "type": "array",
+      "description": "PAT and PMT version changes applied during the analysis, in stream order. Absent when no change was applied. programs describes the layout at the start of the analysis.",
+      "items": {
+        "$ref": "#/$defs/psiTransition"
+      }
+    },
     "warnings": {
       "type": "array",
       "items": {
@@ -434,6 +441,153 @@
         "program_peak_1s_bps": {
           "type": "number",
           "minimum": 0
+        }
+      }
+    },
+    "psiTransition": {
+      "type": "object",
+      "description": "One applied PAT or PMT version change. The new layout applies to the packets after offset_bytes. PAT changes carry programs, programs_added, programs_removed and pmt_pid_changes; PMT changes carry program_number, previous_pcr_pid, pcr_pid, elementary_streams, elementary_streams_added, elementary_streams_removed and stream_type_changes.",
+      "required": [
+        "offset_bytes",
+        "table",
+        "pid",
+        "previous_version",
+        "version"
+      ],
+      "properties": {
+        "offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Offset of the packet that completed the new table."
+        },
+        "table": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: pat, pmt."
+        },
+        "pid": {
+          "$ref": "#/$defs/pid",
+          "description": "PID that carried the new table."
+        },
+        "previous_version": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 31
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 31,
+          "description": "Equal to previous_version only for the first PMT read from a PMT PID the program moved to, when its content differs."
+        },
+        "programs": {
+          "type": "array",
+          "description": "Every program of the new PAT.",
+          "items": {
+            "$ref": "#/$defs/patProgram"
+          }
+        },
+        "programs_added": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/patProgram"
+          }
+        },
+        "programs_removed": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/patProgram"
+          }
+        },
+        "pmt_pid_changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "program_number",
+              "previous_pmt_pid",
+              "pmt_pid"
+            ],
+            "properties": {
+              "program_number": {
+                "$ref": "#/$defs/nonNegativeInteger"
+              },
+              "previous_pmt_pid": {
+                "$ref": "#/$defs/pid"
+              },
+              "pmt_pid": {
+                "$ref": "#/$defs/pid"
+              }
+            }
+          }
+        },
+        "program_number": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "previous_pcr_pid": {
+          "$ref": "#/$defs/pid"
+        },
+        "pcr_pid": {
+          "$ref": "#/$defs/pid"
+        },
+        "elementary_streams": {
+          "type": "array",
+          "description": "Every elementary stream of the new PMT.",
+          "items": {
+            "$ref": "#/$defs/elementaryStream"
+          }
+        },
+        "elementary_streams_added": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/elementaryStream"
+          }
+        },
+        "elementary_streams_removed": {
+          "type": "array",
+          "description": "Removed streams with their previous stream_type.",
+          "items": {
+            "$ref": "#/$defs/elementaryStream"
+          }
+        },
+        "stream_type_changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "pid",
+              "previous_stream_type",
+              "stream_type",
+              "stream_type_description"
+            ],
+            "properties": {
+              "pid": {
+                "$ref": "#/$defs/pid"
+              },
+              "previous_stream_type": {
+                "$ref": "#/$defs/streamType"
+              },
+              "stream_type": {
+                "$ref": "#/$defs/streamType"
+              },
+              "stream_type_description": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "patProgram": {
+      "type": "object",
+      "required": [
+        "program_number",
+        "pmt_pid"
+      ],
+      "properties": {
+        "program_number": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "pmt_pid": {
+          "$ref": "#/$defs/pid"
         }
       }
     },

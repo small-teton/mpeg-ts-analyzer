@@ -668,7 +668,7 @@ func TestBufferPesMaxPcrIntervalSegments(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var pos int64
-			analysis, err := bufferPes(bytes.NewReader(bytes.Join(tt.packets, nil)), &pos, 0x30, 0x31, programInfos, options.Options{FailOnError: true}, 188, 0, true)
+			analysis, err := bufferPes(bytes.NewReader(bytes.Join(tt.packets, nil)), &pos, 0x30, 0x31, programInfos, nil, options.Options{FailOnError: true}, 188, 0, true)
 			if err != nil {
 				t.Fatalf("bufferPes error = %v", err)
 			}

@@ -82,7 +82,7 @@ func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, 
 
 // BufferPes buffer PES data from TS payload
 func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos []ProgramInfo, options options.Options, packetSize int, endOffset int64) error {
-	_, err := bufferPes(reader, pos, pmtPid, pcrPid, programInfos, options, packetSize, endOffset, false)
+	_, err := bufferPes(reader, pos, pmtPid, pcrPid, programInfos, nil, options, packetSize, endOffset, false)
 	return err
 }
 
@@ -96,6 +96,17 @@ type pesAnalysis struct {
 	// input (0 when the input ends on a packet boundary), starting at truncatedPos.
 	truncatedBytes int
 	truncatedPos   int64
+	// transitions and psiWarnings come from following PAT/PMT version changes.
+	transitions []psiTransition
+	psiWarnings []psiDiagnostic
+}
+
+// trackedTables are the PAT and PMT a single-program analysis starts from;
+// later versions of them are followed during the scan.
+type trackedTables struct {
+	pat           *patTable
+	programNumber uint16
+	pmt           *pmtTable
 }
 
 func truncatedPacketMessage(size int) string {
@@ -122,10 +133,15 @@ func trailingBytesAtEOF(reader io.Reader, buf []byte, rest int64) int {
 	return n
 }
 
-func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos []ProgramInfo, options options.Options, packetSize int, endOffset int64, quiet bool) (*pesAnalysis, error) {
+func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos []ProgramInfo, tables *trackedTables, options options.Options, packetSize int, endOffset int64, quiet bool) (*pesAnalysis, error) {
 	analyzer := newProgramAnalyzer(options, *pos, uint16(options.Program), pmtPid, pcrPid, programInfos, false)
 	continuity := newContinuityCounterSummary(pmtPid, pcrPid, programInfos)
-	scan, err := scanPrograms(reader, pos, []*programAnalyzer{analyzer}, continuity, options, packetSize, endOffset, quiet)
+	var psi *psiTracker
+	if tables != nil {
+		psi = newPsiTracker(tables.pat, continuity, options, packetSize, quiet)
+		psi.addProgram(tables.programNumber, pmtPid, tables.pmt, analyzer)
+	}
+	scan, err := scanPrograms(reader, pos, []*programAnalyzer{analyzer}, continuity, psi, options, packetSize, endOffset, quiet)
 	if err != nil {
 		return nil, err
 	}
@@ -133,6 +149,9 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 
 	report := analyzer.complianceReport()
 	result := &pesAnalysis{compliance: report, continuity: continuity, anomalies: analyzer.anomaly, truncatedBytes: scan.truncatedBytes, truncatedPos: scan.truncatedPos}
+	if psi != nil {
+		result.transitions, result.psiWarnings = psi.transitions, psi.warnings
+	}
 	if options.DumpPcrJitter {
 		result.jitter = &analyzer.pcrJitter
 	}
@@ -165,9 +184,11 @@ type scanResult struct {
 }
 
 // scanPrograms reads packets from *pos until the end of the input or endOffset
-// and feeds each one to every analyzer whose start it has reached. Continuity
-// counters are checked once for the whole multiplex.
-func scanPrograms(reader io.Reader, pos *int64, analyzers []*programAnalyzer, continuity *continuityCounterSummary, options options.Options, packetSize int, endOffset int64, quiet bool) (scanResult, error) {
+// and feeds each one to every analyzer whose start it has reached and that has
+// not stopped. Continuity counters are checked once for the whole multiplex.
+// When psi is set, each packet is then passed to it so PAT/PMT version changes
+// apply from the next packet on.
+func scanPrograms(reader io.Reader, pos *int64, analyzers []*programAnalyzer, continuity *continuityCounterSummary, psi *psiTracker, options options.Options, packetSize int, endOffset int64, quiet bool) (scanResult, error) {
 	var result scanResult
 	tsBuffer := make([]byte, packetSize)
 	tsPacket := NewTsPacket()
@@ -205,11 +226,17 @@ func scanPrograms(reader io.Reader, pos *int64, analyzers []*programAnalyzer, co
 			result.continuityEvents = append(result.continuityEvents, *event)
 		}
 		for _, analyzer := range analyzers {
-			if *pos >= analyzer.start {
+			if *pos >= analyzer.start && !analyzer.stopped {
 				analyzer.observe(tsPacket, *pos, continuityResult.Duplicate)
 			}
 		}
+		if psi != nil {
+			psi.observe(tsPacket, *pos, continuityTracker)
+		}
 		*pos += int64(size)
+	}
+	if psi != nil {
+		psi.finish(*pos)
 	}
 
 	if result.truncatedBytes == 0 && endOffset > 0 {
@@ -242,6 +269,12 @@ type programAnalyzer struct {
 	bitrate       *BitrateStats
 	anomaly       *TimestampAnomaly
 	series        *programSeries // nil unless time series are collected
+	programInfos  []ProgramInfo  // elementary streams of the current layout
+	// pcrBreak makes the next PCR start a new timing segment after the
+	// PCR_PID changed.
+	pcrBreak bool
+	stopped  bool
+	end      int64 // offset after the last packet analyzed, once stopped
 }
 
 // newProgramAnalyzer prepares the analysis of one program from offset start.
@@ -257,7 +290,8 @@ func newProgramAnalyzer(options options.Options, start int64, programNumber, pmt
 		// PTS/DTS anomaly detection is always on; it prints only when a problem is
 		// found, so a healthy stream stays quiet. Only a cleanly parsed PES is
 		// checked — a partially parsed header would carry garbage timestamps.
-		anomaly: NewTimestampAnomaly(),
+		anomaly:      NewTimestampAnomaly(),
+		programInfos: programInfos,
 	}
 	for _, val := range programInfos {
 		a.pesMap[val.elementaryPid] = nil
@@ -281,7 +315,10 @@ func (a *programAnalyzer) observe(tsPacket *TsPacket, pos int64, duplicate bool)
 	// PCR_PID 0 (unset) and 0x1FFF ("no PCR") are not real carrier PIDs, so no
 	// PCR-based analysis (bitrate, jitter, timestamps) runs against them.
 	if tsPacket.HasAf() && tsPacket.adaptationField.PcrFlag() && a.pcrPid != 0 && a.pcrPid != nullPidValue && pid == a.pcrPid {
-		pcr, discontinuity := tsPacket.Pcr(), tsPacket.adaptationField.DiscontinuityIndicator()
+		// The first PCR after a PCR_PID change is handled as a discontinuity, so
+		// no interval, jitter estimate or bitrate window spans the change.
+		pcr, discontinuity := tsPacket.Pcr(), tsPacket.adaptationField.DiscontinuityIndicator() || a.pcrBreak
+		a.pcrBreak = false
 		if a.bitrate != nil {
 			a.bitrate.MarkPcr(pcr, discontinuity)
 		}
@@ -374,6 +411,58 @@ func (a *programAnalyzer) finish() {
 		}
 		a.completePes(pes)
 	}
+}
+
+// setLayout switches the analysis to a new PMT version (or a PMT moved to
+// another PID) from the next packet on. Elementary streams that were removed
+// or changed stream_type have their buffered PES finalized now, as at the end
+// of the input, and their PES and timestamp state dropped; added and retyped
+// streams start from their next payload_unit_start_indicator with fresh
+// timestamp state. A PCR_PID change ends the PCR timing segment: PES packets
+// that have no following PCR yet lose their preceding one, so no PCR-PTS/DTS
+// gap mixes the two PCR PIDs.
+func (a *programAnalyzer) setLayout(pmtPid, pcrPid uint16, programInfos []ProgramInfo) {
+	types := make(map[uint16]uint8, len(programInfos))
+	for _, info := range programInfos {
+		types[info.elementaryPid] = info.streamType
+	}
+	for _, info := range a.programInfos {
+		if streamType, kept := types[info.elementaryPid]; kept && streamType == info.streamType {
+			continue
+		}
+		if pes := a.pesMap[info.elementaryPid]; pes != nil && len(pes.buf) > 0 {
+			a.completePes(pes)
+		}
+		delete(a.pesMap, info.elementaryPid)
+		delete(a.anomaly.states, info.elementaryPid)
+	}
+	for _, info := range programInfos {
+		if _, exist := a.pesMap[info.elementaryPid]; !exist {
+			a.pesMap[info.elementaryPid] = nil
+			delete(a.anomaly.states, info.elementaryPid)
+		}
+	}
+	a.programInfos = programInfos
+	if pcrPid != a.pcrPid {
+		a.pcrPid, a.pcrBreak = pcrPid, true
+		a.lastPcr, a.hasLastPcr = 0, false
+		for _, pes := range a.pesMap {
+			if pes != nil && !pes.hasNextPcr {
+				pes.hasPrevPcr = false
+			}
+		}
+	}
+	if a.bitrate != nil {
+		a.bitrate.setLayout(pmtPid, pcrPid, programInfos)
+	}
+}
+
+// stop ends the analysis of the program after the packet at pos, when the
+// program is no longer listed in the PAT. Buffered PES packets are finalized.
+func (a *programAnalyzer) stop(end int64) {
+	a.finish()
+	clear(a.pesMap)
+	a.stopped, a.end = true, end
 }
 
 func (a *programAnalyzer) complianceReport() complianceReport {
