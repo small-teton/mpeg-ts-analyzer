@@ -134,10 +134,12 @@ pub fn check_with_timeout(path: &Path, timeout: Duration) -> Result<Cli, String>
             )
         })?;
     let mut stdout = child.stdout.take().expect("stdout is piped");
-    let reader = thread::spawn(move || {
+    // The output is read on a thread and waited for with the same deadline: a
+    // program can exit while a process it started keeps stdout open.
+    let (output_tx, output) = mpsc::channel();
+    thread::spawn(move || {
         let mut out = Vec::new();
-        let _ = stdout.read_to_end(&mut out);
-        out
+        let _ = output_tx.send(stdout.read_to_end(&mut out).map(|_| out));
     });
     let deadline = Instant::now() + timeout;
     let status = loop {
@@ -156,7 +158,16 @@ pub fn check_with_timeout(path: &Path, timeout: Duration) -> Result<Cli, String>
             Err(err) => return Err(format!("Cannot wait for {}: {err}", path.display())),
         }
     };
-    let stdout = reader.join().unwrap_or_default();
+    let stdout = output
+        .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+        .map_err(|_| {
+            format!(
+                "{} did not finish its --capabilities output within {} s; is it the mpeg-ts-analyzer CLI?",
+                path.display(),
+                timeout.as_secs()
+            )
+        })?
+        .map_err(|err| format!("Cannot read the --capabilities output: {err}"))?;
     if !status.success() {
         return Err(format!(
             "{} does not support --capabilities; a newer CLI is needed.",
@@ -484,6 +495,20 @@ mod tests {
             ]
         );
         assert!(bundled_candidates(None, None).is_empty());
+    }
+
+    /// The program exits, but a process it started keeps stdout open.
+    #[cfg(unix)]
+    #[test]
+    fn gives_up_when_the_output_stays_open() {
+        let dir = tempfile_dir("open-stdout");
+        let cli = fake_cli(&dir, "sleep 3 &\nexit 0");
+        let started = Instant::now();
+        let Err(err) = check_with_timeout(&cli.path, Duration::from_millis(300)) else {
+            panic!("accepted")
+        };
+        assert!(err.contains("did not finish"), "{err}");
+        assert!(started.elapsed() < Duration::from_secs(2));
     }
 
     #[cfg(unix)]
