@@ -15,8 +15,75 @@ const CLI_NAME: &str = "mpeg-ts-analyzer";
 /// Major schema version of `--output analysis` this GUI reads.
 const ANALYSIS_SCHEMA_MAJOR: &str = "1";
 
-pub fn locate() -> PathBuf {
-    std::env::var_os(CLI_ENV).map_or_else(|| PathBuf::from(CLI_NAME), PathBuf::from)
+/// Where the CLI in use was found.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Source {
+    Environment,
+    Settings,
+    Bundled,
+    Path,
+}
+
+impl Source {
+    pub fn label(self) -> &'static str {
+        match self {
+            Source::Environment => "MPEG_TS_ANALYZER_CLI",
+            Source::Settings => "Settings",
+            Source::Bundled => "bundled with the GUI",
+            Source::Path => "PATH",
+        }
+    }
+}
+
+/// Finds the CLI: the environment variable, then the path set in Settings,
+/// then a CLI bundled with the GUI, then `mpeg-ts-analyzer` on `PATH`.
+pub fn locate(setting: &str) -> (Source, PathBuf) {
+    let exe = std::env::current_exe().ok();
+    resolve(
+        std::env::var_os(CLI_ENV),
+        setting,
+        &bundled_candidates(exe.as_deref(), std::env::var_os("APPDIR")),
+        |path| path.is_file(),
+    )
+}
+
+fn resolve(
+    env: Option<std::ffi::OsString>,
+    setting: &str,
+    bundled: &[PathBuf],
+    exists: impl Fn(&Path) -> bool,
+) -> (Source, PathBuf) {
+    if let Some(path) = env.filter(|value| !value.is_empty()) {
+        return (Source::Environment, PathBuf::from(path));
+    }
+    if !setting.trim().is_empty() {
+        return (Source::Settings, PathBuf::from(setting.trim()));
+    }
+    if let Some(path) = bundled.iter().find(|path| exists(path)) {
+        return (Source::Bundled, path.clone());
+    }
+    (Source::Path, PathBuf::from(CLI_NAME))
+}
+
+/// Where a packaged GUI keeps its CLI, relative to the GUI executable: next to
+/// it (Windows install directory, Linux install prefix, macOS
+/// `.app/Contents/MacOS`), in the macOS bundle's `Resources`, and under
+/// `$APPDIR/usr/bin` in an AppImage.
+fn bundled_candidates(exe: Option<&Path>, appdir: Option<std::ffi::OsString>) -> Vec<PathBuf> {
+    let name = format!("{CLI_NAME}{}", std::env::consts::EXE_SUFFIX);
+    let mut candidates = Vec::new();
+    if let Some(dir) = exe.and_then(Path::parent) {
+        candidates.push(dir.join(&name));
+        if dir.ends_with("Contents/MacOS")
+            && let Some(contents) = dir.parent()
+        {
+            candidates.push(contents.join("Resources").join(&name));
+        }
+    }
+    if let Some(appdir) = appdir {
+        candidates.push(PathBuf::from(appdir).join("usr/bin").join(&name));
+    }
+    candidates
 }
 
 /// A CLI that passed the capabilities check.
@@ -334,6 +401,51 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("mtsa-gui-test-{name}-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("temp dir");
         dir
+    }
+
+    #[test]
+    fn finds_the_cli_in_order() {
+        let bundled = [PathBuf::from("/opt/app/mpeg-ts-analyzer")];
+        let exists = |path: &Path| path == bundled[0];
+        let env = Some(std::ffi::OsString::from("/dev/cli"));
+        assert_eq!(
+            resolve(env, "/set/cli", &bundled, exists),
+            (Source::Environment, PathBuf::from("/dev/cli"))
+        );
+        assert_eq!(
+            resolve(Some("".into()), " /set/cli ", &bundled, exists),
+            (Source::Settings, PathBuf::from("/set/cli"))
+        );
+        assert_eq!(
+            resolve(None, "", &bundled, exists),
+            (Source::Bundled, bundled[0].clone())
+        );
+        assert_eq!(
+            resolve(None, "", &bundled, |_| false),
+            (Source::Path, PathBuf::from(CLI_NAME))
+        );
+    }
+
+    #[test]
+    fn looks_for_a_bundled_cli_next_to_the_gui() {
+        let name = format!("{CLI_NAME}{}", std::env::consts::EXE_SUFFIX);
+        let app = Path::new("/Applications/Analyzer.app/Contents/MacOS/mpeg-ts-analyzer-gui");
+        assert_eq!(
+            bundled_candidates(Some(app), None),
+            [
+                Path::new("/Applications/Analyzer.app/Contents/MacOS").join(&name),
+                Path::new("/Applications/Analyzer.app/Contents/Resources").join(&name),
+            ]
+        );
+        let installed = Path::new("/usr/bin/mpeg-ts-analyzer-gui");
+        assert_eq!(
+            bundled_candidates(Some(installed), Some("/tmp/.mount_x".into())),
+            [
+                Path::new("/usr/bin").join(&name),
+                Path::new("/tmp/.mount_x/usr/bin").join(&name),
+            ]
+        );
+        assert!(bundled_candidates(None, None).is_empty());
     }
 
     #[test]
