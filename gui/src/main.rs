@@ -29,7 +29,7 @@ fn main() -> eframe::Result {
         options,
         Box::new(|cc| {
             theme::apply(&cc.egui_ctx);
-            Ok(Box::<app::App>::default())
+            Ok(Box::new(app::App::new(cc)))
         }),
     )
 }
