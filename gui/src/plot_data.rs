@@ -185,9 +185,18 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
     }
 }
 
+/// Y ranges for a program with nothing to plot.
+const EMPTY_MBPS_RANGE: (f64, f64) = (0.0, 1.0);
+const EMPTY_JITTER_RANGE: (f64, f64) = (-0.001, 0.001);
+
 pub fn bitrate(program: &Program) -> Bitrate {
+    // A program whose PMT could not be read has no series.
     let Some(series) = &program.series else {
-        return Bitrate::default();
+        return Bitrate {
+            mbps_range: EMPTY_MBPS_RANGE,
+            jitter_range: EMPTY_JITTER_RANGE,
+            ..Bitrate::default()
+        };
     };
     let windows = &series.bitrate;
     let mut starts = Vec::with_capacity(windows.duration_seconds.len());
@@ -248,9 +257,9 @@ pub fn bitrate(program: &Program) -> Bitrate {
     let top = program_series.iter().map(|p| p[1]).fold(0.0, f64::max);
     let deviation = values.iter().map(|v| v.abs()).fold(0.0, f64::max);
     Bitrate {
-        mbps_range: (0.0, padded(top, 1.0)),
+        mbps_range: (0.0, padded(top, EMPTY_MBPS_RANGE.1)),
         jitter_range: {
-            let half = padded(deviation, 0.001);
+            let half = padded(deviation, EMPTY_JITTER_RANGE.1);
             (-half, half)
         },
         pids,
@@ -497,6 +506,17 @@ mod tests {
                 program.series.as_ref().unwrap().pcr_jitter.len()
             );
         }
+    }
+
+    /// egui_plot needs min < max for fixed bounds.
+    #[test]
+    fn bitrate_without_series_has_valid_ranges() {
+        let mut report = fixture();
+        report.programs[0].series = None;
+        let data = bitrate(&report.programs[0]);
+        assert_eq!(data.mbps_range, EMPTY_MBPS_RANGE);
+        assert_eq!(data.jitter_range, EMPTY_JITTER_RANGE);
+        assert!(data.mbps_range.0 < data.mbps_range.1 && data.jitter_range.0 < data.jitter_range.1);
     }
 
     #[test]
