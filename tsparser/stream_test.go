@@ -1412,16 +1412,36 @@ func TestParseTsFile_TruncatedLastPacketJSON(t *testing.T) {
 	}
 }
 
-func TestParseTsFile_TruncatedTailOutsideLimit(t *testing.T) {
-	// The incomplete packet lies past --limit, so it is never read.
+func TestParseTsFile_TruncatedTailWithLimit(t *testing.T) {
 	path, sampleSize := writeTruncatedSample(t, sample188Path, 100)
-	opts := options.Options{Format: "json", Limit: sampleSize}
-	report, err := decodeJSONReport(t, func() error { return ParseTsFile(path, opts) })
-	if err != nil {
-		t.Fatal(err)
-	}
-	if report.Status != "complete" || len(report.Warnings) != 0 {
-		t.Fatalf("unexpected report: status=%s warnings=%+v", report.Status, report.Warnings)
+	for _, tc := range []struct {
+		name        string
+		offset      int64
+		limit       int64
+		wantWarning bool
+	}{
+		{"limit ends before the tail", 0, sampleSize, false},
+		{"limit ends exactly at EOF", 0, sampleSize + 100, true},
+		{"limit ends past EOF", 0, sampleSize + 150, true},
+		{"offset range ends exactly at EOF", 188 * 100, sampleSize + 100 - 188*100, true},
+		// A range cut mid-packet inside the file is not a truncated input.
+		{"limit ends mid-packet inside the file", 0, sampleSize - 188*10 + 50, false},
+	} {
+		opts := options.Options{Format: "json", Offset: tc.offset, Limit: tc.limit}
+		report, err := decodeJSONReport(t, func() error { return ParseTsFile(path, opts) })
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if report.Status != "complete" {
+			t.Fatalf("%s: status = %s", tc.name, report.Status)
+		}
+		want := []ReportWarning{}
+		if tc.wantWarning {
+			want = []ReportWarning{{OffsetBytes: sampleSize, Message: "ignored 100 trailing bytes (incomplete packet at end of input)"}}
+		}
+		if fmt.Sprint(report.Warnings) != fmt.Sprint(want) {
+			t.Errorf("%s: warnings = %+v, want %+v", tc.name, report.Warnings, want)
+		}
 	}
 }
 

@@ -100,6 +100,26 @@ func truncatedPacketMessage(size int) string {
 	return fmt.Sprintf("ignored %d trailing bytes (incomplete packet at end of input)", size)
 }
 
+// trailingBytesAtEOF handles a --limit range that ends less than a packet
+// after the last complete one. It returns the number of leftover bytes only when
+// the input also ends there; a range that merely ends mid-stream is not a
+// truncated input. Detecting an input that ends exactly at the limit reads one
+// byte past it.
+func trailingBytesAtEOF(reader io.Reader, buf []byte, rest int64) int {
+	if rest <= 0 || rest >= int64(len(buf)) {
+		return 0
+	}
+	n, err := io.ReadFull(reader, buf[:rest])
+	if err == nil {
+		if _, err = io.ReadFull(reader, buf[:1]); err != io.EOF {
+			return 0
+		}
+	} else if err != io.ErrUnexpectedEOF {
+		return 0
+	}
+	return n
+}
+
 func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos []ProgramInfo, options options.Options, packetSize int, endOffset int64, quiet bool) (*pesAnalysis, error) {
 	tsBuffer := make([]byte, packetSize)
 	pesMap := make(map[uint16]*Pes)
@@ -150,10 +170,6 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 			// Captures cut off mid-packet are common; keep the analysis of the
 			// complete packets and report the leftover bytes.
 			truncatedBytes = size
-			truncatedPos = *pos
-			if !quiet {
-				fmt.Printf("0x%08x %s\n", *pos, truncatedPacketMessage(size))
-			}
 			break
 		} else if err != nil {
 			return nil, fmt.Errorf("file read error: %w", err)
@@ -249,6 +265,16 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		}
 
 		*pos += int64(size)
+	}
+
+	if truncatedBytes == 0 && endOffset > 0 {
+		truncatedBytes = trailingBytesAtEOF(reader, tsBuffer, endOffset-*pos)
+	}
+	if truncatedBytes > 0 {
+		truncatedPos = *pos
+		if !quiet {
+			fmt.Printf("0x%08x %s\n", *pos, truncatedPacketMessage(truncatedBytes))
+		}
 	}
 
 	// The final PES of each elementary stream never sees a following PUSI, so

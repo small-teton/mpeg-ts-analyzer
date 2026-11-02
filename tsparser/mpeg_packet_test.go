@@ -688,3 +688,11 @@ func TestBufferPsiTruncatedLastPacket(t *testing.T) {
 		t.Errorf("pos = %d, want 188", pos)
 	}
 }
+
+func TestTrailingBytesAtEOFReadError(t *testing.T) {
+	// Only an end of input marks the leftover bytes as a truncated packet.
+	r := &errReader{failAt: 0}
+	if n := trailingBytesAtEOF(r, make([]byte, 188), 100); n != 0 {
+		t.Errorf("trailingBytesAtEOF = %d, want 0", n)
+	}
+}
