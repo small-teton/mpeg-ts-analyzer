@@ -24,12 +24,16 @@ type rangeAnalysis struct {
 	scan       scanResult
 	continuity *continuityCounterSummary
 	psi        *psiTracker
+	pat        *patTable // the first complete PAT
+	leadStart  int64     // first packet of the range
+	packetSize int
 }
 
 type rangeProgram struct {
 	program  Program
 	pmtPid   uint16
 	pmt      *Pmt
+	table    *pmtTable // the first complete PMT
 	err      error
 	analyzer *programAnalyzer
 }
@@ -38,12 +42,15 @@ type rangeProgram struct {
 // ends at programStart, then analyzes all programs whose PMT was found in a
 // single pass. Each program starts collecting after its own PMT, as a
 // --program run would; continuity counters are checked for the whole
-// multiplex from the earliest of those offsets.
-func analyzeAllPrograms(reader io.ReadSeeker, pat *patTable, programStart int64, options options.Options, packetSize int, endOffset int64, report *AnalysisReport) error {
+// multiplex from the earliest of those offsets. The PSI layout covers the
+// range from leadStart, its first packet.
+func analyzeAllPrograms(reader io.ReadSeeker, pat *patTable, leadStart, programStart int64, options options.Options, packetSize int, endOffset int64, report *AnalysisReport) error {
 	analysis := report.analysis
 	var analyzers []*programAnalyzer
+	analysis.pat, analysis.leadStart, analysis.packetSize = pat, leadStart, packetSize
 	analysis.continuity = &continuityCounterSummary{counts: make(map[uint16]int), labels: make(map[uint16]string)}
 	analysis.psi = newPsiTracker(pat, analysis.continuity, options, packetSize, true)
+	analysis.psi.layout = newPsiLayoutRecorder(pat)
 	// Programs() already leaves out program_number 0 (the network PID).
 	for _, prog := range pat.Programs() {
 		entry := rangeProgram{program: prog, pmtPid: prog.PmtPid}
@@ -56,7 +63,7 @@ func analyzeAllPrograms(reader io.ReadSeeker, pat *patTable, programStart int64,
 		if err != nil {
 			entry.err = err
 		} else {
-			entry.pmt = pmt.Pmt
+			entry.pmt, entry.table = pmt.Pmt, pmt
 			entry.analyzer = newProgramAnalyzer(options, pos, prog.ProgramNumber, prog.PmtPid, pmt.PcrPid(), pmt.ProgramInfos(), true)
 			analysis.continuity.addProgramLabels(prog.PmtPid, pmt.PcrPid(), pmt.ProgramInfos())
 			analysis.psi.addProgram(prog.ProgramNumber, prog.PmtPid, pmt, entry.analyzer)
@@ -72,6 +79,9 @@ func analyzeAllPrograms(reader io.ReadSeeker, pat *patTable, programStart int64,
 
 	pos := slices.MinFunc(analyzers, func(a, b *programAnalyzer) int { return cmp.Compare(a.start, b.start) }).start
 	analysis.scanStart = pos
+	if err := observeLead(reader, leadStart, pos, analysis.psi.layout, options, packetSize); err != nil {
+		return err
+	}
 	if _, err := reader.Seek(pos, io.SeekStart); err != nil {
 		return fmt.Errorf("file seek error: %w", err)
 	}
@@ -85,6 +95,7 @@ func analyzeAllPrograms(reader io.ReadSeeker, pat *patTable, programStart int64,
 	analysis.scanned = true
 	analysis.scanEnd = pos
 	analysis.scan = scan
+	analysis.classifyPsiSections()
 	reportPsiDiagnostics(report, analysis.psi.warnings)
 	if scan.truncatedBytes > 0 {
 		report.Warnings = append(report.Warnings, ReportWarning{scan.truncatedPos, truncatedPacketMessage(scan.truncatedBytes)})
@@ -111,6 +122,7 @@ type RangeAnalysisReport struct {
 	ContinuityEvents         []ReportContinuityEvent `json:"continuity_events"`
 	Programs                 []RangeAnalysisProgram  `json:"programs"`
 	PSITransitions           []ReportPSITransition   `json:"psi_transitions,omitempty"`
+	PSILayout                *ReportPSILayout        `json:"psi_layout,omitempty"`
 	Warnings                 []ReportWarning         `json:"warnings"`
 }
 
@@ -222,6 +234,7 @@ func rangeAnalysisReport(report *AnalysisReport) *RangeAnalysisReport {
 		r.AnalysisStartOffsetBytes, r.AnalysisEndOffsetBytes = &start, &end
 		r.ContinuityCounter = reportContinuity(analysis.continuity)
 		r.PSITransitions = reportPsiTransitions(analysis.psi.transitions)
+		r.PSILayout = reportPsiLayout(analysis)
 		for _, e := range analysis.scan.continuityEvents {
 			r.ContinuityEvents = append(r.ContinuityEvents, ReportContinuityEvent{OffsetBytes: e.Pos, PID: reportPID(e.PID), ExpectedCC: e.Expected, ActualCC: e.Actual})
 		}

@@ -207,7 +207,8 @@ func FuzzPacketDiscovery(f *testing.F) {
 }
 
 // FuzzPsiTracking scans arbitrary 188-byte packets with the PAT and PMT
-// version tracking of one program that starts from a fixed layout.
+// version tracking of one program that starts from a fixed layout, and builds
+// the PSI layout report of the scan.
 func FuzzPsiTracking(f *testing.F) {
 	layout, _ := layoutChangeStream()
 	move, _, _, _ := moveStream()
@@ -227,6 +228,7 @@ func FuzzPsiTracking(f *testing.F) {
 		continuity := newContinuityCounterSummary(0x1000, pmt.pcrPid, pmt.programInfos)
 		tracker := newPsiTracker(pat, continuity, opts, tsPayloadSize, true)
 		tracker.addProgram(1, 0x1000, pmt, analyzer)
+		tracker.layout = newPsiLayoutRecorder(pat)
 		var pos int64
 		if _, err := scanPrograms(bytes.NewReader(data), &pos, []*programAnalyzer{analyzer}, continuity, tracker, opts, tsPayloadSize, 0, true); err != nil {
 			return
@@ -234,6 +236,12 @@ func FuzzPsiTracking(f *testing.F) {
 		analyzer.finish()
 		_ = reportPsiTransitions(tracker.transitions)
 		_ = reportSeries(analyzer)
+		analysis := &rangeAnalysis{psi: tracker, pat: pat, packetSize: tsPayloadSize, scanEnd: pos, programs: []rangeProgram{
+			{program: Program{ProgramNumber: 1, PmtPid: 0x1000}, pmtPid: 0x1000, pmt: pmt.Pmt, table: pmt, analyzer: analyzer},
+			{program: Program{ProgramNumber: 2, PmtPid: 0x1001}, pmtPid: 0x1001},
+		}}
+		analysis.classifyPsiSections()
+		_ = reportPsiLayout(analysis)
 	})
 }
 

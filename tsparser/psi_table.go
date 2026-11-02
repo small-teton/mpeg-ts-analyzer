@@ -12,6 +12,7 @@ import (
 type patTable struct {
 	sections []*Pat
 	programs []Program
+	pos      int64 // offset of the packet that completed the table, when acquired
 }
 
 // newPatTable merges the programs of every section. A program listed more than
@@ -51,6 +52,7 @@ func (t *patTable) Dump() {
 type pmtTable struct {
 	*Pmt
 	sections []*Pmt
+	pos      int64 // offset of the packet that completed the table, when acquired
 }
 
 func newPmtTable(sections []*Pmt) (*pmtTable, []string) {
@@ -97,11 +99,12 @@ func parsePmtSection(data []byte) (*Pmt, error) {
 // Diagnostics are returned even when no table is found.
 func acquirePat(reader io.Reader, pos *int64, options options.Options, packetSize int, endOffset int64) (*patTable, []psiDiagnostic, error) {
 	assembler := &psiAssembler[*Pat]{name: "PAT", tableID: 0x00, anyExtension: true, parse: parsePatSection}
-	sections, err := acquireTable(reader, pos, 0x0000, assembler, options, packetSize, endOffset)
+	sections, completed, err := acquireTable(reader, pos, 0x0000, assembler, options, packetSize, endOffset)
 	if err != nil {
 		return nil, assembler.diagnostics, err
 	}
 	table, conflicts := newPatTable(sections)
+	table.pos = completed
 	return table, appendConflicts(assembler.diagnostics, *pos, conflicts), nil
 }
 
@@ -115,11 +118,12 @@ func newPmtAssembler(programNumber, pid uint16) *psiAssembler[*Pmt] {
 // been collected on pid.
 func acquirePmt(reader io.Reader, pos *int64, pid, programNumber uint16, options options.Options, packetSize int, endOffset int64) (*pmtTable, []psiDiagnostic, error) {
 	assembler := newPmtAssembler(programNumber, pid)
-	sections, err := acquireTable(reader, pos, pid, assembler, options, packetSize, endOffset)
+	sections, completed, err := acquireTable(reader, pos, pid, assembler, options, packetSize, endOffset)
 	if err != nil {
 		return nil, assembler.diagnostics, err
 	}
 	table, conflicts := newPmtTable(sections)
+	table.pos = completed
 	return table, appendConflicts(assembler.diagnostics, *pos, conflicts), nil
 }
 
@@ -136,13 +140,13 @@ func appendConflicts(diagnostics []psiDiagnostic, pos int64, conflicts []string)
 // a single-section table has always been considered complete; the analysis
 // that follows starts there. Problems with packets or sections become
 // diagnostics; a table still incomplete at the end of the input or range is an
-// error.
-func acquireTable[T any](reader io.Reader, pos *int64, pid uint16, assembler *psiAssembler[T], options options.Options, packetSize int, endOffset int64) ([]T, error) {
+// error. The offset of the packet that completed the table is returned with it.
+func acquireTable[T any](reader io.Reader, pos *int64, pid uint16, assembler *psiAssembler[T], options options.Options, packetSize int, endOffset int64) ([]T, int64, error) {
 	tsBuffer := make([]byte, packetSize)
 	tsPacket := NewTsPacket()
 	var sectionReader psiSectionReader
 	var table []T
-	var completedAt int64
+	var completedAt, completedPacket int64
 
 	for endOffset <= 0 || *pos+int64(packetSize) <= endOffset {
 		size, err := io.ReadFull(reader, tsBuffer)
@@ -150,7 +154,7 @@ func acquireTable[T any](reader io.Reader, pos *int64, pid uint16, assembler *ps
 			// A trailing partial packet cannot carry a usable section; stop as at EOF.
 			break
 		} else if err != nil {
-			return nil, fmt.Errorf("%s buffering error: file read error: %w", assembler.name, err)
+			return nil, 0, fmt.Errorf("%s buffering error: file read error: %w", assembler.name, err)
 		}
 
 		tsData := tsBuffer
@@ -161,7 +165,7 @@ func acquireTable[T any](reader io.Reader, pos *int64, pid uint16, assembler *ps
 		tsPacket.Initialize(packetPos, options)
 		tsPacket.Append(tsData)
 		if err := tsPacket.Parse(); err != nil {
-			return nil, fmt.Errorf("%s buffering error: failed to parse TS packet: %w", assembler.name, err)
+			return nil, 0, fmt.Errorf("%s buffering error: failed to parse TS packet: %w", assembler.name, err)
 		}
 		*pos += int64(size)
 
@@ -170,7 +174,7 @@ func acquireTable[T any](reader io.Reader, pos *int64, pid uint16, assembler *ps
 		}
 		if table != nil {
 			if tsPacket.PayloadUnitStartIndicator() && len(tsPacket.Payload()) > 0 {
-				return table, nil
+				return table, completedPacket, nil
 			}
 			continue
 		}
@@ -182,16 +186,16 @@ func acquireTable[T any](reader io.Reader, pos *int64, pid uint16, assembler *ps
 		}
 		for _, section := range sections {
 			if parsed, ok := assembler.add(section.data, section.pos); ok {
-				table, completedAt = parsed, section.pos
+				table, completedAt, completedPacket = parsed, section.pos, packetPos
 				break
 			}
 		}
 		if table != nil && tsPacket.PayloadUnitStartIndicator() && completedAt != packetPos {
-			return table, nil
+			return table, completedPacket, nil
 		}
 	}
 	if table != nil {
-		return table, nil
+		return table, completedPacket, nil
 	}
-	return nil, assembler.incomplete()
+	return nil, 0, assembler.incomplete()
 }

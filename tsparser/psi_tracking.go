@@ -52,6 +52,7 @@ type psiTransition struct {
 	pid             uint16
 	previousVersion uint8
 	version         uint8
+	sections        [][]byte // the new table's sections in section_number order
 
 	// PAT
 	programs        []Program
@@ -94,6 +95,7 @@ type psiTracker struct {
 	transitions []psiTransition
 	warnings    []psiDiagnostic
 	warned      map[string]bool
+	layout      *psiLayoutRecorder // records sections and PIDs for --output analysis
 }
 
 type trackedProgram struct {
@@ -137,6 +139,20 @@ func sameSections[T *Pat | *Pmt](a, b []T, raw func(T) []byte) bool {
 	return slices.EqualFunc(a, b, func(x, y T) bool { return bytes.Equal(raw(x), raw(y)) })
 }
 
+// sectionBytes returns the bytes of each section of a table.
+func sectionBytes[T *Pat | *Pmt](sections []T) [][]byte {
+	raw := make([][]byte, len(sections))
+	for i, section := range sections {
+		switch s := any(section).(type) {
+		case *Pat:
+			raw[i] = s.buf
+		case *Pmt:
+			raw[i] = s.buf
+		}
+	}
+	return raw
+}
+
 func samePatTable(a, b *patTable) bool {
 	return sameSections(a.sections, b.sections, func(p *Pat) []byte { return p.buf })
 }
@@ -147,6 +163,9 @@ func samePmtTable(a, b *pmtTable) bool {
 
 // observe passes one packet of the scan at offset pos.
 func (t *psiTracker) observe(tsPacket *TsPacket, pos int64, continuity *continuityTracker) {
+	if t.layout != nil {
+		t.layout.observe(tsPacket, pos)
+	}
 	pid := tsPacket.Pid()
 	if pid == patPidValue {
 		for _, sections := range collectTables(t, &t.patReader, t.pat, tsPacket, pos) {
@@ -216,7 +235,7 @@ func (t *psiTracker) applyPat(pos int64, sections []*Pat, continuity *continuity
 	for _, conflict := range conflicts {
 		t.warn(pos, conflict)
 	}
-	tr := psiTransition{pos: pos, table: "pat", pid: patPidValue, previousVersion: t.patVersion, version: version, programs: table.Programs()}
+	tr := psiTransition{pos: pos, table: "pat", pid: patPidValue, previousVersion: t.patVersion, version: version, sections: sectionBytes(table.sections), programs: table.Programs()}
 	for _, program := range table.Programs() {
 		idx := slices.IndexFunc(t.patPrograms, func(p Program) bool { return p.ProgramNumber == program.ProgramNumber })
 		if idx < 0 {
@@ -270,7 +289,7 @@ func (t *psiTracker) applyPmt(p *trackedProgram, pos int64, sections []*Pmt, con
 	}
 	previous := p.table
 	tr := psiTransition{
-		pos: pos, table: "pmt", pid: p.pmtPid, previousVersion: previous.versionNumber, version: table.versionNumber,
+		pos: pos, table: "pmt", pid: p.pmtPid, previousVersion: previous.versionNumber, version: table.versionNumber, sections: sectionBytes(table.sections),
 		programNumber: p.number, previousPcrPid: previous.pcrPid, pcrPid: table.pcrPid, streams: table.programInfos,
 	}
 	previousTypes := make(map[uint16]uint8, len(previous.programInfos))
