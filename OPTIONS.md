@@ -19,8 +19,10 @@ streams in `sample_data/`. See the [README](README.md) for install and usage.
 | `--fail-on-error` | off | Exit 2 when a timing compliance check is `NG`. |
 | `--list-programs` | off | List programs and stop before PES analysis. |
 | `--program` | automatic | Select one program by `program_number`. |
-| `--offset` | `0` | Start reading at a byte offset. |
-| `--limit` | `0` (unlimited) | Stop after the specified number of bytes. |
+| `--offset` | `0` | Start reading at a byte offset. Negative values are rejected. |
+| `--limit` | `0` (unlimited) | Stop after the specified number of bytes. Negative values are rejected. |
+| `--progress` | off | Write progress events to stderr (`json`). |
+| `--capabilities` | off | Print the supported machine-readable outputs as JSON and exit. |
 
 The standard Cobra `--help` and `--version` flags are also available. Detailed
 examples for the analysis and dump modes follow.
@@ -196,6 +198,60 @@ rejected with `--format json` instead of mixing human text into stdout. Schema
 `1.x` may gain fields and enum values. Consumers must treat unknown enum values
 as unrecognized. Existing fields are not removed or retyped, and existing enum
 meanings do not change; those incompatible changes increment `schema_version`.
+
+## Progress events
+
+`--progress json` writes one JSON object per line to stderr while the input is
+read, so a caller can show how far an analysis has got. stdout is unchanged and
+still carries only the result, in text or JSON mode.
+
+```sh
+$ mpeg-ts-analyzer large.ts --format json --progress json > report.json
+{"type":"progress","processed_bytes":134217728,"total_bytes":283761748}
+{"type":"progress","processed_bytes":254832872,"total_bytes":283761748}
+{"type":"progress","processed_bytes":283761748,"total_bytes":283761748,"done":true}
+```
+
+- `total_bytes` is the size of the analyzed range: the file size minus
+  `--offset`, capped by `--limit`.
+- `processed_bytes` is the furthest position read within that range. It never
+  decreases, even when the analyzer seeks back to rediscover PAT/PMT.
+- Events are written at most every 250 ms. A final event with `"done": true`
+  follows when reading ends; on failure, the normal error handling follows it.
+- `done` means the operation has ended, not that the whole range was read. An
+  operation that has its answer early, such as listing the programs of a
+  multi-program stream, ends with `processed_bytes` below `total_bytes`.
+- Lines carry a `type` field so they can be told apart from other diagnostics on
+  stderr. Without `--progress`, nothing is written.
+
+## Capabilities
+
+`--capabilities` prints, without reading an input file, which machine-readable
+outputs this build supports, so a calling program (such as a GUI) can reject an
+incompatible CLI before running an analysis:
+
+```sh
+$ mpeg-ts-analyzer --capabilities
+{
+  "capabilities_version": "1.0",
+  "cli_version": "2.3.0",
+  "outputs": [
+    {
+      "name": "summary",
+      "format": "json",
+      "schema_version": "1.0"
+    }
+  ],
+  "progress_formats": [
+    "json"
+  ]
+}
+```
+
+`outputs` lists each output with its schema version; `summary` is the `--format
+json` report described above. New outputs and fields may be added; existing
+entries keep their meaning. Passing an input file or any other option together
+with `--capabilities` is an error.
 
 ## Continuity counter summary (always on)
 
