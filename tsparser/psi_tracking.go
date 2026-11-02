@@ -1,6 +1,7 @@
 package tsparser
 
 import (
+	"bytes"
 	"fmt"
 	"slices"
 	"strings"
@@ -38,6 +39,11 @@ import (
 //     not resumed. Programs added to the PAT are recorded, not analyzed.
 //   - A table with the active version_number but different content is not
 //     applied (ISO/IEC 13818-1 requires a version change); a warning is given.
+//   - A table byte-identical to the one last applied with its version_number
+//     is a late retransmission of a superseded version and is ignored, so the
+//     layout never rolls back. version_number wraps after 31, so a reused
+//     version with different content is applied.
+//   - Tables are compared by their section bytes, descriptors included.
 
 // psiTransition is one applied PAT or PMT version change.
 type psiTransition struct {
@@ -79,7 +85,9 @@ type psiTracker struct {
 	quiet       bool
 	continuity  *continuityCounterSummary
 	patVersion  uint8
+	patTable    *patTable
 	patPrograms []Program
+	patHistory  map[uint8]*patTable // last applied table of each version_number
 	patReader   psiSectionReader
 	pat         *psiAssembler[*Pat]
 	programs    []*trackedProgram
@@ -93,6 +101,7 @@ type trackedProgram struct {
 	analyzer  *programAnalyzer
 	pmtPid    uint16
 	table     *pmtTable
+	history   map[uint8]*pmtTable // last applied table of each version_number
 	reader    psiSectionReader
 	assembler *psiAssembler[*Pmt]
 	moved     bool // the PMT PID changed and no table was completed on it yet
@@ -107,7 +116,9 @@ func newPsiTracker(pat *patTable, continuity *continuityCounterSummary, options 
 		quiet:       quiet,
 		continuity:  continuity,
 		patVersion:  first.versionNumber,
+		patTable:    pat,
 		patPrograms: pat.Programs(),
+		patHistory:  map[uint8]*patTable{first.versionNumber: pat},
 		pat:         &psiAssembler[*Pat]{name: "PAT", tableID: 0x00, extension: first.transportStreamID, parse: parsePatSection},
 		warned:      make(map[string]bool),
 	}
@@ -115,7 +126,23 @@ func newPsiTracker(pat *patTable, continuity *continuityCounterSummary, options 
 
 // addProgram follows the PMT of an analyzed program, starting from table.
 func (t *psiTracker) addProgram(number, pmtPid uint16, table *pmtTable, analyzer *programAnalyzer) {
-	t.programs = append(t.programs, &trackedProgram{number: number, analyzer: analyzer, pmtPid: pmtPid, table: table, assembler: newPmtAssembler(number, pmtPid)})
+	t.programs = append(t.programs, &trackedProgram{
+		number: number, analyzer: analyzer, pmtPid: pmtPid, table: table,
+		history: map[uint8]*pmtTable{table.versionNumber: table}, assembler: newPmtAssembler(number, pmtPid),
+	})
+}
+
+// sameSections reports whether two tables consist of the same section bytes.
+func sameSections[T *Pat | *Pmt](a, b []T, raw func(T) []byte) bool {
+	return slices.EqualFunc(a, b, func(x, y T) bool { return bytes.Equal(raw(x), raw(y)) })
+}
+
+func samePatTable(a, b *patTable) bool {
+	return sameSections(a.sections, b.sections, func(p *Pat) []byte { return p.buf })
+}
+
+func samePmtTable(a, b *pmtTable) bool {
+	return sameSections(a.sections, b.sections, func(p *Pmt) []byte { return p.buf })
 }
 
 // observe passes one packet of the scan at offset pos.
@@ -137,11 +164,16 @@ func (t *psiTracker) observe(tsPacket *TsPacket, pos int64, continuity *continui
 	}
 }
 
-// collectTables returns the tables the packet completes. Packet-level problems
-// are not reported again during the scan: a lost or damaged packet is already a
-// continuity error, and the next repetition of the table is used.
+// collectTables returns the tables the packet completes. A continuity_counter
+// jump inside a section is not reported again: the continuity summary already
+// counts it, and the next repetition of the table is used.
 func collectTables[T any](t *psiTracker, reader *psiSectionReader, assembler *psiAssembler[T], tsPacket *TsPacket, pos int64) [][]T {
-	sections, _ := reader.push(tsPacket, pos)
+	sections, problems := reader.push(tsPacket, pos)
+	for _, problem := range problems {
+		if !strings.HasPrefix(problem, "continuity_counter jumped") {
+			t.warn(pos, assembler.name+": "+problem)
+		}
+	}
 	var tables [][]T
 	for _, section := range sections {
 		if table, ok := assembler.add(section.data, section.pos); ok {
@@ -172,11 +204,15 @@ func (t *psiTracker) applyPat(pos int64, sections []*Pat, continuity *continuity
 	table, conflicts := newPatTable(sections)
 	version := sections[0].versionNumber
 	if version == t.patVersion {
-		if !slices.Equal(table.Programs(), t.patPrograms) {
+		if !samePatTable(table, t.patTable) {
 			t.warn(pos, fmt.Sprintf("PAT changed without a version change (version %d); change ignored", version))
 		}
 		return
 	}
+	if previous, ok := t.patHistory[version]; ok && samePatTable(previous, table) {
+		return
+	}
+	t.patHistory[version] = table
 	for _, conflict := range conflicts {
 		t.warn(pos, conflict)
 	}
@@ -194,7 +230,7 @@ func (t *psiTracker) applyPat(pos int64, sections []*Pat, continuity *continuity
 			tr.programsRemoved = append(tr.programsRemoved, program)
 		}
 	}
-	t.patVersion, t.patPrograms = version, table.Programs()
+	t.patVersion, t.patTable, t.patPrograms = version, table, table.Programs()
 
 	for _, p := range t.programs {
 		if p.removed {
@@ -218,15 +254,17 @@ func (t *psiTracker) applyPmt(p *trackedProgram, pos int64, sections []*Pmt, con
 	table, conflicts := newPmtTable(sections)
 	moved := p.moved
 	p.moved = false
-	same := table.pcrPid == p.table.pcrPid && slices.EqualFunc(table.programInfos, p.table.programInfos, func(x, y ProgramInfo) bool {
-		return x.elementaryPid == y.elementaryPid && x.streamType == y.streamType
-	})
+	same := samePmtTable(table, p.table)
 	if table.versionNumber == p.table.versionNumber && (same || !moved) {
 		if !same {
 			t.warn(pos, fmt.Sprintf("%s changed without a version change (version %d); change ignored", p.assembler.name, table.versionNumber))
 		}
 		return
 	}
+	if previous, ok := p.history[table.versionNumber]; ok && samePmtTable(previous, table) {
+		return
+	}
+	p.history[table.versionNumber] = table
 	for _, conflict := range conflicts {
 		t.warn(pos, conflict)
 	}

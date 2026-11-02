@@ -770,21 +770,28 @@ What happens at a change:
 | `stream_type` changes | As a removal followed by an addition of the PID. |
 | PID added | An added elementary PID is analyzed from its next `payload_unit_start_indicator` with fresh timestamp state. The continuity state of a PID new to the layout (elementary, `PCR_PID` or PMT PID) is reset unless another analyzed program uses it, so a PID that returns after a pause is not a continuity error. |
 | PID in several layouts | One row per PID in the bitrate and continuity summaries; the bytes of all its layouts are combined and the label comes from the latest layout listing it. A PID's average bitrate is over the whole measured duration. |
-| PAT moves a program's PMT | The PMT is read from the new PID. The first complete PMT there is applied even with the same `version_number` when its content differs. |
+| PAT moves a program's PMT | The PMT is read from the new PID. The first complete PMT there is applied even with the same `version_number` when its content differs, descriptors included. |
 | Program removed from the PAT | Its analysis stops after that packet and does not resume. `--output analysis` reports `analysis_end_offset_bytes` for it. |
 | Program added to the PAT | Recorded in `programs_added`; not analyzed. |
 
 Candidates that are never applied: a table still missing sections, a section
 with an invalid CRC32 or syntax, a "next" table (`current_next_indicator` 0),
-and a table whose `version_number` equals the active one. Retransmitted
-sections are counted once and sections may arrive in any order, so the result
-does not depend on repetition or order. The following warnings are reported
-once per message, at the offset of the first occurrence; packet loss inside a
-section is not repeated as a warning because the continuity summary reports it:
+a table whose `version_number` equals the active one, and a late retransmission
+of a superseded version, that is, a table byte-identical to the one last
+applied with its `version_number`. The layout therefore never rolls back to an
+older version; because `version_number` wraps after 31, a reused version with
+different content is applied. Tables are compared by their section bytes, so a
+change to descriptors alone counts as a change. Retransmitted sections are
+counted once and sections may arrive in any order, so the result does not
+depend on repetition or order. The following warnings are reported once per
+message, at the offset of the first occurrence; a `continuity_counter` jump
+inside a section is not repeated as a warning because the continuity summary
+reports it:
 
 | Warning | Meaning |
 | --- | --- |
 | `<table> section N (version V) has an invalid CRC32; section ignored` and the other assembly warnings above | A section of a later table is broken |
+| `<table>: transport_error_indicator set; ...`, `<table>: invalid pointer_field N; packet ignored`, `<table>: section ended early by the next payload_unit_start_indicator; ...` | A later packet on the PAT or PMT PID was damaged; its data is not used |
 | `PAT changed without a version change (version V); change ignored`, `<table> changed without a version change (version V); change ignored` | A complete table differs from the active one with the same `version_number` |
 | `incomplete <table> (version V) at the end of the analysis: missing section(s) ... of 0..L; not applied` | A new version never completed; given at the end of the analysis |
 

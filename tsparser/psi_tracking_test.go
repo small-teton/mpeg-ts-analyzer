@@ -395,3 +395,97 @@ func TestPsiTrackingRestartsContinuity(t *testing.T) {
 		t.Errorf("text:\n%s", text)
 	}
 }
+
+func (s *trackingStream) raw(pid uint16, pusi bool, payload []byte) *trackingStream {
+	s.packets = append(s.packets, rawPsiPacket(pid, pusi, s.next(pid), payload))
+	return s
+}
+
+func transitionSummary(transitions []ReportPSITransition) string {
+	var got []string
+	for _, tr := range transitions {
+		got = append(got, fmt.Sprintf("%s %d->%d", tr.Table, tr.PreviousVersion, tr.Version))
+	}
+	return strings.Join(got, "|")
+}
+
+// TestPsiTrackingIgnoresSupersededVersions replays the version 0 tables after
+// version 1 was applied, then reuses version 0 for new content, as after a
+// version_number wrap.
+func TestPsiTrackingIgnoresSupersededVersions(t *testing.T) {
+	pat0 := patSectionN(0, 0, 0, [2]uint16{1, 0x1000})
+	pmt0 := pmtSectionN(1, 0, 0, 0, 0x100, [2]uint16{0x02, 0x100})
+	s := newTrackingStream().start(pat0, map[uint16][]byte{0x1000: pmt0}, 0x1000)
+	s.pcr(0x100, 0).pes(0x100, 0)
+	s.section(0x1000, pmtSectionN(1, 1, 0, 0, 0x100, [2]uint16{0x02, 0x100}, [2]uint16{0x03, 0x101}))
+	s.section(0x0000, patSectionN(1, 0, 0, [2]uint16{1, 0x1000}, [2]uint16{2, 0x1001}))
+	s.section(0x1000, pmt0).section(0x0000, pat0) // late retransmissions
+	s.pcr(0x100, 40).pes(0x100, 40)
+	s.section(0x1000, pmtSectionN(1, 0, 0, 0, 0x100, [2]uint16{0x02, 0x100}, [2]uint16{0x04, 0x102}))
+	s.section(0x0000, patSectionN(0, 0, 0, [2]uint16{1, 0x1000}, [2]uint16{3, 0x1003}))
+	s.pcr(0x100, 80).pes(0x100, 80)
+	for _, m2ts := range []bool{false, true} {
+		report := summary(t, s.write(t, m2ts), options.Options{})
+		if got := transitionSummary(report.PSITransitions); got != "pmt 0->1|pat 0->1|pmt 1->0|pat 1->0" || len(report.Warnings) != 0 {
+			t.Errorf("m2ts=%v transitions %s, warnings %v", m2ts, got, report.Warnings)
+		}
+		if tr := report.PSITransitions[2]; len(tr.ElementaryStreamsAdded) != 1 || tr.ElementaryStreamsAdded[0].PID != "0x0102" {
+			t.Errorf("m2ts=%v reused PMT version: %s", m2ts, toJSON(t, tr))
+		}
+	}
+}
+
+// TestPsiTrackingComparesDescriptors changes only a program descriptor, first
+// without a version change, then on a PMT PID the program moved to.
+func TestPsiTrackingComparesDescriptors(t *testing.T) {
+	pmtWith := func(tag byte) []byte {
+		return testSection(0x02, 1, 0, 0, 0, true, []byte{0xE1, 0x00, 0xF0, 0x06, tag, 0x04, 'A', 'B', 'C', 'D', 0x02, 0xE1, 0x00, 0xF0, 0x00})
+	}
+	s := newTrackingStream().start(patSection([2]uint16{1, 0x1000}), map[uint16][]byte{0x1000: pmtWith(0x05)}, 0x1000)
+	s.pcr(0x100, 0).pes(0x100, 0)
+	s.section(0x1000, pmtWith(0x06))
+	s.section(0x0000, patSectionN(1, 0, 0, [2]uint16{1, 0x1100}))
+	movedAt := len(s.packets)
+	s.section(0x1100, pmtWith(0x06))
+	s.pcr(0x100, 40).pes(0x100, 40)
+	for _, m2ts := range []bool{false, true} {
+		report := summary(t, s.write(t, m2ts), options.Options{})
+		want := "PMT of program 1 on PID 0x1000 changed without a version change (version 0); change ignored"
+		if got := transitionSummary(report.PSITransitions); got != "pat 0->1|pmt 0->0" || strings.Join(warningMessages(report.Warnings), "|") != want {
+			t.Errorf("m2ts=%v transitions %s, warnings %v", m2ts, got, report.Warnings)
+		}
+		if tr := report.PSITransitions[1]; tr.OffsetBytes != s.offset(movedAt, m2ts) || tr.PID != "0x1100" {
+			t.Errorf("m2ts=%v moved PMT: %s", m2ts, toJSON(t, tr))
+		}
+	}
+}
+
+// TestPsiTrackingReportsPacketProblems damages later PMT packets. Only the
+// continuity_counter jump, which the continuity summary counts, is not repeated
+// as a warning.
+func TestPsiTrackingReportsPacketProblems(t *testing.T) {
+	pmt := pmtSectionN(1, 0, 0, 0, 0x100, [2]uint16{0x02, 0x100})
+	long := append([]byte{0x00}, testSection(0x02, 1, 0, 0, 0, true, bytes.Repeat([]byte{0x00}, 300))...)
+	s := newTrackingStream().start(patSection([2]uint16{1, 0x1000}), map[uint16][]byte{0x1000: pmt}, 0x1000)
+	s.pcr(0x100, 0).pes(0x100, 0)
+	for range 2 {
+		s.section(0x1000, pmt)
+		s.packets[len(s.packets)-1][1] |= 0x80 // transport_error_indicator
+	}
+	s.raw(0x1000, true, []byte{200})                     // pointer_field past the payload
+	s.raw(0x1000, true, long[:184]).section(0x1000, pmt) // section cut by the next unit start
+	s.raw(0x1000, true, long[:184]).skipCC(0x1000).raw(0x1000, false, long[184:])
+	s.section(0x1000, pmt).pcr(0x100, 40).pes(0x100, 40)
+	for _, m2ts := range []bool{false, true} {
+		report := summary(t, s.write(t, m2ts), options.Options{})
+		const name = "PMT of program 1 on PID 0x1000: "
+		want := []string{
+			name + "transport_error_indicator set; packet ignored and any partial section discarded",
+			name + "invalid pointer_field 200; packet ignored",
+			name + "section ended early by the next payload_unit_start_indicator; partial section discarded",
+		}
+		if got := warningMessages(report.Warnings); strings.Join(got, "\n") != strings.Join(want, "\n") || len(report.PSITransitions) != 0 || report.ContinuityCounter.TotalErrorCount != 1 {
+			t.Errorf("m2ts=%v warnings:\n%s\ncontinuity %+v", m2ts, strings.Join(got, "\n"), report.ContinuityCounter)
+		}
+	}
+}
