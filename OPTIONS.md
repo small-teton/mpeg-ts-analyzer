@@ -270,6 +270,7 @@ Abridged output for the two-program sample:
     },
     { "program_number": 2, ... }
   ],
+  "psi_layout": { "sections": [ ... ], "layouts": [ ... ], "pids": [ ... ] },
   "warnings": []
 }
 ```
@@ -303,6 +304,96 @@ Abridged output for the two-program sample:
   [PAT and PMT version changes](#pat-and-pmt-version-changes)). A program
   removed by a later PAT has `analysis_end_offset_bytes`. Programs added by a
   later PAT are not analyzed.
+- `psi_layout` reports the PAT and PMT sections seen in the range, the layouts
+  in effect with the byte interval each applies to, and every PID observed with
+  what it carries; see [PSI layout of the range](#psi-layout-of-the-range).
+
+## PSI layout of the range
+
+`--output analysis` adds `psi_layout`, which tells a caller what each PID
+carries at any offset of the range, for example to label packets read with
+`--output packets` (pages are read without PSI context) or to mark table
+updates on a timeline. For
+`sample_data/sample_188byte_psi_version_change_mpeg2_320x240_25fps_mp2.ts`
+(see [PAT and PMT version changes](#pat-and-pmt-version-changes)) it is
+(elementary streams and roles abridged):
+
+```json
+"psi_layout": {
+  "sections": [
+    { "offset_bytes": 188, "last_offset_bytes": 205484, "count": 29, "pid": "0x0000", "table": "pat", "status": "applied",
+      "transport_stream_id": 1, "version_number": 0, "section_number": 0, "last_section_number": 0, "current_next_indicator": 1 },
+    { "offset_bytes": 376, "last_offset_bytes": 94188, "count": 14, "pid": "0x1000", "table": "pmt", "status": "applied", "program_number": 1, "version_number": 0, ... },
+    { "offset_bytes": 102460, "last_offset_bytes": 205672, "count": 15, "pid": "0x1000", "table": "pmt", "status": "applied", "program_number": 1, "version_number": 1, ... },
+    { "offset_bytes": 212628, "last_offset_bytes": 309824, "count": 14, "pid": "0x0000", "table": "pat", "status": "applied", "transport_stream_id": 1, "version_number": 1, ... },
+    { "offset_bytes": 212816, "last_offset_bytes": 310012, "count": 14, "pid": "0x1100", "table": "pmt", "status": "retransmission", "program_number": 1, "version_number": 1, ... }
+  ],
+  "layouts": [
+    { "offset_bytes": 0, "end_offset_bytes": 102648, "transition_indices": [], "pat_version": 0, "pat_offset_bytes": 188,
+      "programs": [ { "program_number": 1, "pmt_pid": "0x1000", "pmt_version": 0, "pmt_offset_bytes": 5076, "pcr_pid": "0x0100",
+                      "elementary_streams": [ { "pid": "0x0100", "stream_type": "0x02", ... }, { "pid": "0x0101", "stream_type": "0x03", ... } ] } ] },
+    { "offset_bytes": 102648, "end_offset_bytes": 212816, "transition_indices": [ 0 ], "pat_version": 0, "pat_offset_bytes": 188,
+      "programs": [ { "program_number": 1, "pmt_pid": "0x1000", "pmt_version": 1, "pmt_offset_bytes": 102460, "pcr_pid": "0x0200",
+                      "elementary_streams": [ { "pid": "0x0200", "stream_type": "0x02", ... }, { "pid": "0x0101", "stream_type": "0x04", ... } ] } ] },
+    { "offset_bytes": 212816, "end_offset_bytes": 311516, "transition_indices": [ 1 ], "pat_version": 1, "pat_offset_bytes": 212628,
+      "programs": [ { "program_number": 1, "pmt_pid": "0x1100", "pmt_version": 1, "pmt_offset_bytes": 102460, "pcr_pid": "0x0200", ... } ] }
+  ],
+  "pids": [
+    { "pid": "0x0000", "packet_count": 43, "first_offset_bytes": 188, "last_offset_bytes": 309824, "roles": [ { "kind": "pat" } ] },
+    { "pid": "0x0011", "packet_count": 10, "first_offset_bytes": 0, "last_offset_bytes": 286136, "roles": [ { "kind": "unannounced" } ] },
+    { "pid": "0x0100", "packet_count": 70, "first_offset_bytes": 564, "last_offset_bytes": 99640,
+      "roles": [ { "kind": "pcr", "program_number": 1 }, { "kind": "elementary_stream", "program_number": 1, "stream_type": "0x02", ... } ] },
+    { "pid": "0x0101", "packet_count": 1359, "first_offset_bytes": 2256, "last_offset_bytes": 311328,
+      "roles": [ { "kind": "elementary_stream", "program_number": 1, "stream_type": "0x03", ... }, { "kind": "elementary_stream", "program_number": 1, "stream_type": "0x04", ... } ] },
+    { "pid": "0x0200", "packet_count": 132, ... },
+    { "pid": "0x1000", "packet_count": 29, ... },
+    { "pid": "0x1100", "packet_count": 14, ... }
+  ]
+}
+```
+
+- **Range.** Everything in `psi_layout` covers the range from its first packet
+  (the first packet boundary at or after `--offset`) to
+  `analysis_end_offset_bytes`, including the lead before the first complete
+  PAT/PMT, which the rest of the analysis skips.
+- **`layouts`** cover that range without gaps, in stream order. A layout
+  applies to the packets in `[offset_bytes, end_offset_bytes)`. The first one
+  starts at the first packet of the range, before its tables were complete:
+  `pat_offset_bytes` and each program's `pmt_offset_bytes` give the packet that
+  completed the PAT and the PMT the analysis started from, so a range that does
+  not start on PSI shows where the first complete tables were found. Each later
+  layout starts at the packet after the change, and `transition_indices` lists
+  the entries of `psi_transitions` that started it (several when one packet
+  completes PMTs of programs sharing a PID). The layouts are built from the
+  tables the analysis applied, so they always agree with `psi_transitions`,
+  which keeps the per-change differences. A program without a known PMT (not
+  found, or added by a later PAT and therefore not analyzed) has only
+  `program_number`, `pmt_pid` and empty `elementary_streams`.
+- **`sections`** lists the PAT sections on PID 0x0000 and the PMT sections
+  (`table_id` 0x02) on every PMT PID a valid PAT section announced, ordered by
+  first occurrence. A section identical to the previous one with the same PID,
+  table, `transport_stream_id`/`program_number`, `current_next_indicator` and
+  `section_number` is counted in that entry (`count`, `last_offset_bytes`)
+  instead of adding one, so the list grows with table changes and broken
+  sections, not with retransmissions. Offsets are those of the packet in which
+  the section starts. `status` is `applied` for the entry whose sections the
+  analysis applied (the first complete table or a `psi_transitions` change),
+  `retransmission` for a later entry identical to an applied section (for
+  example a table repeated on a moved PMT PID, or a late replay of a superseded
+  version, which is not applied again), `not_applied` for a valid section that
+  never became part of the layout (an incomplete or conflicting version, a
+  "next" table, or the PMT of a program that is not analyzed), and `invalid`
+  with an `invalid_reason` (`malformed`, `invalid_crc32`,
+  `section_number_beyond_last`, `parse_error`). Invalid sections carry no header
+  fields and are counted per PID, table and reason.
+- **`pids`** lists every PID seen in the range, in PID order, with its packet
+  count and first and last packet offsets, and `roles`: what it carries in any
+  layout (`pat`, `pmt`, `pcr`, `elementary_stream` with `stream_type`, `null`).
+  A PID no layout lists is `unannounced` (for example SDT on 0x0011, or an
+  elementary stream of a program whose PMT is not known). To label a packet,
+  look up its PID in the layout whose interval contains its offset.
+- Size: one entry per table change or kind of broken section, one layout per
+  applied change, and one entry per PID, independent of the range length.
 
 ## Packet pages (`--output packets`)
 
@@ -760,6 +851,8 @@ line. In JSON, the same changes are (abridged):
 in effect at any offset follows from `programs` (the layout at the start) and
 the transitions before it. `psi_transitions` is left out when no change was
 applied, so the output for a stream without table updates is unchanged.
+`--output analysis` also reports the layout in effect over each byte interval
+(`psi_layout`, see [PSI layout of the range](#psi-layout-of-the-range)).
 
 What happens at a change:
 

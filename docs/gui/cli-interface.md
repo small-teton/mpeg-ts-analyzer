@@ -55,8 +55,11 @@ switching programs or screens never runs the CLI again.
 - **PSI layout**: each PAT/PMT section seen (offset, version), the interval each
   layout applies to, the PIDs that change, and every PID observed in the range.
   The GUI keeps this to label packets and to mark changes on the plots (#93,
-  building on #59 and #60). The first version of #91 analyzes the first
-  complete PAT/PMT set only.
+  building on #59 and #60). It is `psi_layout` (`sections`, `layouts`, `pids`)
+  next to `psi_transitions` in the range analysis document: a packet's PID is
+  looked up in the layout whose `[offset_bytes, end_offset_bytes)` contains the
+  packet, and `transition_indices` links a layout to the changes that started
+  it. See OPTIONS.md, "PSI layout of the range".
 - **Analysis start**: statistics start after the PAT section and the needed
   PMTs are complete, not at the first PAT. The output reports that offset (per
   program), so the GUI can show the unanalyzed lead.

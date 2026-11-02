@@ -66,6 +66,10 @@
         "$ref": "json-schema-v1.json#/$defs/psiTransition"
       }
     },
+    "psi_layout": {
+      "$ref": "#/$defs/psiLayout",
+      "description": "PSI layout of the range: PAT and PMT sections seen, layouts in effect and observed PIDs. Absent when no program was analyzed."
+    },
     "warnings": {
       "type": "array",
       "items": {
@@ -362,6 +366,253 @@
               }
             }
           }
+        }
+      }
+    },
+    "psiLayout": {
+      "type": "object",
+      "required": [
+        "sections",
+        "layouts",
+        "pids"
+      ],
+      "properties": {
+        "sections": {
+          "type": "array",
+          "description": "PAT sections on PID 0x0000 and PMT sections on every PMT PID a valid PAT section announced, from the first packet of the range to the end of the scan, ordered by first occurrence. A section identical to the previous one with the same pid, table, table_id_extension, current_next_indicator and section_number is counted in that entry instead of adding one; invalid sections are counted per pid, table and invalid_reason.",
+          "items": {
+            "$ref": "#/$defs/psiSection"
+          }
+        },
+        "layouts": {
+          "type": "array",
+          "description": "Layouts in effect, in stream order. They cover the range without gaps: the first starts at the first packet of the range, each later one at the packet after its transitions, and each ends where the next starts or at analysis_end_offset_bytes.",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/psiLayoutEntry"
+          }
+        },
+        "pids": {
+          "type": "array",
+          "description": "Every PID seen from the first packet of the range to the end of the scan, in PID order.",
+          "items": {
+            "$ref": "#/$defs/observedPid"
+          }
+        }
+      }
+    },
+    "psiSection": {
+      "type": "object",
+      "description": "A PAT or PMT section and its identical repetitions. Header fields are absent when status is invalid.",
+      "required": [
+        "offset_bytes",
+        "last_offset_bytes",
+        "count",
+        "pid",
+        "table",
+        "status"
+      ],
+      "properties": {
+        "offset_bytes": {
+          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger",
+          "description": "Offset of the packet in which the first copy starts."
+        },
+        "last_offset_bytes": {
+          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger",
+          "description": "Offset of the packet in which the last copy starts."
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pid": {
+          "$ref": "json-schema-v1.json#/$defs/pid"
+        },
+        "table": {
+          "$ref": "json-schema-v1.json#/$defs/status",
+          "description": "Current values: pat, pmt."
+        },
+        "status": {
+          "$ref": "json-schema-v1.json#/$defs/status",
+          "description": "Current values: applied (part of a table the analysis applied: the first complete PAT/PMT or a psi_transitions entry), retransmission (identical to a section of an applied table, including a late replay of a superseded version), not_applied (valid but never applied: an incomplete or conflicting version, current_next_indicator 0, or the PMT of a program that is not analyzed), invalid."
+        },
+        "invalid_reason": {
+          "$ref": "json-schema-v1.json#/$defs/status",
+          "description": "Present when status is invalid. Current values: malformed, invalid_crc32, section_number_beyond_last, parse_error."
+        },
+        "transport_stream_id": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "PAT only."
+        },
+        "program_number": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "PMT only."
+        },
+        "version_number": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 31
+        },
+        "section_number": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "last_section_number": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "current_next_indicator": {
+          "enum": [
+            0,
+            1
+          ]
+        }
+      }
+    },
+    "psiLayoutEntry": {
+      "type": "object",
+      "description": "The PAT and the PMTs in effect over [offset_bytes, end_offset_bytes).",
+      "required": [
+        "offset_bytes",
+        "end_offset_bytes",
+        "transition_indices",
+        "pat_version",
+        "pat_offset_bytes",
+        "programs"
+      ],
+      "properties": {
+        "offset_bytes": {
+          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger",
+          "description": "First packet the layout applies to. The first layout starts at the first packet of the range, before its tables were complete; pat_offset_bytes and pmt_offset_bytes say where they were."
+        },
+        "end_offset_bytes": {
+          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger",
+          "description": "Offset where the next layout starts or the scan ended."
+        },
+        "transition_indices": {
+          "type": "array",
+          "description": "Indices into psi_transitions of the changes that start this layout, all completed by the packet before offset_bytes. Empty for the first layout.",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "pat_version": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 31
+        },
+        "pat_offset_bytes": {
+          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger",
+          "description": "Offset of the packet that completed the PAT in effect. For the first layout, the first complete PAT of the range."
+        },
+        "programs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/layoutProgram"
+          }
+        }
+      }
+    },
+    "layoutProgram": {
+      "type": "object",
+      "description": "A program of the PAT in effect. pmt_version, pmt_offset_bytes and pcr_pid are absent, and elementary_streams is empty, when no PMT of the program is known: its PMT was not found, or the program was added by a later PAT and is not analyzed.",
+      "required": [
+        "program_number",
+        "pmt_pid",
+        "elementary_streams"
+      ],
+      "properties": {
+        "program_number": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "pmt_pid": {
+          "$ref": "json-schema-v1.json#/$defs/pid"
+        },
+        "pmt_version": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 31
+        },
+        "pmt_offset_bytes": {
+          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger",
+          "description": "Offset of the packet that completed the PMT in effect. For the first layout, where discovery completed the PMT the analysis started from; discovery reads a PMT only after the first complete PAT, so an earlier copy can appear in sections."
+        },
+        "pcr_pid": {
+          "$ref": "json-schema-v1.json#/$defs/pid"
+        },
+        "elementary_streams": {
+          "type": "array",
+          "items": {
+            "$ref": "json-schema-v1.json#/$defs/elementaryStream"
+          }
+        }
+      }
+    },
+    "observedPid": {
+      "type": "object",
+      "required": [
+        "pid",
+        "packet_count",
+        "first_offset_bytes",
+        "last_offset_bytes",
+        "roles"
+      ],
+      "properties": {
+        "pid": {
+          "$ref": "json-schema-v1.json#/$defs/pid"
+        },
+        "packet_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "first_offset_bytes": {
+          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+        },
+        "last_offset_bytes": {
+          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+        },
+        "roles": {
+          "type": "array",
+          "minItems": 1,
+          "description": "What the PID carries in any of the layouts, each role once. A PID no layout lists has the single role unannounced.",
+          "items": {
+            "$ref": "#/$defs/pidRole"
+          }
+        }
+      }
+    },
+    "pidRole": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "json-schema-v1.json#/$defs/status",
+          "description": "Current values: pat, pmt, pcr, elementary_stream, null, unannounced."
+        },
+        "program_number": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "For pmt, pcr and elementary_stream."
+        },
+        "stream_type": {
+          "$ref": "json-schema-v1.json#/$defs/streamType",
+          "description": "For elementary_stream."
+        },
+        "stream_type_description": {
+          "type": "string",
+          "description": "For elementary_stream."
         }
       }
     }
