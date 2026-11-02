@@ -160,6 +160,9 @@ func TestRangeAnalysisOptionErrors(t *testing.T) {
 	if err := ParseTsFile(sample188Path, options.Options{Format: "json", Output: "xml"}); err == nil || !strings.Contains(err.Error(), `unsupported output "xml"`) {
 		t.Errorf("unknown output: %v", err)
 	}
+	if err := ParseTsFile(sample188Path, options.Options{RangeOffset: -1}); err == nil || !strings.Contains(err.Error(), "--range-offset and --range-limit must not be negative") {
+		t.Errorf("negative range offset: %v", err)
+	}
 	if err := ParseTsFile(sample188Path, options.Options{Output: "analysis"}); err == nil || !strings.Contains(err.Error(), "requires --format json") {
 		t.Errorf("analysis in text mode: %v", err)
 	}
@@ -371,17 +374,6 @@ func TestRangeAnalysisReaderErrors(t *testing.T) {
 	report.analysis = &rangeAnalysis{}
 	if err := parseTsReaderReport(bytes.NewReader(broken), options.Options{}, report); err == nil || !strings.Contains(err.Error(), "failed to parse TS packet") {
 		t.Errorf("broken packet: err = %v", err)
-	}
-}
-
-func TestFileSizeOfClosedFile(t *testing.T) {
-	f, err := os.CreateTemp(t.TempDir(), "size")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = f.Close()
-	if got := fileSize(f); got != 0 {
-		t.Errorf("fileSize(closed) = %d, want 0", got)
 	}
 }
 

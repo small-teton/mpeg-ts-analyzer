@@ -1,0 +1,14 @@
+[package]
+name = "mpeg-ts-analyzer-gui"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+description = "Desktop GUI for mpeg-ts-analyzer"
+license = "Apache-2.0"
+repository = "https://github.com/small-teton/mpeg-ts-analyzer"
+publish = false
+
+[dependencies]
+eframe = "0.37.0"
+egui_plot = "0.38.0"
+rfd = "0.17.2"

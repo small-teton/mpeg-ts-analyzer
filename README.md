@@ -91,6 +91,7 @@ Usage:
   mpeg-ts-analyzer [input file path] [flags]
 
 Flags:
+      --capabilities            Print the supported machine-readable outputs as JSON and exit (no input file).
       --count int               With --output packets: maximum number of packets in the page. (default 100)
       --dump-adaptation-field   Dump TS packet adaptation_field detail.
       --dump-bitrate            Summarize per-PID average/peak bitrate (PCR time base) for the analyzed program.
@@ -109,6 +110,7 @@ Flags:
       --output string           JSON output: summary, analysis (every program with time series), packets (a page of packets) or packet (one packet decoded); needs --format json. (default "summary")
       --packet-size int         With --output packets or packet: packet size 188 or 192 (0 = detect).
       --program int             Analyze only this program_number (default: the sole program; a multi-program stream is listed instead).
+      --progress string         Write progress events to stderr in this format: json.
       --range-limit int         With --output packet: length of that scan range in bytes (0 = to the end of the file).
       --range-offset int        With --output packet: start of the scan range searched for the packet's PES or section.
       --version                 show mpeg-ts-analyzer version.
@@ -145,6 +147,11 @@ The document contains summaries, not one object per transport packet. Its size
 therefore does not grow with the input file's packet count (apart from naturally
 variable summary collections such as encountered PIDs, warnings, and detected
 anomalies). Analysis remains streaming, making JSON suitable for large files.
+
+Long-running callers can add `--progress json` to receive progress events on
+stderr, and `mpeg-ts-analyzer --capabilities` reports which machine-readable
+outputs and schema versions a build supports. See
+[OPTIONS.md](OPTIONS.md#progress-events).
 Packet-level flags (`--dump-ts-header`, `--dump-ts-payload`,
 `--dump-adaptation-field`, `--dump-psi`, `--dump-pes-header`, and
 `--dump-timestamp`) are intentionally incompatible with JSON mode; their large,

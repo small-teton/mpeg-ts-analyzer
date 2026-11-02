@@ -21,4 +21,6 @@ type Options struct {
 	PacketSize          int
 	RangeOffset         int64
 	RangeLimit          int64
+	Progress            string
+	Capabilities        bool
 }

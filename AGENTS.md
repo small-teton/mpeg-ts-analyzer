@@ -154,6 +154,23 @@ coverage target.
   passed `.githooks/pre-push`. Do not hand off a pull request with failing
   required checks or an unexplained dirty worktree.
 
+## Desktop GUI
+
+- The GUI lives in `gui/` (Rust, eframe/egui) and runs the CLI as a
+  subprocess; it never contains analysis logic. Design and the CLI contract are
+  in [`docs/gui/design.md`](docs/gui/design.md) and
+  [`docs/gui/cli-interface.md`](docs/gui/cli-interface.md); keep them current
+  when the design changes.
+- Do not put Go code under `gui/`. Go tooling (`go build ./...`, coverage,
+  docs policy) must stay unaffected by the directory.
+- Before pushing GUI changes, `make gui-lint` (rustfmt and clippy with
+  `-D warnings`) and `make gui-test` must pass; `.githooks/pre-push` runs them
+  when `gui/` or the `Makefile` changed. The Rust toolchain is pinned in `gui/rust-toolchain.toml`.
+- Write all repository content in English, including GUI strings, comments and
+  documentation.
+- GUI release tags are `gui-v*`, never `gui/v*` (Go would read the latter as a
+  sub-module version). Do not create GUI tags unless explicitly requested.
+
 ## README demo workflow
 
 - After changing CLI output, demo rendering code, or the demo container

@@ -4,21 +4,45 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 	"github.com/small-teton/mpeg-ts-analyzer/v2/tsparser"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 var opt options.Options
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "mpeg-ts-analyzer [input file path]",
-	Args:  cobra.ExactArgs(1),
+	Use: "mpeg-ts-analyzer [input file path]",
+	Args: func(cmd *cobra.Command, args []string) error {
+		if opt.Capabilities {
+			return cobra.NoArgs(cmd, args)
+		}
+		return cobra.ExactArgs(1)(cmd, args)
+	},
 	Short: "An analyzer for MPEG-2 Transport Stream (ISO/IEC 13818-1)",
 	Long:  "It can parse TS header, Adaptation Field, PSI (PAT/PMT) and PES header. It also validates continuity_counter (TS header) and CRC32 (PSI).",
+	PreRunE: func(cmd *cobra.Command, _ []string) error {
+		if opt.Capabilities {
+			var others []string
+			cmd.Flags().Visit(func(f *pflag.Flag) {
+				if f.Name != "capabilities" {
+					others = append(others, "--"+f.Name)
+				}
+			})
+			if len(others) > 0 {
+				return fmt.Errorf("--capabilities cannot be combined with %s", strings.Join(others, ", "))
+			}
+		}
+		return tsparser.ValidateOptions(opt)
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if opt.Capabilities {
+			return tsparser.WriteCapabilities(cmd.OutOrStdout(), cmd.Root().Version)
+		}
 		return tsparser.ParseTsFile(args[0], opt)
 	},
 }
@@ -62,4 +86,6 @@ func init() {
 	rootCmd.Flags().IntVar(&opt.PacketSize, "packet-size", 0, "With --output packets or packet: packet size 188 or 192 (0 = detect).")
 	rootCmd.Flags().Int64Var(&opt.RangeOffset, "range-offset", 0, "With --output packet: start of the scan range searched for the packet's PES or section.")
 	rootCmd.Flags().Int64Var(&opt.RangeLimit, "range-limit", 0, "With --output packet: length of that scan range in bytes (0 = to the end of the file).")
+	rootCmd.Flags().StringVar(&opt.Progress, "progress", "", "Write progress events to stderr in this format: json.")
+	rootCmd.Flags().BoolVar(&opt.Capabilities, "capabilities", false, "Print the supported machine-readable outputs as JSON and exit (no input file).")
 }

@@ -9,12 +9,22 @@ import (
 	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 )
 
-func ParseTsFile(filename string, options options.Options) error {
-	if options.Format == "" {
-		options.Format = "text"
-	}
-	if options.Format != "text" && options.Format != "json" {
+// ValidateOptions rejects option values that no output mode accepts.
+func ValidateOptions(options options.Options) error {
+	if options.Format != "" && options.Format != "text" && options.Format != "json" {
 		return fmt.Errorf("unsupported output format %q (expected text or json)", options.Format)
+	}
+	if options.Progress != "" && options.Progress != "json" {
+		return fmt.Errorf("unsupported progress format %q (expected json)", options.Progress)
+	}
+	if options.Offset < 0 {
+		return fmt.Errorf("--offset must not be negative (got %d)", options.Offset)
+	}
+	if options.Limit < 0 {
+		return fmt.Errorf("--limit must not be negative (got %d; 0 means no limit)", options.Limit)
+	}
+	if options.RangeOffset < 0 || options.RangeLimit < 0 {
+		return errors.New("--range-offset and --range-limit must not be negative")
 	}
 	switch options.Output {
 	case "", "summary":
@@ -24,6 +34,16 @@ func ParseTsFile(filename string, options options.Options) error {
 		}
 	default:
 		return fmt.Errorf("unsupported output %q (expected summary, analysis, packets or packet)", options.Output)
+	}
+	return nil
+}
+
+func ParseTsFile(filename string, options options.Options) error {
+	if err := ValidateOptions(options); err != nil {
+		return err
+	}
+	if options.Format == "" {
+		options.Format = "text"
 	}
 	if options.Output == "packets" || options.Output == "packet" {
 		return writePacketsDocument(filename, options, os.Stdout)
@@ -38,7 +58,9 @@ func ParseTsFile(filename string, options options.Options) error {
 	defer func() { _ = file.Close() }()
 	fmt.Println("Input file: ", filename)
 
-	return parseTsReader(newBufferedReadSeeker(file), options)
+	reader, finish := withProgress(newBufferedReadSeeker(file), file, options)
+	defer finish()
+	return parseTsReader(reader, options)
 }
 
 func parseTsFileJSON(filename string, options options.Options) error {
@@ -68,7 +90,9 @@ func parseTsFileJSONTo(filename string, options options.Options, output io.Write
 			if report.analysis != nil {
 				report.analysis.fileSize = fileSize(file)
 			}
-			parseErr = parseTsReaderReport(newBufferedReadSeeker(file), options, report)
+			reader, finish := withProgress(newBufferedReadSeeker(file), file, options)
+			parseErr = parseTsReaderReport(reader, options, report)
+			finish()
 		}
 	}
 	if parseErr != nil {
