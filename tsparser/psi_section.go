@@ -42,6 +42,12 @@ func (r *psiSectionReader) push(tsPacket *TsPacket, pos int64) ([]psiSectionData
 	if len(payload) == 0 {
 		return nil, nil
 	}
+	if tsPacket.transportErrorIndicator != 0 {
+		// The packet has an uncorrectable error: neither its header nor its
+		// payload can be trusted, so nothing it carries is used.
+		r.collecting, r.buf = false, nil
+		return nil, []string{"transport_error_indicator set; packet ignored and any partial section discarded"}
+	}
 	cc := tsPacket.ContinuityCounter()
 	expected := (r.lastCC + 1) & 0xF
 	duplicate := cc == r.lastCC
@@ -178,6 +184,11 @@ func (a *psiAssembler[T]) add(data []byte, pos int64) ([]T, bool) {
 	if err != nil {
 		a.diagnose(pos, "section %d (version %d) cannot be parsed: %s; section ignored", number, key.version, err)
 		return nil, false
+	}
+	// A transport stream has one PAT identity: the first valid section fixes
+	// it, so sections of other transport_stream_ids cannot pile up.
+	if a.anyExtension {
+		a.extension, a.anyExtension = key.extension, false
 	}
 
 	set := a.sets[key]

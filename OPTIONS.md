@@ -591,10 +591,12 @@ continuity_counter              : 0
 
 ## Multi-section PAT and PMT
 
-A PAT or PMT may be split into several sections (`section_number` 0 to
-`last_section_number`). Before it selects or lists programs, the analyzer
-collects every section of the table, so programs and elementary streams in any
-section are found. The sample
+A PAT may be split into several sections (`section_number` 0 to
+`last_section_number`). ISO/IEC 13818-1 requires a PMT's `section_number` and
+`last_section_number` to be 0, but the analyzer also assembles multi-section
+PMTs found in non-conforming streams. Before it selects or lists programs, the
+analyzer collects every section of the table, so programs and elementary
+streams in any section are found. The sample
 `sample_data/sample_188byte_two_programs_multi_section_psi_mpeg2_160x120_25fps_mp2.ts`
 (and its 192-byte twin) carries the two-program sample's PAT as one section per
 program and each PMT as one section per elementary stream, sent from the last
@@ -618,7 +620,8 @@ How a table is assembled:
 - Sections are combined only within one table identity and version: `table_id`,
   `transport_stream_id` (PAT) or `program_number` (PMT), and `version_number`.
   A PMT is taken only from sections whose `program_number` is the program's;
-  other tables on the same PID are skipped.
+  other tables on the same PID are skipped. The first valid PAT section fixes
+  the `transport_stream_id`; PAT sections with another one are ignored.
 - Only sections with `current_next_indicator` 1 are used; a "next" table is
   ignored. The first version whose sections 0 to `last_section_number` have all
   arrived is used, whatever order they arrived in. Retransmitted sections are
@@ -650,6 +653,7 @@ retransmissions:
 | `<table>: continuity_counter jumped from A to B inside a section; partial section discarded` | Packet loss inside a section |
 | `<table>: section ended early by the next payload_unit_start_indicator; partial section discarded` | A section was cut short |
 | `<table>: invalid pointer_field N; packet ignored` | `pointer_field` runs past the payload |
+| `<table>: transport_error_indicator set; packet ignored and any partial section discarded` | The packet has an uncorrectable error, so nothing it carries is used |
 | `PAT lists program N with PMT PIDs ...`, `PMT of program N has PCR_PID ...`, `PMT of program N lists elementary PID ... with stream types ...` | Sections disagree; the first value in section order is used |
 
 `<table>` is `PAT` or `PMT of program N on PID 0xXXXX`. A table that is still

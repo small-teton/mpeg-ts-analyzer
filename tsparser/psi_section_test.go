@@ -275,11 +275,50 @@ func TestPsiAssemblerKeepsVersionsAndIdentitiesApart(t *testing.T) {
 	if _, ok := a.add(otherStream, 2); ok {
 		t.Fatal("sections of different transport_stream_id were combined")
 	}
-	if err := a.incomplete(); err == nil || err.Error() != "incomplete PAT (version 0): missing section(s) 0 of 0..1" {
+	if err := a.incomplete(); err == nil || err.Error() != "incomplete PAT (version 1): missing section(s) 0 of 0..1" {
 		t.Errorf("incomplete() = %v", err)
 	}
 	if _, ok := a.add(patSectionN(1, 0, 1, [2]uint16{1, 0x100}), 3); !ok {
 		t.Error("version 1 did not complete")
+	}
+}
+
+// Only the first valid PAT identity is collected, so incomplete sections of
+// many transport_stream_ids cannot accumulate.
+func TestPsiAssemblerLocksThePatIdentity(t *testing.T) {
+	a := newPatAssembler()
+	for extension := uint16(1); extension <= 1000; extension++ {
+		a.add(testSection(0x00, extension, 0, 0, 255, true, []byte{0x00, 0x01, 0xE1, 0x00}), int64(extension))
+	}
+	if len(a.sets) != 1 || a.extension != 1 {
+		t.Errorf("collected %d identities; locked to %d", len(a.sets), a.extension)
+	}
+}
+
+// A packet with transport_error_indicator set contributes nothing, and a
+// section it interrupts is discarded.
+func TestPsiSectionReaderDropsTransportErrors(t *testing.T) {
+	section := patSectionN(0, 0, 0, [2]uint16{1, 0x100})
+	long := longSection(300)
+	var r psiSectionReader
+	push := func(raw []byte) ([]psiSectionData, []string) { return r.push(parsedTsPacket(t, raw), 0) }
+	withError := func(raw []byte) []byte {
+		raw[1] |= 0x80
+		return raw
+	}
+
+	sections, problems := push(withError(rawPsiPacket(0, true, 0, append([]byte{0x00}, section...))))
+	if sections != nil || len(problems) != 1 || !strings.Contains(problems[0], "transport_error_indicator") {
+		t.Fatalf("standalone section: %v %v", sections, problems)
+	}
+	push(rawPsiPacket(0, true, 1, append([]byte{0x00}, long[:183]...)))
+	sections, problems = push(withError(rawPsiPacket(0, false, 2, long[183:])))
+	if sections != nil || len(problems) != 1 {
+		t.Fatalf("mid-section error: %v %v", sections, problems)
+	}
+	// The next continuation has nothing to join.
+	if sections, _ = push(rawPsiPacket(0, false, 3, long[183:])); sections != nil {
+		t.Fatalf("section completed after a transport error: %v", sections)
 	}
 }
 
