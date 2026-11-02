@@ -16,6 +16,9 @@ func ParseTsFile(filename string, options options.Options) error {
 	if options.Format != "text" && options.Format != "json" {
 		return fmt.Errorf("unsupported output format %q (expected text or json)", options.Format)
 	}
+	if options.Progress != "" && options.Progress != "json" {
+		return fmt.Errorf("unsupported progress format %q (expected json)", options.Progress)
+	}
 	if options.Format == "json" {
 		return parseTsFileJSON(filename, options)
 	}
@@ -26,7 +29,9 @@ func ParseTsFile(filename string, options options.Options) error {
 	defer func() { _ = file.Close() }()
 	fmt.Println("Input file: ", filename)
 
-	return parseTsReader(newBufferedReadSeeker(file), options)
+	reader, finish := withProgress(newBufferedReadSeeker(file), file, options)
+	defer finish()
+	return parseTsReader(reader, options)
 }
 
 func parseTsFileJSON(filename string, options options.Options) error {
@@ -47,7 +52,9 @@ func parseTsFileJSONTo(filename string, options options.Options, output io.Write
 			reason = "input_open_failed"
 		} else {
 			defer func() { _ = file.Close() }()
-			parseErr = parseTsReaderReport(newBufferedReadSeeker(file), options, report)
+			reader, finish := withProgress(newBufferedReadSeeker(file), file, options)
+			parseErr = parseTsReaderReport(reader, options, report)
+			finish()
 		}
 	}
 	if parseErr != nil {

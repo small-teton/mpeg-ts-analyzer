@@ -14,11 +14,19 @@ var opt options.Options
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "mpeg-ts-analyzer [input file path]",
-	Args:  cobra.ExactArgs(1),
+	Use: "mpeg-ts-analyzer [input file path]",
+	Args: func(cmd *cobra.Command, args []string) error {
+		if opt.Capabilities {
+			return cobra.NoArgs(cmd, args)
+		}
+		return cobra.ExactArgs(1)(cmd, args)
+	},
 	Short: "An analyzer for MPEG-2 Transport Stream (ISO/IEC 13818-1)",
 	Long:  "It can parse TS header, Adaptation Field, PSI (PAT/PMT) and PES header. It also validates continuity_counter (TS header) and CRC32 (PSI).",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if opt.Capabilities {
+			return tsparser.WriteCapabilities(cmd.OutOrStdout(), cmd.Root().Version)
+		}
 		return tsparser.ParseTsFile(args[0], opt)
 	},
 }
@@ -57,4 +65,6 @@ func init() {
 	rootCmd.Flags().IntVar(&opt.Program, "program", 0, "Analyze only this program_number (default: the sole program; a multi-program stream is listed instead).")
 	rootCmd.Flags().Int64Var(&opt.Offset, "offset", 0, "Start reading from this byte offset.")
 	rootCmd.Flags().Int64Var(&opt.Limit, "limit", 0, "Stop reading after this many bytes (0 = no limit).")
+	rootCmd.Flags().StringVar(&opt.Progress, "progress", "", "Write progress events to stderr in this format: json.")
+	rootCmd.Flags().BoolVar(&opt.Capabilities, "capabilities", false, "Print the supported machine-readable outputs as JSON and exit (no input file).")
 }

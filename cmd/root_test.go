@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 	"github.com/small-teton/mpeg-ts-analyzer/v2/tsparser"
 	"github.com/spf13/cobra"
 )
@@ -61,5 +62,24 @@ func TestExitCode(t *testing.T) {
 	}
 	if got := exitCode(&tsparser.ComplianceError{Checks: []string{"Max PCR interval"}}); got != 2 {
 		t.Errorf("compliance error exit code = %d, want 2", got)
+	}
+}
+
+func TestCapabilitiesNeedsNoInput(t *testing.T) {
+	defer func() { opt = options.Options{} }()
+	var out strings.Builder
+	rootCmd.SetOut(&out)
+	rootCmd.SetArgs([]string{"--capabilities"})
+	defer rootCmd.SetOut(nil)
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"capabilities_version": "1.0"`) {
+		t.Errorf("unexpected output: %s", out.String())
+	}
+
+	rootCmd.SetArgs([]string{"--capabilities", "input.ts"})
+	if err := rootCmd.Execute(); err == nil {
+		t.Error("expected an error when an input file is given with --capabilities")
 	}
 }

@@ -91,6 +91,7 @@ Usage:
   mpeg-ts-analyzer [input file path] [flags]
 
 Flags:
+      --capabilities            Print the supported machine-readable outputs as JSON and exit (no input file).
       --dump-adaptation-field   Dump TS packet adaptation_field detail.
       --dump-bitrate            Summarize per-PID average/peak bitrate (PCR time base) for the analyzed program.
       --dump-pcr-jitter         Analyze PCR jitter (per-interval deviation from the expected PCR).
@@ -106,6 +107,7 @@ Flags:
       --list-programs           List every program (program_number, PMT PID, elementary streams) and exit.
       --offset int              Start reading from this byte offset.
       --program int             Analyze only this program_number (default: the sole program; a multi-program stream is listed instead).
+      --progress string         Write progress events to stderr in this format: json.
       --version                 show mpeg-ts-analyzer version.
 ```
 
@@ -133,6 +135,11 @@ The document contains summaries, not one object per transport packet. Its size
 therefore does not grow with the input file's packet count (apart from naturally
 variable summary collections such as encountered PIDs, warnings, and detected
 anomalies). Analysis remains streaming, making JSON suitable for large files.
+
+Long-running callers can add `--progress json` to receive progress events on
+stderr, and `mpeg-ts-analyzer --capabilities` reports which machine-readable
+outputs and schema versions a build supports. See
+[OPTIONS.md](OPTIONS.md#progress-events).
 Packet-level flags (`--dump-ts-header`, `--dump-ts-payload`,
 `--dump-adaptation-field`, `--dump-psi`, `--dump-pes-header`, and
 `--dump-timestamp`) are intentionally incompatible with JSON mode; their large,
