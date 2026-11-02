@@ -3,9 +3,9 @@ package tsparser
 import (
 	"bytes"
 	"encoding/json"
+	"math"
 	"os"
 	"reflect"
-	"slices"
 	"strings"
 	"testing"
 
@@ -102,15 +102,37 @@ func TestRangeAnalysisMatchesPerProgramRuns(t *testing.T) {
 					maxGap = max(maxGap, *p.GapMs)
 				}
 			}
+			for i := 1; i < len(series.PES); i++ {
+				if series.PES[i].OffsetBytes < series.PES[i-1].OffsetBytes {
+					t.Fatalf("%s program %d: PES series not in stream order at %d", path, program.ProgramNumber, i)
+				}
+			}
+			durations := series.Bitrate.DurationSeconds
+			var seconds float64
+			for _, d := range durations {
+				seconds += d
+			}
+			if len(durations) == 0 || math.Abs(seconds-program.Bitrate.DurationSeconds) > 1e-9 {
+				t.Errorf("%s program %d: window durations %v, measured %v s", path, program.ProgramNumber, durations, program.Bitrate.DurationSeconds)
+			}
 			for _, row := range program.Bitrate.PIDs {
-				var peak float64
+				var peak, bytes float64
 				for _, windows := range series.Bitrate.PIDs {
-					if windows.PID == row.PID {
-						peak = slices.Max(windows.BPS)
+					if windows.PID != row.PID {
+						continue
+					}
+					for i, n := range windows.Bytes {
+						bytes += float64(n)
+						if durations[i] == 1 {
+							peak = max(peak, windows.BPS[i])
+						}
 					}
 				}
 				if row.Peak1sBPS == nil || peak != *row.Peak1sBPS {
 					t.Errorf("%s program %d: PID %s windows peak %v, summary peak %v", path, program.ProgramNumber, row.PID, peak, row.Peak1sBPS)
+				}
+				if average := bytes * 8 / seconds; math.Abs(average-row.AverageBPS) > 1e-6 {
+					t.Errorf("%s program %d: PID %s windows average %v, summary average %v", path, program.ProgramNumber, row.PID, average, row.AverageBPS)
 				}
 			}
 			if maxInterval != *program.Compliance.MaxPCRInterval.ValueMs || maxGap != *program.Compliance.MaxPCRPTSDTSGap.ValueMs {
@@ -313,6 +335,16 @@ func TestRangeAnalysisReportsTimestampEvents(t *testing.T) {
 	}
 }
 
+func TestRangeAnalysisOrdersTimestampEventsByOffset(t *testing.T) {
+	data := syntheticStream([]syntheticProgram{{number: 1, pmtPid: 0x1000, pcrPid: 0x100, videoPid: 0x100, withPmt: true}}, nil, -1)
+	data = append(data, pesStartPacket(0x100, 6, 90*100)...)
+	data = append(data, pesStartPacket(0x100, 7, 0)...)
+	events := analyzeSynthetic(t, data, options.Options{}).Programs[0].Series.TimestampEvents
+	if len(events) != 2 || events[0].OffsetBytes >= events[1].OffsetBytes {
+		t.Errorf("timestamp events = %+v", events)
+	}
+}
+
 func TestRangeAnalysisReportsTruncatedTail(t *testing.T) {
 	data := syntheticStream([]syntheticProgram{{number: 1, pmtPid: 0x1000, pcrPid: 0x100, videoPid: 0x100, withPmt: true}}, nil, -1)
 	report := analyzeSynthetic(t, append(data, 0x47, 0x01), options.Options{})
@@ -350,5 +382,31 @@ func TestFileSizeOfClosedFile(t *testing.T) {
 	_ = f.Close()
 	if got := fileSize(f); got != 0 {
 		t.Errorf("fileSize(closed) = %d, want 0", got)
+	}
+}
+
+// A PCR of zero is a valid clock value (a stream starting at zero, or after
+// the 42-bit wrap), so a PES after it still has a reference time.
+func TestRangeAnalysisPcrOfZero(t *testing.T) {
+	const ms = uint64(pcrTicksPerMs)
+	var buf bytes.Buffer
+	pat := patSection([2]uint16{1, 0x1000})
+	pmt := pmtSection(1, 0x100, [2]uint16{0x02, 0x100})
+	buf.Write(buildTsPacket(0x0000, true, 0, pat))
+	buf.Write(buildTsPacket(0x0000, true, 1, pat))
+	buf.Write(buildTsPacket(0x1000, true, 0, pmt))
+	buf.Write(buildTsPacket(0x1000, true, 1, pmt))
+	for i := range 3 {
+		pcr := uint64(i) * 40 * ms
+		buf.Write(buildPcrPacket(0x100, pcr))
+		buf.Write(pesStartPacket(0x100, uint8(i), pcr/300+90*700))
+	}
+	pes := analyzeSynthetic(t, buf.Bytes(), options.Options{}).Programs[0].Series.PES
+	if len(pes) == 0 || pes[0].ElapsedMs == nil || *pes[0].ElapsedMs != 0 {
+		t.Fatalf("first PES = %+v, want elapsed_ms 0", pes)
+	}
+	// The PES sits halfway between the PCRs at 0 and 40 ms: 700 - 20 ms.
+	if pes[0].GapMs == nil || math.Abs(*pes[0].GapMs-680) > 1e-6 {
+		t.Errorf("first PES gap = %v, want 680 ms", pes[0].GapMs)
 	}
 }

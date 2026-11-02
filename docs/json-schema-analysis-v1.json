@@ -301,11 +301,21 @@
       "type": "object",
       "required": [
         "window_seconds",
+        "duration_seconds",
         "pids"
       ],
       "properties": {
         "window_seconds": {
           "const": 1
+        },
+        "duration_seconds": {
+          "type": "array",
+          "description": "Length in seconds of each window of elapsed time, in order. Every window is 1 second except a shorter last one, so the sum is the measured duration.",
+          "items": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1
+          }
         },
         "pids": {
           "type": "array",
@@ -314,6 +324,7 @@
             "required": [
               "pid",
               "label",
+              "bytes",
               "bps"
             ],
             "properties": {
@@ -323,9 +334,16 @@
               "label": {
                 "type": "string"
               },
+              "bytes": {
+                "type": "array",
+                "description": "Bytes of the PID in each window of duration_seconds. Their sum times 8, divided by the sum of duration_seconds, is the PID's average bitrate.",
+                "items": {
+                  "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+                }
+              },
               "bps": {
                 "type": "array",
-                "description": "Bitrate in each full 1-second window of elapsed time, in order.",
+                "description": "Bitrate in each window of duration_seconds (bytes * 8 / duration), in order.",
                 "items": {
                   "type": "number",
                   "minimum": 0

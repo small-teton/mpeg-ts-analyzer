@@ -69,7 +69,7 @@ func (s *programSeries) addPcr(pos int64, pcr uint64, discontinuity bool, interv
 // elapsed time of the last PCR before it; gapMs is valid when bracketed is true.
 func (s *programSeries) addPes(p *Pes, gapMs float64, bracketed bool) {
 	entry := seriesPes{pid: p.pid, pos: p.pos, gapMs: gapMs, hasGap: bracketed}
-	if p.prevPcr != 0 {
+	if p.hasPrevPcr {
 		entry.elapsedMs, entry.hasElapsed = s.elapsedAt[p.prevPcrPos]
 	}
 	if p.ptsDtsFlags == 2 || p.ptsDtsFlags == 3 {

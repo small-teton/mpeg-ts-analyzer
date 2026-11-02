@@ -68,7 +68,7 @@ type TimestampAnomaly struct {
 	order  []anomalyKey          // (PID, kind) in first-seen order
 	first  map[anomalyKey]string // first occurrence's message
 	counts map[anomalyKey]int    // total occurrences
-	events []anomalyEvent        // every occurrence, in stream order
+	events []anomalyEvent        // every occurrence, as each PES completes
 }
 
 // anomalyEvent is one occurrence of an anomaly at the PES at pos.
