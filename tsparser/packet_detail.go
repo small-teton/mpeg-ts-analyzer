@@ -35,12 +35,49 @@ type PacketLayer struct {
 }
 
 // PacketField is a decoded value and the bytes of the packet it was read
-// from; byte_offset counts from the first byte of "bytes".
+// from; byte_offset counts from the first byte of "bytes". Bits lists the
+// exact bits the value was read from, in wire order; it is omitted when the
+// value uses every bit of its byte span.
 type PacketField struct {
-	Name       string `json:"name"`
-	Value      string `json:"value"`
-	ByteOffset int    `json:"byte_offset"`
-	ByteLength int    `json:"byte_length"`
+	Name       string     `json:"name"`
+	Value      string     `json:"value"`
+	ByteOffset int        `json:"byte_offset"`
+	ByteLength int        `json:"byte_length"`
+	Bits       []BitRange `json:"bits,omitempty"`
+}
+
+// BitRange is a run of packet bits. Bit offset 0 is the most significant bit
+// of the first packet byte, so bit 7 of byte i is at offset i*8.
+type BitRange struct {
+	BitOffset int `json:"bit_offset"`
+	BitLength int `json:"bit_length"`
+}
+
+// bitsAt is the run of length bits that starts at bit first (0 = most
+// significant) of the byte at offset.
+func bitsAt(offset, first, length int) BitRange {
+	return BitRange{BitOffset: offset*8 + first, BitLength: length}
+}
+
+// readBits concatenates the runs of raw, in order, into one value. Bits past
+// the end of raw read as 0.
+func readBits(raw []byte, runs ...BitRange) uint64 {
+	var v uint64
+	for _, r := range runs {
+		for bit := r.BitOffset; bit < r.BitOffset+r.BitLength; bit++ {
+			v <<= 1
+			if bit/8 < len(raw) {
+				v |= uint64(raw[bit/8]>>(7-bit%8)) & 1
+			}
+		}
+	}
+	return v
+}
+
+// timestampBits are the 33 value bits of a PTS or DTS whose 5 bytes start at
+// offset; the 4-bit prefix and the marker bits are left out.
+func timestampBits(offset int) []BitRange {
+	return []BitRange{bitsAt(offset, 4, 3), bitsAt(offset+1, 0, 15), bitsAt(offset+3, 0, 15)}
 }
 
 // PacketUnit describes the PES packet or PSI section a packet belongs to,
@@ -98,35 +135,45 @@ type fieldBuilder struct {
 	truncated bool
 }
 
-// add appends a field when its bytes are inside the packet and reports
-// whether it was.
+// add appends a field of whole bytes when they are inside the packet and
+// reports whether they were.
 func (b *fieldBuilder) add(fields *[]PacketField, name string, offset, length int, format string, args ...any) bool {
-	if offset < 0 || offset+length > len(b.raw) {
+	return b.addBits(fields, name, []BitRange{bitsAt(offset, 0, length*8)}, format, args...)
+}
+
+// addBits appends a field read from runs, given in wire order, when they are
+// inside the packet and reports whether they were. The byte span covers the
+// runs; the runs are listed only when they leave bits of that span out.
+func (b *fieldBuilder) addBits(fields *[]PacketField, name string, runs []BitRange, format string, args ...any) bool {
+	last := runs[len(runs)-1]
+	offset := runs[0].BitOffset / 8
+	end := (last.BitOffset + last.BitLength + 7) / 8
+	if offset < 0 || end > len(b.raw) {
 		b.truncated = true
 		return false
 	}
-	*fields = append(*fields, PacketField{Name: name, Value: fmt.Sprintf(format, args...), ByteOffset: offset, ByteLength: length})
+	field := PacketField{Name: name, Value: fmt.Sprintf(format, args...), ByteOffset: offset, ByteLength: end - offset}
+	bits := 0
+	for _, r := range runs {
+		bits += r.BitLength
+	}
+	if bits != field.ByteLength*8 {
+		field.Bits = runs
+	}
+	*fields = append(*fields, field)
 	return true
 }
 
-func (b *fieldBuilder) u16(offset int) uint16 {
-	return uint16(b.raw[offset])<<8 | uint16(b.raw[offset+1])
+// field appends a field whose value is read from run and formatted with
+// format followed by args, and reports whether it was inside the packet. A
+// run past the packet reads as 0, but such a field is rejected, so that value
+// is never shown.
+func (b *fieldBuilder) field(fields *[]PacketField, name, format string, run BitRange, args ...any) bool {
+	return b.addBits(fields, name, []BitRange{run}, format, append([]any{b.value(run)}, args...)...)
 }
 
-func (b *fieldBuilder) pid(offset int) uint16 { return b.u16(offset) & 0x1FFF }
-
-// byteAt and u16At read values for fields that may lie past the end of the
-// packet; add then rejects those fields, so the zero value is never shown.
-func (b *fieldBuilder) byteAt(offset int) byte {
-	if offset < len(b.raw) {
-		return b.raw[offset]
-	}
-	return 0
-}
-
-func (b *fieldBuilder) u16At(offset int) uint16 {
-	return uint16(b.byteAt(offset))<<8 | uint16(b.byteAt(offset+1))
-}
+// value reads the concatenation of runs; see field.
+func (b *fieldBuilder) value(runs ...BitRange) uint64 { return readBits(b.raw, runs...) }
 
 // decodePacketLayers decodes every structure of the packet whose start lies in it.
 func decodePacketLayers(raw []byte) []PacketLayer {
@@ -135,23 +182,23 @@ func decodePacketLayers(raw []byte) []PacketLayer {
 	var layers []PacketLayer
 	if t == tpExtraHeaderSize {
 		var fields []PacketField
-		b.add(&fields, "copy_permission_indicator", 0, 1, "%d", raw[0]>>6)
-		ats := uint32(raw[0]&0x3F)<<24 | uint32(raw[1])<<16 | uint32(raw[2])<<8 | uint32(raw[3])
-		b.add(&fields, "arrival_time_stamp", 0, 4, "%d", ats)
+		b.field(&fields, "copy_permission_indicator", "%d", bitsAt(0, 0, 2))
+		b.field(&fields, "arrival_time_stamp", "%d", bitsAt(0, 2, 30))
 		layers = append(layers, PacketLayer{Name: "m2ts_header", Fields: fields})
 	}
 
 	var header []PacketField
-	afc := (raw[t+3] >> 4) & 0x3
-	pusi := raw[t+1]&0x40 != 0
-	b.add(&header, "sync_byte", t, 1, "0x%02x", raw[t])
-	b.add(&header, "transport_error_indicator", t+1, 1, "%d", raw[t+1]>>7)
-	b.add(&header, "payload_unit_start_indicator", t+1, 1, "%d", (raw[t+1]>>6)&1)
-	b.add(&header, "transport_priority", t+1, 1, "%d", (raw[t+1]>>5)&1)
-	b.add(&header, "PID", t+1, 2, "0x%04x", b.pid(t+1))
-	b.add(&header, "transport_scrambling_control", t+3, 1, "%d", raw[t+3]>>6)
-	b.add(&header, "adaptation_field_control", t+3, 1, "%d (%s)", afc, adaptationFieldControlName(afc))
-	b.add(&header, "continuity_counter", t+3, 1, "%d", raw[t+3]&0x0F)
+	afcBits, pusiBits := bitsAt(t+3, 2, 2), bitsAt(t+1, 1, 1)
+	afc := uint8(b.value(afcBits))
+	pusi := b.value(pusiBits) != 0
+	b.field(&header, "sync_byte", "0x%02x", bitsAt(t, 0, 8))
+	b.field(&header, "transport_error_indicator", "%d", bitsAt(t+1, 0, 1))
+	b.field(&header, "payload_unit_start_indicator", "%d", pusiBits)
+	b.field(&header, "transport_priority", "%d", bitsAt(t+1, 2, 1))
+	b.field(&header, "PID", "0x%04x", bitsAt(t+1, 3, 13))
+	b.field(&header, "transport_scrambling_control", "%d", bitsAt(t+3, 0, 2))
+	b.field(&header, "adaptation_field_control", "%d (%s)", afcBits, adaptationFieldControlName(afc))
+	b.field(&header, "continuity_counter", "%d", bitsAt(t+3, 4, 4))
 	layers = append(layers, PacketLayer{Name: "ts_header", Fields: header})
 
 	payload := t + tsHeaderSize
@@ -199,15 +246,15 @@ func decodeAdaptationField(b *fieldBuilder, at, length int) PacketLayer {
 		"discontinuity_indicator", "random_access_indicator", "elementary_stream_priority_indicator", "PCR_flag",
 		"OPCR_flag", "splicing_point_flag", "transport_private_data_flag", "adaptation_field_extension_flag",
 	} {
-		b.add(&fields, name, at+1, 1, "%d", (flags>>(7-i))&1)
+		b.field(&fields, name, "%d", bitsAt(at+1, i, 1))
 	}
 	pos, end := at+2, at+1+length
 	clockField := func(name string) {
 		if pos+6 <= end {
-			base := uint64(b.raw[pos])<<25 | uint64(b.raw[pos+1])<<17 | uint64(b.raw[pos+2])<<9 | uint64(b.raw[pos+3])<<1 | uint64(b.raw[pos+4])>>7
-			ext := uint64(b.raw[pos+4]&0x01)<<8 | uint64(b.raw[pos+5])
-			clock := base*300 + ext
-			b.add(&fields, name, pos, 6, "%d (%.6f s)", clock, float64(clock)/pcrClockHz)
+			// The 33-bit base and the 9-bit extension, around 6 reserved bits.
+			base, ext := bitsAt(pos, 0, 33), bitsAt(pos+4, 7, 9)
+			clock := b.value(base)*300 + b.value(ext)
+			b.addBits(&fields, name, []BitRange{base, ext}, "%d (%.6f s)", clock, float64(clock)/pcrClockHz)
 		}
 		pos += 6
 	}
@@ -233,34 +280,38 @@ func streamHasPesHeader(streamID byte) bool {
 	return true
 }
 
-func decodeTimestamp(b []byte) uint64 {
-	return uint64(b[0]>>1&0x07)<<30 | uint64(b[1])<<22 | uint64(b[2]>>1)<<15 | uint64(b[3])<<7 | uint64(b[4]>>1)
+// decodeTimestamp reads the PTS or DTS whose 5 bytes start at offset of raw.
+func decodeTimestamp(raw []byte, offset int) uint64 {
+	return readBits(raw, timestampBits(offset)...)
 }
 
 func decodePesHeader(b *fieldBuilder, p int) PacketLayer {
 	var fields []PacketField
 	b.add(&fields, "packet_start_code_prefix", p, 3, "0x000001")
-	if b.add(&fields, "stream_id", p+3, 1, "0x%02x", b.byteAt(p+3)) &&
-		b.add(&fields, "PES_packet_length", p+4, 2, "%d", b.u16At(p+4)) &&
+	flagBits := bitsAt(p+7, 0, 2)
+	if b.field(&fields, "stream_id", "0x%02x", bitsAt(p+3, 0, 8)) &&
+		b.field(&fields, "PES_packet_length", "%d", bitsAt(p+4, 0, 16)) &&
 		streamHasPesHeader(b.raw[p+3]) &&
-		b.add(&fields, "PES_scrambling_control", p+6, 1, "%d", (b.byteAt(p+6)>>4)&0x3) &&
-		b.add(&fields, "PTS_DTS_flags", p+7, 1, "%d", b.byteAt(p+7)>>6) &&
-		b.add(&fields, "PES_header_data_length", p+8, 1, "%d", b.byteAt(p+8)) {
-		flags := b.raw[p+7] >> 6
-		if flags&0x2 != 0 && p+14 <= len(b.raw) {
-			pts := decodeTimestamp(b.raw[p+9 : p+14])
-			b.add(&fields, "PTS", p+9, 5, "%d (%.6f s)", pts, float64(pts)/90000)
-		} else if flags&0x2 != 0 {
-			b.truncated = true
+		b.field(&fields, "PES_scrambling_control", "%d", bitsAt(p+6, 2, 2)) &&
+		b.field(&fields, "PTS_DTS_flags", "%d", flagBits) &&
+		b.field(&fields, "PES_header_data_length", "%d", bitsAt(p+8, 0, 8)) {
+		flags := b.value(flagBits)
+		if flags&0x2 != 0 {
+			b.timestampField(&fields, "PTS", p+9)
 		}
-		if flags == 0x3 && p+19 <= len(b.raw) {
-			dts := decodeTimestamp(b.raw[p+14 : p+19])
-			b.add(&fields, "DTS", p+14, 5, "%d (%.6f s)", dts, float64(dts)/90000)
-		} else if flags == 0x3 {
-			b.truncated = true
+		if flags == 0x3 {
+			b.timestampField(&fields, "DTS", p+14)
 		}
 	}
 	return PacketLayer{Name: "pes_header", Fields: fields, Truncated: b.truncated}
+}
+
+// timestampField appends the PTS or DTS whose 5 bytes start at offset; one
+// that continues past the packet marks the layer truncated.
+func (b *fieldBuilder) timestampField(fields *[]PacketField, name string, offset int) {
+	runs := timestampBits(offset)
+	ts := b.value(runs...)
+	b.addBits(fields, name, runs, "%d (%.6f s)", ts, float64(ts)/90000)
 }
 
 func decodePsiSection(b *fieldBuilder, p int) PacketLayer {
@@ -268,7 +319,7 @@ func decodePsiSection(b *fieldBuilder, p int) PacketLayer {
 	pointer := int(b.raw[p])
 	b.add(&fields, "pointer_field", p, 1, "%d", pointer)
 	s := p + 1 + pointer
-	if !b.add(&fields, "table_id", s, 1, "0x%02x", b.byteAt(s)) {
+	if !b.field(&fields, "table_id", "0x%02x", bitsAt(s, 0, 8)) {
 		return PacketLayer{Name: "psi_section", Fields: fields, Truncated: true}
 	}
 	tableID := b.raw[s]
@@ -276,11 +327,12 @@ func decodePsiSection(b *fieldBuilder, p int) PacketLayer {
 	if name == "" {
 		name = "psi_section"
 	}
-	if !b.add(&fields, "section_syntax_indicator", s+1, 1, "%d", b.byteAt(s+1)>>7) ||
-		!b.add(&fields, "section_length", s+1, 2, "%d", b.u16At(s+1)&0x0FFF) {
+	sectionLength := bitsAt(s+1, 4, 12)
+	if !b.field(&fields, "section_syntax_indicator", "%d", bitsAt(s+1, 0, 1)) ||
+		!b.field(&fields, "section_length", "%d", sectionLength) {
 		return PacketLayer{Name: name, Fields: fields, Truncated: true}
 	}
-	sectionEnd := s + 3 + int(b.u16(s+1)&0x0FFF)
+	sectionEnd := s + 3 + int(b.value(sectionLength))
 	crcAt := sectionEnd - 4
 	var rows [][]PacketField
 	if tableID == 0x00 || tableID == 0x02 {
@@ -288,11 +340,11 @@ func decodePsiSection(b *fieldBuilder, p int) PacketLayer {
 		if tableID == 0x02 {
 			idName = "program_number"
 		}
-		if b.add(&fields, idName, s+3, 2, "%d", b.u16At(s+3)) &&
-			b.add(&fields, "version_number", s+5, 1, "%d", (b.byteAt(s+5)>>1)&0x1F) &&
-			b.add(&fields, "current_next_indicator", s+5, 1, "%d", b.byteAt(s+5)&1) &&
-			b.add(&fields, "section_number", s+6, 1, "%d", b.byteAt(s+6)) &&
-			b.add(&fields, "last_section_number", s+7, 1, "%d", b.byteAt(s+7)) {
+		if b.field(&fields, idName, "%d", bitsAt(s+3, 0, 16)) &&
+			b.field(&fields, "version_number", "%d", bitsAt(s+5, 2, 5)) &&
+			b.field(&fields, "current_next_indicator", "%d", bitsAt(s+5, 7, 1)) &&
+			b.field(&fields, "section_number", "%d", bitsAt(s+6, 0, 8)) &&
+			b.field(&fields, "last_section_number", "%d", bitsAt(s+7, 0, 8)) {
 			if tableID == 0x00 {
 				rows = patRows(b, s+8, crcAt)
 			} else {
@@ -301,8 +353,7 @@ func decodePsiSection(b *fieldBuilder, p int) PacketLayer {
 		}
 	}
 	if crcAt+4 <= len(b.raw) && crcAt >= s+3 {
-		crc := uint32(b.u16(crcAt))<<16 | uint32(b.u16(crcAt+2))
-		b.add(&fields, "CRC_32", crcAt, 4, "0x%08x", crc)
+		b.field(&fields, "CRC_32", "0x%08x", bitsAt(crcAt, 0, 32))
 	} else {
 		b.truncated = true
 	}
@@ -316,35 +367,37 @@ func patRows(b *fieldBuilder, at, end int) [][]PacketField {
 			b.truncated = true
 			break
 		}
+		programNumber := bitsAt(i, 0, 16)
 		pidName := "program_map_PID"
-		if b.u16(i) == 0 {
+		if b.value(programNumber) == 0 {
 			pidName = "network_PID"
 		}
 		var row []PacketField
-		b.add(&row, "program_number", i, 2, "%d", b.u16(i))
-		b.add(&row, pidName, i+2, 2, "0x%04x", b.pid(i+2))
+		b.field(&row, "program_number", "%d", programNumber)
+		b.field(&row, pidName, "0x%04x", bitsAt(i+2, 3, 13))
 		rows = append(rows, row)
 	}
 	return rows
 }
 
 func pmtRows(b *fieldBuilder, at, end int, fields *[]PacketField) [][]PacketField {
-	if !b.add(fields, "PCR_PID", at, 2, "0x%04x", b.u16At(at)&0x1FFF) ||
-		!b.add(fields, "program_info_length", at+2, 2, "%d", b.u16At(at+2)&0x0FFF) {
+	programInfoLength := bitsAt(at+2, 4, 12)
+	if !b.field(fields, "PCR_PID", "0x%04x", bitsAt(at, 3, 13)) ||
+		!b.field(fields, "program_info_length", "%d", programInfoLength) {
 		return nil
 	}
 	var rows [][]PacketField
-	for i := at + 4 + int(b.u16(at+2)&0x0FFF); i+5 <= end; {
+	for i := at + 4 + int(b.value(programInfoLength)); i+5 <= end; {
 		var row []PacketField
 		if i+5 > len(b.raw) {
 			b.truncated = true
 			break
 		}
-		streamType := b.raw[i]
-		esInfoLength := int(b.u16(i+3) & 0x0FFF)
-		b.add(&row, "stream_type", i, 1, "0x%02x (%s)", streamType, StreamTypeString(streamType))
-		b.add(&row, "elementary_PID", i+1, 2, "0x%04x", b.pid(i+1))
-		b.add(&row, "ES_info_length", i+3, 2, "%d", esInfoLength)
+		esInfoLengthBits := bitsAt(i+3, 4, 12)
+		esInfoLength := int(b.value(esInfoLengthBits))
+		b.field(&row, "stream_type", "0x%02x (%s)", bitsAt(i, 0, 8), StreamTypeString(b.raw[i]))
+		b.field(&row, "elementary_PID", "0x%04x", bitsAt(i+1, 3, 13))
+		b.field(&row, "ES_info_length", "%d", esInfoLengthBits)
 		rows = append(rows, row)
 		i += 5 + esInfoLength
 	}
@@ -467,9 +520,9 @@ func describePesUnit(unit *PacketUnit, f *packetFile, same func(int64) (*TsPacke
 	}
 	flags := header[7] >> 6
 	if flags&0x2 != 0 && len(header) >= 14 {
-		unit.PTSMs = optionalFloat(float64(decodeTimestamp(header[9:14]))/90, true)
+		unit.PTSMs = optionalFloat(float64(decodeTimestamp(header, 9))/90, true)
 	}
 	if flags == 0x3 && len(header) >= 19 {
-		unit.DTSMs = optionalFloat(float64(decodeTimestamp(header[14:19]))/90, true)
+		unit.DTSMs = optionalFloat(float64(decodeTimestamp(header, 14))/90, true)
 	}
 }

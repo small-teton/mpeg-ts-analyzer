@@ -261,6 +261,34 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 192
+        },
+        "bits": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/bitRange"
+          },
+          "description": "The bits the value was read from, in wire order, when they do not fill the byte span: for example a 13-bit PID, or a PTS whose value bits are separated by marker bits. Absent when the value uses every bit of byte_offset/byte_length."
+        }
+      }
+    },
+    "bitRange": {
+      "type": "object",
+      "required": [
+        "bit_offset",
+        "bit_length"
+      ],
+      "properties": {
+        "bit_offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1535,
+          "description": "Packet-relative bit offset: 0 is the most significant bit (bit 7) of the first byte of bytes, so bit 7 of byte i is i*8 and bit 0 is i*8+7."
+        },
+        "bit_length": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1536
         }
       }
     },
