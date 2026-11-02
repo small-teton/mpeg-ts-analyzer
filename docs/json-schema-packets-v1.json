@@ -166,6 +166,58 @@
         "pcr_ms": {
           "type": "number",
           "minimum": 0
+        },
+        "sections": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Long-form sections (section_syntax_indicator 1) that start in this packet, in order, read from the packet's own bytes only: after the pointer_field of a payload_unit_start packet, each section whose 8-byte header fits in the packet and whose section_length is at least 9, until stuffing (0xFF), a short-form section, a shorter section_length or the end of the packet. Absent for other packets, including packets with transport_error or a scrambled payload. Nothing beyond the header is checked (the CRC32 may lie in a later packet); the psi_layout.sections entry that the PID, header and offset match in --output analysis gives the copy's status.",
+          "items": {
+            "$ref": "#/$defs/packetSection"
+          }
+        }
+      }
+    },
+    "packetSection": {
+      "type": "object",
+      "required": [
+        "table_id",
+        "table_id_extension",
+        "version_number",
+        "current_next_indicator",
+        "section_number",
+        "last_section_number"
+      ],
+      "properties": {
+        "table_id": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{2}$"
+        },
+        "table_id_extension": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "transport_stream_id for a PAT, program_number for a PMT."
+        },
+        "version_number": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 31
+        },
+        "current_next_indicator": {
+          "enum": [
+            0,
+            1
+          ]
+        },
+        "section_number": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "last_section_number": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
         }
       }
     },

@@ -339,7 +339,7 @@ func TestAcquireTableDropsSectionsAcrossAnErroneousAdaptationOnlyPacket(t *testi
 	)
 	pos := int64(0)
 	assembler := newPatAssembler()
-	_, err := acquireTable(bytes.NewReader(stream), &pos, 0, assembler, options.Options{}, 188, 0)
+	_, _, err := acquireTable(bytes.NewReader(stream), &pos, 0, assembler, options.Options{}, 188, 0)
 	if err == nil {
 		t.Fatal("a section was completed across an erroneous packet")
 	}

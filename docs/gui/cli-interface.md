@@ -55,8 +55,16 @@ switching programs or screens never runs the CLI again.
 - **PSI layout**: each PAT/PMT section seen (offset, version), the interval each
   layout applies to, the PIDs that change, and every PID observed in the range.
   The GUI keeps this to label packets and to mark changes on the plots (#93,
-  building on #59 and #60). The first version of #91 analyzes the first
-  complete PAT/PMT set only.
+  building on #59 and #60). It is `psi_layout` (`sections`, `layouts`, `pids`)
+  next to `psi_transitions` in the range analysis document: a packet's PID is
+  looked up in the layout whose `[offset_bytes, end_offset_bytes)` contains the
+  packet, and `transition_indices` links a layout to the changes that started
+  it. `psi_layout.sections` is a bounded list of runs (first and last copy,
+  count), not a per-packet index; the packet page carries what each
+  section-start packet says (`sections`: `table_id`, `table_id_extension`,
+  version and section numbers), which matches at most one run by PID, header
+  and offset, giving the copy's status (including invalid). See OPTIONS.md,
+  "PSI layout of the range".
 - **Analysis start**: statistics start after the PAT section and the needed
   PMTs are complete, not at the first PAT. The output reports that offset (per
   program), so the GUI can show the unanalyzed lead.
@@ -71,7 +79,8 @@ from its first one.
   carry no PSI context; the GUI labels them with the PSI layout of the range
   analysis.
 - Per packet: offset, PID, PUSI, TEI, scrambling control, adaptation field
-  control, CC, PCR presence.
+  control, CC, PCR presence, and the headers of the PSI sections that start in
+  the packet (from the packet's own bytes).
 - Metadata: packet size (188/192), the synchronized start offset,
   `next_offset_bytes`, end of file, file size and total packet count.
 - Defined behavior for offsets that are not on a packet boundary, for the M2TS

@@ -189,7 +189,10 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 		programStart := pos
 
 		if report != nil && report.analysis != nil {
-			return analyzeAllPrograms(reader, pat, programStart, options, packetSize, endOffset, report)
+			// The first packet of the range, aligned with the packet that
+			// started the PAT search.
+			leadStart := options.Offset + (readStart+patOffset-options.Offset)%int64(packetSize)
+			return analyzeAllPrograms(reader, pat, leadStart, programStart, options, packetSize, endOffset, report)
 		}
 		if _, err = reader.Seek(pos, 0); err != nil {
 			return fmt.Errorf("file seek error: %w", err)
