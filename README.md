@@ -11,6 +11,27 @@ mpeg-ts-analyzer is an MPEG-2 Transport Stream analyzer (ISO/IEC 13818-1).
 
 ![mpeg-ts-analyzer terminal demo](docs/demo.gif)
 
+# Desktop GUI
+
+A desktop GUI is under active development in [`gui/`](gui/). It runs the CLI
+as a subprocess and connects the Overview, Timeline, Bitrate, and Packets views
+to the same analysis results.
+
+## Inspect packets down to individual bits
+
+Select any decoded TS, adaptation-field, PSI, or PES field to highlight both
+its source bytes and its exact bit range. Multi-byte, non-byte-aligned fields
+are shown across byte boundaries; the 13-bit PID below spans the low five bits
+of one byte and all eight bits of the next byte.
+
+![Packets view showing the byte and bit inspectors for a 13-bit PID](docs/images/gui-bit-inspector.png)
+
+The Bit inspector follows packet/file order from top to bottom and displays
+each byte from MSB (`bit 7`) to LSB (`bit 0`), making it straightforward to
+compare raw packet data with ISO/IEC 13818-1 field layouts.
+
+# Command-line analyzer
+
 It parses TS packets and checks whether the stream conforms to the following requirements defined in the specification:
 
 - **Max PCR interval** should be no greater than 100 ms (ISO/IEC 13818-1, Section 2.7.2); intervals are not measured across a PCR that carries `discontinuity_indicator`, and a PCR wraparound is measured as a normal interval (see [OPTIONS.md](OPTIONS.md#timing-compliance-verdicts-and---fail-on-error))
