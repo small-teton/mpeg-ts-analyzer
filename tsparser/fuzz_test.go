@@ -133,6 +133,11 @@ func FuzzPsiBuffering(f *testing.F) {
 			_ = BufferPsi(bytes.NewReader(data), &pos, target.pid, target.packet, options.Options{}, packetSize, 0)
 			_ = target.packet.Parse()
 		}
+		// The multi-section assembler reads the same packets.
+		pos := int64(0)
+		_, _, _ = acquirePat(bytes.NewReader(data), &pos, options.Options{}, packetSize, 0)
+		pos = 0
+		_, _, _ = acquirePmt(bytes.NewReader(data), &pos, 0x003F, 1, options.Options{}, packetSize, 0)
 	})
 }
 

@@ -589,6 +589,82 @@ adaptation_field_control        : 3
 continuity_counter              : 0
 ```
 
+## Multi-section PAT and PMT
+
+A PAT may be split into several sections (`section_number` 0 to
+`last_section_number`). ISO/IEC 13818-1 requires a PMT's `section_number` and
+`last_section_number` to be 0, but the analyzer also assembles multi-section
+PMTs found in non-conforming streams. Before it selects or lists programs, the
+analyzer collects every section of the table, so programs and elementary
+streams in any section are found. The sample
+`sample_data/sample_188byte_two_programs_multi_section_psi_mpeg2_160x120_25fps_mp2.ts`
+(and its 192-byte twin) carries the two-program sample's PAT as one section per
+program and each PMT as one section per elementary stream, sent from the last
+section to section 0; it lists the same programs as the single-section sample:
+
+```
+$ ./mpeg-ts-analyzer sample_data/sample_188byte_two_programs_multi_section_psi_mpeg2_160x120_25fps_mp2.ts --list-programs
+Input file:  sample_data/sample_188byte_two_programs_multi_section_psi_mpeg2_160x120_25fps_mp2.ts
+Packet size: 188 bytes
+Detected PAT: 2 program(s)
+Program 1: PMT PID 0x1000, PCR PID 0x100
+PMT : Program Info : elementary_PID     : 0x100, stream_type : 0x02 (13818-2 video or 11172-2 constrained parameter video stream)
+PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x03 (11172 audio)
+Program 2: PMT PID 0x1001, PCR PID 0x102
+PMT : Program Info : elementary_PID     : 0x102, stream_type : 0x02 (13818-2 video or 11172-2 constrained parameter video stream)
+PMT : Program Info : elementary_PID     : 0x103, stream_type : 0x03 (11172 audio)
+```
+
+How a table is assembled:
+
+- Sections are combined only within one table identity and version: `table_id`,
+  `transport_stream_id` (PAT) or `program_number` (PMT), and `version_number`.
+  A PMT is taken only from sections whose `program_number` is the program's;
+  other tables on the same PID are skipped. The first valid PAT section fixes
+  the `transport_stream_id`; PAT sections with another one are ignored.
+- Only sections with `current_next_indicator` 1 are used; a "next" table is
+  ignored. The first version whose sections 0 to `last_section_number` have all
+  arrived is used, whatever order they arrived in. Retransmitted sections are
+  counted once.
+- Programs are listed in `program_number` order, independent of the section
+  they came from. A program listed twice keeps its first PMT PID in section
+  order.
+- A PMT uses the `PCR_PID` of section 0. Elementary streams are listed in
+  section order, each PID once; program descriptors of every section are kept.
+- The analysis starts after the packet that begins the next section on the
+  table's PID, as it does for a single-section table. A multi-section table
+  therefore takes longer to acquire, and the analyzed window can start later
+  than for the same stream with single-section tables.
+- `--dump-psi` prints every section of the table in `section_number` order.
+
+Problems found while collecting a table are reported as warnings (JSON
+`warnings`, or a text line starting with the offset of the affected packet).
+The affected section is not used; collection continues with later
+retransmissions:
+
+| Warning | Meaning |
+| --- | --- |
+| `<table> section N (version V) has an invalid CRC32; section ignored` | CRC32 check failed |
+| `<table> section is malformed (too short or section_syntax_indicator 0); section ignored` | Not a valid long-form section |
+| `<table> section N (version V) is beyond last_section_number L; section ignored` | `section_number` greater than `last_section_number` |
+| `<table> section N (version V) cannot be parsed: ...; section ignored` | Fields run past the end of the section |
+| `<table> version V changed last_section_number from A to B; discarding K collected section(s)` | Inconsistent section set; collection starts over |
+| `<table> section N changed without a version change (version V); discarding K collected section(s)` | Same section, different content; collection starts over |
+| `<table>: continuity_counter jumped from A to B inside a section; partial section discarded` | Packet loss inside a section |
+| `<table>: section ended early by the next payload_unit_start_indicator; partial section discarded` | A section was cut short |
+| `<table>: invalid pointer_field N; packet ignored` | `pointer_field` runs past the payload |
+| `<table>: transport_error_indicator set; packet ignored and any partial section discarded` | The packet has an uncorrectable error, so nothing it carries is used |
+| `PAT lists program N with PMT PIDs ...`, `PMT of program N has PCR_PID ...`, `PMT of program N lists elementary PID ... with stream types ...` | Sections disagree; the first value in section order is used |
+
+`<table>` is `PAT` or `PMT of program N on PID 0xXXXX`. A table that is still
+missing sections at the end of the input or `--limit` range is never used in
+part. The analyzer reports, for example, `incomplete PAT (version 0): missing
+section(s) 1 of 0..1; retrying PAT discovery`, or `PAT: no valid section found`
+when no usable section arrived. For an incomplete PMT, `--list-programs` and
+`--output analysis` show the program with `status: "incomplete"`,
+`reason: "pmt_parse_failed"`, and the message as `error`. PAT/PMT version
+changes after the tables have been collected are not followed yet.
+
 ## Dump PSI
 
 ```
@@ -633,6 +709,10 @@ PMT :     language_code                 : eng
 PMT :     audio_type                    : 0x00 (undefined)
 PMT : CRC_32                            : 11625f80
 ```
+
+A table split into several sections is printed one section at a time, in
+`section_number` order (see
+[Multi-section PAT and PMT](#multi-section-pat-and-pmt)).
 
 Descriptors found in a program's ES info loop are decoded and printed under the
 corresponding `Program Info` line (as seen above for the audio stream's ISO 639
