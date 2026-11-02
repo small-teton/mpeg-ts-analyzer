@@ -21,7 +21,11 @@ streams in `sample_data/`. See the [README](README.md) for install and usage.
 | `--program` | automatic | Select one program by `program_number`. |
 | `--offset` | `0` | Start reading at a byte offset. |
 | `--limit` | `0` (unlimited) | Stop after the specified number of bytes. |
-| `--output` | `summary` | With `--format json`, select the summary report or the `analysis` of every program with time series. |
+| `--output` | `summary` | With `--format json`, select the summary report, the `analysis` of every program with time series, a page of `packets`, or one decoded `packet`. |
+| `--count` | `100` | With `--output packets`, the maximum number of packets in the page. |
+| `--packet-size` | `0` (detect) | With `--output packets` or `packet`, force 188 or 192. |
+| `--range-offset` | `0` | With `--output packet`, start of the scan range searched for the packet's PES or section. |
+| `--range-limit` | `0` (to the end) | With `--output packet`, length of that scan range. |
 
 The standard Cobra `--help` and `--version` flags are also available. Detailed
 examples for the analysis and dump modes follow.
@@ -283,6 +287,128 @@ Abridged output for the two-program sample:
 - `--output analysis` requires `--format json` and cannot be combined with
   `--program`, `--list-programs`, `--fail-on-error` or packet-level dump flags.
   PAT/PMT changes within the range are not tracked yet.
+
+## Packet pages (`--output packets`)
+
+`--format json --output packets` lists up to `--count` packets (1–10000)
+starting at the first packet boundary at or after `--offset`. Packets are read
+directly, without PAT/PMT discovery, so a page starts with its first packet even
+in the middle of a file. Schema:
+[`docs/json-schema-packets-v1.json`](docs/json-schema-packets-v1.json).
+
+```sh
+$ mpeg-ts-analyzer sample_data/sample_188byte_two_programs_mpeg2_160x120_25fps_mp2.ts \
+    --format json --output packets --offset 29800 --count 2
+{
+  "schema_version": "1.0",
+  "output": "packets",
+  "input": {
+    "path": "sample_data/sample_188byte_two_programs_mpeg2_160x120_25fps_mp2.ts",
+    "file_size_bytes": 202852,
+    "packet_size_bytes": 188,
+    "offset_bytes": 29800
+  },
+  "status": "complete",
+  "first_offset_bytes": 29892,
+  "next_offset_bytes": 30268,
+  "end_of_file": false,
+  "total_packets": 1079,
+  "packets": [
+    {
+      "offset_bytes": 29892,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 1,
+      "pcr_ms": 860
+    },
+    {
+      "offset_bytes": 30080,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": false,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 1,
+      "continuity_counter": 2
+    }
+  ],
+  "warnings": []
+}
+```
+
+- Request the next page with `--offset` set to `next_offset_bytes`; it is absent
+  at `end_of_file`. Paging this way visits every packet once.
+- The packet size is detected from the bytes at `--offset`; a short range may
+  be too small to tell 188 from 192, so `--packet-size` can force it. For 192-byte
+  M2TS, offsets point at the 4-byte arrival timestamp that starts each packet.
+- A packet without a sync byte is listed with `"valid": false`. An incomplete
+  last packet ends the page with a warning.
+
+## Packet detail (`--output packet`)
+
+`--format json --output packet --offset N` decodes the packet at offset `N`
+(which must be a packet boundary) field by field. Every field carries its
+`byte_offset` and `byte_length` within `bytes`, the raw packet in hex, so a
+caller can highlight it. Layers are `m2ts_header` (192-byte packets),
+`ts_header`, `adaptation_field`, `payload`, and for a packet that starts a unit
+either `pes_header` or a section (`pat`, `pmt`, or `psi_section` for other
+tables). Table entries are in `rows`. A structure that continues in the next
+packet is marked `truncated`, and only fields inside this packet are listed.
+
+```sh
+mpeg-ts-analyzer sample_data/sample_188byte_two_programs_mpeg2_160x120_25fps_mp2.ts \
+    --format json --output packet --offset 29892
+```
+
+Abridged output:
+
+```json
+{
+  "schema_version": "1.0",
+  "output": "packet",
+  "status": "complete",
+  "packet": {
+    "offset_bytes": 29892,
+    "bytes": "4741003107100000972c7e00000001e0000080c00a310009...",
+    "layers": [
+      { "name": "ts_header", "fields": [
+        { "name": "PID", "value": "0x0100", "byte_offset": 1, "byte_length": 2 }, ... ] },
+      { "name": "adaptation_field", "fields": [
+        { "name": "program_clock_reference", "value": "23220000 (0.860000 s)", "byte_offset": 6, "byte_length": 6 }, ... ] },
+      { "name": "payload", "fields": [
+        { "name": "payload", "value": "176 bytes", "byte_offset": 12, "byte_length": 176 } ] },
+      { "name": "pes_header", "fields": [
+        { "name": "PTS", "value": "144000 (1.600000 s)", "byte_offset": 21, "byte_length": 5 },
+        { "name": "DTS", "value": "140400 (1.560000 s)", "byte_offset": 26, "byte_length": 5 }, ... ] }
+    ]
+  },
+  "unit": {
+    "kind": "pes",
+    "first_offset_bytes": 29892,
+    "position": 1,
+    "packets_in_range": 3,
+    "next_offset_bytes": 30080,
+    "stream_id": "0xe0",
+    "pts_ms": 1600,
+    "dts_ms": 1560,
+    "header_packet_offsets": [29892]
+  },
+  "warnings": []
+}
+```
+
+`unit` describes the PES packet or PSI section the packet belongs to, searched
+among packets of the same PID within the scan range `--range-offset` /
+`--range-limit` (default: the whole file): its first packet (or
+`started_before_range`), the packet's `position` and the unit's
+`packets_in_range`, and the previous and next member packets. A long video PES
+can span thousands of packets, so the full member list is not returned. For a
+PES, `stream_id` and PTS/DTS come from its header, gathered across the first
+packets when the header does not fit in one (`header_packet_offsets`).
 
 ## Continuity counter summary (always on)
 

@@ -11,7 +11,7 @@ import (
 )
 
 func TestJSONSchemaDocument(t *testing.T) {
-	for _, path := range []string{"../docs/json-schema-v1.json", "../docs/json-schema-analysis-v1.json"} {
+	for _, path := range []string{"../docs/json-schema-v1.json", "../docs/json-schema-analysis-v1.json", "../docs/json-schema-packets-v1.json"} {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)

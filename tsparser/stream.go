@@ -16,11 +16,17 @@ func ParseTsFile(filename string, options options.Options) error {
 	if options.Format != "text" && options.Format != "json" {
 		return fmt.Errorf("unsupported output format %q (expected text or json)", options.Format)
 	}
-	if options.Output != "" && options.Output != "summary" && options.Output != "analysis" {
-		return fmt.Errorf("unsupported output %q (expected summary or analysis)", options.Output)
+	switch options.Output {
+	case "", "summary":
+	case "analysis", "packets", "packet":
+		if options.Format != "json" {
+			return fmt.Errorf("--output %s requires --format json", options.Output)
+		}
+	default:
+		return fmt.Errorf("unsupported output %q (expected summary, analysis, packets or packet)", options.Output)
 	}
-	if options.Output == "analysis" && options.Format != "json" {
-		return errors.New("--output analysis requires --format json")
+	if options.Output == "packets" || options.Output == "packet" {
+		return writePacketsDocument(filename, options, os.Stdout)
 	}
 	if options.Format == "json" {
 		return parseTsFileJSON(filename, options)

@@ -57,5 +57,9 @@ func init() {
 	rootCmd.Flags().IntVar(&opt.Program, "program", 0, "Analyze only this program_number (default: the sole program; a multi-program stream is listed instead).")
 	rootCmd.Flags().Int64Var(&opt.Offset, "offset", 0, "Start reading from this byte offset.")
 	rootCmd.Flags().Int64Var(&opt.Limit, "limit", 0, "Stop reading after this many bytes (0 = no limit).")
-	rootCmd.Flags().StringVar(&opt.Output, "output", "summary", "JSON output: summary, or analysis (every program with time series; needs --format json).")
+	rootCmd.Flags().StringVar(&opt.Output, "output", "summary", "JSON output: summary, analysis (every program with time series), packets (a page of packets) or packet (one packet decoded); needs --format json.")
+	rootCmd.Flags().IntVar(&opt.Count, "count", 100, "With --output packets: maximum number of packets in the page.")
+	rootCmd.Flags().IntVar(&opt.PacketSize, "packet-size", 0, "With --output packets or packet: packet size 188 or 192 (0 = detect).")
+	rootCmd.Flags().Int64Var(&opt.RangeOffset, "range-offset", 0, "With --output packet: start of the scan range searched for the packet's PES or section.")
+	rootCmd.Flags().Int64Var(&opt.RangeLimit, "range-limit", 0, "With --output packet: length of that scan range in bytes (0 = to the end of the file).")
 }

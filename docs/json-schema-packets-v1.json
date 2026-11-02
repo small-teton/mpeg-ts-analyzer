@@ -1,0 +1,325 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/small-teton/mpeg-ts-analyzer/blob/master/docs/json-schema-packets-v1.json",
+  "title": "mpeg-ts-analyzer packet documents v1",
+  "description": "Schema for --format json --output packets (a page of packets) and --output packet (one packet decoded). Shared definitions come from the summary report schema (json-schema-v1.json). Objects permit additive fields and status strings permit additive lowercase values within schema version 1.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "output",
+    "input",
+    "status",
+    "warnings"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "output": {
+      "enum": [
+        "packets",
+        "packet"
+      ]
+    },
+    "input": {
+      "$ref": "#/$defs/input"
+    },
+    "status": {
+      "$ref": "json-schema-v1.json#/$defs/status",
+      "description": "Current values: complete, failed."
+    },
+    "reason": {
+      "$ref": "json-schema-v1.json#/$defs/reasonCode"
+    },
+    "error": {
+      "type": "string",
+      "description": "Human-readable error detail; not a stable matching interface."
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "json-schema-v1.json#/$defs/warning"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "output": {
+            "const": "packets"
+          }
+        }
+      },
+      "then": {
+        "$ref": "#/$defs/page"
+      },
+      "else": {
+        "$ref": "#/$defs/detail"
+      }
+    }
+  ],
+  "$defs": {
+    "offset": {
+      "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+    },
+    "input": {
+      "type": "object",
+      "required": [
+        "path",
+        "file_size_bytes",
+        "offset_bytes"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "file_size_bytes": {
+          "$ref": "#/$defs/offset"
+        },
+        "packet_size_bytes": {
+          "enum": [
+            188,
+            192
+          ]
+        },
+        "offset_bytes": {
+          "type": "integer",
+          "description": "The requested --offset."
+        }
+      }
+    },
+    "page": {
+      "type": "object",
+      "required": [
+        "end_of_file",
+        "total_packets",
+        "packets"
+      ],
+      "properties": {
+        "first_offset_bytes": {
+          "$ref": "#/$defs/offset",
+          "description": "First packet boundary at or after --offset."
+        },
+        "next_offset_bytes": {
+          "$ref": "#/$defs/offset",
+          "description": "Offset to request for the following page; absent at the end of the file."
+        },
+        "end_of_file": {
+          "type": "boolean"
+        },
+        "total_packets": {
+          "$ref": "#/$defs/offset",
+          "description": "Complete packets in the file."
+        },
+        "packets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/packetSummary"
+          }
+        }
+      }
+    },
+    "packetSummary": {
+      "type": "object",
+      "required": [
+        "offset_bytes",
+        "valid",
+        "pusi",
+        "transport_error",
+        "scrambling_control",
+        "adaptation_field_control",
+        "continuity_counter"
+      ],
+      "properties": {
+        "offset_bytes": {
+          "$ref": "#/$defs/offset"
+        },
+        "valid": {
+          "type": "boolean",
+          "description": "False when the packet has no sync byte; the other fields are then absent or zero."
+        },
+        "pid": {
+          "$ref": "json-schema-v1.json#/$defs/pid"
+        },
+        "pusi": {
+          "type": "boolean"
+        },
+        "transport_error": {
+          "type": "boolean"
+        },
+        "scrambling_control": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "adaptation_field_control": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "continuity_counter": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 15
+        },
+        "pcr_ms": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "detail": {
+      "type": "object",
+      "properties": {
+        "packet": {
+          "$ref": "#/$defs/decodedPacket"
+        },
+        "unit": {
+          "$ref": "#/$defs/unit"
+        }
+      }
+    },
+    "decodedPacket": {
+      "type": "object",
+      "required": [
+        "offset_bytes",
+        "bytes",
+        "layers"
+      ],
+      "properties": {
+        "offset_bytes": {
+          "$ref": "#/$defs/offset"
+        },
+        "bytes": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{376}|[0-9a-f]{384})$",
+          "description": "The 188 or 192 packet bytes in hex."
+        },
+        "layers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/layer"
+          }
+        }
+      }
+    },
+    "layer": {
+      "type": "object",
+      "required": [
+        "name",
+        "fields"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Current values: m2ts_header, ts_header, adaptation_field, payload, pes_header, pat, pmt, psi_section."
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/field"
+          }
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/field"
+            }
+          }
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "The structure continues past this packet; fields beyond it are not listed."
+        }
+      }
+    },
+    "field": {
+      "type": "object",
+      "required": [
+        "name",
+        "value",
+        "byte_offset",
+        "byte_length"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "byte_offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 191,
+          "description": "First byte of the field within bytes."
+        },
+        "byte_length": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 192
+        }
+      }
+    },
+    "unit": {
+      "type": "object",
+      "required": [
+        "kind",
+        "position",
+        "packets_in_range"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "Current values: pes, psi, unknown (started before the range), none (null packet)."
+        },
+        "first_offset_bytes": {
+          "$ref": "#/$defs/offset"
+        },
+        "started_before_range": {
+          "type": "boolean"
+        },
+        "position": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "1-based position of the packet among the unit's packets in the range."
+        },
+        "packets_in_range": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "previous_offset_bytes": {
+          "$ref": "#/$defs/offset"
+        },
+        "next_offset_bytes": {
+          "$ref": "#/$defs/offset"
+        },
+        "stream_id": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{2}$"
+        },
+        "pts_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "dts_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "table_id": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{2}$"
+        },
+        "header_packet_offsets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/offset"
+          }
+        }
+      }
+    }
+  }
+}

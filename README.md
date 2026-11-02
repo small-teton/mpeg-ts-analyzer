@@ -91,6 +91,7 @@ Usage:
   mpeg-ts-analyzer [input file path] [flags]
 
 Flags:
+      --count int               With --output packets: maximum number of packets in the page. (default 100)
       --dump-adaptation-field   Dump TS packet adaptation_field detail.
       --dump-bitrate            Summarize per-PID average/peak bitrate (PCR time base) for the analyzed program.
       --dump-pcr-jitter         Analyze PCR jitter (per-interval deviation from the expected PCR).
@@ -105,8 +106,11 @@ Flags:
       --limit int               Stop reading after this many bytes (0 = no limit).
       --list-programs           List every program (program_number, PMT PID, elementary streams) and exit.
       --offset int              Start reading from this byte offset.
-      --output string           JSON output: summary, or analysis (every program with time series; needs --format json). (default "summary")
+      --output string           JSON output: summary, analysis (every program with time series), packets (a page of packets) or packet (one packet decoded); needs --format json. (default "summary")
+      --packet-size int         With --output packets or packet: packet size 188 or 192 (0 = detect).
       --program int             Analyze only this program_number (default: the sole program; a multi-program stream is listed instead).
+      --range-limit int         With --output packet: length of that scan range in bytes (0 = to the end of the file).
+      --range-offset int        With --output packet: start of the scan range searched for the packet's PES or section.
       --version                 show mpeg-ts-analyzer version.
 ```
 
@@ -133,7 +137,9 @@ result exits 0 for compatibility with text mode; automation should require
 For plotting, `--output analysis` analyzes every program of the range in one
 pass and adds per-program time series (PCR intervals, PTS/DTS and PCR gaps,
 jitter, 1-second bitrate windows) under its own schema; see
-[OPTIONS.md](OPTIONS.md#range-analysis-output---output-analysis).
+[OPTIONS.md](OPTIONS.md#range-analysis-output---output-analysis). `--output
+packets` pages through packets and `--output packet` decodes one packet with
+the byte position of every field ([OPTIONS.md](OPTIONS.md#packet-pages---output-packets)).
 
 The document contains summaries, not one object per transport packet. Its size
 therefore does not grow with the input file's packet count (apart from naturally
