@@ -192,11 +192,9 @@ Settings are not persisted yet (eframe `persistence` is planned).
 - Rust is pinned in `gui/rust-toolchain.toml`. egui 0.37 changed many APIs
   (`App::ui`, `Panel`, `show` instead of `show_inside`, `Id::unique`); older
   examples do not apply as-is.
-- Run against a locally built CLI:
-  `go build -o out/gui/mpeg-ts-analyzer .` then run the GUI with
-  `MPEG_TS_ANALYZER_CLI=out/gui/mpeg-ts-analyzer`.
-- Checks: `cargo fmt`, `cargo clippy --all-targets -- -D warnings`,
-  `cargo test` (in `gui/`).
+- `make gui-run` builds the CLI into `out/gui/` and runs the GUI against it
+  (through `MPEG_TS_ANALYZER_CLI`). Checks: `make gui-lint` (rustfmt, clippy
+  `-D warnings`) and `make gui-test`. See `docs/DEVELOPMENT.md`.
 - The GUI runs on the host; a container development environment is not
   planned for now.
 

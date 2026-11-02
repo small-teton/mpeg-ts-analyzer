@@ -141,6 +141,38 @@ as a single updatable PR warning comment as well as to the Actions summary. The
 check uses no external AI or API key. Run it locally against another base with,
 for example, `make check-docs-policy DOCS_POLICY_BASE=origin/master`.
 
+## Desktop GUI
+
+The GUI in [`gui/`](../gui) is a Rust application (eframe/egui) that runs the
+CLI as a subprocess. Design notes: [`docs/gui/design.md`](gui/design.md) and
+[`docs/gui/cli-interface.md`](gui/cli-interface.md).
+
+Develop the GUI on the host, not in the development container: OpenGL/wgpu
+windows do not work through the container. Install
+[rustup](https://rustup.rs/); the toolchain version is pinned in
+`gui/rust-toolchain.toml` and installed on first use. On Linux, the usual
+desktop development packages (X11/Wayland, xkbcommon) are needed to run it.
+
+```bash
+make gui-run    # build the CLI into out/gui/ and run the GUI against it
+make gui-test   # cargo test
+make gui-lint   # rustfmt check and clippy -D warnings
+```
+
+The GUI finds the CLI through the `MPEG_TS_ANALYZER_CLI` environment variable,
+falling back to `mpeg-ts-analyzer` on `PATH`. `make gui-run` sets the variable.
+
+Editors using rust-analyzer need the GUI manifest declared, because
+`Cargo.toml` is not at the repository root; in VS Code:
+
+```json
+{ "rust-analyzer.linkedProjects": ["gui/Cargo.toml"] }
+```
+
+The pre-push hook runs `make gui-lint` and `make gui-test` when `gui/` changed.
+In CI, the `GUI` workflow runs for changes under `gui/`; the Go jobs are
+skipped for pull requests that change only `gui/` and `docs/gui/`.
+
 ## README demo
 
 The animated terminal demo near the top of the [README](../README.md) is

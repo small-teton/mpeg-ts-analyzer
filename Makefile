@@ -1,4 +1,4 @@
-.PHONY: build test coverage demo check-demo check-docs-policy clean setup install uninstall release
+.PHONY: build test coverage demo check-demo check-docs-policy clean setup install uninstall release gui-run gui-test gui-lint
 
 DOCS_POLICY_BASE ?= origin/master
 
@@ -25,6 +25,20 @@ check-demo:
 
 check-docs-policy:
 	go run ./tools/docs_policy --base "$(DOCS_POLICY_BASE)" --head HEAD
+
+# Desktop GUI (gui/, Rust). Runs on the host; see docs/DEVELOPMENT.md.
+GUI_CLI := $(CURDIR)/out/gui/mpeg-ts-analyzer
+
+gui-run:
+	go build -o "$(GUI_CLI)" .
+	MPEG_TS_ANALYZER_CLI="$(GUI_CLI)" cargo run --manifest-path gui/Cargo.toml
+
+gui-test:
+	cargo test --manifest-path gui/Cargo.toml --locked
+
+gui-lint:
+	cargo fmt --manifest-path gui/Cargo.toml --check
+	cargo clippy --manifest-path gui/Cargo.toml --all-targets --locked -- -D warnings
 
 clean:
 	rm -rf out/ dist/
