@@ -252,7 +252,8 @@ Abridged output for the two-program sample:
         "pcr_jitter": [ { "offset_bytes": 38540, "jitter_ns": -14358974.35897437 } ],
         "bitrate": {
           "window_seconds": 1,
-          "pids": [ { "pid": "0x0100", "label": "13818-2 video or 11172-2 constrained parameter video stream", "bps": [ 242144 ] } ]
+          "duration_seconds": [ 1, 0.76 ],
+          "pids": [ { "pid": "0x0100", "label": "13818-2 video or 11172-2 constrained parameter video stream", "bytes": [ 30268, 18988 ], "bps": [ 242144, 199873.68421052632 ] } ]
         }
       }
     },
@@ -275,9 +276,13 @@ Abridged output for the two-program sample:
 - Bitrate and PCR jitter are always collected in this mode.
 - `elapsed_ms` is PCR time since the program's first PCR in the range. It does
   not advance across a PCR discontinuity, which matches the 1-second bitrate
-  windows (`bps[i]` covers elapsed seconds `i` to `i+1`). A PES point uses the
+  windows (window `i` covers elapsed seconds `i` to `i+1`). A PES point uses the
   elapsed time of the last PCR before it. Every point also carries
-  `offset_bytes`.
+  `offset_bytes`, and each array is in stream order.
+- The last bitrate window is shorter when the measured duration is not a whole
+  number of seconds; `duration_seconds` gives each window's length. A PID's
+  `average_bps` is `sum(bytes) * 8 / sum(duration_seconds)`, and its
+  `peak_1s_bps` is the largest `bps` among the full 1-second windows.
 - Output size grows with the range (one point per PCR, PES and jitter sample),
   so choose `--offset`/`--limit` accordingly.
 - `--output analysis` requires `--format json` and cannot be combined with

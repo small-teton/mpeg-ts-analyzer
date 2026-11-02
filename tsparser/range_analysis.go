@@ -182,13 +182,15 @@ type ReportJitterPoint struct {
 }
 
 type ReportBitrateWindows struct {
-	WindowSeconds int                      `json:"window_seconds"`
-	PIDs          []ReportBitrateWindowPID `json:"pids"`
+	WindowSeconds   int                      `json:"window_seconds"`
+	DurationSeconds []float64                `json:"duration_seconds"`
+	PIDs            []ReportBitrateWindowPID `json:"pids"`
 }
 
 type ReportBitrateWindowPID struct {
 	PID   string    `json:"pid"`
 	Label string    `json:"label"`
+	Bytes []int64   `json:"bytes"`
 	BPS   []float64 `json:"bps"`
 }
 
@@ -251,7 +253,7 @@ func reportSeries(a *programAnalyzer) *ReportSeries {
 		PES:             []ReportPESPoint{},
 		TimestampEvents: []ReportTimestampEvent{},
 		PCRJitter:       []ReportJitterPoint{},
-		Bitrate:         ReportBitrateWindows{WindowSeconds: 1, PIDs: []ReportBitrateWindowPID{}},
+		Bitrate:         ReportBitrateWindows{WindowSeconds: 1, DurationSeconds: a.bitrate.windowDurations(), PIDs: []ReportBitrateWindowPID{}},
 	}
 	for _, p := range a.series.pcr {
 		point := ReportPCRPoint{OffsetBytes: p.pos, ElapsedMs: p.elapsedMs, PCRMs: p.pcrMs, Discontinuity: p.discontinuity}
@@ -261,7 +263,11 @@ func reportSeries(a *programAnalyzer) *ReportSeries {
 		}
 		s.PCR = append(s.PCR, point)
 	}
-	for _, p := range a.series.pes {
+	// A PES is recorded when it completes, which interleaved PIDs reach out
+	// of stream order.
+	pes := slices.Clone(a.series.pes)
+	slices.SortStableFunc(pes, func(x, y seriesPes) int { return cmp.Compare(x.pos, y.pos) })
+	for _, p := range pes {
 		point := ReportPESPoint{PID: reportPID(p.pid), OffsetBytes: p.pos}
 		point.ElapsedMs = optionalFloat(p.elapsedMs, p.hasElapsed)
 		point.PTSMs = optionalFloat(p.ptsMs, p.hasPts)
@@ -269,7 +275,9 @@ func reportSeries(a *programAnalyzer) *ReportSeries {
 		point.GapMs = optionalFloat(p.gapMs, p.hasGap)
 		s.PES = append(s.PES, point)
 	}
-	for _, e := range a.anomaly.events {
+	events := slices.Clone(a.anomaly.events)
+	slices.SortStableFunc(events, func(x, y anomalyEvent) int { return cmp.Compare(x.pos, y.pos) })
+	for _, e := range events {
 		s.TimestampEvents = append(s.TimestampEvents, ReportTimestampEvent{PID: reportPID(e.pid), OffsetBytes: e.pos, Kind: anomalyKindString(e.kind), Message: e.message})
 	}
 	// Jitter needs a neighbor on both sides of a sample, as in the summary.
@@ -284,7 +292,12 @@ func reportSeries(a *programAnalyzer) *ReportSeries {
 	}
 	slices.Sort(pids)
 	for _, pid := range pids {
-		s.Bitrate.PIDs = append(s.Bitrate.PIDs, ReportBitrateWindowPID{PID: reportPID(pid), Label: a.bitrate.labels[pid], BPS: a.bitrate.windowsBps(pid)})
+		bytes := a.bitrate.windowBytes(pid)
+		bps := make([]float64, len(bytes))
+		for idx, n := range bytes {
+			bps[idx] = float64(n) * 8 / s.Bitrate.DurationSeconds[idx]
+		}
+		s.Bitrate.PIDs = append(s.Bitrate.PIDs, ReportBitrateWindowPID{PID: reportPID(pid), Label: a.bitrate.labels[pid], Bytes: bytes, BPS: bps})
 	}
 	return s
 }

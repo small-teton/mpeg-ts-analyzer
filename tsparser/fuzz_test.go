@@ -177,7 +177,7 @@ func FuzzPesHeader(f *testing.F) {
 		}
 
 		pes := NewPes()
-		pes.Initialize(0x100, 0, 0, 0)
+		pes.Initialize(0x100, 0, 0, 0, false)
 		pes.Append(data)
 		_ = pes.Parse()
 	})

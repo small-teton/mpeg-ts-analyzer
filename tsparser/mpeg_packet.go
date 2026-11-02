@@ -231,6 +231,7 @@ type programAnalyzer struct {
 	pesMap        map[uint16]*Pes
 	lastPcr       uint64
 	lastPcrPos    int64
+	hasLastPcr    bool
 	maxDelay      float64
 	pcrInterval   pcrIntervalTracker
 	pcrPtsSamples int
@@ -291,9 +292,10 @@ func (a *programAnalyzer) observe(tsPacket *TsPacket, pos int64, duplicate bool)
 		// Complete the PCR bracket for every active PES, including short PES
 		// packets which have no continuation packet after this PCR.
 		for _, activePes := range a.pesMap {
-			if activePes != nil && activePes.nextPcr == 0 && pcr > activePes.prevPcr {
+			if activePes != nil && !activePes.hasNextPcr && (!activePes.hasPrevPcr || pcr > activePes.prevPcr) {
 				activePes.nextPcr = pcr
 				activePes.nextPcrPos = pos
+				activePes.hasNextPcr = true
 			}
 		}
 		intervalMs, measured := a.pcrInterval.Add(pcr, discontinuity)
@@ -302,6 +304,7 @@ func (a *programAnalyzer) observe(tsPacket *TsPacket, pos int64, duplicate bool)
 		}
 		a.lastPcr = pcr
 		a.lastPcrPos = pos
+		a.hasLastPcr = true
 	}
 	if !exist || duplicate {
 		return
@@ -322,7 +325,7 @@ func (a *programAnalyzer) observe(tsPacket *TsPacket, pos int64, duplicate bool)
 			pes = NewPes()
 			a.pesMap[pid] = pes
 		}
-		pes.Initialize(pid, pos, a.lastPcr, a.lastPcrPos)
+		pes.Initialize(pid, pos, a.lastPcr, a.lastPcrPos, a.hasLastPcr)
 		pes.Append(tsPacket.Payload()) // read until pointer_field
 	} else {
 		pes.Append(tsPacket.Payload())

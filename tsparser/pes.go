@@ -15,6 +15,9 @@ type Pes struct {
 	nextPcr           uint64
 	prevPcrPos        int64
 	nextPcrPos        int64
+	// PCR values wrap to zero, so presence is tracked separately.
+	hasPrevPcr bool
+	hasNextPcr bool
 
 	packetStartCodePrefix            uint32
 	streamID                         uint8
@@ -68,7 +71,7 @@ func NewPes() *Pes {
 }
 
 // Initialize Set Params for PES
-func (p *Pes) Initialize(pid uint16, pos int64, prevPcr uint64, prevPcrPos int64) {
+func (p *Pes) Initialize(pid uint16, pos int64, prevPcr uint64, prevPcrPos int64, hasPrevPcr bool) {
 	p.pid = pid
 	p.continuityCounter = 0
 	p.buf = p.buf[0:0]
@@ -77,6 +80,8 @@ func (p *Pes) Initialize(pid uint16, pos int64, prevPcr uint64, prevPcrPos int64
 	p.nextPcr = 0
 	p.prevPcrPos = prevPcrPos
 	p.nextPcrPos = 0
+	p.hasPrevPcr = hasPrevPcr
+	p.hasNextPcr = false
 
 	p.packetStartCodePrefix = 0
 	p.streamID = 0
@@ -408,7 +413,7 @@ func (p *Pes) TimestampDelay() (float64, bool) {
 // stricter form because treating the previous PCR value as if it occurred at a
 // later PES position overstates the delay near the end of a stream.
 func (p *Pes) BracketedTimestampDelay() (float64, bool) {
-	if p.nextPcr <= p.prevPcr || p.nextPcrPos <= p.prevPcrPos {
+	if !p.hasPrevPcr || !p.hasNextPcr || p.nextPcr <= p.prevPcr || p.nextPcrPos <= p.prevPcrPos {
 		return 0, false
 	}
 	return p.TimestampDelay()
@@ -432,15 +437,15 @@ func (p *Pes) dumpTimestamp(label string, stamp uint64) float64 {
 // position. When a following PCR was captured during the PES, the value is
 // interpolated between the surrounding PCRs by byte position for a tighter
 // estimate. When no following PCR exists (e.g. the final PES before EOF), it
-// falls back to the most recent PCR — interpolating against an unset (zero)
-// nextPcr would otherwise produce a wildly wrong delay. The bool is false when
-// there is no preceding PCR to reference at all.
+// falls back to the most recent PCR — interpolating against an unset nextPcr
+// would otherwise produce a wildly wrong delay. The bool is false when there is
+// no preceding PCR to reference at all.
 func (p *Pes) referencePcrMs() (float64, bool) {
-	if p.prevPcr == 0 {
+	if !p.hasPrevPcr {
 		return 0, false
 	}
 	prevPcr := pcrToMs(float64(p.prevPcr))
-	if p.nextPcr > p.prevPcr && p.nextPcrPos > p.prevPcrPos {
+	if p.hasNextPcr && p.nextPcr > p.prevPcr && p.nextPcrPos > p.prevPcrPos {
 		nextPcr := pcrToMs(float64(p.nextPcr))
 		return prevPcr + (nextPcr-prevPcr)*(float64(p.pos-p.prevPcrPos)/float64(p.nextPcrPos-p.prevPcrPos)), true
 	}
