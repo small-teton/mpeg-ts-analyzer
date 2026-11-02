@@ -38,15 +38,16 @@ func psiSectionSize(data []byte) (int, bool) {
 // the packet completes and a description of each problem that made it drop
 // data; a problem never stops the reader.
 func (r *psiSectionReader) push(tsPacket *TsPacket, pos int64) ([]psiSectionData, []string) {
+	if tsPacket.transportErrorIndicator != 0 {
+		// The packet has an uncorrectable error: neither its header nor its
+		// payload can be trusted, so nothing it carries is used, and the
+		// section in progress may be missing data.
+		r.collecting, r.buf = false, nil
+		return nil, []string{"transport_error_indicator set; packet ignored and any partial section discarded"}
+	}
 	payload := tsPacket.Payload()
 	if len(payload) == 0 {
 		return nil, nil
-	}
-	if tsPacket.transportErrorIndicator != 0 {
-		// The packet has an uncorrectable error: neither its header nor its
-		// payload can be trusted, so nothing it carries is used.
-		r.collecting, r.buf = false, nil
-		return nil, []string{"transport_error_indicator set; packet ignored and any partial section discarded"}
 	}
 	cc := tsPacket.ContinuityCounter()
 	expected := (r.lastCC + 1) & 0xF

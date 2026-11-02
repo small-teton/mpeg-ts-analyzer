@@ -322,6 +322,32 @@ func TestPsiSectionReaderDropsTransportErrors(t *testing.T) {
 	}
 }
 
+// An adaptation-only packet with transport_error_indicator set between two
+// packets of a section also discards it and is reported, during acquisition.
+func TestAcquireTableDropsSectionsAcrossAnErroneousAdaptationOnlyPacket(t *testing.T) {
+	var programs [][2]uint16
+	for number := uint16(1); number <= 60; number++ {
+		programs = append(programs, [2]uint16{number, 0x100 + number})
+	}
+	long := patSectionN(0, 0, 0, programs...)
+	erroneous := adaptationOnlyPacket(0, 1)
+	erroneous[1] |= 0x80
+	stream := psiStream(
+		rawPsiPacket(0, true, 0, append([]byte{0x00}, long[:183]...)),
+		erroneous,
+		rawPsiPacket(0, false, 1, long[183:]),
+	)
+	pos := int64(0)
+	assembler := newPatAssembler()
+	_, err := acquireTable(bytes.NewReader(stream), &pos, 0, assembler, options.Options{}, 188, 0)
+	if err == nil {
+		t.Fatal("a section was completed across an erroneous packet")
+	}
+	if !strings.Contains(diagnosticMessages(assembler.diagnostics), "transport_error_indicator set") {
+		t.Errorf("diagnostics = %s", diagnosticMessages(assembler.diagnostics))
+	}
+}
+
 func TestNewPatTableMergesPrograms(t *testing.T) {
 	var sections []*Pat
 	for _, raw := range [][]byte{
