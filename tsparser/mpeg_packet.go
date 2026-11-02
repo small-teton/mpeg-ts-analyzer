@@ -29,10 +29,11 @@ func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, 
 	tsPacket := NewTsPacket()
 
 	for endOffset <= 0 || *pos+int64(packetSize) <= endOffset {
-		size, err := reader.Read(tsBuffer)
-		if err == io.EOF {
+		size, err := io.ReadFull(reader, tsBuffer)
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			// A trailing partial packet cannot carry a usable section; stop as at EOF.
 			break
-		} else if err != nil || size != packetSize {
+		} else if err != nil {
 			return fmt.Errorf("file read error: %w", err)
 		}
 
@@ -89,6 +90,14 @@ type pesAnalysis struct {
 	anomalies  *TimestampAnomaly
 	jitter     *PcrJitter
 	bitrate    *BitrateStats
+	// truncatedBytes is the size of an incomplete packet left at the end of the
+	// input (0 when the input ends on a packet boundary), starting at truncatedPos.
+	truncatedBytes int
+	truncatedPos   int64
+}
+
+func truncatedPacketMessage(size int) string {
+	return fmt.Sprintf("ignored %d trailing bytes (incomplete packet at end of input)", size)
 }
 
 func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos []ProgramInfo, options options.Options, packetSize int, endOffset int64, quiet bool) (*pesAnalysis, error) {
@@ -130,13 +139,24 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		}
 	}
 	tsPacket := NewTsPacket()
+	var truncatedBytes int
+	var truncatedPos int64
 
 	for endOffset <= 0 || *pos+int64(packetSize) <= endOffset {
-		size, err := reader.Read(tsBuffer)
+		size, err := io.ReadFull(reader, tsBuffer)
 		if err == io.EOF {
 			break
-		} else if err != nil || size != packetSize {
-			return nil, fmt.Errorf("file read error: %s", err)
+		} else if err == io.ErrUnexpectedEOF {
+			// Captures cut off mid-packet are common; keep the analysis of the
+			// complete packets and report the leftover bytes.
+			truncatedBytes = size
+			truncatedPos = *pos
+			if !quiet {
+				fmt.Printf("0x%08x %s\n", *pos, truncatedPacketMessage(size))
+			}
+			break
+		} else if err != nil {
+			return nil, fmt.Errorf("file read error: %w", err)
 		}
 
 		tsData := tsBuffer
@@ -255,7 +275,7 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 	}
 
 	report := newComplianceReport(pcrInterval.maxMs(), pcrInterval.intervals, maxDelay, pcrPtsSamples)
-	result := &pesAnalysis{compliance: report, continuity: continuity, anomalies: anomaly}
+	result := &pesAnalysis{compliance: report, continuity: continuity, anomalies: anomaly, truncatedBytes: truncatedBytes, truncatedPos: truncatedPos}
 	if options.DumpPcrJitter {
 		result.jitter = &pcrJitter
 	}

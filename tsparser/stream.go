@@ -26,7 +26,7 @@ func ParseTsFile(filename string, options options.Options) error {
 	defer func() { _ = file.Close() }()
 	fmt.Println("Input file: ", filename)
 
-	return parseTsReader(file, options)
+	return parseTsReader(newBufferedReadSeeker(file), options)
 }
 
 func parseTsFileJSON(filename string, options options.Options) error {
@@ -47,7 +47,7 @@ func parseTsFileJSONTo(filename string, options options.Options, output io.Write
 			reason = "input_open_failed"
 		} else {
 			defer func() { _ = file.Close() }()
-			parseErr = parseTsReaderReport(file, options, report)
+			parseErr = parseTsReaderReport(newBufferedReadSeeker(file), options, report)
 		}
 	}
 	if parseErr != nil {
@@ -261,6 +261,9 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 			}
 			if analysis.bitrate != nil {
 				report.Bitrate = reportBitrate(analysis.bitrate)
+			}
+			if analysis.truncatedBytes > 0 {
+				report.Warnings = append(report.Warnings, ReportWarning{analysis.truncatedPos, truncatedPacketMessage(analysis.truncatedBytes)})
 			}
 			report.Status = "complete"
 			report.Reason = ""
