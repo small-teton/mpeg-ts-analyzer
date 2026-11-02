@@ -7,7 +7,7 @@ use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use crate::report::{AnalysisReport, Capabilities, ProgressEvent};
+use crate::report::{self, AnalysisReport, Capabilities, ProgressEvent};
 
 /// Overrides the CLI location, mainly for development against a locally built CLI.
 const CLI_ENV: &str = "MPEG_TS_ANALYZER_CLI";
@@ -60,9 +60,10 @@ pub fn check(path: &Path) -> Result<Cli, String> {
     }
     let caps: Capabilities = serde_json::from_slice(&output.stdout)
         .map_err(|err| format!("Unreadable --capabilities output: {err}"))?;
-    if !caps.supports("analysis", ANALYSIS_SCHEMA_MAJOR) {
+    // Start runs `--format json --output analysis --progress json`.
+    if !caps.supports_json("analysis", ANALYSIS_SCHEMA_MAJOR) || !caps.supports_progress("json") {
         return Err(format!(
-            "CLI {} lacks --output analysis (schema {ANALYSIS_SCHEMA_MAJOR}.x); a newer CLI is needed.",
+            "CLI {} lacks JSON --output analysis (schema {ANALYSIS_SCHEMA_MAJOR}.x) or --progress json; a newer CLI is needed.",
             caps.cli_version
         ));
     }
@@ -152,8 +153,10 @@ impl AnalysisJob {
             let status = waiter_child.lock().expect("child lock").wait();
             let _ = stderr_thread.join();
             let diagnostics = diagnostics.lock().expect("diagnostics lock").clone();
-            let outcome = match (read, serde_json::from_slice::<AnalysisReport>(&json)) {
-                (Ok(_), Ok(report)) => Ok(Box::new(report)),
+            let outcome = match read {
+                Ok(_) if json.iter().any(|b| !b.is_ascii_whitespace()) => {
+                    report::parse_analysis(&json, ANALYSIS_SCHEMA_MAJOR).map(Box::new)
+                }
                 _ => Err(match status {
                     Ok(status) if !diagnostics.trim().is_empty() => {
                         format!("The CLI failed ({status}): {}", diagnostics.trim())
@@ -181,6 +184,11 @@ impl AnalysisJob {
         }
     }
 
+    #[cfg(all(test, unix))]
+    pub(crate) fn child(&self) -> Arc<Mutex<Child>> {
+        Arc::clone(&self.child)
+    }
+
     /// Collects what happened since the last call.
     pub fn poll(&mut self) -> JobUpdate {
         while let Ok(event) = self.progress.try_recv() {
@@ -194,6 +202,40 @@ impl AnalysisJob {
             }
         }
     }
+}
+
+/// A job owns its process: dropping it (closing the app, opening another
+/// file) stops the analysis, since dropping a `Child` does not.
+impl Drop for AnalysisJob {
+    fn drop(&mut self) {
+        self.cancel();
+    }
+}
+
+/// A stand-in CLI: a shell script that ignores its arguments.
+#[cfg(all(test, unix))]
+pub(crate) fn fake_cli(dir: &Path, script: &str) -> Cli {
+    use std::os::unix::fs::PermissionsExt;
+    let path = dir.join("fake-cli");
+    std::fs::write(&path, format!("#!/bin/sh\n{script}\n")).expect("write the fake CLI");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    Cli {
+        path,
+        version: "fake".to_owned(),
+    }
+}
+
+/// Waits until a killed or finished child has been reaped.
+#[cfg(all(test, unix))]
+pub(crate) fn wait_until_exited(child: &Mutex<Child>) -> bool {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while std::time::Instant::now() < deadline {
+        if matches!(child.lock().expect("child lock").try_wait(), Ok(Some(_))) {
+            return true;
+        }
+        thread::sleep(std::time::Duration::from_millis(20));
+    }
+    false
 }
 
 #[cfg(test)]
@@ -239,6 +281,59 @@ mod tests {
         let report = wait(&mut job).0.expect("a failure document");
         assert_eq!(report.status, "failed");
         assert_eq!(report.reason.as_deref(), Some("input_open_failed"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dropping_a_job_stops_the_process() {
+        let dir = tempfile_dir("drop");
+        let cli = fake_cli(&dir, "exec sleep 30");
+        let job = AnalysisJob::start(&cli, Path::new("input.ts"), 0, 1000, || {}).expect("start");
+        let child = job.child();
+        drop(job);
+        assert!(
+            wait_until_exited(&child),
+            "the CLI kept running after the job was dropped"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_documents_that_are_not_analysis_schema_1() {
+        let dir = tempfile_dir("documents");
+        for (document, expected) in [
+            ("{}", "Unreadable analysis output"),
+            (
+                r#"{"schema_version":"2.0","output":"analysis","input":{"path":"a","file_size_bytes":0,"offset_bytes":0},"status":"complete","continuity_events":[],"programs":[],"warnings":[]}"#,
+                "Unsupported analysis document",
+            ),
+        ] {
+            std::fs::write(dir.join("doc.json"), document).unwrap();
+            let cli = fake_cli(&dir, &format!("cat '{}'", dir.join("doc.json").display()));
+            let mut job =
+                AnalysisJob::start(&cli, Path::new("input.ts"), 0, 1000, || {}).expect("start");
+            let err = wait(&mut job).0.expect_err("an error");
+            assert!(err.contains(expected), "{err}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_a_cli_without_json_progress() {
+        let dir = tempfile_dir("caps");
+        let caps = r#"{"capabilities_version":"1.0","cli_version":"0.9","outputs":[{"name":"analysis","format":"json","schema_version":"1.0"}],"progress_formats":[]}"#;
+        std::fs::write(dir.join("caps.json"), caps).unwrap();
+        let cli = fake_cli(&dir, &format!("cat '{}'", dir.join("caps.json").display()));
+        let Err(err) = check(&cli.path) else {
+            panic!("accepted")
+        };
+        assert!(err.contains("--progress json"), "{err}");
+    }
+
+    fn tempfile_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("mtsa-gui-test-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        dir
     }
 
     #[test]

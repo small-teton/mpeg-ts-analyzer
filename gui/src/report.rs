@@ -1,46 +1,72 @@
 //! Types for the CLI's JSON documents: `--output analysis`
-//! (docs/json-schema-analysis-v1.json) and `--capabilities`. Optional and
-//! unknown fields are tolerated, matching the schemas' additive-change policy.
+//! (docs/json-schema-analysis-v1.json) and `--capabilities`. Fields the
+//! schemas require are required here too, so a malformed document is rejected;
+//! unknown fields are ignored, matching the schemas' additive-change policy.
+
+// The types mirror the schemas in full; fields the Overview does not show yet
+// are read by the Timeline, Bitrate and Packets screens as they move to real data.
+#![allow(dead_code)]
 
 use serde::Deserialize;
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct Capabilities {
     pub cli_version: String,
     pub outputs: Vec<CapabilityOutput>,
     pub progress_formats: Vec<String>,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct CapabilityOutput {
     pub name: String,
+    pub format: String,
     pub schema_version: String,
 }
 
 impl Capabilities {
-    /// Whether the CLI supports an output with a schema of the given major version.
-    pub fn supports(&self, name: &str, major: &str) -> bool {
-        self.outputs
-            .iter()
-            .any(|o| o.name == name && o.schema_version.split('.').next() == Some(major))
+    /// Whether the CLI writes the named output as JSON with a schema of the
+    /// given major version.
+    pub fn supports_json(&self, name: &str, major: &str) -> bool {
+        self.outputs.iter().any(|o| {
+            o.name == name && o.format == "json" && schema_major(&o.schema_version) == Some(major)
+        })
+    }
+
+    pub fn supports_progress(&self, format: &str) -> bool {
+        self.progress_formats.iter().any(|f| f == format)
     }
 }
 
+fn schema_major(version: &str) -> Option<&str> {
+    version.split('.').next()
+}
+
+/// Parses an `--output analysis` document and checks that it is one this GUI
+/// reads: the analysis output with a schema of the given major version.
+pub fn parse_analysis(json: &[u8], major: &str) -> Result<AnalysisReport, String> {
+    let report: AnalysisReport =
+        serde_json::from_slice(json).map_err(|err| format!("Unreadable analysis output: {err}"))?;
+    if report.output != "analysis" || schema_major(&report.schema_version) != Some(major) {
+        return Err(format!(
+            "Unsupported analysis document (output {:?}, schema {:?}); a CLI with analysis schema {major}.x is needed.",
+            report.output, report.schema_version
+        ));
+    }
+    Ok(report)
+}
+
 /// One progress event from `--progress json` on stderr.
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
-#[serde(default)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct ProgressEvent {
     #[serde(rename = "type")]
     pub kind: String,
     pub processed_bytes: u64,
     pub total_bytes: u64,
+    #[serde(default)]
     pub done: bool,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct AnalysisReport {
     pub schema_version: String,
     pub output: String,
@@ -56,8 +82,7 @@ pub struct AnalysisReport {
     pub warnings: Vec<Warning>,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct Input {
     pub path: String,
     pub file_size_bytes: u64,
@@ -66,24 +91,21 @@ pub struct Input {
     pub limit_bytes: Option<u64>,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct Continuity {
     pub status: String,
     pub total_error_count: u64,
     pub pids: Vec<ContinuityPid>,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct ContinuityPid {
     pub pid: String,
     pub label: String,
     pub error_count: u64,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct ContinuityEvent {
     pub offset_bytes: u64,
     pub pid: String,
@@ -91,15 +113,13 @@ pub struct ContinuityEvent {
     pub actual_cc: u8,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct Warning {
     pub offset_bytes: u64,
     pub message: String,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct Program {
     pub program_number: u16,
     pub pmt_pid: String,
@@ -117,23 +137,20 @@ pub struct Program {
     pub series: Option<Series>,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct ElementaryStream {
     pub pid: String,
     pub stream_type: String,
     pub stream_type_description: String,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct Compliance {
     pub max_pcr_interval: Check,
     pub max_pcr_pts_dts_gap: Check,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct Check {
     pub status: String,
     pub value_ms: Option<f64>,
@@ -142,15 +159,13 @@ pub struct Check {
     pub reason: Option<String>,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct TimestampAnomalies {
     pub status: String,
     pub items: Vec<TimestampAnomaly>,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct TimestampAnomaly {
     pub pid: String,
     pub kind: String,
@@ -158,8 +173,7 @@ pub struct TimestampAnomaly {
     pub message: String,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct PcrJitter {
     pub status: String,
     pub reason: Option<String>,
@@ -167,8 +181,7 @@ pub struct PcrJitter {
     pub min_jitter_ns: Option<f64>,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct Bitrate {
     pub status: String,
     pub reason: Option<String>,
@@ -179,8 +192,7 @@ pub struct Bitrate {
     pub program_peak_1s_bps: Option<f64>,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct BitratePid {
     pub pid: String,
     pub label: String,
@@ -188,8 +200,7 @@ pub struct BitratePid {
     pub peak_1s_bps: Option<f64>,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct Series {
     pub pcr: Vec<PcrPoint>,
     pub pes: Vec<PesPoint>,
@@ -198,18 +209,17 @@ pub struct Series {
     pub bitrate: BitrateWindows,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct PcrPoint {
     pub offset_bytes: u64,
     pub elapsed_ms: f64,
     pub pcr_ms: f64,
     pub interval_ms: Option<f64>,
+    #[serde(default)]
     pub discontinuity: bool,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct PesPoint {
     pub pid: String,
     pub offset_bytes: u64,
@@ -219,8 +229,7 @@ pub struct PesPoint {
     pub pcr_gap_ms: Option<f64>,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct TimestampEvent {
     pub pid: String,
     pub offset_bytes: u64,
@@ -228,15 +237,13 @@ pub struct TimestampEvent {
     pub message: String,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct JitterPoint {
     pub offset_bytes: u64,
     pub jitter_ns: f64,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct BitrateWindows {
     pub window_seconds: u32,
     /// Length of each window; the last one is shorter when the measured
@@ -245,8 +252,7 @@ pub struct BitrateWindows {
     pub pids: Vec<BitrateWindowPid>,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
 pub struct BitrateWindowPid {
     pub pid: String,
     pub label: String,
@@ -350,6 +356,39 @@ mod tests {
     }
 
     #[test]
+    fn rejects_malformed_or_unsupported_analysis_documents() {
+        let valid = include_str!("../tests/fixtures/analysis_two_programs_188.json");
+        assert!(parse_analysis(valid.as_bytes(), "1").is_ok());
+        let mut missing: serde_json::Value = serde_json::from_str(valid).unwrap();
+        missing.as_object_mut().unwrap().remove("programs");
+        let mut other_output: serde_json::Value = serde_json::from_str(valid).unwrap();
+        other_output["output"] = "summary".into();
+        let mut schema_2: serde_json::Value = serde_json::from_str(valid).unwrap();
+        schema_2["schema_version"] = "2.0".into();
+        let mut input_missing: serde_json::Value = serde_json::from_str(valid).unwrap();
+        input_missing["input"]
+            .as_object_mut()
+            .unwrap()
+            .remove("file_size_bytes");
+        for (name, document, expected) in [
+            ("empty object", "{}".to_owned(), "Unreadable"),
+            ("missing programs", missing.to_string(), "Unreadable"),
+            (
+                "missing input field",
+                input_missing.to_string(),
+                "Unreadable",
+            ),
+            ("summary output", other_output.to_string(), "Unsupported"),
+            ("schema 2.0", schema_2.to_string(), "Unsupported"),
+        ] {
+            let err = parse_analysis(document.as_bytes(), "1")
+                .err()
+                .unwrap_or_else(|| panic!("{name} was accepted"));
+            assert!(err.contains(expected), "{name}: {err}");
+        }
+    }
+
+    #[test]
     fn parses_a_failed_analysis() {
         let report: AnalysisReport =
             serde_json::from_str(include_str!("../tests/fixtures/analysis_failed.json"))
@@ -363,9 +402,17 @@ mod tests {
         let caps: Capabilities =
             serde_json::from_str(include_str!("../tests/fixtures/capabilities.json"))
                 .expect("fixture parses");
-        assert!(caps.supports("analysis", "1"));
-        assert!(!caps.supports("analysis", "2"));
-        assert!(!caps.supports("timeline", "1"));
+        assert!(caps.supports_json("analysis", "1"));
+        assert!(!caps.supports_json("analysis", "2"));
+        assert!(!caps.supports_json("timeline", "1"));
+        assert!(caps.supports_progress("json"));
+        assert!(!caps.supports_progress("xml"));
+        let text_only: Capabilities = serde_json::from_str(
+            r#"{"capabilities_version":"1.0","cli_version":"x","outputs":[{"name":"analysis","format":"text","schema_version":"1.0"}],"progress_formats":[]}"#,
+        )
+        .unwrap();
+        assert!(!text_only.supports_json("analysis", "1"));
+        assert!(!text_only.supports_progress("json"));
         assert_eq!(caps.progress_formats, ["json"]);
     }
 

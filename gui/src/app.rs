@@ -76,7 +76,11 @@ impl Default for App {
 }
 
 impl App {
+    /// Replaces the input. An analysis still running for the previous file is
+    /// stopped, so its result cannot be shown for the new one.
     fn open(&mut self, path: PathBuf) {
+        self.running = None;
+        self.confirm_start = false;
         (self.file_size, self.file_problem) = match std::fs::metadata(&path) {
             Ok(meta) if AnalysisRange::is_analyzable(meta.len()) => (meta.len(), None),
             Ok(meta) => (
@@ -478,4 +482,38 @@ fn navigation_tile(ui: &mut egui::Ui, screen: Screen, selected: bool) -> egui::R
         );
     }
     response
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn opening_another_file_stops_the_running_analysis() {
+        let dir = std::env::temp_dir().join(format!("mtsa-gui-test-open-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cli = cli::fake_cli(&dir, "exec sleep 30");
+        let job = AnalysisJob::start(&cli, &dir.join("a.ts"), 0, 1000, || {}).expect("start");
+        let child = job.child();
+        let mut app = App {
+            cli: Ok(cli),
+            ..App::default()
+        };
+        app.input = Some(dir.join("a.ts"));
+        app.running = Some(Running {
+            job,
+            offset: 0,
+            limit: 1000,
+            started: std::time::Instant::now(),
+            progress: None,
+        });
+        app.open(dir.join("b.ts"));
+        assert!(app.running.is_none() && app.analysis.is_none() && app.analyzed.is_none());
+        assert!(
+            cli::wait_until_exited(&child),
+            "the old analysis kept running"
+        );
+        app.poll_analysis();
+        assert!(app.analysis.is_none());
+    }
 }
