@@ -14,6 +14,8 @@ const CLI_ENV: &str = "MPEG_TS_ANALYZER_CLI";
 const CLI_NAME: &str = "mpeg-ts-analyzer";
 /// Major schema version of `--output analysis` this GUI reads.
 const ANALYSIS_SCHEMA_MAJOR: &str = "1";
+/// Major schema version of `--output packets` and `--output packet`.
+pub const PACKETS_SCHEMA_MAJOR: &str = "1";
 
 pub fn locate() -> PathBuf {
     std::env::var_os(CLI_ENV).map_or_else(|| PathBuf::from(CLI_NAME), PathBuf::from)
@@ -23,6 +25,8 @@ pub fn locate() -> PathBuf {
 pub struct Cli {
     pub path: PathBuf,
     pub version: String,
+    /// Whether the CLI pages and decodes packets (`--output packets` / `packet`).
+    pub packet_outputs: bool,
 }
 
 fn command(cli: &Path) -> Command {
@@ -69,6 +73,8 @@ pub fn check(path: &Path) -> Result<Cli, String> {
     }
     Ok(Cli {
         path: path.to_path_buf(),
+        packet_outputs: caps.supports_json("packets", PACKETS_SCHEMA_MAJOR)
+            && caps.supports_json("packet", PACKETS_SCHEMA_MAJOR),
         version: caps.cli_version,
     })
 }
@@ -204,6 +210,67 @@ impl AnalysisJob {
     }
 }
 
+/// A short CLI run that writes one JSON document, such as a page of packets.
+/// Dropping the request kills the process.
+pub struct Request<T> {
+    child: Arc<Mutex<Child>>,
+    result: Receiver<Result<T, String>>,
+}
+
+impl<T: Send + 'static> Request<T> {
+    /// Runs the CLI with `args` and parses its stdout with `parse`.
+    pub fn start(
+        cli: &Cli,
+        args: Vec<String>,
+        parse: fn(&[u8]) -> Result<T, String>,
+        repaint: impl Fn() + Send + 'static,
+    ) -> Result<Self, String> {
+        let mut child = command(&cli.path)
+            .args(&args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|err| format!("Cannot start {}: {err}", cli.path.display()))?;
+        let stdout = child.stdout.take().expect("stdout is piped");
+        let child = Arc::new(Mutex::new(child));
+        let waiter_child = Arc::clone(&child);
+        let (result_tx, result) = mpsc::channel();
+        thread::spawn(move || {
+            let mut json = Vec::new();
+            let read = BufReader::new(stdout).read_to_end(&mut json);
+            let _ = waiter_child.lock().expect("child lock").wait();
+            let outcome = match read {
+                Ok(_) if json.iter().any(|b| !b.is_ascii_whitespace()) => parse(&json),
+                Ok(_) => Err("The CLI ended without a result.".to_owned()),
+                Err(err) => Err(format!("Cannot read the CLI output: {err}")),
+            };
+            let _ = result_tx.send(outcome);
+            repaint();
+        });
+        Ok(Self { child, result })
+    }
+
+    /// The result once the CLI has finished.
+    pub fn poll(&self) -> Option<Result<T, String>> {
+        match self.result.try_recv() {
+            Ok(result) => Some(result),
+            Err(TryRecvError::Empty) => None,
+            Err(TryRecvError::Disconnected) => {
+                Some(Err("The CLI request stopped unexpectedly.".to_owned()))
+            }
+        }
+    }
+}
+
+impl<T> Drop for Request<T> {
+    fn drop(&mut self) {
+        if let Ok(mut child) = self.child.lock() {
+            let _ = child.kill();
+        }
+    }
+}
+
 /// A job owns its process: dropping it (closing the app, opening another
 /// file) stops the analysis, since dropping a `Child` does not.
 impl Drop for AnalysisJob {
@@ -222,6 +289,7 @@ pub(crate) fn fake_cli(dir: &Path, script: &str) -> Cli {
     Cli {
         path,
         version: "fake".to_owned(),
+        packet_outputs: true,
     }
 }
 
