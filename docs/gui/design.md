@@ -26,14 +26,20 @@ data in `gui/src/mock*.rs`; no screen calls the CLI yet. Work is tracked in
 
 ### CLI discovery order
 
-1. `MPEG_TS_ANALYZER_CLI` environment variable
-2. CLI path from Settings (after v0.1, #99)
-3. CLI bundled with the GUI, located relative to the GUI executable (after
-   v0.1, #99)
+1. `MPEG_TS_ANALYZER_CLI` environment variable, when set and not empty
+2. CLI path from Settings, when not empty
+3. CLI bundled with the GUI, located relative to the GUI executable: next to it
+   (Windows install directory, Linux install prefix, macOS
+   `.app/Contents/MacOS`), in the macOS bundle's `Contents/Resources`, or under
+   `$APPDIR/usr/bin` in an AppImage; used only if the file exists
 4. `mpeg-ts-analyzer` on `PATH`
 
-The first release uses 1 and 4 only. At startup the GUI queries the CLI's
-capabilities (#89) and reports a missing or incompatible CLI.
+The first step that applies wins; the GUI does not fall through to a later
+step when that CLI turns out to be unusable, so a wrong setting is reported
+instead of silently replaced. At startup, and whenever the path in Settings
+changes, the GUI queries the CLI's capabilities (#89) and reports a missing or
+incompatible CLI. Settings shows the CLI in use, which step found it, and its
+version.
 
 On Windows the CLI is started with `CREATE_NO_WINDOW`, and the GUI binary uses
 `windows_subsystem = "windows"`, so no console window appears.
@@ -175,7 +181,9 @@ data is large, so the whole range is never held in memory.
 | Cached pages | 5 | Packet pages kept in memory |
 | CLI path | empty | See [CLI discovery order](#cli-discovery-order) |
 
-Settings are not persisted yet (eframe `persistence` is planned).
+Settings are saved with eframe's `persistence` feature when the GUI exits and
+loaded at startup; fields missing from an older save take their defaults.
+Language, packets per page and cached pages are laid out but not applied yet.
 
 ## Look and feel
 

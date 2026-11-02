@@ -24,6 +24,11 @@ struct Running {
 pub struct App {
     /// The CLI if it passed the capabilities check, or why it did not.
     cli: Result<cli::Cli, String>,
+    /// Where the CLI was looked up, and through which setting.
+    cli_location: (cli::Source, PathBuf),
+    /// The capabilities check in progress; it runs off the UI thread because
+    /// any program can be chosen as the CLI.
+    cli_check: Option<std::sync::mpsc::Receiver<Result<cli::Cli, String>>>,
     input: Option<PathBuf>,
     file_size: u64,
     /// Why the opened file cannot be analyzed, if it cannot.
@@ -50,8 +55,26 @@ pub struct App {
 
 impl Default for App {
     fn default() -> Self {
-        Self {
-            cli: cli::check(&cli::locate()),
+        Self::with_settings(Settings::default(), None)
+    }
+}
+
+impl App {
+    /// The app with the settings saved by the previous run, if any.
+    pub fn new(cc: &eframe::CreationContext) -> Self {
+        let settings = cc
+            .storage
+            .and_then(|storage| eframe::get_value(storage, crate::settings::STORAGE_KEY))
+            .unwrap_or_default();
+        Self::with_settings(settings, Some(cc.egui_ctx.clone()))
+    }
+
+    fn with_settings(settings: Settings, ctx: Option<egui::Context>) -> Self {
+        let cli_location = cli::locate(&settings.cli_path);
+        let mut app = Self {
+            cli: Err(CHECKING_CLI.to_owned()),
+            cli_location,
+            cli_check: None,
             input: None,
             file_size: 0,
             file_problem: None,
@@ -68,14 +91,47 @@ impl Default for App {
             program: 0,
             timeline: TimelineView::default(),
             packets: PacketsView::default(),
-            settings: Settings::default(),
+            settings,
             settings_open: false,
             about_open: false,
-        }
+        };
+        app.begin_cli_check(ctx);
+        app
     }
 }
 
+const CHECKING_CLI: &str = "Checking the CLI…";
+
 impl App {
+    /// Looks the CLI up and checks its capabilities on a thread; Start stays
+    /// disabled until the result is in.
+    fn begin_cli_check(&mut self, ctx: Option<egui::Context>) {
+        self.cli_location = cli::locate(&self.settings.cli_path);
+        self.check_cli_at(self.cli_location.1.clone(), ctx);
+    }
+
+    fn check_cli_at(&mut self, path: PathBuf, ctx: Option<egui::Context>) {
+        self.cli = Err(CHECKING_CLI.to_owned());
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = sender.send(cli::check(&path));
+            if let Some(ctx) = ctx {
+                ctx.request_repaint();
+            }
+        });
+        self.cli_check = Some(receiver);
+    }
+
+    /// Takes in the result of the capabilities check once it has finished.
+    fn poll_cli_check(&mut self) {
+        if let Some(receiver) = &self.cli_check
+            && let Ok(result) = receiver.try_recv()
+        {
+            self.cli = result;
+            self.cli_check = None;
+        }
+    }
+
     /// Replaces the input. An analysis still running for the previous file is
     /// stopped, so its result cannot be shown for the new one.
     fn open(&mut self, path: PathBuf) {
@@ -375,6 +431,10 @@ impl App {
 }
 
 impl eframe::App for App {
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        eframe::set_value(storage, crate::settings::STORAGE_KEY, &self.settings);
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         if let Some(path) =
             ui.input(|i| i.raw.dropped_files.first().map(|f| f.path().to_path_buf()))
@@ -382,6 +442,7 @@ impl eframe::App for App {
             self.open(path);
         }
 
+        self.poll_cli_check();
         self.poll_analysis();
         egui::Panel::top("top_bar").show(ui, |ui| self.top_bar(ui));
         egui::Panel::bottom("status").show(ui, |ui| {
@@ -428,7 +489,17 @@ impl eframe::App for App {
         });
 
         let ctx = ui.ctx().clone();
-        self.settings.show_window(&ctx, &mut self.settings_open);
+        let status = crate::settings::CliStatus {
+            source: self.cli_location.0,
+            path: &self.cli_location.1,
+            check: &self.cli,
+        };
+        if self
+            .settings
+            .show_window(&ctx, &mut self.settings_open, &status)
+        {
+            self.begin_cli_check(Some(ctx.clone()));
+        }
         self.about_window(&ctx);
         self.confirm_start_dialog(&ctx);
         self.analysis_dialog(&ctx);
@@ -515,5 +586,24 @@ mod tests {
         );
         app.poll_analysis();
         assert!(app.analysis.is_none());
+    }
+
+    #[test]
+    fn checks_the_cli_off_the_ui_thread() {
+        let mut app = App::default();
+        app.check_cli_at(PathBuf::from("/no/such/mpeg-ts-analyzer"), None);
+        assert_eq!(
+            app.cli.as_ref().err().map(String::as_str),
+            Some(CHECKING_CLI)
+        );
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while app.cli_check.is_some() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            app.poll_cli_check();
+        }
+        let Err(err) = &app.cli else {
+            panic!("a missing CLI was accepted")
+        };
+        assert!(err.contains("Cannot run"), "{err}");
     }
 }

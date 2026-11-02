@@ -160,7 +160,9 @@ make gui-lint   # rustfmt check and clippy -D warnings
 ```
 
 The GUI finds the CLI through the `MPEG_TS_ANALYZER_CLI` environment variable,
-falling back to `mpeg-ts-analyzer` on `PATH`. `make gui-run` sets the variable.
+then the path in Settings, a CLI bundled next to the GUI, and `mpeg-ts-analyzer`
+on `PATH` ([details](gui/design.md#cli-discovery-order)). `make gui-run` sets
+the variable.
 
 Editors using rust-analyzer need the GUI manifest declared, because
 `Cargo.toml` is not at the repository root; in VS Code:
