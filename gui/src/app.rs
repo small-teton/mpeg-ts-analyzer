@@ -22,10 +22,10 @@ struct Running {
     progress: Option<ProgressEvent>,
 }
 
+/// Plot series of every program of the analysis, derived once per analysis.
 struct Plots {
-    program: usize,
-    timeline: plot_data::Timeline,
-    bitrate: plot_data::Bitrate,
+    timelines: Vec<plot_data::Timeline>,
+    bitrates: Vec<plot_data::Bitrate>,
 }
 
 pub struct App {
@@ -43,8 +43,10 @@ pub struct App {
     running: Option<Running>,
     /// Result of the last completed analysis; the screens show sample data until then.
     analysis: Option<Box<AnalysisReport>>,
-    /// Plot series of `program` in `analysis`, derived once rather than every frame.
+    /// Plot series of `analysis`, derived once rather than every frame.
     plots: Option<Plots>,
+    /// Counts accepted analyses, so views can drop state of an older one.
+    analysis_generation: u64,
     /// Message for the error dialog.
     error: Option<String>,
     screen: Screen,
@@ -73,6 +75,7 @@ impl Default for App {
             running: None,
             analysis: None,
             plots: None,
+            analysis_generation: 0,
             error: None,
             screen: Screen::Overview,
             program: 0,
@@ -148,24 +151,22 @@ impl App {
         }
     }
 
-    /// Derives the plot series of the selected program when they are missing.
+    /// Derives the plot series of every program once an analysis arrives.
     fn update_plots(&mut self) {
         let Some(report) = &self.analysis else {
             self.plots = None;
             return;
         };
-        if self
-            .plots
-            .as_ref()
-            .is_some_and(|p| p.program == self.program)
-        {
-            return;
+        if self.plots.is_none() {
+            self.plots = Some(Plots {
+                timelines: report
+                    .programs
+                    .iter()
+                    .map(|program| plot_data::timeline(report, program))
+                    .collect(),
+                bitrates: report.programs.iter().map(plot_data::bitrate).collect(),
+            });
         }
-        self.plots = report.programs.get(self.program).map(|program| Plots {
-            program: self.program,
-            timeline: plot_data::timeline(report, program),
-            bitrate: plot_data::bitrate(program),
-        });
     }
 
     /// Takes in the analysis result once the CLI has finished.
@@ -189,6 +190,7 @@ impl App {
                 self.program = self.program.min(report.programs.len().saturating_sub(1));
                 self.analysis = Some(report);
                 self.plots = None;
+                self.analysis_generation += 1;
                 self.running = None;
             }
             JobUpdate::Finished(Err(err)) => {
@@ -446,16 +448,19 @@ impl eframe::App for App {
                     None => overview::show(ui, &mut self.program),
                 },
                 Screen::Timeline => match (&self.analysis, &self.plots) {
-                    (Some(report), Some(plots)) => {
-                        self.timeline
-                            .show_report(ui, report, &plots.timeline, &mut self.program)
-                    }
+                    (Some(report), Some(plots)) => self.timeline.show_report(
+                        ui,
+                        report,
+                        &plots.timelines,
+                        self.analysis_generation,
+                        &mut self.program,
+                    ),
                     _ => self.timeline.show(ui, &mut self.program),
                 },
                 Screen::Bitrate => {
                     match (&self.analysis, &self.plots) {
                         (Some(report), Some(plots)) => {
-                            bitrate::show_report(ui, report, &plots.bitrate, &mut self.program)
+                            bitrate::show_report(ui, report, &plots.bitrates, &mut self.program)
                         }
                         _ => bitrate::show(ui, &mut self.program),
                     }

@@ -7,7 +7,7 @@ use super::{Screen, badge, program_selector, program_selector_labels};
 use crate::icons;
 use crate::mock::{self, Verdict};
 use crate::mock_programs::{Program, programs};
-use crate::plot_data::{MAX_PLOT_POINTS, Point, Timeline, decimate, nearest};
+use crate::plot_data::{Point, Timeline, nearest};
 use crate::range_bar;
 use crate::report::{AnalysisReport, Program as ReportProgram};
 
@@ -22,6 +22,8 @@ pub struct TimelineView {
     /// Gap series unchecked in the side panel, by PID.
     hidden_series: BTreeSet<String>,
     selection: Option<Selection>,
+    /// The analysis generation and program the report state belongs to.
+    report_context: Option<(u64, usize)>,
     show_pcr: bool,
     show_events: bool,
     point_selected: bool,
@@ -34,6 +36,7 @@ impl Default for TimelineView {
             hidden_pids: BTreeSet::new(),
             hidden_series: BTreeSet::new(),
             selection: None,
+            report_context: None,
             show_pcr: true,
             show_events: true,
             point_selected: true,
@@ -401,10 +404,14 @@ impl TimelineView {
         &mut self,
         ui: &mut egui::Ui,
         report: &AnalysisReport,
-        data: &Timeline,
+        timelines: &[Timeline],
+        generation: u64,
         program: &mut usize,
     ) -> Option<Screen> {
         let labels: Vec<String> = report.programs.iter().map(ReportProgram::label).collect();
+        // Another screen may have changed the program, or a new analysis may
+        // have replaced the report.
+        self.sync_report_context(generation, *program);
         let mut navigate = None;
         let height = ui.available_height();
         ui.horizontal_top(|ui| {
@@ -417,8 +424,7 @@ impl TimelineView {
                     ui.set_width(plots_width);
                     ui.horizontal(|ui| {
                         if program_selector_labels(ui, &labels, program) {
-                            self.selection = None;
-                            self.reset_zoom = true;
+                            self.sync_report_context(generation, *program);
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui
@@ -430,7 +436,9 @@ impl TimelineView {
                         });
                     });
                     ui.separator();
-                    let Some(selected) = report.programs.get(*program) else {
+                    let (Some(selected), Some(data)) =
+                        (report.programs.get(*program), timelines.get(*program))
+                    else {
                         ui.weak("No program was found in this range.");
                         return;
                     };
@@ -449,7 +457,8 @@ impl TimelineView {
                 egui::Layout::top_down(egui::Align::Min),
                 |ui| {
                     ui.set_width(SIDE_WIDTH);
-                    if let Some(selected) = report.programs.get(*program)
+                    if let (Some(selected), Some(data)) =
+                        (report.programs.get(*program), timelines.get(*program))
                         && self.report_side_panel(ui, selected, data)
                     {
                         navigate = Some(Screen::Packets);
@@ -458,6 +467,17 @@ impl TimelineView {
             );
         });
         navigate
+    }
+
+    /// Clears what belongs to another program or analysis.
+    fn sync_report_context(&mut self, generation: u64, program: usize) {
+        let context = Some((generation, program));
+        if self.report_context != context {
+            self.report_context = context;
+            self.selection = None;
+            self.hidden_series.clear();
+            self.reset_zoom = true;
+        }
     }
 
     /// Returns true when "Open packet" is chosen from a plot's context menu.
@@ -497,21 +517,12 @@ impl TimelineView {
                 );
                 if show_pcr {
                     plot.line(
-                        Line::new(
-                            format!("PCR {pcr_label}"),
-                            decimate(&data.pcr_interval, MAX_PLOT_POINTS),
-                        )
-                        .color(mock::PCR_COLOR),
+                        Line::new(format!("PCR {pcr_label}"), data.pcr_drawn.clone())
+                            .color(mock::PCR_COLOR),
                     );
-                    let over: Vec<[f64; 2]> = data
-                        .pcr_interval
-                        .iter()
-                        .filter(|p| p.value > limits.0)
-                        .map(|p| [p.seconds, p.value])
-                        .collect();
-                    if !over.is_empty() {
+                    if !data.pcr_over_limit.is_empty() {
                         plot.points(
-                            Points::new("over limit", over)
+                            Points::new("over limit", data.pcr_over_limit.clone())
                                 .color(mock::LIMIT_COLOR)
                                 .radius(5.0)
                                 .filled(true),
@@ -561,20 +572,23 @@ impl TimelineView {
                     continue;
                 }
                 plot.line(
-                    Line::new(gap.label.clone(), decimate(&gap.points, MAX_PLOT_POINTS))
-                        .color(series_color(index)),
+                    Line::new(gap.label.clone(), gap.drawn.clone()).color(series_color(index)),
                 );
             }
             highlight(plot, selection.as_ref(), "PCR → PTS/DTS gap");
         });
-        let visible_gaps = data.gaps.iter().filter(|g| !hidden.contains(&g.pid));
-        if let Some((pid, pick)) = visible_gaps
-            .flat_map(|g| g.points.iter().map(move |p| (g.pid.as_str(), p)))
-            .map(|(pid, p)| (pid, p, distance(&gap_plot, p)))
-            .filter(|(_, _, d)| *d <= PICK_DISTANCE)
-            .min_by(|a, b| a.2.total_cmp(&b.2))
-            .filter(|_| gap_plot.response.clicked() || gap_plot.response.secondary_clicked())
-            .map(|(pid, p, _)| (pid.to_owned(), *p))
+        let gap_clicked = gap_plot.response.clicked() || gap_plot.response.secondary_clicked();
+        // Only a click is worth a scan over every point.
+        if gap_clicked
+            && let Some((pid, pick)) = data
+                .gaps
+                .iter()
+                .filter(|g| !hidden.contains(&g.pid))
+                .flat_map(|g| g.points.iter().map(move |p| (g.pid.as_str(), p)))
+                .map(|(pid, p)| (pid, p, distance(&gap_plot, p)))
+                .filter(|(_, _, d)| *d <= PICK_DISTANCE)
+                .min_by(|a, b| a.2.total_cmp(&b.2))
+                .map(|(pid, p, _)| (pid.to_owned(), *p))
         {
             clicked = Some(Selection {
                 series: "PCR → PTS/DTS gap".to_owned(),
@@ -584,7 +598,7 @@ impl TimelineView {
                 verdict: Some(verdict_against(pick.value, limits.1)),
             });
         }
-        any_click |= gap_plot.response.clicked() || gap_plot.response.secondary_clicked();
+        any_click |= gap_clicked;
         open_packet |= self.context_menu(&gap_plot.response);
 
         if self.show_events {
@@ -824,5 +838,52 @@ fn verdict_against(value: f64, limit: f64) -> Verdict {
         Verdict::Ng
     } else {
         Verdict::Ok
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn selected_view() -> TimelineView {
+        let mut view = TimelineView::default();
+        view.sync_report_context(1, 0);
+        view.selection = Some(Selection {
+            series: "PCR interval".to_owned(),
+            pid: "0x0100".to_owned(),
+            point: Point {
+                seconds: 1.0,
+                value: 40.0,
+                offset_bytes: 188,
+            },
+            value: None,
+            verdict: None,
+        });
+        view.hidden_series.insert("0x0101".to_owned());
+        view.reset_zoom = false;
+        view
+    }
+
+    #[test]
+    fn keeps_the_selection_in_the_same_context() {
+        let mut view = selected_view();
+        view.sync_report_context(1, 0);
+        assert!(view.selection.is_some() && !view.reset_zoom);
+    }
+
+    /// Another screen switched the program.
+    #[test]
+    fn clears_the_selection_when_the_program_changes() {
+        let mut view = selected_view();
+        view.sync_report_context(1, 1);
+        assert!(view.selection.is_none() && view.hidden_series.is_empty() && view.reset_zoom);
+    }
+
+    /// A new analysis replaced the report; the program index is the same.
+    #[test]
+    fn clears_the_selection_for_a_new_analysis() {
+        let mut view = selected_view();
+        view.sync_report_context(2, 0);
+        assert!(view.selection.is_none() && view.hidden_series.is_empty());
     }
 }

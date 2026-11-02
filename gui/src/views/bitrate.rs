@@ -5,7 +5,7 @@ use super::timeline::series_color;
 use super::{program_selector, program_selector_labels};
 use crate::mock;
 use crate::mock_programs::programs;
-use crate::plot_data::{self, MAX_PLOT_POINTS, carried_by, decimate, histogram};
+use crate::plot_data::{self, carried_by};
 use crate::report::{AnalysisReport, Program as ReportProgram};
 
 pub fn show(ui: &mut egui::Ui, selected: &mut usize) {
@@ -104,7 +104,7 @@ pub fn show(ui: &mut egui::Ui, selected: &mut usize) {
 pub fn show_report(
     ui: &mut egui::Ui,
     report: &AnalysisReport,
-    data: &plot_data::Bitrate,
+    bitrates: &[plot_data::Bitrate],
     selected: &mut usize,
 ) {
     let labels: Vec<String> = report.programs.iter().map(ReportProgram::label).collect();
@@ -112,7 +112,8 @@ pub fn show_report(
         program_selector_labels(ui, &labels, selected);
     });
     ui.separator();
-    let Some(program) = report.programs.get(*selected) else {
+    let (Some(program), Some(data)) = (report.programs.get(*selected), bitrates.get(*selected))
+    else {
         ui.weak("No program was found in this range.");
         return;
     };
@@ -127,14 +128,15 @@ pub fn show_report(
             .include_y(0.0)
             .show(ui, |plot| {
                 plot.line(
-                    Line::new("Program", data.program.clone())
+                    Line::new("Program", data.program_drawn.clone())
                         .color(egui::Color32::LIGHT_GRAY)
                         .style(LineStyle::Dashed { length: 6.0 }),
                 );
                 for (index, pid) in data.pids.iter().enumerate() {
-                    let points: Vec<[f64; 2]> =
-                        pid.points.iter().map(|p| [p.seconds, p.value]).collect();
-                    plot.line(Line::new(pid.label.clone(), points).color(series_color(index)));
+                    plot.line(
+                        Line::new(pid.label.clone(), pid.drawn.clone())
+                            .color(series_color(index)),
+                    );
                 }
             });
         ui.add_space(10.0);
@@ -154,7 +156,7 @@ pub fn show_report(
                 .show(&mut columns[0], |plot| {
                     plot.hline(HLine::new("expected", 0.0).color(egui::Color32::DARK_GRAY));
                     plot.line(
-                        Line::new("jitter", decimate(&data.jitter, MAX_PLOT_POINTS))
+                        Line::new("jitter", data.jitter_drawn.clone())
                             .color(mock::PCR_COLOR),
                     );
                 });
@@ -184,14 +186,14 @@ pub fn show_report(
                 }
             });
 
-            let values: Vec<f64> = data.jitter.iter().map(|p| p.value).collect();
             columns[1].horizontal(|ui| {
                 ui.strong("Jitter histogram");
-                ui.weak(format!("{} samples, ms", values.len()));
+                ui.weak(format!("{} samples, ms", data.jitter.len()));
             });
-            let bars = histogram(&values, HISTOGRAM_BINS)
-                .into_iter()
-                .map(|(center, count, width)| Bar::new(center, count).width(width * 0.9))
+            let bars = data
+                .jitter_histogram
+                .iter()
+                .map(|&(center, count, width)| Bar::new(center, count).width(width * 0.9))
                 .collect();
             Plot::new("jitter_histogram")
                 .height(160.0)
@@ -248,5 +250,3 @@ pub fn show_report(
         }
     });
 }
-
-const HISTOGRAM_BINS: usize = 30;
