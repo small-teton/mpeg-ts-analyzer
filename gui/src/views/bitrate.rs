@@ -24,7 +24,7 @@ pub fn show(ui: &mut egui::Ui, selected: &mut usize) {
             .legend(Legend::default())
             .show(ui, |plot| {
                 plot.line(
-                    Line::new("Total", mock::constant_mbps(program.average_mbps))
+                    Line::new("Program (incl. PSI)", mock::constant_mbps(program.average_mbps))
                         .color(egui::Color32::LIGHT_GRAY)
                         .style(LineStyle::Dashed { length: 6.0 }),
                 );
@@ -33,7 +33,6 @@ pub fn show(ui: &mut egui::Ui, selected: &mut usize) {
                         .color(stream.color(index));
                     plot.line(if index == 0 { line.fill(0.0).fill_alpha(0.12) } else { line });
                 }
-                plot.line(Line::new("PAT + PMT", mock::constant_mbps(0.030)).color(mock::PSI_COLOR));
             });
         ui.add_space(10.0);
 
@@ -81,7 +80,11 @@ pub fn show(ui: &mut egui::Ui, selected: &mut usize) {
                     ui.strong(header);
                 }
                 ui.end_row();
-                for stream in &mock::STREAMS {
+                // As on the real screen, PAT and PMT count in the total only.
+                for stream in mock::STREAMS
+                    .iter()
+                    .filter(|stream| !matches!(stream.kind, "PAT" | "PMT"))
+                {
                     ui.monospace(stream.pid);
                     ui.label(stream.kind);
                     ui.monospace(stream.average);
