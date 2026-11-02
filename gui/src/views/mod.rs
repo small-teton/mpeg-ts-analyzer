@@ -1,5 +1,6 @@
 pub mod bitrate;
 pub mod overview;
+pub mod packet_pages;
 pub mod packets;
 pub mod timeline;
 

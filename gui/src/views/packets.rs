@@ -5,9 +5,9 @@ use crate::icons;
 use crate::mock::{self, Verdict};
 use crate::mock_packets::{self as data, ByteLayer, Kind, PAGE_SIZE, PAGES, Packet, Range, Unit};
 
-const ROW_HEIGHT: f32 = 22.0;
+pub(super) const ROW_HEIGHT: f32 = 22.0;
 /// Below this width the list scrolls horizontally instead of squeezing columns.
-const MIN_LIST_WIDTH: f32 = 900.0;
+pub(super) const MIN_LIST_WIDTH: f32 = 900.0;
 
 enum Row {
     Packet(usize),
@@ -156,7 +156,7 @@ impl PacketsView {
                 let width = ui.available_width().max(MIN_LIST_WIDTH);
                 for row_index in visible {
                     if row_index == 0 {
-                        header_row(ui, width);
+                        header_row(ui, width, &PACKET_COLUMNS);
                         continue;
                     }
                     match rows[row_index - 1] {
@@ -394,7 +394,7 @@ impl PacketsView {
     }
 }
 
-fn row_text_color(ui: &egui::Ui, selected: bool) -> egui::Color32 {
+pub(super) fn row_text_color(ui: &egui::Ui, selected: bool) -> egui::Color32 {
     if selected {
         ui.visuals().selection.stroke.color
     } else {
@@ -402,7 +402,7 @@ fn row_text_color(ui: &egui::Ui, selected: bool) -> egui::Color32 {
     }
 }
 
-fn paint_row_background(
+pub(super) fn paint_row_background(
     ui: &egui::Ui,
     rect: egui::Rect,
     response: &egui::Response,
@@ -424,7 +424,7 @@ fn paint_row_background(
     }
 }
 
-fn paint_cells(
+pub(super) fn paint_cells(
     ui: &egui::Ui,
     rect: egui::Rect,
     start_x: f32,
@@ -451,7 +451,7 @@ fn paint_cells(
 }
 
 /// (title, width, description shown on hover)
-const PACKET_COLUMNS: [(&str, f32, &str); 9] = [
+pub(super) const PACKET_COLUMNS: [(&str, f32, &str); 9] = [
     ("#", 56.0, "Packet number within the analysis range"),
     ("Offset", 100.0, "Byte offset of the packet in the file"),
     ("PID", 64.0, "Packet identifier"),
@@ -482,11 +482,11 @@ const PACKET_COLUMNS: [(&str, f32, &str); 9] = [
     ),
     ("Notes", 200.0, "Problems detected at this packet"),
 ];
-const TEXT_INSET: f32 = 8.0;
+pub(super) const TEXT_INSET: f32 = 8.0;
 
-fn header_row(ui: &mut egui::Ui, width: f32) {
+pub(super) fn header_row(ui: &mut egui::Ui, width: f32, columns: &[(&str, f32, &str)]) {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(width, ROW_HEIGHT), egui::Sense::hover());
-    let cells: Vec<(String, f32)> = PACKET_COLUMNS
+    let cells: Vec<(String, f32)> = columns
         .iter()
         .map(|(title, width, _)| ((*title).to_owned(), *width))
         .collect();
@@ -499,7 +499,7 @@ fn header_row(ui: &mut egui::Ui, width: f32) {
         true,
     );
     let mut x = rect.left() + TEXT_INSET;
-    for (title, width, description) in PACKET_COLUMNS {
+    for &(title, width, description) in columns {
         let cell =
             egui::Rect::from_min_size(egui::pos2(x, rect.top()), egui::vec2(width, ROW_HEIGHT));
         ui.interact(
@@ -622,35 +622,35 @@ fn packet_row(
     response
 }
 
-type ByteSpan = std::ops::Range<usize>;
+pub(super) type ByteSpan = std::ops::Range<usize>;
 
 /// A decoded field and the bytes of the packet it was read from.
-struct Field {
-    key: &'static str,
+pub(super) struct Field {
+    key: String,
     value: String,
     bytes: Option<ByteSpan>,
 }
 
 impl Field {
-    fn new(key: &'static str, value: impl Into<String>, bytes: ByteSpan) -> Self {
+    pub(super) fn new(key: impl Into<String>, value: impl Into<String>, bytes: ByteSpan) -> Self {
         Self {
-            key,
+            key: key.into(),
             value: value.into(),
             bytes: Some(bytes),
         }
     }
 
     /// A derived value with no bytes of its own in this packet.
-    fn info(key: &'static str, value: impl Into<String>) -> Self {
+    pub(super) fn info(key: impl Into<String>, value: impl Into<String>) -> Self {
         Self {
-            key,
+            key: key.into(),
             value: value.into(),
             bytes: None,
         }
     }
 }
 
-fn field_tree(
+pub(super) fn field_tree(
     ui: &mut egui::Ui,
     title: &str,
     color: egui::Color32,
@@ -687,7 +687,12 @@ fn span_cells(
     }
 }
 
-fn key_values(ui: &mut egui::Ui, id: &str, fields: &[Field], highlight: &mut Option<ByteSpan>) {
+pub(super) fn key_values(
+    ui: &mut egui::Ui,
+    id: &str,
+    fields: &[Field],
+    highlight: &mut Option<ByteSpan>,
+) {
     egui::Grid::new(id)
         .num_columns(2)
         .spacing([16.0, 2.0])
@@ -697,14 +702,14 @@ fn key_values(ui: &mut egui::Ui, id: &str, fields: &[Field], highlight: &mut Opt
                     Some(span) => span_cells(
                         ui,
                         &[
-                            egui::RichText::new(field.key).color(ui.visuals().weak_text_color()),
+                            egui::RichText::new(&field.key).color(ui.visuals().weak_text_color()),
                             egui::RichText::new(&field.value).monospace(),
                         ],
                         span,
                         highlight,
                     ),
                     None => {
-                        ui.weak(field.key);
+                        ui.weak(&field.key);
                         ui.monospace(&field.value);
                     }
                 }
@@ -714,7 +719,7 @@ fn key_values(ui: &mut egui::Ui, id: &str, fields: &[Field], highlight: &mut Opt
 }
 
 /// A table whose rows each map to a byte span, e.g. PAT programs or PMT streams.
-fn span_table(
+pub(super) fn span_table(
     ui: &mut egui::Ui,
     id: &str,
     titles: &[&str],
@@ -742,7 +747,19 @@ fn span_table(
 }
 
 fn hex_dump(ui: &mut egui::Ui, packet: &Packet, highlight: Option<&ByteSpan>) {
-    let bytes = data::packet_bytes(packet);
+    let bytes: Vec<(u8, egui::Color32)> = data::packet_bytes(packet)
+        .into_iter()
+        .map(|(byte, layer)| (byte, layer_color(layer)))
+        .collect();
+    hex_dump_bytes(ui, &bytes, highlight);
+}
+
+/// Sixteen bytes per row, each in its layer's color; highlighted bytes are inverted.
+pub(super) fn hex_dump_bytes(
+    ui: &mut egui::Ui,
+    bytes: &[(u8, egui::Color32)],
+    highlight: Option<&ByteSpan>,
+) {
     let (on_fill, on_text) = (
         ui.visuals().selection.bg_fill,
         ui.visuals().selection.stroke.color,
@@ -751,13 +768,13 @@ fn hex_dump(ui: &mut egui::Ui, packet: &Packet, highlight: Option<&ByteSpan>) {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 6.0;
             ui.weak(egui::RichText::new(format!("{:04X}", row_index * 16)).monospace());
-            for (column, &(byte, layer)) in row.iter().enumerate() {
+            for (column, &(byte, color)) in row.iter().enumerate() {
                 let text = egui::RichText::new(format!("{byte:02X}")).monospace();
                 let text =
                     if highlight.is_some_and(|span| span.contains(&(row_index * 16 + column))) {
                         text.background_color(on_fill).color(on_text)
                     } else {
-                        text.color(layer_color(layer))
+                        text.color(color)
                     };
                 ui.label(text);
             }
@@ -765,7 +782,7 @@ fn hex_dump(ui: &mut egui::Ui, packet: &Packet, highlight: Option<&ByteSpan>) {
     }
 }
 
-fn layer_color(layer: ByteLayer) -> egui::Color32 {
+pub(super) fn layer_color(layer: ByteLayer) -> egui::Color32 {
     match layer {
         ByteLayer::TsHeader => egui::Color32::from_rgb(0x7c, 0xc4, 0xff),
         ByteLayer::AdaptationField => mock::PCR_COLOR,
