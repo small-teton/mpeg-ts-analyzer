@@ -319,20 +319,22 @@ pub fn decimate(points: &[Point], max: usize) -> Vec<[f64; 2]> {
 }
 
 /// Reduces a step series (two points per window: its start and end) to at
-/// most `max` points. Each bucket keeps its lowest and highest window, and the
-/// last window is always kept, so spikes and the end of the range stay visible.
-/// Kept windows are joined with horizontal and vertical lines only: a dropped
-/// stretch is drawn at the previous kept value up to the next kept window.
+/// most `max` points. The first and last windows and each bucket's lowest and
+/// highest window are kept, so spikes and both ends of the range stay visible.
+/// The path uses horizontal and vertical lines only. After a kept window it
+/// steps to the value of the window that really follows, which then stands
+/// for the dropped stretch until the next kept window, so a kept spike stays
+/// as wide as it is.
 pub fn decimate_steps(steps: &[[f64; 2]], max: usize) -> Vec<[f64; 2]> {
     let windows: &[[[f64; 2]; 2]] = steps.as_chunks::<2>().0;
-    if steps.len() <= max || max < 16 {
+    if steps.len() <= max || max < 20 {
         return steps.to_vec();
     }
-    // Up to two windows per bucket, plus the last window; each kept window
-    // takes at most four points.
-    let buckets = (max / 4 - 1) / 2;
+    // Each kept window takes at most five points; two per bucket, plus the
+    // first and last window.
+    let buckets = (max / 5 - 2) / 2;
     let bucket = windows.len().div_ceil(buckets);
-    let mut kept: Vec<usize> = Vec::new();
+    let mut kept: Vec<usize> = vec![0];
     for (index, chunk) in windows.chunks(bucket).enumerate() {
         let base = index * bucket;
         let by = |better: fn(f64, f64) -> bool| {
@@ -348,15 +350,13 @@ pub fn decimate_steps(steps: &[[f64; 2]], max: usize) -> Vec<[f64; 2]> {
         };
         let (low, high) = (by(|a, b| a < b), by(|a, b| a > b));
         kept.push(base + low.min(high));
-        if low != high {
-            kept.push(base + low.max(high));
-        }
+        kept.push(base + low.max(high));
     }
-    if kept.last() != Some(&(windows.len() - 1)) {
-        kept.push(windows.len() - 1);
-    }
+    kept.push(windows.len() - 1);
+    kept.sort_unstable();
+    kept.dedup();
 
-    let mut out: Vec<[f64; 2]> = Vec::with_capacity(4 * kept.len());
+    let mut out: Vec<[f64; 2]> = Vec::with_capacity(5 * kept.len());
     for index in kept {
         let [[start, value], end] = windows[index];
         if let Some(&[x, y]) = out.last() {
@@ -370,6 +370,11 @@ pub fn decimate_steps(steps: &[[f64; 2]], max: usize) -> Vec<[f64; 2]> {
             out.push([start, value]);
         }
         out.push(end);
+        if let Some(&[[_, next], _]) = windows.get(index + 1)
+            && next != value
+        {
+            out.push([end[0], next]);
+        }
     }
     out
 }
@@ -509,21 +514,31 @@ mod tests {
     fn step_decimation_keeps_spike_windows_whole() {
         let mut steps = Vec::new();
         for window in 0..100_000 {
-            let mbps = if window == 61_234 { 9.0 } else { 1.0 };
+            // The first window is neither the lowest nor the highest of its bucket.
+            let mbps = match window {
+                0 => 5.0,
+                1 => 0.5,
+                61_234 => 9.0,
+                _ => 1.0,
+            };
             steps.push([window as f64, mbps]);
             steps.push([window as f64 + 1.0, mbps]);
         }
         let drawn = decimate_steps(&steps, 4000);
         assert!(drawn.len() <= 4000, "{}", drawn.len());
-        assert!(drawn.contains(&[61_234.0, 9.0]) && drawn.contains(&[61_235.0, 9.0]));
-        // Only horizontal and vertical joins, ending where the range ends.
+        // Only horizontal and vertical joins, from the first point to the last.
         assert!(
             drawn
                 .windows(2)
                 .all(|pair| pair[0][0] == pair[1][0] || pair[0][1] == pair[1][1])
         );
-        assert_eq!(drawn.last(), steps.last());
         assert_eq!(drawn.first(), steps.first());
+        assert_eq!(drawn.last(), steps.last());
+        // The spike is one window wide: up at its start, back down at its end.
+        let up = drawn.iter().position(|p| *p == [61_234.0, 9.0]).unwrap();
+        assert_eq!(drawn[up - 1], [61_234.0, 1.0]);
+        assert_eq!(drawn[up + 1], [61_235.0, 9.0]);
+        assert_eq!(drawn[up + 2], [61_235.0, 1.0]);
         assert_eq!(decimate_steps(&steps[..20], 4000), steps[..20]);
     }
 
