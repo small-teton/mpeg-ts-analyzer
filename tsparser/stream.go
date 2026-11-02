@@ -23,11 +23,17 @@ func ValidateOptions(options options.Options) error {
 	if options.Limit < 0 {
 		return fmt.Errorf("--limit must not be negative (got %d; 0 means no limit)", options.Limit)
 	}
-	if options.Output != "" && options.Output != "summary" && options.Output != "analysis" {
-		return fmt.Errorf("unsupported output %q (expected summary or analysis)", options.Output)
+	if options.RangeOffset < 0 || options.RangeLimit < 0 {
+		return errors.New("--range-offset and --range-limit must not be negative")
 	}
-	if options.Output == "analysis" && options.Format != "json" {
-		return errors.New("--output analysis requires --format json")
+	switch options.Output {
+	case "", "summary":
+	case "analysis", "packets", "packet":
+		if options.Format != "json" {
+			return fmt.Errorf("--output %s requires --format json", options.Output)
+		}
+	default:
+		return fmt.Errorf("unsupported output %q (expected summary, analysis, packets or packet)", options.Output)
 	}
 	return nil
 }
@@ -38,6 +44,9 @@ func ParseTsFile(filename string, options options.Options) error {
 	}
 	if options.Format == "" {
 		options.Format = "text"
+	}
+	if options.Output == "packets" || options.Output == "packet" {
+		return writePacketsDocument(filename, options, os.Stdout)
 	}
 	if options.Format == "json" {
 		return parseTsFileJSON(filename, options)

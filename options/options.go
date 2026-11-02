@@ -17,6 +17,10 @@ type Options struct {
 	Offset              int64
 	Limit               int64
 	Output              string
+	Count               int
+	PacketSize          int
+	RangeOffset         int64
+	RangeLimit          int64
 	Progress            string
 	Capabilities        bool
 }
