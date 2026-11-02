@@ -24,7 +24,7 @@ pub fn show(ui: &mut egui::Ui, selected: &mut usize) {
             .legend(Legend::default())
             .show(ui, |plot| {
                 plot.line(
-                    Line::new("Program (incl. PSI)", mock::constant_mbps(program.average_mbps))
+                    Line::new("Total", mock::constant_mbps(program.average_mbps))
                         .color(egui::Color32::LIGHT_GRAY)
                         .style(LineStyle::Dashed { length: 6.0 }),
                 );
