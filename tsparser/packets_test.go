@@ -582,6 +582,10 @@ func TestPacketsPageSectionStarts(t *testing.T) {
 		rawPsiPacket(0x1000, false, 3, pmt),
 		pesStartPacket(0x100, 0, 90000),
 		rawPsiPacket(0x1000, true, 4, append([]byte{0x00}, longSection(300)[:183]...)),
+		// section_syntax_indicator set but section_length 0 (< 9): the
+		// header is impossible, and the bytes after it are not a section.
+		rawPsiPacket(0x1000, true, 5, append([]byte{0x00, 0x02, 0xB0, 0x00}, pmt...)),
+		rawPsiPacket(0x1000, true, 6, append([]byte{0x00}, append(append([]byte{}, pmt...), 0x02, 0xB0, 0x08, 0x00, 0x01, 0xC1, 0x00, 0x00, 0x00, 0x00, 0x00)...)),
 	}
 	want := []string{
 		`[{"table_id":"0x00","table_id_extension":1,"version_number":3,"current_next_indicator":1,"section_number":0,"last_section_number":1}]`,
@@ -589,6 +593,8 @@ func TestPacketsPageSectionStarts(t *testing.T) {
 		`[{"table_id":"0x80","table_id_extension":1,"version_number":0,"current_next_indicator":1,"section_number":0,"last_section_number":0}]`,
 		"null", "null", "null", "null", "null",
 		`[{"table_id":"0x80","table_id_extension":1,"version_number":0,"current_next_indicator":1,"section_number":0,"last_section_number":0}]`,
+		"null",
+		`[{"table_id":"0x02","table_id_extension":1,"version_number":2,"current_next_indicator":1,"section_number":0,"last_section_number":0}]`,
 	}
 	for _, m2ts := range []bool{false, true} {
 		var buf bytes.Buffer

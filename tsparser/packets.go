@@ -215,10 +215,11 @@ func packetSummary(tp *TsPacket, offset int64) PacketSummary {
 
 // packetSectionStarts reads the headers of the sections that start in a
 // payload_unit_start packet: from the pointer_field on, each section whose
-// first 8 bytes are in the packet and whose section_syntax_indicator is set,
-// until stuffing (0xFF), a short-form section, or the end of the packet. A
-// PES packet never qualifies: its payload starts with 0x00 0x00 0x01. Packets
-// with a transport error or a scrambled payload are skipped.
+// first 8 bytes are in the packet, whose section_syntax_indicator is set and
+// whose section_length can hold the long-form fields (at least 9), until
+// stuffing (0xFF), a short-form section, an impossible length, or the end of
+// the packet. A PES packet never qualifies: its payload starts with 0x00 0x00
+// 0x01. Packets with a transport error or a scrambled payload are skipped.
 func packetSectionStarts(tp *TsPacket) []PacketSection {
 	payload := tp.Payload()
 	if !tp.PayloadUnitStartIndicator() || tp.transportErrorIndicator != 0 || tp.transportScramblingControl != 0 || len(payload) == 0 || 1+int(payload[0]) > len(payload) {
@@ -226,11 +227,15 @@ func packetSectionStarts(tp *TsPacket) []PacketSection {
 	}
 	var sections []PacketSection
 	for rest := payload[1+int(payload[0]):]; len(rest) >= 8 && rest[0] != 0xFF && rest[1]&0x80 != 0; {
+		// A long-form section holds at least its 8-byte header and the CRC32.
+		size, _ := psiSectionSize(rest)
+		if size < 12 {
+			break
+		}
 		sections = append(sections, PacketSection{
 			TableID: fmt.Sprintf("0x%02x", rest[0]), TableIDExtension: uint16(rest[3])<<8 | uint16(rest[4]),
 			VersionNumber: rest[5] >> 1 & 0x1F, CurrentNextIndicator: rest[5] & 0x01, SectionNumber: rest[6], LastSectionNumber: rest[7],
 		})
-		size, _ := psiSectionSize(rest)
 		if size >= len(rest) {
 			break
 		}
