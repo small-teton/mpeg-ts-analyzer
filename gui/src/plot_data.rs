@@ -52,7 +52,8 @@ pub struct Timeline {
 /// What the Bitrate screen draws for one program.
 #[derive(Debug, Default)]
 pub struct Bitrate {
-    /// Mbps per PID as steps over the windows, in PID order.
+    /// Mbps per PID as steps over the windows, in PID order, without PAT and
+    /// PMT (see `is_psi`).
     pub pids: Vec<PidSeries>,
     /// The sum over the program's PIDs, without null packets, as steps
     /// reduced for drawing.
@@ -224,6 +225,9 @@ pub fn bitrate(program: &Program) -> Bitrate {
         for (sum, bytes) in program_bytes.iter_mut().zip(&pid.bytes) {
             *sum += bytes;
         }
+        if is_psi(program, &pid.pid) {
+            continue;
+        }
         let pid_steps = steps(&|i| pid.bps.get(i).copied().unwrap_or(0.0));
         pids.push(PidSeries {
             pid: pid.pid.clone(),
@@ -271,6 +275,13 @@ pub fn bitrate(program: &Program) -> Bitrate {
 }
 
 const NULL_PID: &str = "0x1fff";
+
+/// PAT and the program's PMT: a few kbit/s next to megabits of audio and
+/// video, so the Bitrate screen leaves them out of its lines and table. They
+/// stay in the program total, which is the CLI's `program_average_bps`.
+pub fn is_psi(program: &Program, pid: &str) -> bool {
+    pid == "0x0000" || pid == program.pmt_pid
+}
 
 /// `value` with 10% headroom, or `fallback` when there is nothing to show.
 fn padded(value: f64, fallback: f64) -> f64 {
@@ -496,6 +507,8 @@ mod tests {
                 .sum();
             assert!((program_bits / seconds - summary.program_average_bps).abs() < 1e-6);
             assert!(bitrate.pids.iter().all(|p| p.pid != NULL_PID));
+            assert!(bitrate.pids.iter().all(|p| !is_psi(program, &p.pid)));
+            assert!(!bitrate.pids.is_empty());
             // The fixed Y ranges hold every drawn value.
             let (low, high) = bitrate.mbps_range;
             assert!(low == 0.0 && bitrate.program_drawn.iter().all(|p| p[1] < high));

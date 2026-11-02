@@ -148,7 +148,9 @@ Per program, per PID:
 ### Bitrate
 
 Per program: bitrate per PID over time as steps over the CLI's windows (the
-last one may be shorter than 1 s), the program total without null packets;
+last one may be shorter than 1 s), the program total without null packets
+(it includes PAT and PMT, which are not drawn or listed on their own: a few
+kbit/s next to megabits of audio and video only crowd the plot and legend);
 PCR jitter over time and its histogram; table of averages, 1-second peaks and
 shares of the program average.
 - Like Timeline, the bitrate and PCR jitter plots zoom, scroll and pan along

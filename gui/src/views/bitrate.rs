@@ -5,7 +5,7 @@ use super::timeline::series_color;
 use super::{program_selector, program_selector_labels};
 use crate::mock;
 use crate::mock_programs::programs;
-use crate::plot_data::{self, carried_by};
+use crate::plot_data::{self, carried_by, is_psi};
 use crate::report::{AnalysisReport, Program as ReportProgram};
 
 pub fn show(ui: &mut egui::Ui, selected: &mut usize) {
@@ -124,7 +124,7 @@ pub fn show_report(
             .legend(Legend::default())
             .show(ui, |plot| {
                 plot.line(
-                    Line::new("Program", data.program_drawn.clone())
+                    Line::new("Program (incl. PSI)", data.program_drawn.clone())
                         .color(egui::Color32::LIGHT_GRAY)
                         .style(LineStyle::Dashed { length: 6.0 }),
                 );
@@ -200,7 +200,11 @@ pub fn show_report(
         ui.add_space(10.0);
 
         if let Some(bitrate) = &program.bitrate {
-            let rows = bitrate.pids.iter().chain(bitrate.null_pid.as_ref());
+            let rows = bitrate
+                .pids
+                .iter()
+                .filter(|row| !is_psi(program, &row.pid))
+                .chain(bitrate.null_pid.as_ref());
             egui::Grid::new("bitrate_table")
                 .striped(true)
                 .num_columns(5)
@@ -226,7 +230,7 @@ pub fn show_report(
                         ui.monospace(share);
                         ui.end_row();
                     }
-                    ui.strong("Program");
+                    ui.strong("Program").on_hover_text("All PIDs of the program, including PAT and PMT");
                     ui.label("");
                     ui.monospace(format!("{:.3} Mbps", bitrate.program_average_bps / 1e6));
                     ui.monospace(
