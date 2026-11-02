@@ -141,7 +141,8 @@ pass and adds per-program time series (PCR intervals, PTS/DTS and PCR gaps,
 jitter, 1-second bitrate windows) under its own schema; see
 [OPTIONS.md](OPTIONS.md#range-analysis-output---output-analysis). `--output
 packets` pages through packets and `--output packet` decodes one packet with
-the byte position of every field ([OPTIONS.md](OPTIONS.md#packet-pages---output-packets)).
+the byte position of every field, plus the exact bits of fields that do not
+fill whole bytes ([OPTIONS.md](OPTIONS.md#packet-pages---output-packets)).
 
 The document contains summaries, not one object per transport packet. Its size
 therefore does not grow with the input file's packet count (apart from naturally
