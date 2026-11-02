@@ -352,6 +352,26 @@ pub struct PacketField {
     pub value: String,
     pub byte_offset: usize,
     pub byte_length: usize,
+    /// The exact bits, when the field does not use all bits of its bytes.
+    #[serde(default)]
+    pub bits: Vec<BitRange>,
+}
+
+/// Packet-relative bits in wire order: bit 0 is the most significant bit of
+/// packet byte 0.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct BitRange {
+    pub bit_offset: usize,
+    pub bit_length: usize,
+}
+
+impl PacketField {
+    pub fn bit_ranges(&self) -> Vec<std::ops::Range<usize>> {
+        self.bits
+            .iter()
+            .map(|b| b.bit_offset..b.bit_offset + b.bit_length)
+            .collect()
+    }
 }
 
 #[derive(Debug, Deserialize)]
