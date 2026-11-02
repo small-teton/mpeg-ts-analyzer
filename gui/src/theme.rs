@@ -109,7 +109,6 @@ fn cjk_candidates() -> Vec<PathBuf> {
         [
             "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
             "/System/Library/Fonts/Hiragino Sans GB.ttc",
-            "/System/Library/Fonts/AppleSDGothicNeo.ttc",
         ]
         .iter()
         .map(PathBuf::from)
@@ -118,16 +117,10 @@ fn cjk_candidates() -> Vec<PathBuf> {
         let fonts = std::env::var_os("WINDIR")
             .map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from)
             .join("Fonts");
-        [
-            "YuGothM.ttc",
-            "meiryo.ttc",
-            "msgothic.ttc",
-            "msyh.ttc",
-            "malgun.ttf",
-        ]
-        .iter()
-        .map(|name| fonts.join(name))
-        .collect()
+        ["YuGothM.ttc", "meiryo.ttc", "msgothic.ttc"]
+            .iter()
+            .map(|name| fonts.join(name))
+            .collect()
     } else {
         [
             "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
