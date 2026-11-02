@@ -17,20 +17,25 @@ A desktop GUI is under active development in [`gui/`](gui/). It runs the CLI
 as a subprocess and connects the Overview, Timeline, Bitrate, and Packets views
 to the same analysis results.
 
+<p align="center">
+  <a href="docs/images/gui-overview.png">
+    <img src="docs/images/gui-overview.png" alt="GUI Overview showing the stream and timing compliance results" width="49%">
+  </a>
+  <a href="docs/images/gui-bit-inspector.png">
+    <img src="docs/images/gui-bit-inspector.png" alt="Packets view showing the byte and bit inspectors for a 13-bit PID" width="49%">
+  </a>
+</p>
+
 The Overview brings the detected program layout, stream properties, timing
 compliance verdicts, continuity errors, PCR jitter, and per-stream bitrate into
 one screen.
-
-![GUI Overview showing the stream and timing compliance results](docs/images/gui-overview.png)
 
 ## Inspect packets down to individual bits
 
 Select any decoded TS, adaptation-field, PSI, or PES field to highlight both
 its source bytes and its exact bit range. Multi-byte, non-byte-aligned fields
-are shown across byte boundaries; the 13-bit PID below spans the low five bits
-of one byte and all eight bits of the next byte.
-
-![Packets view showing the byte and bit inspectors for a 13-bit PID](docs/images/gui-bit-inspector.png)
+are shown across byte boundaries; the 13-bit PID in the packet view spans the
+low five bits of one byte and all eight bits of the next byte.
 
 The Bit inspector follows packet/file order from top to bottom and displays
 each byte from MSB (`bit 7`) to LSB (`bit 0`), making it straightforward to
