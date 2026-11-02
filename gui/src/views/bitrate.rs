@@ -20,11 +20,8 @@ pub fn show(ui: &mut egui::Ui, selected: &mut usize) {
             ui.strong("Bitrate per PID");
             ui.weak("Mbps · PCR time base · 1 s window");
         });
-        Plot::new("bitrate")
-            .height(240.0)
+        time_plot("bitrate", 240.0, (0.0, 2.0))
             .legend(Legend::default())
-            .include_y(0.0)
-            .include_y(2.0)
             .show(ui, |plot| {
                 plot.line(
                     Line::new("Total", mock::constant_mbps(program.average_mbps))
@@ -45,10 +42,7 @@ pub fn show(ui: &mut egui::Ui, selected: &mut usize) {
                 ui.strong("PCR jitter");
                 ui.weak(format!("PCR PID 0x{:04X} · deviation from expected PCR, ms", program.pcr_pid));
             });
-            Plot::new("pcr_jitter")
-                .height(160.0)
-                .include_y(-0.02)
-                .include_y(0.02)
+            time_plot("pcr_jitter", 160.0, (-0.02, 0.02))
                 .show(&mut columns[0], |plot| {
                     plot.hline(HLine::new("expected", 0.0).color(egui::Color32::DARK_GRAY));
                     plot.line(Line::new("jitter", mock::pcr_jitter_ms()).color(mock::PCR_COLOR));
@@ -105,6 +99,7 @@ pub fn show_report(
     ui: &mut egui::Ui,
     report: &AnalysisReport,
     bitrates: &[plot_data::Bitrate],
+    generation: u64,
     selected: &mut usize,
 ) {
     let labels: Vec<String> = report.programs.iter().map(ReportProgram::label).collect();
@@ -117,15 +112,16 @@ pub fn show_report(
         ui.weak("No program was found in this range.");
         return;
     };
+    // Plot state (zoom, pan) belongs to one program of one analysis: a new id
+    // starts again from the data's own Y range.
+    let context = (generation, *selected);
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.strong("Bitrate per PID");
             ui.weak("Mbps · PCR time base · 1 s windows (the last one may be shorter)");
         });
-        Plot::new("bitrate")
-            .height(240.0)
+        time_plot(("bitrate", context), 240.0, data.mbps_range)
             .legend(Legend::default())
-            .include_y(0.0)
             .show(ui, |plot| {
                 plot.line(
                     Line::new("Program", data.program_drawn.clone())
@@ -150,9 +146,7 @@ pub fn show_report(
                     program.pcr_pid.as_deref().unwrap_or("none")
                 ));
             });
-            Plot::new("pcr_jitter")
-                .height(160.0)
-                .include_y(0.0)
+            time_plot(("pcr_jitter", context), 160.0, data.jitter_range)
                 .show(&mut columns[0], |plot| {
                     plot.hline(HLine::new("expected", 0.0).color(egui::Color32::DARK_GRAY));
                     plot.line(
@@ -249,4 +243,17 @@ pub fn show_report(
             ));
         }
     });
+}
+
+/// A plot over time like Timeline's: zoom, scroll and drag move the time axis
+/// only, and the Y axis stays at `y_range` (a reset returns to it).
+fn time_plot(id: impl egui::AsIdSalt, height: f32, y_range: (f64, f64)) -> Plot<'static> {
+    Plot::new(id)
+        .height(height)
+        .default_y_bounds(y_range.0, y_range.1)
+        .allow_zoom([true, false])
+        .allow_drag([true, false])
+        .allow_scroll([true, false])
+        .allow_axis_zoom_drag([true, false])
+        .allow_boxed_zoom(false)
 }

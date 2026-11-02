@@ -459,9 +459,13 @@ impl eframe::App for App {
                 },
                 Screen::Bitrate => {
                     match (&self.analysis, &self.plots) {
-                        (Some(report), Some(plots)) => {
-                            bitrate::show_report(ui, report, &plots.bitrates, &mut self.program)
-                        }
+                        (Some(report), Some(plots)) => bitrate::show_report(
+                            ui,
+                            report,
+                            &plots.bitrates,
+                            self.analysis_generation,
+                            &mut self.program,
+                        ),
                         _ => bitrate::show(ui, &mut self.program),
                     }
                     None

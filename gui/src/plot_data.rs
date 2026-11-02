@@ -63,6 +63,10 @@ pub struct Bitrate {
     pub jitter_drawn: Vec<[f64; 2]>,
     /// Histogram of `jitter`: (center, count, width) per bin.
     pub jitter_histogram: Vec<(f64, f64, f64)>,
+    /// Fixed Y range of the bitrate plot (Mbps), from 0 to above the highest window.
+    pub mbps_range: (f64, f64),
+    /// Fixed Y range of the jitter plot (ms), symmetric around 0.
+    pub jitter_range: (f64, f64),
 }
 
 /// Bins of the jitter histogram.
@@ -241,7 +245,14 @@ pub fn bitrate(program: &Program) -> Bitrate {
         .collect();
 
     let values: Vec<f64> = jitter.iter().map(|p| p.value).collect();
+    let top = program_series.iter().map(|p| p[1]).fold(0.0, f64::max);
+    let deviation = values.iter().map(|v| v.abs()).fold(0.0, f64::max);
     Bitrate {
+        mbps_range: (0.0, padded(top, 1.0)),
+        jitter_range: {
+            let half = padded(deviation, 0.001);
+            (-half, half)
+        },
         pids,
         program_drawn: decimate_steps(&program_series, MAX_PLOT_POINTS),
         jitter_drawn: decimate(&jitter, MAX_PLOT_POINTS),
@@ -251,6 +262,11 @@ pub fn bitrate(program: &Program) -> Bitrate {
 }
 
 const NULL_PID: &str = "0x1fff";
+
+/// `value` with 10% headroom, or `fallback` when there is nothing to show.
+fn padded(value: f64, fallback: f64) -> f64 {
+    if value > 0.0 { value * 1.1 } else { fallback }
+}
 
 /// What a PID carries: the codec for elementary streams, else the CLI's label
 /// (PAT, PMT, ...).
@@ -471,6 +487,11 @@ mod tests {
                 .sum();
             assert!((program_bits / seconds - summary.program_average_bps).abs() < 1e-6);
             assert!(bitrate.pids.iter().all(|p| p.pid != NULL_PID));
+            // The fixed Y ranges hold every drawn value.
+            let (low, high) = bitrate.mbps_range;
+            assert!(low == 0.0 && bitrate.program_drawn.iter().all(|p| p[1] < high));
+            let (low, high) = bitrate.jitter_range;
+            assert!(low == -high && bitrate.jitter.iter().all(|p| p.value.abs() < high));
             assert_eq!(
                 bitrate.jitter.len(),
                 program.series.as_ref().unwrap().pcr_jitter.len()
