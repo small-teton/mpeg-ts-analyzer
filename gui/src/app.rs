@@ -4,6 +4,7 @@ use eframe::egui;
 
 use crate::cli::{self, AnalysisJob, JobUpdate};
 use crate::icons;
+use crate::plot_data;
 use crate::range_bar::{self, AnalysisRange, Load};
 use crate::report::{AnalysisReport, ProgressEvent};
 use crate::settings::Settings;
@@ -21,6 +22,12 @@ struct Running {
     progress: Option<ProgressEvent>,
 }
 
+struct Plots {
+    program: usize,
+    timeline: plot_data::Timeline,
+    bitrate: plot_data::Bitrate,
+}
+
 pub struct App {
     /// The CLI if it passed the capabilities check, or why it did not.
     cli: Result<cli::Cli, String>,
@@ -36,6 +43,8 @@ pub struct App {
     running: Option<Running>,
     /// Result of the last completed analysis; the screens show sample data until then.
     analysis: Option<Box<AnalysisReport>>,
+    /// Plot series of `program` in `analysis`, derived once rather than every frame.
+    plots: Option<Plots>,
     /// Message for the error dialog.
     error: Option<String>,
     screen: Screen,
@@ -63,6 +72,7 @@ impl Default for App {
             confirm_start: false,
             running: None,
             analysis: None,
+            plots: None,
             error: None,
             screen: Screen::Overview,
             program: 0,
@@ -95,6 +105,7 @@ impl App {
         };
         self.analyzed = None;
         self.analysis = None;
+        self.plots = None;
         self.input = Some(path);
     }
 
@@ -137,6 +148,26 @@ impl App {
         }
     }
 
+    /// Derives the plot series of the selected program when they are missing.
+    fn update_plots(&mut self) {
+        let Some(report) = &self.analysis else {
+            self.plots = None;
+            return;
+        };
+        if self
+            .plots
+            .as_ref()
+            .is_some_and(|p| p.program == self.program)
+        {
+            return;
+        }
+        self.plots = report.programs.get(self.program).map(|program| Plots {
+            program: self.program,
+            timeline: plot_data::timeline(report, program),
+            bitrate: plot_data::bitrate(program),
+        });
+    }
+
     /// Takes in the analysis result once the CLI has finished.
     fn poll_analysis(&mut self) {
         let Some(running) = &mut self.running else {
@@ -157,6 +188,7 @@ impl App {
                 self.analyzed = Some((running.offset, running.limit));
                 self.program = self.program.min(report.programs.len().saturating_sub(1));
                 self.analysis = Some(report);
+                self.plots = None;
                 self.running = None;
             }
             JobUpdate::Finished(Err(err)) => {
@@ -383,6 +415,7 @@ impl eframe::App for App {
         }
 
         self.poll_analysis();
+        self.update_plots();
         egui::Panel::top("top_bar").show(ui, |ui| self.top_bar(ui));
         egui::Panel::bottom("status").show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -412,9 +445,20 @@ impl eframe::App for App {
                     Some(report) => overview::show_report(ui, report, &mut self.program),
                     None => overview::show(ui, &mut self.program),
                 },
-                Screen::Timeline => self.timeline.show(ui, &mut self.program),
+                Screen::Timeline => match (&self.analysis, &self.plots) {
+                    (Some(report), Some(plots)) => {
+                        self.timeline
+                            .show_report(ui, report, &plots.timeline, &mut self.program)
+                    }
+                    _ => self.timeline.show(ui, &mut self.program),
+                },
                 Screen::Bitrate => {
-                    bitrate::show(ui, &mut self.program);
+                    match (&self.analysis, &self.plots) {
+                        (Some(report), Some(plots)) => {
+                            bitrate::show_report(ui, report, &plots.bitrate, &mut self.program)
+                        }
+                        _ => bitrate::show(ui, &mut self.program),
+                    }
                     None
                 }
                 Screen::Packets => {
