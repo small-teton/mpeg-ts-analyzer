@@ -318,6 +318,9 @@ func TestPacketDetailAdaptationFieldVariants(t *testing.T) {
 	if af["program_clock_reference"].ByteOffset != 6 || af["original_program_clock_reference"].ByteOffset != 12 || af["splice_countdown"].Value != "-2" {
 		t.Errorf("adaptation field = %+v", af)
 	}
+	if want := []BitRange{{12 * 8, 33}, {12*8 + 39, 9}}; !reflect.DeepEqual(af["original_program_clock_reference"].Bits, want) {
+		t.Errorf("OPCR bits = %+v, want %+v", af["original_program_clock_reference"].Bits, want)
+	}
 	if _, payload := layerFields(detail, "payload"); payload.Name != "" {
 		t.Errorf("AF-only packet has a payload layer: %+v", payload)
 	}

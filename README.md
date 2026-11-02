@@ -146,7 +146,8 @@ intervals, and every observed PID with what it carries); see
 [OPTIONS.md](OPTIONS.md#range-analysis-output---output-analysis) and
 [OPTIONS.md](OPTIONS.md#psi-layout-of-the-range). `--output
 packets` pages through packets and `--output packet` decodes one packet with
-the byte position of every field ([OPTIONS.md](OPTIONS.md#packet-pages---output-packets)).
+the byte position of every field, plus the exact bits of fields that do not
+fill whole bytes ([OPTIONS.md](OPTIONS.md#packet-pages---output-packets)).
 
 The document contains summaries, not one object per transport packet. Its size
 therefore does not grow with the input file's packet count (apart from naturally

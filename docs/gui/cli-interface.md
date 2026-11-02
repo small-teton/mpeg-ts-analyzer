@@ -92,7 +92,10 @@ from its first one.
   next member offsets. The full member list is not returned: a video PES can
   span thousands of packets.
 - Every decoded field carries its byte span within the packet, so the GUI can
-  highlight it in the hex dump.
+  highlight it in the hex dump. Fields that do not fill whole bytes (flags,
+  PID, lengths, PCR, PTS/DTS) also carry packet-relative bit ranges in wire
+  order, so a bit inspector can highlight exactly their bits; a field without
+  ranges uses every bit of its byte span.
 
 ### Capabilities
 
@@ -113,6 +116,7 @@ Tracking: #101 (milestone GUI v0.1).
 | #88 | Bitrate window and PCR jitter series |
 | #84 | Packet paging |
 | #85 | Packet detail with byte spans and unit membership |
+| #109 | Bit ranges of packet detail fields (bit inspector) |
 | #89 | Capabilities query |
 | #90 | Progress events on stderr (`--progress json`) |
 | #92 | SDT service names (after v0.1; ARIB excluded) |

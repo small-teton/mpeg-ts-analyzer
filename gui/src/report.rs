@@ -277,6 +277,144 @@ pub struct BitrateWindowPid {
     pub bps: Vec<f64>,
 }
 
+/// `--output packets`: one page of packet summaries
+/// (docs/json-schema-packets-v1.json).
+#[derive(Debug, Deserialize)]
+pub struct PacketsPage {
+    pub schema_version: String,
+    pub output: String,
+    pub input: PacketsInput,
+    pub status: String,
+    pub error: Option<String>,
+    pub first_offset_bytes: Option<u64>,
+    pub next_offset_bytes: Option<u64>,
+    pub end_of_file: bool,
+    pub total_packets: u64,
+    pub packets: Vec<PacketSummary>,
+    pub warnings: Vec<Warning>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PacketsInput {
+    pub path: String,
+    pub file_size_bytes: u64,
+    pub packet_size_bytes: Option<u32>,
+    pub offset_bytes: i64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct PacketSummary {
+    pub offset_bytes: u64,
+    pub valid: bool,
+    pub pid: Option<String>,
+    pub pusi: bool,
+    pub transport_error: bool,
+    pub scrambling_control: u8,
+    pub adaptation_field_control: u8,
+    pub continuity_counter: u8,
+    pub pcr_ms: Option<f64>,
+}
+
+/// `--output packet`: one packet decoded field by field.
+#[derive(Debug, Deserialize)]
+pub struct PacketDetail {
+    pub schema_version: String,
+    pub output: String,
+    pub input: PacketsInput,
+    pub status: String,
+    pub error: Option<String>,
+    pub packet: Option<DecodedPacket>,
+    pub unit: Option<PacketUnit>,
+    pub warnings: Vec<Warning>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DecodedPacket {
+    pub offset_bytes: u64,
+    /// The packet bytes in hex.
+    pub bytes: String,
+    pub layers: Vec<PacketLayer>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PacketLayer {
+    pub name: String,
+    pub fields: Vec<PacketField>,
+    #[serde(default)]
+    pub rows: Vec<Vec<PacketField>>,
+    #[serde(default)]
+    pub truncated: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct PacketField {
+    pub name: String,
+    pub value: String,
+    pub byte_offset: usize,
+    pub byte_length: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PacketUnit {
+    pub kind: String,
+    pub first_offset_bytes: Option<u64>,
+    #[serde(default)]
+    pub started_before_range: bool,
+    pub position: u64,
+    pub packets_in_range: u64,
+    pub previous_offset_bytes: Option<u64>,
+    pub next_offset_bytes: Option<u64>,
+    pub stream_id: Option<String>,
+    pub pts_ms: Option<f64>,
+    pub dts_ms: Option<f64>,
+    pub table_id: Option<String>,
+}
+
+impl DecodedPacket {
+    /// The packet bytes, or nothing when the hex is malformed.
+    pub fn raw(&self) -> Vec<u8> {
+        (0..self.bytes.len() / 2)
+            .map_while(|i| u8::from_str_radix(self.bytes.get(2 * i..2 * i + 2)?, 16).ok())
+            .collect()
+    }
+}
+
+/// Parses a packet document of the given output and returns it only when it
+/// completed; a failed document becomes its error message.
+fn parse_packets_document<T: for<'de> Deserialize<'de>>(
+    json: &[u8],
+    output: &str,
+    major: &str,
+    envelope: impl Fn(&T) -> (&str, &str, &str, Option<&String>),
+) -> Result<T, String> {
+    let document: T =
+        serde_json::from_slice(json).map_err(|err| format!("Unreadable {output} output: {err}"))?;
+    let (doc_output, schema, status, error) = envelope(&document);
+    if doc_output != output || schema_major(schema) != Some(major) {
+        return Err(format!(
+            "Unsupported {output} document (output {doc_output:?}, schema {schema:?})."
+        ));
+    }
+    if status != "complete" {
+        return Err(error
+            .cloned()
+            .unwrap_or_else(|| format!("The CLI reported {status}.")));
+    }
+    Ok(document)
+}
+
+pub fn parse_packets_page(json: &[u8], major: &str) -> Result<PacketsPage, String> {
+    parse_packets_document(json, "packets", major, |d: &PacketsPage| {
+        (&d.output, &d.schema_version, &d.status, d.error.as_ref())
+    })
+}
+
+pub fn parse_packet_detail(json: &[u8], major: &str) -> Result<PacketDetail, String> {
+    parse_packets_document(json, "packet", major, |d: &PacketDetail| {
+        (&d.output, &d.schema_version, &d.status, d.error.as_ref())
+    })
+}
+
 /// Short codec name for a PMT stream_type ("0x1b").
 pub fn stream_type_name(stream_type: &str) -> String {
     let value = u8::from_str_radix(stream_type.trim_start_matches("0x"), 16).ok();

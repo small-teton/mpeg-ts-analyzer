@@ -461,11 +461,13 @@ $ mpeg-ts-analyzer sample_data/sample_188byte_two_programs_mpeg2_160x120_25fps_m
 `--format json --output packet --offset N` decodes the packet at offset `N`
 (which must be a packet boundary) field by field. Every field carries its
 `byte_offset` and `byte_length` within `bytes`, the raw packet in hex, so a
-caller can highlight it. Layers are `m2ts_header` (192-byte packets),
-`ts_header`, `adaptation_field`, `payload`, and for a packet that starts a unit
-either `pes_header` or a section (`pat`, `pmt`, or `psi_section` for other
-tables). Table entries are in `rows`. A structure that continues in the next
-packet is marked `truncated`, and only fields inside this packet are listed.
+caller can highlight it, and `bits` when the value does not use every bit of
+that span (see [Field bits](#field-bits)). Layers are `m2ts_header` (192-byte
+packets), `ts_header`, `adaptation_field`, `payload`, and for a packet that
+starts a unit either `pes_header` or a section (`pat`, `pmt`, or `psi_section`
+for other tables). Table entries are in `rows`. A structure that continues in
+the next packet is marked `truncated`, and only fields inside this packet are
+listed.
 
 ```sh
 mpeg-ts-analyzer sample_data/sample_188byte_two_programs_mpeg2_160x120_25fps_mp2.ts \
@@ -484,14 +486,21 @@ Abridged output:
     "bytes": "4741003107100000972c7e00000001e0000080c00a310009...",
     "layers": [
       { "name": "ts_header", "fields": [
-        { "name": "PID", "value": "0x0100", "byte_offset": 1, "byte_length": 2 }, ... ] },
+        { "name": "sync_byte", "value": "0x47", "byte_offset": 0, "byte_length": 1 },
+        { "name": "PID", "value": "0x0100", "byte_offset": 1, "byte_length": 2,
+          "bits": [ { "bit_offset": 11, "bit_length": 13 } ] }, ... ] },
       { "name": "adaptation_field", "fields": [
-        { "name": "program_clock_reference", "value": "23220000 (0.860000 s)", "byte_offset": 6, "byte_length": 6 }, ... ] },
+        { "name": "program_clock_reference", "value": "23220000 (0.860000 s)", "byte_offset": 6, "byte_length": 6,
+          "bits": [ { "bit_offset": 48, "bit_length": 33 }, { "bit_offset": 87, "bit_length": 9 } ] }, ... ] },
       { "name": "payload", "fields": [
         { "name": "payload", "value": "176 bytes", "byte_offset": 12, "byte_length": 176 } ] },
       { "name": "pes_header", "fields": [
-        { "name": "PTS", "value": "144000 (1.600000 s)", "byte_offset": 21, "byte_length": 5 },
-        { "name": "DTS", "value": "140400 (1.560000 s)", "byte_offset": 26, "byte_length": 5 }, ... ] }
+        { "name": "PTS", "value": "144000 (1.600000 s)", "byte_offset": 21, "byte_length": 5,
+          "bits": [ { "bit_offset": 172, "bit_length": 3 }, { "bit_offset": 176, "bit_length": 15 },
+                    { "bit_offset": 192, "bit_length": 15 } ] },
+        { "name": "DTS", "value": "140400 (1.560000 s)", "byte_offset": 26, "byte_length": 5,
+          "bits": [ { "bit_offset": 212, "bit_length": 3 }, { "bit_offset": 216, "bit_length": 15 },
+                    { "bit_offset": 232, "bit_length": 15 } ] }, ... ] }
     ]
   },
   "unit": {
@@ -520,6 +529,46 @@ packets when the header does not fit in one (`header_packet_offsets`).
 Packets without payload, such as adaptation-field-only packets, carry no unit
 bytes: they are not counted as members, and for such a packet (or a null
 packet) `unit.kind` is `none`.
+
+### Field bits
+
+Many fields occupy only part of a byte or cross byte boundaries. For those,
+`bits` lists the exact bits the value was read from as one or more
+`{ "bit_offset", "bit_length" }` ranges, in wire order. Bit offsets are
+packet-relative and count from the most significant bit: offset 0 is bit 7 of
+byte 0, and bit `b` (7 = MSB, 0 = LSB) of byte `i` is at offset
+`i * 8 + (7 - b)`. In a 192-byte packet every TS offset is 32 bits later,
+because the 4-byte `m2ts_header` comes first. Reading the ranges in order and
+concatenating their bits gives the value.
+
+`bits` is omitted when the value uses every bit of its `byte_offset` /
+`byte_length` span (`sync_byte`, `stream_id`, `CRC_32`, `payload`, ...);
+consumers then treat all bits of the span as the field. `byte_offset` and
+`byte_length` are always present and always cover the ranges.
+
+In the example above, the 13-bit PID uses the low 5 bits of byte 1 and all of
+byte 2 (`bit_offset` 11, `bit_length` 13); `payload_unit_start_indicator` is
+the single bit at offset 9 and `continuity_counter` is offsets 28–31. A value
+that is split by marker or reserved bits has several ranges:
+
+- `PTS` / `DTS`: the 33 value bits only, as 3 + 15 + 15 bits. The 4-bit prefix
+  (`0010`, `0011` or `0001`) and the three marker bits are left out, so the
+  ranges of the PTS at byte 21 are 172+3, 176+15 and 192+15.
+- `program_clock_reference` / `original_program_clock_reference`: two ranges,
+  the 33-bit `program_clock_reference_base` and the 9-bit
+  `program_clock_reference_extension`, skipping the 6 reserved bits between
+  them. The value is `base * 300 + extension` (27 MHz units), not the
+  concatenation of the two ranges.
+- `arrival_time_stamp` (192-byte packets): the low 30 bits of the 4-byte
+  header, after the 2-bit `copy_permission_indicator`.
+
+Fields with `bits` include the TS header flags, PID, scrambling control,
+`adaptation_field_control` and `continuity_counter`; the `m2ts_header` fields;
+the adaptation field flags and clock references; the PES
+`PES_scrambling_control`, `PTS_DTS_flags`, PTS and DTS; and the section
+`section_syntax_indicator`, `section_length`, `version_number`,
+`current_next_indicator`, PAT `network_PID` / `program_map_PID`, PMT `PCR_PID`,
+`program_info_length`, `elementary_PID` and `ES_info_length`.
 
 ## Progress events
 

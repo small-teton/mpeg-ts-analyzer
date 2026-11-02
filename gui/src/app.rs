@@ -8,6 +8,7 @@ use crate::plot_data;
 use crate::range_bar::{self, AnalysisRange, Load};
 use crate::report::{AnalysisReport, ProgressEvent};
 use crate::settings::Settings;
+use crate::views::packet_pages::PacketPages;
 use crate::views::{Screen, bitrate, overview, packets::PacketsView, timeline::TimelineView};
 
 /// Range selected when a file is opened: small enough to analyze quickly.
@@ -50,6 +51,8 @@ pub struct App {
     analysis: Option<Box<AnalysisReport>>,
     /// Plot series of `analysis`, derived once rather than every frame.
     plots: Option<Plots>,
+    /// Packets of the analyzed range, read from the CLI page by page.
+    packet_pages: Option<PacketPages>,
     /// Counts accepted analyses, so views can drop state of an older one.
     analysis_generation: u64,
     /// Message for the error dialog.
@@ -98,6 +101,7 @@ impl App {
             running: None,
             analysis: None,
             plots: None,
+            packet_pages: None,
             analysis_generation: 0,
             error: None,
             screen: Screen::Overview,
@@ -165,6 +169,7 @@ impl App {
         self.analyzed = None;
         self.analysis = None;
         self.plots = None;
+        self.packet_pages = None;
         self.input = Some(path);
     }
 
@@ -244,6 +249,10 @@ impl App {
             JobUpdate::Finished(Ok(report)) => {
                 self.analyzed = Some((running.offset, running.limit));
                 self.program = self.program.min(report.programs.len().saturating_sub(1));
+                self.packet_pages = self
+                    .input
+                    .clone()
+                    .map(|input| PacketPages::new(input, &report, running.offset, running.limit));
                 self.analysis = Some(report);
                 self.plots = None;
                 self.analysis_generation += 1;
@@ -520,20 +529,32 @@ impl eframe::App for App {
                 },
                 Screen::Bitrate => {
                     match (&self.analysis, &self.plots) {
-                        (Some(report), Some(plots)) => {
-                            bitrate::show_report(ui, report, &plots.bitrates, &mut self.program)
-                        }
+                        (Some(report), Some(plots)) => bitrate::show_report(
+                            ui,
+                            report,
+                            &plots.bitrates,
+                            self.analysis_generation,
+                            &mut self.program,
+                        ),
                         _ => bitrate::show(ui, &mut self.program),
                     }
                     None
                 }
                 Screen::Packets => {
-                    self.packets.show(ui);
+                    match (&self.cli, &mut self.packet_pages) {
+                        (Ok(cli), Some(pages)) if cli.packet_outputs => pages.show(ui, cli),
+                        _ => self.packets.show(ui),
+                    }
                     None
                 }
             };
             if let Some(screen) = navigate {
                 self.screen = screen;
+            }
+            if let (Some(offset), Some(pages)) =
+                (self.timeline.take_open_request(), &mut self.packet_pages)
+            {
+                pages.go_to(offset);
             }
         });
 

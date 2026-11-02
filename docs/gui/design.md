@@ -4,10 +4,11 @@ Design of the desktop GUI for `mpeg-ts-analyzer`. This document describes the
 current design; [decisions](#decisions) records what was chosen and why. The
 interface between the GUI and the CLI is in [cli-interface.md](cli-interface.md).
 
-Status: Overview, Timeline and Bitrate show the CLI's range analysis once a
-range has been analyzed; before that, and on Packets, the screens show sample
-data from `gui/src/mock*.rs`. PMT-update markers wait for the PSI layout output
-(#93). Work is tracked in #101 (milestone GUI v0.1).
+Status: once a range has been analyzed, Overview, Timeline and Bitrate show the
+CLI's range analysis and Packets reads the range's packets from the CLI; before
+that the screens show sample data from `gui/src/mock*.rs`. PMT-update markers,
+the Unit column and layout-change rows wait for the PSI layout output (#93).
+Work is tracked in #101 (milestone GUI v0.1).
 
 ## Architecture
 
@@ -150,6 +151,10 @@ Per program: bitrate per PID over time as steps over the CLI's windows (the
 last one may be shorter than 1 s), the program total without null packets;
 PCR jitter over time and its histogram; table of averages, 1-second peaks and
 shares of the program average.
+- Like Timeline, the bitrate and PCR jitter plots zoom, scroll and pan along
+  time only. Their Y axes are fixed: from 0 to above the highest window for
+  bitrate, symmetric around 0 for jitter, computed once per program of an
+  analysis (a reset returns to them). The histogram does not zoom or pan.
 
 ### Packets
 
@@ -178,6 +183,15 @@ data is large, so the whole range is never held in memory.
 - The GUI keeps the **PSI layout** (where PAT/PMT occur and what they say,
   including mid-range changes) from the range scan, and uses it to label
   packets. Packet pages themselves are read without PSI context.
+- Implementation: the first request reads page 1 from the range start and
+  learns the first packet boundary; page *n* is then read from
+  `first + (n - 1) × 100 × packet size`, with `--packet-size` from the analysis,
+  so paging visits every packet of the range once. The current page and the 4
+  most recently viewed are kept; a page that is still loading when it drops
+  out is cancelled, so paging quickly leaves only the last request running.
+  Until #93, Type comes from the analysis (PAT, each program's PMT and
+  elementary streams, null, and the continuity check's labels for other PIDs)
+  and the Unit column is shown only in the detail pane.
 
 ## Settings
 

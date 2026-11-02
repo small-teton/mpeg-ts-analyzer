@@ -22,6 +22,8 @@ pub struct TimelineView {
     /// Gap series unchecked in the side panel, by PID.
     hidden_series: BTreeSet<String>,
     selection: Option<Selection>,
+    /// The packet to show after "Open packet", until the app takes it.
+    open_request: Option<u64>,
     /// The analysis generation and program the report state belongs to.
     report_context: Option<(u64, usize)>,
     show_pcr: bool,
@@ -36,6 +38,7 @@ impl Default for TimelineView {
             hidden_pids: BTreeSet::new(),
             hidden_series: BTreeSet::new(),
             selection: None,
+            open_request: None,
             report_context: None,
             show_pcr: true,
             show_events: true,
@@ -466,7 +469,15 @@ impl TimelineView {
                 },
             );
         });
+        if navigate.is_some() {
+            self.open_request = self.selection.as_ref().map(|s| s.point.offset_bytes);
+        }
         navigate
+    }
+
+    /// The packet "Open packet" asked for, once.
+    pub fn take_open_request(&mut self) -> Option<u64> {
+        self.open_request.take()
     }
 
     /// Clears what belongs to another program or analysis.
