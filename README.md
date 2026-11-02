@@ -17,6 +17,12 @@ A desktop GUI is under active development in [`gui/`](gui/). It runs the CLI
 as a subprocess and connects the Overview, Timeline, Bitrate, and Packets views
 to the same analysis results.
 
+The Overview brings the detected program layout, stream properties, timing
+compliance verdicts, continuity errors, PCR jitter, and per-stream bitrate into
+one screen.
+
+![GUI Overview showing the stream and timing compliance results](docs/images/gui-overview.png)
+
 ## Inspect packets down to individual bits
 
 Select any decoded TS, adaptation-field, PSI, or PES field to highlight both
