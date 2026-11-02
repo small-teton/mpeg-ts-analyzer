@@ -6,6 +6,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::{Duration, Instant};
 
 use crate::report::{self, AnalysisReport, Capabilities, ProgressEvent};
 
@@ -110,22 +111,59 @@ fn hide_console_window(_command: &mut Command) {}
 
 /// Runs `--capabilities` and checks that the CLI has the outputs this GUI needs.
 pub fn check(path: &Path) -> Result<Cli, String> {
-    let output = command(path)
+    check_with_timeout(path, CHECK_TIMEOUT)
+}
+
+/// How long `--capabilities` may take. Any file can be chosen as the CLI, and
+/// a program that is not one may never exit.
+const CHECK_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Like [`check`], but the program is killed if it has not answered within
+/// `timeout`.
+pub fn check_with_timeout(path: &Path, timeout: Duration) -> Result<Cli, String> {
+    let mut child = command(path)
         .arg("--capabilities")
-        .output()
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
         .map_err(|err| {
             format!(
                 "Cannot run {}: {err}. Set {CLI_ENV} or put {CLI_NAME} on PATH.",
                 path.display()
             )
         })?;
-    if !output.status.success() {
+    let mut stdout = child.stdout.take().expect("stdout is piped");
+    let reader = thread::spawn(move || {
+        let mut out = Vec::new();
+        let _ = stdout.read_to_end(&mut out);
+        out
+    });
+    let deadline = Instant::now() + timeout;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!(
+                    "{} did not answer --capabilities within {} s; is it the mpeg-ts-analyzer CLI?",
+                    path.display(),
+                    timeout.as_secs()
+                ));
+            }
+            Err(err) => return Err(format!("Cannot wait for {}: {err}", path.display())),
+        }
+    };
+    let stdout = reader.join().unwrap_or_default();
+    if !status.success() {
         return Err(format!(
             "{} does not support --capabilities; a newer CLI is needed.",
             path.display()
         ));
     }
-    let caps: Capabilities = serde_json::from_slice(&output.stdout)
+    let caps: Capabilities = serde_json::from_slice(&stdout)
         .map_err(|err| format!("Unreadable --capabilities output: {err}"))?;
     // Start runs `--format json --output analysis --progress json`.
     if !caps.supports_json("analysis", ANALYSIS_SCHEMA_MAJOR) || !caps.supports_progress("json") {
@@ -446,6 +484,19 @@ mod tests {
             ]
         );
         assert!(bundled_candidates(None, None).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn gives_up_on_a_program_that_does_not_answer() {
+        let dir = tempfile_dir("hang");
+        let cli = fake_cli(&dir, "exec sleep 30");
+        let started = Instant::now();
+        let Err(err) = check_with_timeout(&cli.path, Duration::from_millis(200)) else {
+            panic!("accepted")
+        };
+        assert!(err.contains("did not answer"), "{err}");
+        assert!(started.elapsed() < Duration::from_secs(5));
     }
 
     #[test]
