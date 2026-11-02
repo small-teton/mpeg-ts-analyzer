@@ -59,6 +59,13 @@
         "$ref": "#/$defs/program"
       }
     },
+    "psi_transitions": {
+      "type": "array",
+      "description": "PAT and PMT version changes applied during the scan, in stream order, for the PAT and the analyzed programs. Absent when no change was applied. programs describes the first complete PAT/PMT set.",
+      "items": {
+        "$ref": "json-schema-v1.json#/$defs/psiTransition"
+      }
+    },
     "warnings": {
       "type": "array",
       "items": {
@@ -133,6 +140,10 @@
         "analysis_start_offset_bytes": {
           "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger",
           "description": "Offset of the first packet analyzed for this program: just after its PMT."
+        },
+        "analysis_end_offset_bytes": {
+          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger",
+          "description": "Offset after the last packet analyzed for this program, when a PAT version change removed it before the end of the scan. Absent otherwise."
         },
         "average_bitrate_bps": {
           "type": "number",

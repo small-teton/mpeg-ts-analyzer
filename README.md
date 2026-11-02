@@ -22,6 +22,7 @@ In addition, it can dump various MPEG-2 TS internal structures for stream invest
 - TS header and payload
 - Adaptation field (including PCR)
 - PSI tables (PAT/PMT) with CRC32 validation, assembled across every section of the table
+- PAT/PMT version changes during the analysis (moved PMT or PCR PID, added, removed or retyped elementary streams), followed and reported with their byte offsets
 - PMT ES info descriptors (ISO 639 language, registration, AVC/HEVC video, AAC audio, teletext, DVB subtitling)
 - PES header with PTS/DTS timestamps
 - PCR jitter analysis (per-interval deviation from the expected PCR)
@@ -216,6 +217,16 @@ programs are listed or selected, and programs are listed in `program_number`
 order. Missing sections, inconsistent section sets, and invalid CRCs are
 reported as warnings instead of producing a partial table; see
 [OPTIONS.md](OPTIONS.md#multi-section-pat-and-pmt).
+
+Long captures can update the PAT or PMT while they are analyzed. The analyzer
+keeps collecting both tables and applies a new version once all its sections
+have arrived: a moved PMT is read from its new PID, a new `PCR_PID` starts a new
+PCR timing segment (no interval, jitter or bitrate window spans the change),
+and elementary streams that are added, removed or change `stream_type` start
+or stop cleanly. Each applied change is printed with its offset in text mode
+and listed under `psi_transitions` in JSON; a program removed from the PAT
+stops being analyzed there. See
+[OPTIONS.md](OPTIONS.md#pat-and-pmt-version-changes).
 
 **Tip:** For large files, dump options can produce a huge amount of output. Use `--limit` to restrict the byte range, or redirect output to a file to avoid losing the beginning of the output in your terminal scrollback:
 

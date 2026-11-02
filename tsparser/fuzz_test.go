@@ -206,6 +206,45 @@ func FuzzPacketDiscovery(f *testing.F) {
 	})
 }
 
+// FuzzPsiTracking scans arbitrary 188-byte packets with the PAT and PMT
+// version tracking of one program that starts from a fixed layout.
+func FuzzPsiTracking(f *testing.F) {
+	layout, _ := layoutChangeStream()
+	move, _, _, _ := moveStream()
+	candidates, _ := candidateStream(1, 0)
+	for _, s := range []*trackingStream{layout, move, candidates} {
+		f.Add(bytes.Join(s.packets, nil))
+	}
+	pat, _ := newPatTable([]*Pat{mustParse(f, parsePatSection, patSectionN(0, 0, 0, [2]uint16{1, 0x1000}, [2]uint16{2, 0x1001}))})
+	pmt, _ := newPmtTable([]*Pmt{mustParse(f, parsePmtSection, pmtSectionN(1, 0, 0, 0, 0x100, [2]uint16{0x02, 0x100}, [2]uint16{0x03, 0x102}))})
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		if len(data) > 64*tsPayloadSize {
+			return
+		}
+		opts := options.Options{DumpBitrate: true}
+		analyzer := newProgramAnalyzer(opts, 0, 1, 0x1000, pmt.pcrPid, pmt.programInfos, true)
+		continuity := newContinuityCounterSummary(0x1000, pmt.pcrPid, pmt.programInfos)
+		tracker := newPsiTracker(pat, continuity, opts, tsPayloadSize, true)
+		tracker.addProgram(1, 0x1000, pmt, analyzer)
+		var pos int64
+		if _, err := scanPrograms(bytes.NewReader(data), &pos, []*programAnalyzer{analyzer}, continuity, tracker, opts, tsPayloadSize, 0, true); err != nil {
+			return
+		}
+		analyzer.finish()
+		_ = reportPsiTransitions(tracker.transitions)
+		_ = reportSeries(analyzer)
+	})
+}
+
+func mustParse[T any](f *testing.F, parse func([]byte) (T, error), data []byte) T {
+	parsed, err := parse(data)
+	if err != nil {
+		f.Fatal(err)
+	}
+	return parsed
+}
+
 func fuzzPATPackets(packetSize int) []byte {
 	data := make([]byte, 3*packetSize)
 	syncOffset := packetSize - tsPayloadSize

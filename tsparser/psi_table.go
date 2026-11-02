@@ -105,11 +105,16 @@ func acquirePat(reader io.Reader, pos *int64, options options.Options, packetSiz
 	return table, appendConflicts(assembler.diagnostics, *pos, conflicts), nil
 }
 
+// newPmtAssembler collects the PMT of programNumber carried on pid.
+func newPmtAssembler(programNumber, pid uint16) *psiAssembler[*Pmt] {
+	name := fmt.Sprintf("PMT of program %d on PID 0x%04x", programNumber, pid)
+	return &psiAssembler[*Pmt]{name: name, tableID: 0x02, extension: programNumber, parse: parsePmtSection}
+}
+
 // acquirePmt reads packets from *pos until a complete PMT of programNumber has
 // been collected on pid.
 func acquirePmt(reader io.Reader, pos *int64, pid, programNumber uint16, options options.Options, packetSize int, endOffset int64) (*pmtTable, []psiDiagnostic, error) {
-	name := fmt.Sprintf("PMT of program %d on PID 0x%04x", programNumber, pid)
-	assembler := &psiAssembler[*Pmt]{name: name, tableID: 0x02, extension: programNumber, parse: parsePmtSection}
+	assembler := newPmtAssembler(programNumber, pid)
 	sections, err := acquireTable(reader, pos, pid, assembler, options, packetSize, endOffset)
 	if err != nil {
 		return nil, assembler.diagnostics, err

@@ -2,7 +2,9 @@ package tsparser
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -227,11 +229,34 @@ func (a *psiAssembler[T]) incomplete() error {
 		return fmt.Errorf("%s: no valid section found", a.name)
 	}
 	set := a.sets[a.latest]
-	var missing []string
-	for number, raw := range set.raw {
+	return fmt.Errorf("incomplete %s (version %d): missing section(s) %s of 0..%d", a.name, a.latest.version, set.missing(), set.last)
+}
+
+// missing lists the section numbers that have not arrived.
+func (s *psiSectionSet[T]) missing() string {
+	var numbers []string
+	for number, raw := range s.raw {
 		if raw == nil {
-			missing = append(missing, strconv.Itoa(number))
+			numbers = append(numbers, strconv.Itoa(number))
 		}
 	}
-	return fmt.Errorf("incomplete %s (version %d): missing section(s) %s of 0..%d", a.name, a.latest.version, strings.Join(missing, ", "), set.last)
+	return strings.Join(numbers, ", ")
+}
+
+// pending describes every incomplete set of a version other than active, in
+// version order. These are candidate tables that were never applied.
+func (a *psiAssembler[T]) pending(active uint8) []string {
+	var keys []psiTableKey
+	for key := range a.sets {
+		if key.version != active {
+			keys = append(keys, key)
+		}
+	}
+	slices.SortFunc(keys, func(x, y psiTableKey) int { return cmp.Compare(x.version, y.version) })
+	var messages []string
+	for _, key := range keys {
+		set := a.sets[key]
+		messages = append(messages, fmt.Sprintf("incomplete %s (version %d) at the end of the analysis: missing section(s) %s of 0..%d; not applied", a.name, key.version, set.missing(), set.last))
+	}
+	return messages
 }

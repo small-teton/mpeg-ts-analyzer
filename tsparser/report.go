@@ -28,6 +28,7 @@ type AnalysisReport struct {
 	TimestampAnomalies    *ReportTimestampAnomalies `json:"timestamp_anomalies,omitempty"`
 	PCRJitter             *ReportPCRJitter          `json:"pcr_jitter,omitempty"`
 	Bitrate               *ReportBitrate            `json:"bitrate,omitempty"`
+	PSITransitions        []ReportPSITransition     `json:"psi_transitions,omitempty"`
 	Warnings              []ReportWarning           `json:"warnings"`
 
 	// analysis is set for --output analysis, which writes a RangeAnalysisReport
@@ -135,6 +136,54 @@ type ReportBitrate struct {
 	ProgramPeak1sBPS  *float64           `json:"program_peak_1s_bps,omitempty"`
 }
 
+// ReportPSITransition is a PAT or PMT version change applied during the
+// analysis. The fields of the table's type are always present; those of the
+// other type are omitted.
+type ReportPSITransition struct {
+	OffsetBytes     int64  `json:"offset_bytes"`
+	Table           string `json:"table"`
+	PID             string `json:"pid"`
+	PreviousVersion uint8  `json:"previous_version"`
+	Version         uint8  `json:"version"`
+	*ReportPATTransition
+	*ReportPMTTransition
+}
+
+type ReportPATTransition struct {
+	Programs        []ReportPATProgram   `json:"programs"`
+	ProgramsAdded   []ReportPATProgram   `json:"programs_added"`
+	ProgramsRemoved []ReportPATProgram   `json:"programs_removed"`
+	PMTPIDChanges   []ReportPMTPIDChange `json:"pmt_pid_changes"`
+}
+
+type ReportPATProgram struct {
+	ProgramNumber uint16 `json:"program_number"`
+	PMTPID        string `json:"pmt_pid"`
+}
+
+type ReportPMTPIDChange struct {
+	ProgramNumber  uint16 `json:"program_number"`
+	PreviousPMTPID string `json:"previous_pmt_pid"`
+	PMTPID         string `json:"pmt_pid"`
+}
+
+type ReportPMTTransition struct {
+	ProgramNumber            uint16                   `json:"program_number"`
+	PreviousPCRPID           string                   `json:"previous_pcr_pid"`
+	PCRPID                   string                   `json:"pcr_pid"`
+	ElementaryStreams        []ReportElementaryStream `json:"elementary_streams"`
+	ElementaryStreamsAdded   []ReportElementaryStream `json:"elementary_streams_added"`
+	ElementaryStreamsRemoved []ReportElementaryStream `json:"elementary_streams_removed"`
+	StreamTypeChanges        []ReportStreamTypeChange `json:"stream_type_changes"`
+}
+
+type ReportStreamTypeChange struct {
+	PID                   string `json:"pid"`
+	PreviousStreamType    string `json:"previous_stream_type"`
+	StreamType            string `json:"stream_type"`
+	StreamTypeDescription string `json:"stream_type_description"`
+}
+
 type ReportWarning struct {
 	OffsetBytes int64  `json:"offset_bytes"`
 	Message     string `json:"message"`
@@ -166,10 +215,54 @@ func reportProgram(programNumber, pmtPID uint16, pmt *Pmt) ReportProgram {
 		return r
 	}
 	r.PCRPID = reportPID(pmt.PcrPid())
-	for _, info := range pmt.ProgramInfos() {
-		r.ElementaryStreams = append(r.ElementaryStreams, ReportElementaryStream{
+	r.ElementaryStreams = reportElementaryStreams(pmt.ProgramInfos())
+	return r
+}
+
+func reportElementaryStreams(infos []ProgramInfo) []ReportElementaryStream {
+	streams := []ReportElementaryStream{}
+	for _, info := range infos {
+		streams = append(streams, ReportElementaryStream{
 			PID: reportPID(info.elementaryPid), StreamType: fmt.Sprintf("0x%02x", info.streamType), StreamTypeDescription: StreamTypeString(info.streamType),
 		})
+	}
+	return streams
+}
+
+func reportPatPrograms(programs []Program) []ReportPATProgram {
+	r := []ReportPATProgram{}
+	for _, p := range programs {
+		r = append(r, ReportPATProgram{ProgramNumber: p.ProgramNumber, PMTPID: reportPID(p.PmtPid)})
+	}
+	return r
+}
+
+// reportPsiTransitions returns nil when no change was applied, so the field is
+// left out of reports for streams without table updates.
+func reportPsiTransitions(transitions []psiTransition) []ReportPSITransition {
+	var r []ReportPSITransition
+	for _, tr := range transitions {
+		item := ReportPSITransition{OffsetBytes: tr.pos, Table: tr.table, PID: reportPID(tr.pid), PreviousVersion: tr.previousVersion, Version: tr.version}
+		if tr.table == "pat" {
+			pat := &ReportPATTransition{Programs: reportPatPrograms(tr.programs), ProgramsAdded: reportPatPrograms(tr.programsAdded), ProgramsRemoved: reportPatPrograms(tr.programsRemoved), PMTPIDChanges: []ReportPMTPIDChange{}}
+			for _, c := range tr.pmtPidChanges {
+				pat.PMTPIDChanges = append(pat.PMTPIDChanges, ReportPMTPIDChange{ProgramNumber: c.programNumber, PreviousPMTPID: reportPID(c.previousPmtPid), PMTPID: reportPID(c.pmtPid)})
+			}
+			item.ReportPATTransition = pat
+		} else {
+			pmt := &ReportPMTTransition{
+				ProgramNumber: tr.programNumber, PreviousPCRPID: reportPID(tr.previousPcrPid), PCRPID: reportPID(tr.pcrPid),
+				ElementaryStreams: reportElementaryStreams(tr.streams), ElementaryStreamsAdded: reportElementaryStreams(tr.streamsAdded),
+				ElementaryStreamsRemoved: reportElementaryStreams(tr.streamsRemoved), StreamTypeChanges: []ReportStreamTypeChange{},
+			}
+			for _, c := range tr.streamTypeChanges {
+				pmt.StreamTypeChanges = append(pmt.StreamTypeChanges, ReportStreamTypeChange{
+					PID: reportPID(c.pid), PreviousStreamType: fmt.Sprintf("0x%02x", c.previousStreamType), StreamType: fmt.Sprintf("0x%02x", c.streamType), StreamTypeDescription: StreamTypeString(c.streamType),
+				})
+			}
+			item.ReportPMTTransition = pmt
+		}
+		r = append(r, item)
 	}
 	return r
 }

@@ -4,6 +4,7 @@ The parser has focused Go fuzz targets for its untrusted-input boundaries:
 
 - TS packets and adaptation fields
 - PAT and PMT sections, including TS-packet reassembly and multi-section table assembly
+- PAT and PMT version tracking during the analysis pass
 - descriptors
 - PES headers
 - 188-byte TS / 192-byte M2TS packet-size detection and PAT discovery
@@ -26,6 +27,7 @@ is recommended for routine changes:
 go test ./tsparser -run '^$' -fuzz '^FuzzTsPacketAndAdaptationField$' -fuzztime 5m
 go test ./tsparser -run '^$' -fuzz '^FuzzPsiSections$' -fuzztime 5m
 go test ./tsparser -run '^$' -fuzz '^FuzzPsiBuffering$' -fuzztime 5m
+go test ./tsparser -run '^$' -fuzz '^FuzzPsiTracking$' -fuzztime 5m
 go test ./tsparser -run '^$' -fuzz '^FuzzDescriptors$' -fuzztime 5m
 go test ./tsparser -run '^$' -fuzz '^FuzzPesHeader$' -fuzztime 5m
 go test ./tsparser -run '^$' -fuzz '^FuzzPacketDiscovery$' -fuzztime 5m

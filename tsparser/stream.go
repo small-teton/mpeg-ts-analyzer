@@ -189,7 +189,7 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 		programStart := pos
 
 		if report != nil && report.analysis != nil {
-			return analyzeAllPrograms(reader, patPrograms, programStart, options, packetSize, endOffset, report)
+			return analyzeAllPrograms(reader, pat, programStart, options, packetSize, endOffset, report)
 		}
 		if _, err = reader.Seek(pos, 0); err != nil {
 			return fmt.Errorf("file seek error: %w", err)
@@ -272,7 +272,8 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 		}
 
 		var analysis *pesAnalysis
-		analysis, err = bufferPes(reader, &pos, pmtPid, pcrPid, programs, options, packetSize, endOffset, report != nil)
+		tables := &trackedTables{pat: pat, programNumber: selectedProgram, pmt: pmt}
+		analysis, err = bufferPes(reader, &pos, pmtPid, pcrPid, programs, tables, options, packetSize, endOffset, report != nil)
 		if report != nil && analysis != nil {
 			report.Programs = []ReportProgram{reportProgram(selectedProgram, pmtPid, pmt.Pmt)}
 			report.SelectedProgramNumber = &selectedProgram
@@ -285,6 +286,8 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 			if analysis.bitrate != nil {
 				report.Bitrate = reportBitrate(analysis.bitrate)
 			}
+			report.PSITransitions = reportPsiTransitions(analysis.transitions)
+			reportPsiDiagnostics(report, analysis.psiWarnings)
 			if analysis.truncatedBytes > 0 {
 				report.Warnings = append(report.Warnings, ReportWarning{analysis.truncatedPos, truncatedPacketMessage(analysis.truncatedBytes)})
 			}

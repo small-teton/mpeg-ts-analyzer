@@ -53,12 +53,14 @@ func newPidStat() *pidStat { return &pidStat{buckets: make(map[int64]int64)} }
 
 // BitrateStats accumulates per-PID byte counts on a PCR time axis.
 type BitrateStats struct {
-	stats  map[uint16]*pidStat // counted PIDs (program PIDs + NULL)
+	stats  map[uint16]*pidStat // PIDs counted in any layout (program PIDs + NULL)
 	labels map[uint16]string   // PID -> human-readable label
 	// programPids is the set of PIDs that belong to the selected program
 	// (PAT, PMT, PCR and the elementary streams); NULL is excluded.
 	programPids map[uint16]bool
-	program     int // program_number for the header (0 = sole/default program)
+	// counted is the set of PIDs of the current layout: program PIDs and NULL.
+	counted map[uint16]bool
+	program int // program_number for the header (0 = sole/default program)
 
 	// PCR clock state
 	started      bool
@@ -76,15 +78,29 @@ func NewBitrateStats(program int, pmtPid, pcrPid uint16, programInfos []ProgramI
 		stats:       make(map[uint16]*pidStat),
 		labels:      make(map[uint16]string),
 		programPids: make(map[uint16]bool),
+		counted:     make(map[uint16]bool),
 		program:     program,
 		pending:     make(map[uint16]int64),
 	}
+	b.setLayout(pmtPid, pcrPid, programInfos)
+	return b
+}
 
+// setLayout makes the PIDs of a program layout the ones counted from now on.
+// After a PAT/PMT version change, a PID keeps the bytes it collected under
+// earlier layouts and takes the label of the latest layout that lists it, so a
+// PID present in several layouts is reported once.
+func (b *BitrateStats) setLayout(pmtPid, pcrPid uint16, programInfos []ProgramInfo) {
+	clear(b.counted)
 	track := func(pid uint16, label string, isProgram bool) {
+		if b.counted[pid] {
+			return
+		}
+		b.counted[pid] = true
 		if _, ok := b.stats[pid]; !ok {
 			b.stats[pid] = newPidStat()
-			b.labels[pid] = label
 		}
+		b.labels[pid] = label
 		if isProgram {
 			b.programPids[pid] = true
 		}
@@ -103,15 +119,14 @@ func NewBitrateStats(program int, pmtPid, pcrPid uint16, programInfos []ProgramI
 		track(pcrPid, "PCR", true)
 	}
 	track(nullPidValue, "NULL (mux-wide)", false)
-	return b
 }
 
 // CountPacket records one TS packet of pid. Each transport packet contributes a
 // fixed 188 bytes: any 192-byte timestamped-packet (M2TS) header is container
 // overhead, not part of the PID's transport packet. PIDs outside the selected
-// program are ignored.
+// program's current layout are ignored.
 func (b *BitrateStats) CountPacket(pid uint16) {
-	if _, ok := b.stats[pid]; !ok {
+	if !b.counted[pid] {
 		return
 	}
 	b.pending[pid] += tsPayloadSize
