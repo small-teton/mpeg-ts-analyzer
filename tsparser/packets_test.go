@@ -559,3 +559,57 @@ func TestPacketDetailSkipsPacketsWithoutPayload(t *testing.T) {
 		t.Errorf("unit of the first packet = %+v", u)
 	}
 }
+
+// TestPacketsPageSectionStarts lists the sections that start in each packet of
+// a page, from the packet's own bytes.
+func TestPacketsPageSectionStarts(t *testing.T) {
+	pat := patSectionN(3, 0, 1, [2]uint16{1, 0x1000})
+	pmt := pmtSectionN(1, 2, 0, 0, 0x100, [2]uint16{0x02, 0x100})
+	next := testSection(0x02, 7, 4, 1, 2, false, nil)
+	short := []byte{0x72, 0x00, 0x01, 0x00}
+	headerCut := rawPsiPacket(0x1000, true, 1, append(append([]byte{0x00}, longSection(179)...), pmt[:4]...))
+	tei := rawPsiPacket(0x0000, true, 2, append([]byte{0x00}, pat...))
+	tei[1] |= 0x80
+	scrambled := rawPsiPacket(0x0000, true, 3, append([]byte{0x00}, pat...))
+	scrambled[3] |= 0x80
+	packets := [][]byte{
+		rawPsiPacket(0x0000, true, 0, append([]byte{0x00}, pat...)),
+		rawPsiPacket(0x1000, true, 0, append(append(append([]byte{0x02, 0xAA, 0xBB}, pmt...), next...), short...)),
+		headerCut,
+		tei,
+		scrambled,
+		rawPsiPacket(0x1000, true, 2, []byte{200}),
+		rawPsiPacket(0x1000, false, 3, pmt),
+		pesStartPacket(0x100, 0, 90000),
+		rawPsiPacket(0x1000, true, 4, append([]byte{0x00}, longSection(300)[:183]...)),
+	}
+	want := []string{
+		`[{"table_id":"0x00","table_id_extension":1,"version_number":3,"current_next_indicator":1,"section_number":0,"last_section_number":1}]`,
+		`[{"table_id":"0x02","table_id_extension":1,"version_number":2,"current_next_indicator":1,"section_number":0,"last_section_number":0},{"table_id":"0x02","table_id_extension":7,"version_number":4,"current_next_indicator":0,"section_number":1,"last_section_number":2}]`,
+		`[{"table_id":"0x80","table_id_extension":1,"version_number":0,"current_next_indicator":1,"section_number":0,"last_section_number":0}]`,
+		"null", "null", "null", "null", "null",
+		`[{"table_id":"0x80","table_id_extension":1,"version_number":0,"current_next_indicator":1,"section_number":0,"last_section_number":0}]`,
+	}
+	for _, m2ts := range []bool{false, true} {
+		var buf bytes.Buffer
+		for _, packet := range packets {
+			if m2ts {
+				packet = wrapM2TS(packet)
+			}
+			buf.Write(packet)
+		}
+		path := t.TempDir() + "/sections.ts"
+		if err := os.WriteFile(path, buf.Bytes(), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		page, err := decodePacketsPage(t, path, options.Options{Count: 100})
+		if err != nil || len(page.Packets) != len(packets) {
+			t.Fatalf("m2ts=%v page = %+v %v", m2ts, page, err)
+		}
+		for i, packet := range page.Packets {
+			if got := toJSON(t, packet.Sections); got != want[i] {
+				t.Errorf("m2ts=%v packet %d sections = %s, want %s", m2ts, i, got, want[i])
+			}
+		}
+	}
+}

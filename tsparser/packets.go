@@ -60,6 +60,21 @@ type PacketSummary struct {
 	AdaptationFieldControl uint8    `json:"adaptation_field_control"`
 	ContinuityCounter      uint8    `json:"continuity_counter"`
 	PCRMs                  *float64 `json:"pcr_ms,omitempty"`
+	// Sections lists the long-form PSI sections that start in this packet.
+	Sections []PacketSection `json:"sections,omitempty"`
+}
+
+// PacketSection is the header of a long-form section (PAT, PMT and other
+// tables with section_syntax_indicator 1) that starts in a packet, as the
+// packet's own bytes give it. The section is not checked further: its CRC32
+// may lie in a later packet.
+type PacketSection struct {
+	TableID              string `json:"table_id"`
+	TableIDExtension     uint16 `json:"table_id_extension"`
+	VersionNumber        uint8  `json:"version_number"`
+	CurrentNextIndicator uint8  `json:"current_next_indicator"`
+	SectionNumber        uint8  `json:"section_number"`
+	LastSectionNumber    uint8  `json:"last_section_number"`
 }
 
 // packetFile gives random access to the packets of an input file.
@@ -194,7 +209,34 @@ func packetSummary(tp *TsPacket, offset int64) PacketSummary {
 	if tp.HasAf() && tp.adaptationField.PcrFlag() {
 		s.PCRMs = optionalFloat(float64(tp.Pcr())/float64(pcrTicksPerMs), true)
 	}
+	s.Sections = packetSectionStarts(tp)
 	return s
+}
+
+// packetSectionStarts reads the headers of the sections that start in a
+// payload_unit_start packet: from the pointer_field on, each section whose
+// first 8 bytes are in the packet and whose section_syntax_indicator is set,
+// until stuffing (0xFF), a short-form section, or the end of the packet. A
+// PES packet never qualifies: its payload starts with 0x00 0x00 0x01. Packets
+// with a transport error or a scrambled payload are skipped.
+func packetSectionStarts(tp *TsPacket) []PacketSection {
+	payload := tp.Payload()
+	if !tp.PayloadUnitStartIndicator() || tp.transportErrorIndicator != 0 || tp.transportScramblingControl != 0 || len(payload) == 0 || 1+int(payload[0]) > len(payload) {
+		return nil
+	}
+	var sections []PacketSection
+	for rest := payload[1+int(payload[0]):]; len(rest) >= 8 && rest[0] != 0xFF && rest[1]&0x80 != 0; {
+		sections = append(sections, PacketSection{
+			TableID: fmt.Sprintf("0x%02x", rest[0]), TableIDExtension: uint16(rest[3])<<8 | uint16(rest[4]),
+			VersionNumber: rest[5] >> 1 & 0x1F, CurrentNextIndicator: rest[5] & 0x01, SectionNumber: rest[6], LastSectionNumber: rest[7],
+		})
+		size, _ := psiSectionSize(rest)
+		if size >= len(rest) {
+			break
+		}
+		rest = rest[size:]
+	}
+	return sections
 }
 
 // readPacketsPage reads up to count packets starting at the first packet

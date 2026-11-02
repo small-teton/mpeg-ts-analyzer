@@ -34,6 +34,7 @@ func FuzzTsPacketAndAdaptationField(f *testing.F) {
 	f.Add(oversizedAdaptationField)
 	f.Add([]byte{0x47, 0x00, 0x00, 0x30, 0x01, 0x10})
 	f.Add([]byte{})
+	f.Add(rawPsiPacket(0x1000, true, 0, append([]byte{0x00}, pmtSectionN(1, 0, 0, 0, 0x100, [2]uint16{0x02, 0x100})...)))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		if len(data) > tsPayloadSize {
@@ -43,7 +44,9 @@ func FuzzTsPacketAndAdaptationField(f *testing.F) {
 		packet := NewTsPacket()
 		packet.Initialize(0, options.Options{})
 		packet.Append(data)
-		_ = packet.Parse()
+		if packet.Parse() == nil {
+			_ = packetSectionStarts(packet)
+		}
 
 		// Exercise adaptation-field parsing directly as well as through a TS
 		// packet. Its length byte and every optional-field flag are untrusted.

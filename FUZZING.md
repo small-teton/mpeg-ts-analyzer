@@ -2,7 +2,7 @@
 
 The parser has focused Go fuzz targets for its untrusted-input boundaries:
 
-- TS packets and adaptation fields
+- TS packets and adaptation fields, and the PSI section headers listed by `--output packets`
 - PAT and PMT sections, including TS-packet reassembly and multi-section table assembly
 - PAT and PMT version tracking during the analysis pass and the PSI layout
   report of `--output analysis`
