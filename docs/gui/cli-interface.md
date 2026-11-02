@@ -59,10 +59,11 @@ switching programs or screens never runs the CLI again.
   next to `psi_transitions` in the range analysis document: a packet's PID is
   looked up in the layout whose `[offset_bytes, end_offset_bytes)` contains the
   packet, and `transition_indices` links a layout to the changes that started
-  it. `psi_layout.sections` is a bounded summary (first and last copy, count),
-  not a per-packet index; the packet page carries what each section-start
-  packet says (`sections`: `table_id`, `table_id_extension`, version and
-  section numbers), which the GUI matches to a summary entry. See OPTIONS.md,
+  it. `psi_layout.sections` is a bounded list of runs (first and last copy,
+  count), not a per-packet index; the packet page carries what each
+  section-start packet says (`sections`: `table_id`, `table_id_extension`,
+  version and section numbers), which matches at most one run by PID, header
+  and offset, giving the copy's status (including invalid). See OPTIONS.md,
   "PSI layout of the range".
 - **Analysis start**: statistics start after the PAT section and the needed
   PMTs are complete, not at the first PAT. The output reports that offset (per

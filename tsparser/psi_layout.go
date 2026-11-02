@@ -16,13 +16,18 @@ import (
 // PID, from the first packet of that PID whose first section starts with
 // table_id 0x02. Which PIDs are PMT PIDs is only known at the end, because a
 // PMT may be sent on a PID before a later PAT announces it, so the report
-// keeps the PMT sections of the PIDs an applied PAT announced. A section
-// identical to the previous one with the same PID, table_id,
+// keeps the PMT sections of the PIDs an applied PAT announced.
+//
+// A section identical to the previous one with the same PID, table_id,
 // table_id_extension, current_next_indicator and section_number extends that
-// entry (a run) instead of adding one, and broken sections are counted per
-// PID, table and fault, so the log grows with table changes, not with
-// retransmissions. A run's first and last offsets bound its copies; they do
-// not say which section a packet in between carries (--output packets does).
+// entry (a run) instead of adding one, so the log grows with table changes and
+// PSI errors, not with retransmissions or the range length. Runs stay
+// unambiguous per PID: an invalid section, or data the section reader had to
+// drop, closes every valid run of the PID, so the next valid copy starts a new
+// run; and consecutive invalid copies with the same fault and header form one
+// invalid run, which anything else on the PID ends. For a packet that starts a
+// section, its PID, the section header and its offset therefore match at most
+// one entry: the one whose [pos, last] contains the offset.
 //
 // The layouts are not decoded again from the log: they are the first complete
 // PAT/PMT the analysis started from and the changes psiTracker applied, so they
@@ -41,32 +46,37 @@ type pidObservation struct {
 	first, last int64
 }
 
-// psiRunKey identifies the sections a run can extend. Broken sections are
-// keyed by their fault only: their header fields cannot be trusted.
+// psiRunKey identifies the valid sections a run can extend.
 type psiRunKey struct {
 	pid           uint16
 	tableID       uint8
-	fault         string
 	extension     uint16
 	currentNext   uint8
 	sectionNumber uint8
 }
 
-// psiSectionRun is one logged section and its identical repetitions.
+// psiSectionRun is one logged section and its identical repetitions, or a
+// series of consecutive invalid copies.
 type psiSectionRun struct {
 	key       psiRunKey
-	pos, last int64 // offsets of the packets where the first and last copies start
+	fault     string // "" for a valid section
+	pos, last int64  // offsets of the packets where the first and last copies start
 	count     int
 	data      []byte // the first copy
+	epoch     int    // the PID's epoch when the run started
 	status    string
 }
 
 type psiLayoutRecorder struct {
 	pids    [nullPidValue + 1]pidObservation
 	readers [nullPidValue + 1]*psiSectionReader // nil for PIDs that carry no PAT or PMT
+	// epoch counts the invalid sections and dropped data of each PID; a valid
+	// run is only extended within its epoch.
+	epoch   [nullPidValue + 1]int
+	latest  [nullPidValue + 1]*psiSectionRun // the run of the PID's previous section
 	runs    []*psiSectionRun
-	byKey   map[psiRunKey][]*psiSectionRun
-	applied map[string]bool // section bytes of every applied table
+	byKey   map[psiRunKey][]*psiSectionRun // valid runs
+	applied map[string]bool                // section bytes of every applied table
 }
 
 func newPsiLayoutRecorder() *psiLayoutRecorder {
@@ -92,8 +102,13 @@ func (r *psiLayoutRecorder) observe(tsPacket *TsPacket, pos int64) {
 		reader = &psiSectionReader{}
 		r.readers[pid] = reader
 	}
-	// Damaged packets are reported by the discovery and the tracker.
-	sections, _ := reader.push(tsPacket, pos)
+	// Damaged packets are reported by the discovery and the tracker; here they
+	// only end the runs of the PID, as an invalid section does.
+	sections, problems := reader.push(tsPacket, pos)
+	if len(problems) > 0 {
+		r.epoch[pid]++
+		r.latest[pid] = nil
+	}
 	for _, section := range sections {
 		r.addSection(pid, section)
 	}
@@ -109,20 +124,47 @@ func (r *psiLayoutRecorder) addSection(pid uint16, section psiSectionData) {
 	if data[0] != tableID {
 		return
 	}
-	key := psiRunKey{pid: pid, tableID: tableID, fault: psiSectionFault(data)}
-	if key.fault == "" {
-		key.extension, key.currentNext, key.sectionNumber = uint16(data[3])<<8|uint16(data[4]), data[5]&0x01, data[6]
+	if fault := psiSectionFault(data); fault != "" {
+		r.epoch[pid]++
+		if run := r.latest[pid]; run != nil && run.fault == fault && sameSectionHeader(run.data, data) {
+			run.count++
+			run.last = section.pos
+			return
+		}
+		run := &psiSectionRun{key: psiRunKey{pid: pid, tableID: tableID}, fault: fault, pos: section.pos, last: section.pos, count: 1, data: data}
+		r.runs = append(r.runs, run)
+		r.latest[pid] = run
+		return
 	}
+	key := psiRunKey{pid: pid, tableID: tableID, extension: uint16(data[3])<<8 | uint16(data[4]), currentNext: data[5] & 0x01, sectionNumber: data[6]}
 	runs := r.byKey[key]
-	if n := len(runs); n > 0 && (key.fault != "" || bytes.Equal(runs[n-1].data, data)) {
+	if n := len(runs); n > 0 && runs[n-1].epoch == r.epoch[pid] && bytes.Equal(runs[n-1].data, data) {
 		run := runs[n-1]
 		run.count++
 		run.last = section.pos
+		r.latest[pid] = run
 		return
 	}
-	run := &psiSectionRun{key: key, pos: section.pos, last: section.pos, count: 1, data: data}
+	run := &psiSectionRun{key: key, pos: section.pos, last: section.pos, count: 1, data: data, epoch: r.epoch[pid]}
 	r.runs = append(r.runs, run)
 	r.byKey[key] = append(runs, run)
+	r.latest[pid] = run
+}
+
+// sectionHeaderReadable reports whether a section has the long-form header
+// fields: table_id_extension, version_number, current_next_indicator,
+// section_number and last_section_number.
+func sectionHeaderReadable(data []byte) bool {
+	return len(data) >= 8 && data[1]&0x80 != 0
+}
+
+// sameSectionHeader reports whether two sections have the same header fields,
+// or both lack them.
+func sameSectionHeader(a, b []byte) bool {
+	if sectionHeaderReadable(a) != sectionHeaderReadable(b) {
+		return false
+	}
+	return !sectionHeaderReadable(a) || bytes.Equal(a[3:8], b[3:8])
 }
 
 // startsPmtSection reports whether the first section starting in a packet has
@@ -201,7 +243,7 @@ func (r *psiLayoutRecorder) classify() {
 	for _, run := range r.runs {
 		switch {
 		case run.status != "":
-		case run.key.fault != "":
+		case run.fault != "":
 			run.status = "invalid"
 		case r.applied[string(run.data)]:
 			run.status = "retransmission"
@@ -471,12 +513,13 @@ func reportPsiSection(run *psiSectionRun) ReportPSISection {
 	if run.key.tableID == 0x00 {
 		table = "pat"
 	}
-	s := ReportPSISection{OffsetBytes: run.pos, LastOffsetBytes: run.last, Count: run.count, PID: reportPID(run.key.pid), Table: table, Status: run.status, InvalidReason: run.key.fault}
-	if run.key.fault != "" {
+	s := ReportPSISection{OffsetBytes: run.pos, LastOffsetBytes: run.last, Count: run.count, PID: reportPID(run.key.pid), Table: table, Status: run.status, InvalidReason: run.fault}
+	data := run.data
+	if !sectionHeaderReadable(data) {
 		return s
 	}
-	header := &ReportPSISectionHeader{VersionNumber: run.data[5] >> 1 & 0x1F, SectionNumber: run.data[6], LastSectionNumber: run.data[7], CurrentNextIndicator: run.key.currentNext}
-	extension := run.key.extension
+	header := &ReportPSISectionHeader{VersionNumber: data[5] >> 1 & 0x1F, SectionNumber: data[6], LastSectionNumber: data[7], CurrentNextIndicator: data[5] & 0x01}
+	extension := uint16(data[3])<<8 | uint16(data[4])
 	if table == "pat" {
 		header.TransportStreamID = &extension
 	} else {

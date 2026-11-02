@@ -10,15 +10,16 @@ import (
 )
 
 // sectionSummary lists each logged section as
-// "pid table status count first..last [version/section/last cni]", with
-// offsets in packets.
+// "pid table status count first..last [version section/last cni] [reason]",
+// with offsets in packets.
 func sectionSummary(sections []ReportPSISection, packetSize int64) string {
 	var got []string
 	for _, s := range sections {
 		line := fmt.Sprintf("%s %s %s %d %d..%d", s.PID, s.Table, s.Status, s.Count, s.OffsetBytes/packetSize, s.LastOffsetBytes/packetSize)
 		if s.ReportPSISectionHeader != nil {
 			line += fmt.Sprintf(" v%d %d/%d cni%d", s.VersionNumber, s.SectionNumber, s.LastSectionNumber, s.CurrentNextIndicator)
-		} else {
+		}
+		if s.InvalidReason != "" {
 			line += " " + s.InvalidReason
 		}
 		got = append(got, line)
@@ -229,10 +230,10 @@ func TestPsiLayoutSyntheticStream(t *testing.T) {
 			"0x1000 pmt applied 3 1..8 v0 0/0 cni1",
 			"0x0000 pat applied 2 4..5 v0 0/0 cni1",
 			"0x1000 pmt applied 2 7..9 v0 0/0 cni1",
-			"0x1000 pmt invalid 2 13..14 invalid_crc32",
+			"0x1000 pmt invalid 2 13..14 v0 0/0 cni1 invalid_crc32",
 			"0x0000 pat invalid 1 15..15 malformed",
-			"0x0000 pat invalid 1 16..16 section_number_beyond_last",
-			"0x1000 pmt invalid 1 17..17 parse_error",
+			"0x0000 pat invalid 1 16..16 v3 2/1 cni1 section_number_beyond_last",
+			"0x1000 pmt invalid 1 17..17 v2 0/0 cni1 parse_error",
 			"0x1000 pmt not_applied 1 18..18 v1 0/0 cni0",
 			"0x1000 pmt applied 1 20..20 v1 0/0 cni1",
 			"0x1000 pmt applied 1 20..20 v1 0/0 cni1",
@@ -257,10 +258,10 @@ func TestPsiLayoutSyntheticStream(t *testing.T) {
 			"0x1000 13 1..25 pmt/1,pmt/2",
 			"0x1fff 1 2..2 null",
 		}, "\n"))
-		// Header fields are left out of invalid sections, and the PMT fields
-		// of a program without a known PMT.
-		if invalid := toJSON(t, layout.Sections[3]); strings.Contains(invalid, "version_number") {
-			t.Errorf("invalid section: %s", invalid)
+		// Header fields are left out of a section without a readable header,
+		// and the PMT fields of a program without a known PMT.
+		if malformed := toJSON(t, layout.Sections[4]); strings.Contains(malformed, "version_number") {
+			t.Errorf("malformed section: %s", malformed)
 		}
 		if unknown := toJSON(t, layout.Layouts[0].Programs[2]); unknown != `{"program_number":4,"pmt_pid":"0x1004","elementary_streams":[]}` {
 			t.Errorf("program without PMT: %s", unknown)
@@ -312,5 +313,128 @@ func TestPsiLayoutPmtBeforeItsPat(t *testing.T) {
 			"9..10 [0] PAT v1@8 | 1 0x1100 v0@2 PCR 0x0100 0x0100:0x02",
 			"10..12 [1] PAT v1@8 | 1 0x1100 v1@9 PCR 0x0100 0x0100:0x02 0x0101:0x03",
 		}, "\n"))
+	}
+}
+
+// lookupSections finds, for every section start of the packet page, the
+// psi_layout.sections entries with its PID and header whose interval contains
+// its offset, and returns the status of each as "packet:status", or
+// "packet:N matches" when there is not exactly one.
+func lookupSections(page PacketsPage, sections []ReportPSISection, packetSize int64) []string {
+	var got []string
+	for _, packet := range page.Packets {
+		for _, header := range packet.Sections {
+			var matches []string
+			for _, s := range sections {
+				if s.PID != packet.PID || s.ReportPSISectionHeader == nil || packet.OffsetBytes < s.OffsetBytes || packet.OffsetBytes > s.LastOffsetBytes {
+					continue
+				}
+				extension := s.TransportStreamID
+				if extension == nil {
+					extension = s.ProgramNumber
+				}
+				if *extension == header.TableIDExtension && s.VersionNumber == header.VersionNumber && s.CurrentNextIndicator == header.CurrentNextIndicator &&
+					s.SectionNumber == header.SectionNumber && s.LastSectionNumber == header.LastSectionNumber {
+					matches = append(matches, s.Status)
+				}
+			}
+			if len(matches) == 1 {
+				got = append(got, fmt.Sprintf("%d:%s", packet.OffsetBytes/packetSize, matches[0]))
+			} else {
+				got = append(got, fmt.Sprintf("%d:%d matches", packet.OffsetBytes/packetSize, len(matches)))
+			}
+		}
+	}
+	return got
+}
+
+// TestPsiLayoutRunsAreUnambiguous sends a two-section PMT whose sections
+// alternate, with CRC-corrupted copies in between: once, then twice in a row.
+// Each corruption ends the valid runs of the PID, consecutive corrupted copies
+// form one invalid run with the copy's header, and every section start of the
+// packet page matches exactly one entry.
+func TestPsiLayoutRunsAreUnambiguous(t *testing.T) {
+	section0 := pmtSectionN(1, 0, 0, 1, 0x100, [2]uint16{0x02, 0x100})
+	section1 := pmtSectionN(1, 0, 1, 1, 0x100, [2]uint16{0x03, 0x101})
+	corrupted := bytes.Clone(section1)
+	corrupted[len(corrupted)-1] ^= 0xFF
+	s := newTrackingStream()
+	s.section(0x0000, patSection([2]uint16{1, 0x1000})).section(0x0000, patSection([2]uint16{1, 0x1000}))
+	sendPmt := func(rounds int) {
+		for range rounds {
+			s.section(0x1000, section0).section(0x1000, section1)
+		}
+	}
+	sendPmt(2)
+	s.pcr(0x100, 0).pes(0x100, 0).pes(0x101, 0)
+	sendPmt(3)
+	s.section(0x1000, corrupted)
+	sendPmt(3)
+	s.section(0x1000, corrupted).section(0x1000, corrupted)
+	sendPmt(3)
+	s.pcr(0x100, 40).pes(0x100, 40)
+	for _, m2ts := range []bool{false, true} {
+		packetSize := int64(188)
+		if m2ts {
+			packetSize = 192
+		}
+		path := s.write(t, m2ts)
+		report, err := decodeRangeAnalysis(t, path, options.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		checkSummary(t, "sections", sectionSummary(report.PSILayout.Sections, packetSize), strings.Join([]string{
+			"0x0000 pat applied 2 0..1 v0 0/0 cni1",
+			"0x1000 pmt applied 5 2..13 v0 0/1 cni1",
+			"0x1000 pmt applied 5 3..14 v0 1/1 cni1",
+			"0x1000 pmt invalid 1 15..15 v0 1/1 cni1 invalid_crc32",
+			"0x1000 pmt retransmission 3 16..20 v0 0/1 cni1",
+			"0x1000 pmt retransmission 3 17..21 v0 1/1 cni1",
+			"0x1000 pmt invalid 2 22..23 v0 1/1 cni1 invalid_crc32",
+			"0x1000 pmt retransmission 3 24..28 v0 0/1 cni1",
+			"0x1000 pmt retransmission 3 25..29 v0 1/1 cni1",
+		}, "\n"))
+		page, err := decodePacketsPage(t, path, options.Options{Count: 100})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := strings.Join(lookupSections(page, report.PSILayout.Sections, packetSize), " ")
+		want := "0:applied 1:applied 2:applied 3:applied 4:applied 5:applied 9:applied 10:applied 11:applied 12:applied 13:applied 14:applied " +
+			"15:invalid 16:retransmission 17:retransmission 18:retransmission 19:retransmission 20:retransmission 21:retransmission " +
+			"22:invalid 23:invalid 24:retransmission 25:retransmission 26:retransmission 27:retransmission 28:retransmission 29:retransmission"
+		if got != want {
+			t.Errorf("m2ts=%v lookup:\n%s\nwant:\n%s", m2ts, got, want)
+		}
+	}
+}
+
+// TestPsiLayoutRecorderRunBoundaries feeds packets of PID 0 directly: data the
+// section reader drops ends the valid run like an invalid section does, and
+// malformed copies extend one run only when their headers agree.
+func TestPsiLayoutRecorderRunBoundaries(t *testing.T) {
+	pat := patSection([2]uint16{1, 0x1000})
+	noSyntax := []byte{0x00, 0x30, 0x05, 0x00, 0x01, 0xC1, 0x00, 0x00}
+	shortHeader := []byte{0x00, 0xB0, 0x05, 0x00, 0x01, 0xC1, 0x00, 0x00}
+	tei := rawPsiPacket(0, true, 2, append([]byte{0x00}, pat...))
+	tei[1] |= 0x80
+	r := newPsiLayoutRecorder()
+	for i, raw := range [][]byte{
+		rawPsiPacket(0, true, 0, append([]byte{0x00}, pat...)),
+		rawPsiPacket(0, true, 1, append([]byte{0x00}, pat...)),
+		tei,
+		rawPsiPacket(0, true, 3, append([]byte{0x00}, pat...)),
+		rawPsiPacket(0, true, 4, append([]byte{0x00}, noSyntax...)),
+		rawPsiPacket(0, true, 5, append([]byte{0x00}, noSyntax...)),
+		rawPsiPacket(0, true, 6, append([]byte{0x00}, shortHeader...)),
+		rawPsiPacket(0, true, 7, append([]byte{0x00}, shortHeader...)),
+	} {
+		r.observe(parsedTsPacket(t, raw), int64(i))
+	}
+	var got []string
+	for _, run := range r.runs {
+		got = append(got, fmt.Sprintf("%d..%d x%d %s", run.pos, run.last, run.count, run.fault))
+	}
+	if want := "0..1 x2 |3..3 x1 |4..5 x2 malformed|6..7 x2 malformed"; strings.Join(got, "|") != want {
+		t.Errorf("runs %q, want %q", strings.Join(got, "|"), want)
 	}
 }
