@@ -9,7 +9,7 @@ repository = "https://github.com/small-teton/mpeg-ts-analyzer"
 publish = false
 
 [dependencies]
-eframe = "0.37.0"
+eframe = { version = "0.37.0", features = ["persistence"] }
 egui_plot = "0.38.0"
 rfd = "0.17.2"
 serde = { version = "1.0.229", features = ["derive"] }
