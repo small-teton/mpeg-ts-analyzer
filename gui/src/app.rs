@@ -47,7 +47,7 @@ pub struct App {
     /// Start was pressed for a range large enough to ask first.
     confirm_start: bool,
     running: Option<Running>,
-    /// Result of the last completed analysis; the screens show sample data until then.
+    /// Result of the last completed analysis; the screens show an empty state until then.
     analysis: Option<Box<AnalysisReport>>,
     /// Plot series of `analysis`, derived once rather than every frame.
     plots: Option<Plots>,
@@ -533,19 +533,28 @@ impl eframe::App for App {
                     Screen::Packets => {
                         match (&self.cli, &mut self.packet_pages) {
                             (Ok(cli), Some(pages)) if cli.packet_outputs => pages.show(ui, cli),
-                            _ => empty_state(
+                            (Ok(_), Some(_)) => empty_state(
                                 ui,
                                 "Packets are not available",
                                 "This CLI cannot page packets (--output packets). Choose a newer CLI in Settings.",
+                            ),
+                            (Err(err), _) => empty_state(ui, "Packets are not available", err),
+                            (Ok(_), None) => empty_state(
+                                ui,
+                                "Packets are not available",
+                                "Packet paging was not set up for this analysis. Press Start again.",
                             ),
                         }
                         None
                     }
                 },
                 _ => {
-                    let hint = match &self.input {
-                        None => "Open a file, choose the scan range and press Start.",
-                        Some(_) => "Choose the scan range and press Start.",
+                    // Say what actually blocks Start: the CLI, the file, or nothing.
+                    let hint = match (&self.cli, &self.input, &self.file_problem) {
+                        (Err(err), _, _) => err.as_str(),
+                        (Ok(_), None, _) => "Open a file, choose the scan range and press Start.",
+                        (Ok(_), Some(_), Some(_)) => "This file cannot be analyzed. Open another MPEG-TS file.",
+                        (Ok(_), Some(_), None) => "Choose the scan range and press Start.",
                     };
                     empty_state(ui, "Not analyzed yet", hint);
                     None
