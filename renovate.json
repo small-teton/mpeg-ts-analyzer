@@ -5,7 +5,10 @@
     ":enableVulnerabilityAlerts",
     "helpers:pinGitHubActionDigests",
     ":timezone(Asia/Tokyo)",
-    "schedule:weekly"
+    "schedule:weekly",
+    ":maintainLockFilesWeekly",
+    "security:minimumReleaseAgeCrate",
+    "customManagers:githubActionsVersions"
   ],
   "major": {
     "dependencyDashboardApproval": true
@@ -61,11 +64,29 @@
       "groupName": "CI tools"
     },
     {
+      "description": "Group Rust crates of the GUI; Cargo.lock maintenance runs weekly through :maintainLockFilesWeekly",
+      "matchManagers": [
+        "cargo"
+      ],
+      "groupName": "Rust dependencies"
+    },
+    {
       "description": "Group GitHub Actions updates",
       "matchManagers": [
         "github-actions"
       ],
       "groupName": "GitHub Actions"
     }
-  ]
+  ],
+  "vulnerabilityAlerts": {
+    "description": "Security fixes bypass the weekly schedule, the crate release-age delay and major-update approval, but are never automerged",
+    "schedule": [],
+    "minimumReleaseAge": null,
+    "dependencyDashboardApproval": false,
+    "automerge": false,
+    "labels": [
+      "security"
+    ]
+  },
+  "osvVulnerabilityAlerts": true
 }

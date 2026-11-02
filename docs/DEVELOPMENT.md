@@ -171,8 +171,41 @@ Editors using rust-analyzer need the GUI manifest declared, because
 
 The pre-push hook runs `make gui-lint` and `make gui-test` when `gui/` or the
 `Makefile` changed.
-In CI, the `GUI` workflow runs for changes under `gui/` and to the `Makefile`; the Go jobs are
-skipped for pull requests that change only `gui/` and `docs/gui/`.
+In CI, the `GUI` workflow runs for every pull request and reports one aggregate
+check, `gui-ci`. Its lint and test jobs run only when `gui/`, the `Makefile`,
+`renovate.json` or the workflow changed; otherwise they are skipped and `gui-ci`
+passes. The Go jobs are skipped for pull requests that change only `gui/` and
+`docs/gui/`.
+
+## Dependency and supply-chain checks
+
+| Check | Where | What it catches |
+|---|---|---|
+| Renovate | `renovate.json` | Weekly grouped updates (Go, Rust, GitHub Actions, CI tools), weekly `Cargo.lock` maintenance, and immediate security pull requests |
+| Dependabot alerts | repository settings | Advisories for the dependency graph (`go.mod`, `gui/Cargo.lock`, Actions); Renovate reads them, and also OSV, to open security pull requests |
+| `govulncheck` | `Go` workflow | Go advisories that reach the CLI's code, on pull requests, `master` and weekly |
+| `cargo-audit` | `GUI` workflow | RustSec advisories in `gui/Cargo.lock`, on GUI changes, every push to `master` and weekly |
+| Dependency review | `Dependency review` workflow | A pull request that adds a dependency version with a known advisory |
+| CodeQL | `CodeQL` workflow | Code-level issues in the Go CLI and the Rust GUI |
+
+Renovate waits three days before proposing a newly published crate
+(`security:minimumReleaseAgeCrate`), so a release that crates.io pulls in its
+first days is not adopted. Security fixes skip that delay, the weekly schedule
+and major-update approval, and are never automerged: review them like any other
+pull request once CI passes.
+
+A scheduled `govulncheck` or `cargo-audit` failure opens an issue labeled
+`security` (one per tool; later failures comment on it), because nothing else
+would report an advisory against unchanged dependencies.
+
+`cargo-audit` fails only for vulnerabilities. Unmaintained, unsound or yanked
+crates appear as warnings in the job log; most come in through egui and `rfd`
+and are resolved by updating those crates.
+
+GitHub Actions are pinned to full commit SHAs and tools to exact versions
+(`cargo-audit` through a `# renovate:` comment), all updated by Renovate.
+Release-time measures for the GUI (checksums, SBOM, build provenance, code
+signing) are planned in [`docs/gui/release-security.md`](gui/release-security.md).
 
 ## README demo
 
