@@ -674,3 +674,25 @@ func TestBufferPesMaxPcrIntervalSegments(t *testing.T) {
 		})
 	}
 }
+
+func TestBufferPsiTruncatedLastPacket(t *testing.T) {
+	// Input ends mid-packet: buffering stops as at EOF instead of failing.
+	patPayload := []byte{0x00, 0xB0, 0x0D, 0x00, 0x3F, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0, 0x3F, 0x2D, 0xBC, 0xB0, 0x53}
+	data := append(buildTsPacket(0x0000, true, 0, patPayload), 0x47, 0x40)
+	var pos int64
+	pat := NewPat()
+	if err := BufferPsi(bytes.NewReader(data), &pos, 0x0000, pat, options.Options{}, 188, 0); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if pos != 188 {
+		t.Errorf("pos = %d, want 188", pos)
+	}
+}
+
+func TestTrailingBytesAtEOFReadError(t *testing.T) {
+	// Only an end of input marks the leftover bytes as a truncated packet.
+	r := &errReader{failAt: 0}
+	if n := trailingBytesAtEOF(r, make([]byte, 188), 100); n != 0 {
+		t.Errorf("trailingBytesAtEOF = %d, want 0", n)
+	}
+}

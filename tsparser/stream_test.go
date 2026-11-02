@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -1333,5 +1334,143 @@ func TestParseTsFile_NetworkOnlyPat(t *testing.T) {
 	}
 	if err := parseTextWithoutOutput(t, f.Name()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+const (
+	sample188Path = "../sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts"
+	sample192Path = "../sample_data/sample_192byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts"
+)
+
+// writeTruncatedSample copies a sample and appends an incomplete packet, as a
+// capture cut off mid-packet would end.
+func writeTruncatedSample(t *testing.T, sample string, extra int) (path string, sampleSize int64) {
+	t.Helper()
+	data, err := os.ReadFile(sample)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path = t.TempDir() + "/truncated.ts"
+	if err := os.WriteFile(path, append(data, bytes.Repeat([]byte{0x47}, extra)...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path, int64(len(data))
+}
+
+func TestParseTsFile_TruncatedLastPacketText(t *testing.T) {
+	path, sampleSize := writeTruncatedSample(t, sample188Path, 100)
+	var err error
+	out := captureStdout(t, func() { err = ParseTsFile(path, options.Options{}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf("0x%08x ignored 100 trailing bytes (incomplete packet at end of input)", sampleSize)
+	if !strings.Contains(out, want) {
+		t.Errorf("missing truncation notice %q in:\n%s", want, out)
+	}
+	if !strings.Contains(out, "Compliance Check Results:") || strings.Contains(out, "retrying PAT discovery") {
+		t.Errorf("analysis results were not reported:\n%s", out)
+	}
+}
+
+func TestParseTsFile_TruncatedLastPacketJSON(t *testing.T) {
+	for _, tc := range []struct {
+		sample string
+		extra  int
+	}{
+		{sample188Path, 100},
+		{sample188Path, 1},
+		{sample188Path, 187},
+		{sample192Path, 100},
+		{sample192Path, 191},
+	} {
+		path, sampleSize := writeTruncatedSample(t, tc.sample, tc.extra)
+		opts := options.Options{Format: "json", DumpPcrJitter: true, DumpBitrate: true}
+		report, err := decodeJSONReport(t, func() error { return ParseTsFile(path, opts) })
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := ReportWarning{OffsetBytes: sampleSize, Message: fmt.Sprintf("ignored %d trailing bytes (incomplete packet at end of input)", tc.extra)}
+		if len(report.Warnings) != 1 || report.Warnings[0] != want {
+			t.Fatalf("%s +%d: warnings = %+v, want [%+v]", tc.sample, tc.extra, report.Warnings, want)
+		}
+
+		// Apart from the warning, the result matches the untruncated input.
+		whole, err := decodeJSONReport(t, func() error { return ParseTsFile(tc.sample, opts) })
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(whole.Warnings) != 0 {
+			t.Fatalf("%s: unexpected warnings for an input ending on a packet boundary: %+v", tc.sample, whole.Warnings)
+		}
+		report.Warnings, report.Input = whole.Warnings, whole.Input
+		got, _ := json.Marshal(report)
+		expected, _ := json.Marshal(whole)
+		if !bytes.Equal(got, expected) {
+			t.Errorf("%s +%d: report differs from untruncated input\ngot:  %s\nwant: %s", tc.sample, tc.extra, got, expected)
+		}
+	}
+}
+
+func TestParseTsFile_TruncatedTailWithLimit(t *testing.T) {
+	path, sampleSize := writeTruncatedSample(t, sample188Path, 100)
+	for _, tc := range []struct {
+		name        string
+		offset      int64
+		limit       int64
+		wantWarning bool
+	}{
+		{"limit ends before the tail", 0, sampleSize, false},
+		{"limit ends exactly at EOF", 0, sampleSize + 100, true},
+		{"limit ends past EOF", 0, sampleSize + 150, true},
+		{"offset range ends exactly at EOF", 188 * 100, sampleSize + 100 - 188*100, true},
+		// A range cut mid-packet inside the file is not a truncated input.
+		{"limit ends mid-packet inside the file", 0, sampleSize - 188*10 + 50, false},
+	} {
+		opts := options.Options{Format: "json", Offset: tc.offset, Limit: tc.limit}
+		report, err := decodeJSONReport(t, func() error { return ParseTsFile(path, opts) })
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if report.Status != "complete" {
+			t.Fatalf("%s: status = %s", tc.name, report.Status)
+		}
+		want := []ReportWarning{}
+		if tc.wantWarning {
+			want = []ReportWarning{{OffsetBytes: sampleSize, Message: "ignored 100 trailing bytes (incomplete packet at end of input)"}}
+		}
+		if fmt.Sprint(report.Warnings) != fmt.Sprint(want) {
+			t.Errorf("%s: warnings = %+v, want %+v", tc.name, report.Warnings, want)
+		}
+	}
+}
+
+func TestParseTsFile_BufferedMatchesUnbufferedText(t *testing.T) {
+	// Reading through the buffer must not change any output, including the
+	// offsets printed by the packet-level dumps.
+	opts := options.Options{DumpHeader: true, DumpPsi: true, DumpPesHeader: true, DumpTimestamp: true, DumpPcrJitter: true, DumpBitrate: true}
+	for _, sample := range []string{sample188Path, sample192Path} {
+		for _, rangeOpts := range []options.Options{{}, {Offset: 188 * 192 * 3, Limit: 188 * 192 * 2}} {
+			opts.Offset, opts.Limit = rangeOpts.Offset, rangeOpts.Limit
+			buffered := captureStdout(t, func() {
+				if err := ParseTsFile(sample, opts); err != nil {
+					t.Fatal(err)
+				}
+			})
+			f, err := os.Open(sample)
+			if err != nil {
+				t.Fatal(err)
+			}
+			unbuffered := captureStdout(t, func() {
+				fmt.Println("Input file: ", sample)
+				if err := parseTsReader(f, opts); err != nil {
+					t.Fatal(err)
+				}
+			})
+			_ = f.Close()
+			if buffered != unbuffered {
+				t.Errorf("%s offset=%d: buffered output differs from unbuffered", sample, opts.Offset)
+			}
+		}
 	}
 }

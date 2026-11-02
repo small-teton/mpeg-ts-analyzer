@@ -177,6 +177,14 @@ must not be matched. `status: "incomplete"` exits 0 for compatibility with text
 mode; automation should require `status == "complete"` instead of relying on
 the exit code alone.
 
+An input that ends with an incomplete packet, such as a capture cut off
+mid-packet, is analyzed up to the last complete packet. The leftover bytes are
+reported as a warning at the offset where the incomplete packet starts (in text
+mode as a line such as `0x0004c0dc ignored 100 trailing bytes (incomplete packet
+at end of input)`) and do not change the analysis result. With `--limit`, this
+applies when the range reaches the end of the input; a range that ends
+mid-packet inside the file reports nothing.
+
 In a bitrate result, `pids` contains only selected-program PIDs and
 `program_average_bps` / `program_peak_1s_bps` aggregate those rows. Mux-wide
 NULL stuffing is reported separately as `null_pid` and is excluded from the

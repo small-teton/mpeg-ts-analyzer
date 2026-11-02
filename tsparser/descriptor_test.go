@@ -17,11 +17,18 @@ func captureStdout(t *testing.T, f func()) string {
 		t.Fatalf("os.Pipe: %s", err)
 	}
 	os.Stdout = w
+	// Drain concurrently: output larger than the pipe buffer would otherwise
+	// block f forever.
+	var buf bytes.Buffer
+	copied := make(chan error, 1)
+	go func() {
+		_, err := io.Copy(&buf, r)
+		copied <- err
+	}()
 	f()
 	_ = w.Close()
 	os.Stdout = old
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, r); err != nil {
+	if err := <-copied; err != nil {
 		t.Fatalf("io.Copy: %s", err)
 	}
 	return buf.String()

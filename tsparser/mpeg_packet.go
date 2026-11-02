@@ -29,10 +29,11 @@ func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, 
 	tsPacket := NewTsPacket()
 
 	for endOffset <= 0 || *pos+int64(packetSize) <= endOffset {
-		size, err := reader.Read(tsBuffer)
-		if err == io.EOF {
+		size, err := io.ReadFull(reader, tsBuffer)
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			// A trailing partial packet cannot carry a usable section; stop as at EOF.
 			break
-		} else if err != nil || size != packetSize {
+		} else if err != nil {
 			return fmt.Errorf("file read error: %w", err)
 		}
 
@@ -89,6 +90,34 @@ type pesAnalysis struct {
 	anomalies  *TimestampAnomaly
 	jitter     *PcrJitter
 	bitrate    *BitrateStats
+	// truncatedBytes is the size of an incomplete packet left at the end of the
+	// input (0 when the input ends on a packet boundary), starting at truncatedPos.
+	truncatedBytes int
+	truncatedPos   int64
+}
+
+func truncatedPacketMessage(size int) string {
+	return fmt.Sprintf("ignored %d trailing bytes (incomplete packet at end of input)", size)
+}
+
+// trailingBytesAtEOF handles a --limit range that ends less than a packet
+// after the last complete one. It returns the number of leftover bytes only when
+// the input also ends there; a range that merely ends mid-stream is not a
+// truncated input. Detecting an input that ends exactly at the limit reads one
+// byte past it.
+func trailingBytesAtEOF(reader io.Reader, buf []byte, rest int64) int {
+	if rest <= 0 || rest >= int64(len(buf)) {
+		return 0
+	}
+	n, err := io.ReadFull(reader, buf[:rest])
+	if err == nil {
+		if _, err = io.ReadFull(reader, buf[:1]); err != io.EOF {
+			return 0
+		}
+	} else if err != io.ErrUnexpectedEOF {
+		return 0
+	}
+	return n
 }
 
 func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos []ProgramInfo, options options.Options, packetSize int, endOffset int64, quiet bool) (*pesAnalysis, error) {
@@ -130,13 +159,20 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		}
 	}
 	tsPacket := NewTsPacket()
+	var truncatedBytes int
+	var truncatedPos int64
 
 	for endOffset <= 0 || *pos+int64(packetSize) <= endOffset {
-		size, err := reader.Read(tsBuffer)
+		size, err := io.ReadFull(reader, tsBuffer)
 		if err == io.EOF {
 			break
-		} else if err != nil || size != packetSize {
-			return nil, fmt.Errorf("file read error: %s", err)
+		} else if err == io.ErrUnexpectedEOF {
+			// Captures cut off mid-packet are common; keep the analysis of the
+			// complete packets and report the leftover bytes.
+			truncatedBytes = size
+			break
+		} else if err != nil {
+			return nil, fmt.Errorf("file read error: %w", err)
 		}
 
 		tsData := tsBuffer
@@ -231,6 +267,16 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		*pos += int64(size)
 	}
 
+	if truncatedBytes == 0 && endOffset > 0 {
+		truncatedBytes = trailingBytesAtEOF(reader, tsBuffer, endOffset-*pos)
+	}
+	if truncatedBytes > 0 {
+		truncatedPos = *pos
+		if !quiet {
+			fmt.Printf("0x%08x %s\n", *pos, truncatedPacketMessage(truncatedBytes))
+		}
+	}
+
 	// The final PES of each elementary stream never sees a following PUSI, so
 	// parse and emit it here (best effort) rather than dropping it at EOF.
 	pids := make([]uint16, 0, len(pesMap))
@@ -255,7 +301,7 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 	}
 
 	report := newComplianceReport(pcrInterval.maxMs(), pcrInterval.intervals, maxDelay, pcrPtsSamples)
-	result := &pesAnalysis{compliance: report, continuity: continuity, anomalies: anomaly}
+	result := &pesAnalysis{compliance: report, continuity: continuity, anomalies: anomaly, truncatedBytes: truncatedBytes, truncatedPos: truncatedPos}
 	if options.DumpPcrJitter {
 		result.jitter = &pcrJitter
 	}
