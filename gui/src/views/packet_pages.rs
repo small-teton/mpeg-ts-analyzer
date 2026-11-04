@@ -14,10 +14,10 @@ use super::packets::{
 };
 use crate::cli::{self, Cli, Request};
 use crate::icons;
+use crate::psi::{NULL_PID, PsiLayout};
 use crate::range_bar;
 use crate::report::{
     AnalysisReport, PacketDetail, PacketLayer, PacketSummary, PacketUnit, PacketsPage,
-    stream_type_name,
 };
 use crate::theme;
 
@@ -25,17 +25,15 @@ pub const PAGE_SIZE: u64 = 100;
 /// Pages kept in memory besides the one shown.
 const CACHED_PAGES: usize = 4;
 
-const NULL_PID: &str = "0x1fff";
-
 /// (title, width, description shown on hover)
-const COLUMNS: [(&str, f32, &str); 8] = [
+const COLUMNS: [(&str, f32, &str); 9] = [
     ("#", 64.0, "Packet number within the analysis range"),
     ("Offset", 100.0, "Byte offset of the packet in the file"),
     ("PID", 64.0, "Packet identifier"),
     (
         "Type",
         150.0,
-        "What the PID carries, from the analysis of this range",
+        "What the PID carries in the PAT/PMT layout in effect at this packet",
     ),
     (
         "PUSI",
@@ -52,7 +50,16 @@ const COLUMNS: [(&str, f32, &str); 8] = [
         34.0,
         "continuity_counter: 4-bit counter that increments with each packet of the same PID",
     ),
-    ("Notes", 220.0, "Problems in this packet's header"),
+    (
+        "Sections",
+        190.0,
+        "PAT/PMT sections that start in this packet, and whether the analysis applied the copy, saw it repeated, did not apply it, or found it invalid",
+    ),
+    (
+        "Notes",
+        260.0,
+        "PAT/PMT changes this packet completed, and problems in its header",
+    ),
 ];
 
 /// Where the packets of the analyzed range are: known once the first page
@@ -130,8 +137,8 @@ pub struct PacketPages {
     detail: Option<(u64, Fetch<PacketDetail>)>,
     /// A packet to show once the geometry is known.
     pending: Option<u64>,
-    /// What each PID carries, and the PIDs offered in the filter.
-    labels: BTreeMap<String, String>,
+    /// What each PID carries where, and the PIDs offered in the filter.
+    psi: PsiLayout,
     hidden_pids: BTreeSet<String>,
     highlight: Option<(u64, FieldSelection)>,
 }
@@ -152,7 +159,7 @@ impl PacketPages {
             selected: None,
             detail: None,
             pending: None,
-            labels: pid_labels(report),
+            psi: PsiLayout::new(report),
             hidden_pids: BTreeSet::new(),
             highlight: None,
         }
@@ -173,7 +180,7 @@ impl PacketPages {
             selected: None,
             detail: None,
             pending: None,
-            labels: BTreeMap::new(),
+            psi: PsiLayout::default(),
             hidden_pids: BTreeSet::new(),
             highlight: None,
         }
@@ -368,7 +375,7 @@ impl PacketPages {
 
     /// Checkbox per PID seen in the analysis, so any combination can be shown.
     fn pid_filter(&mut self, ui: &mut egui::Ui) {
-        let total = self.labels.len();
+        let total = self.psi.pids().len();
         let shown = total - self.hidden_pids.len();
         let label = if shown == total {
             "PIDs: all".to_owned()
@@ -381,11 +388,11 @@ impl PacketPages {
                     self.hidden_pids.clear();
                 }
                 if ui.button("None").clicked() {
-                    self.hidden_pids = self.labels.keys().cloned().collect();
+                    self.hidden_pids = self.psi.pids().iter().map(|(pid, _)| pid.clone()).collect();
                 }
             });
             ui.separator();
-            for (pid, carries) in &self.labels {
+            for (pid, carries) in self.psi.pids() {
                 let mut checked = !self.hidden_pids.contains(pid);
                 if ui
                     .checkbox(&mut checked, format!("{pid}  {carries}"))
@@ -441,12 +448,21 @@ impl PacketPages {
                     let packet = &packets[row - 1];
                     let index = geometry.index_of(packet.offset_bytes).unwrap_or(0);
                     let selected = self.selected == Some(packet.offset_bytes);
-                    let carries = packet
-                        .pid
-                        .as_ref()
-                        .and_then(|pid| self.labels.get(pid))
-                        .map_or("", String::as_str);
-                    if packet_row(ui, width, packet, index, carries, selected).clicked() {
+                    let pid = packet.pid.as_deref().unwrap_or_default();
+                    let row = Row {
+                        carries: if packet.pid.is_some() {
+                            self.psi.label(pid, packet.offset_bytes)
+                        } else {
+                            String::new()
+                        },
+                        sections: self.psi.sections_text(
+                            pid,
+                            packet.offset_bytes,
+                            &packet.sections,
+                        ),
+                        change: self.psi.change_at(packet.offset_bytes),
+                    };
+                    if packet_row(ui, width, packet, index, &row, selected).clicked() {
                         clicked = Some(packet.offset_bytes);
                     }
                 }
@@ -551,27 +567,12 @@ fn parse_detail(json: &[u8]) -> Result<PacketDetail, String> {
     crate::report::parse_packet_detail(json, cli::PACKETS_SCHEMA_MAJOR)
 }
 
-/// What each PID of the range carries: PSI and elementary streams from the
-/// programs, other PIDs with the label the continuity check gave them.
-pub fn pid_labels(report: &AnalysisReport) -> BTreeMap<String, String> {
-    let mut labels = BTreeMap::new();
-    if let Some(continuity) = &report.continuity_counter {
-        for pid in &continuity.pids {
-            labels.insert(pid.pid.clone(), pid.label.clone());
-        }
-    }
-    labels.insert("0x0000".to_owned(), "PAT".to_owned());
-    for program in &report.programs {
-        labels.insert(
-            program.pmt_pid.clone(),
-            format!("PMT (program {})", program.program_number),
-        );
-        for stream in &program.elementary_streams {
-            labels.insert(stream.pid.clone(), stream_type_name(&stream.stream_type));
-        }
-    }
-    labels.insert(NULL_PID.to_owned(), "null".to_owned());
-    labels
+/// What the PSI layout says about a packet.
+struct Row<'a> {
+    carries: String,
+    sections: String,
+    /// The PAT/PMT change the packet completed.
+    change: Option<&'a str>,
 }
 
 /// One packet row; the whole row is clickable.
@@ -580,7 +581,7 @@ fn packet_row(
     width: f32,
     packet: &PacketSummary,
     index: u64,
-    carries: &str,
+    row: &Row,
     selected: bool,
 ) -> egui::Response {
     let (rect, response) =
@@ -589,12 +590,16 @@ fn packet_row(
         return response;
     }
     paint_row_background(ui, rect, &response, selected, index % 2 == 1);
+    if row.change.is_some() && !selected {
+        ui.painter()
+            .rect_filled(rect, 0, theme::PSI_COLOR.gamma_multiply(0.2));
+    }
     let null = packet.pid.as_deref() == Some(NULL_PID);
     let cells = [
         ((index + 1).to_string(), COLUMNS[0].1),
         (format!("0x{:08X}", packet.offset_bytes), COLUMNS[1].1),
         (packet.pid.clone().unwrap_or_default(), COLUMNS[2].1),
-        (carries.to_owned(), COLUMNS[3].1),
+        (row.carries.clone(), COLUMNS[3].1),
         (if packet.pusi { "●" } else { "" }.to_owned(), COLUMNS[4].1),
         (
             match (packet.pcr_ms, packet.adaptation_field_control) {
@@ -613,6 +618,7 @@ fn packet_row(
             },
             COLUMNS[6].1,
         ),
+        (row.sections.clone(), COLUMNS[7].1),
     ];
     paint_cells(
         ui,
@@ -622,13 +628,29 @@ fn packet_row(
         row_text_color(ui, selected),
         false,
     );
-    let notes = packet_notes(packet).join(" · ");
-    let notes_x = rect.left() + TEXT_INSET + COLUMNS[..7].iter().map(|(_, w, _)| w).sum::<f32>();
-    ui.painter().text(
-        egui::pos2(notes_x, rect.center().y),
-        egui::Align2::LEFT_CENTER,
-        notes,
-        egui::TextStyle::Monospace.resolve(ui.style()),
+    let font = egui::TextStyle::Monospace.resolve(ui.style());
+    let mut notes = egui::text::LayoutJob::default();
+    if let Some(change) = row.change {
+        notes.append(
+            change,
+            0.0,
+            egui::TextFormat::simple(font.clone(), theme::PSI_COLOR),
+        );
+    }
+    let problems = packet_notes(packet).join(" · ");
+    if !problems.is_empty() {
+        let gap = if notes.is_empty() { 0.0 } else { 12.0 };
+        notes.append(
+            &problems,
+            gap,
+            egui::TextFormat::simple(font, theme::LIMIT_COLOR),
+        );
+    }
+    let notes_x = rect.left() + TEXT_INSET + COLUMNS[..8].iter().map(|(_, w, _)| w).sum::<f32>();
+    let galley = ui.fonts_mut(|fonts| fonts.layout_job(notes));
+    ui.painter().galley(
+        egui::pos2(notes_x, rect.center().y - galley.size().y / 2.0),
+        galley,
         theme::LIMIT_COLOR,
     );
     response
@@ -878,12 +900,17 @@ mod tests {
             "1",
         )
         .unwrap();
-        let labels = pid_labels(&report);
-        assert_eq!(labels["0x0000"], "PAT");
-        assert_eq!(labels["0x1000"], "PMT (program 1)");
-        assert_eq!(labels["0x0100"], "MPEG-2 video");
-        assert_eq!(labels["0x0101"], "MPEG-1 audio");
-        assert_eq!(labels[NULL_PID], "null");
+        // Without psi_layout, labels come from the tables the analysis started with.
+        assert!(report.psi_layout.is_none());
+        let psi = PsiLayout::new(&report);
+        assert_eq!(psi.label("0x0000", 0), "PAT");
+        assert_eq!(psi.label("0x1000", 0), "PMT (program 1)");
+        assert_eq!(psi.label("0x0100", 0), "MPEG-2 video");
+        assert_eq!(psi.label("0x0101", 0), "MPEG-1 audio");
+        assert_eq!(psi.label(NULL_PID, 0), "null");
+        let order: Vec<&str> = psi.pids().iter().map(|(_, label)| label.as_str()).collect();
+        assert_eq!(order.first(), Some(&"PAT"));
+        assert_eq!(order.last(), Some(&"null"));
     }
 
     #[test]
@@ -1025,6 +1052,7 @@ mod tests {
             adaptation_field_control: 1,
             continuity_counter: 0,
             pcr_ms: None,
+            sections: Vec::new(),
         };
         let page: PacketsPage = serde_json::from_str(
             r#"{"schema_version":"1.0","output":"packets","input":{"path":"x","file_size_bytes":100000,"packet_size_bytes":188,"offset_bytes":100},"status":"complete","first_offset_bytes":188,"end_of_file":false,"total_packets":531,"packets":[],"warnings":[]}"#,
@@ -1153,6 +1181,7 @@ mod tests {
             adaptation_field_control: 1,
             continuity_counter: 3,
             pcr_ms: None,
+            sections: Vec::new(),
         };
         assert_eq!(packet_notes(&packet), ["transport error", "scrambled"]);
     }

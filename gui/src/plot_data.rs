@@ -5,7 +5,8 @@
 //! Values that carry only a byte offset (events, jitter samples) are placed at
 //! the elapsed time of the last PCR at or before that offset.
 
-use crate::report::{AnalysisReport, PcrPoint, Program, stream_type_name};
+use crate::psi::{self, NULL_PID, ProgramPids};
+use crate::report::{AnalysisReport, PcrPoint, Program};
 
 /// The most points a line is drawn with; longer series are decimated.
 pub const MAX_PLOT_POINTS: usize = 4000;
@@ -26,6 +27,26 @@ pub struct PidSeries {
     pub drawn: Vec<[f64; 2]>,
 }
 
+/// PCR→PTS/DTS gaps of one PID.
+#[derive(Debug, PartialEq)]
+pub struct GapSeries {
+    pub pid: String,
+    pub label: String,
+    pub points: Vec<Point>,
+    /// `points` reduced for drawing, one line per stretch of layouts that list
+    /// the PID, so a PID that leaves and comes back is not joined across.
+    pub drawn: Vec<Vec<[f64; 2]>>,
+}
+
+/// An applied PAT or PMT change.
+#[derive(Debug, PartialEq)]
+pub struct Marker {
+    pub seconds: f64,
+    pub offset_bytes: u64,
+    pub pid: String,
+    pub label: String,
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Event {
     pub seconds: f64,
@@ -44,7 +65,9 @@ pub struct Timeline {
     /// PCR intervals above the compliance limit, drawn as markers.
     pub pcr_over_limit: Vec<[f64; 2]>,
     /// PCR→PTS/DTS gap (ms) per elementary-stream PID, in PID order.
-    pub gaps: Vec<PidSeries>,
+    pub gaps: Vec<GapSeries>,
+    /// PAT changes and the program's PMT changes, drawn as vertical lines.
+    pub markers: Vec<Marker>,
     /// Timestamp anomalies of the program and continuity errors on its PIDs.
     pub events: Vec<Event>,
 }
@@ -53,7 +76,7 @@ pub struct Timeline {
 #[derive(Debug, Default)]
 pub struct Bitrate {
     /// Mbps per PID as steps over the windows, in PID order, without PAT and
-    /// PMT (see `is_psi`).
+    /// PMT (see `ProgramPids::is_psi`).
     pub pids: Vec<PidSeries>,
     /// The sum over the program's PIDs, without null packets, as steps
     /// reduced for drawing.
@@ -68,6 +91,8 @@ pub struct Bitrate {
     pub mbps_range: (f64, f64),
     /// Fixed Y range of the jitter plot (ms), symmetric around 0.
     pub jitter_range: (f64, f64),
+    /// What the program's PIDs carry, for the table.
+    pub program_pids: ProgramPids,
 }
 
 /// Bins of the jitter histogram.
@@ -79,15 +104,6 @@ pub fn seconds_at(pcr: &[PcrPoint], offset: u64) -> Option<f64> {
     let index = pcr.partition_point(|p| p.offset_bytes <= offset);
     pcr.get(index.saturating_sub(1))
         .map(|p| p.elapsed_ms / 1000.0)
-}
-
-/// A PID with what the program's PMT says it carries.
-pub fn pid_label(program: &Program, pid: &str) -> String {
-    match program.elementary_streams.iter().find(|s| s.pid == pid) {
-        Some(stream) => format!("{pid} {}", stream_type_name(&stream.stream_type)),
-        None if program.pcr_pid.as_deref() == Some(pid) => format!("{pid} PCR"),
-        None => pid.to_owned(),
-    }
 }
 
 pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
@@ -114,7 +130,8 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
     let pcr_drawn = decimate(&pcr_interval, MAX_PLOT_POINTS);
     let pcr_over_limit = pcr_drawn.iter().copied().filter(|p| p[1] > limit).collect();
 
-    let mut gaps: Vec<PidSeries> = Vec::new();
+    let program_pids = ProgramPids::new(report, program);
+    let mut gaps: Vec<GapSeries> = Vec::new();
     for pes in &series.pes {
         let (Some(elapsed), Some(gap)) = (pes.elapsed_ms, pes.pcr_gap_ms) else {
             continue;
@@ -126,9 +143,11 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
         };
         match gaps.iter_mut().find(|s| s.pid == pes.pid) {
             Some(existing) => existing.points.push(point),
-            None => gaps.push(PidSeries {
+            None => gaps.push(GapSeries {
                 pid: pes.pid.clone(),
-                label: pid_label(program, &pes.pid),
+                label: format!("{} {}", pes.pid, program_pids.carried_by(&pes.pid, ""))
+                    .trim_end()
+                    .to_owned(),
                 points: vec![point],
                 drawn: Vec::new(),
             }),
@@ -136,10 +155,32 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
     }
     gaps.sort_by(|a, b| a.pid.cmp(&b.pid));
     for gap in &mut gaps {
-        gap.drawn = decimate(&gap.points, MAX_PLOT_POINTS);
+        let presence = |point: &Point| program_pids.presence(&gap.pid, point.offset_bytes);
+        let stretches: Vec<&[Point]> = gap
+            .points
+            .chunk_by(|a, b| presence(a) == presence(b))
+            .collect();
+        let budget = MAX_PLOT_POINTS / stretches.len().max(1);
+        gap.drawn = stretches
+            .into_iter()
+            .map(|points| decimate(points, budget))
+            .collect();
     }
+    let markers: Vec<Marker> = report
+        .psi_transitions
+        .iter()
+        .filter(|t| psi::concerns(t, program))
+        .filter_map(|t| {
+            Some(Marker {
+                seconds: seconds_at(&series.pcr, t.offset_bytes)?,
+                offset_bytes: t.offset_bytes,
+                pid: t.pid.clone(),
+                label: psi::describe(t),
+            })
+        })
+        .collect();
 
-    let program_pids: Vec<&str> = program
+    let event_pids: Vec<&str> = program
         .elementary_streams
         .iter()
         .map(|s| s.pid.as_str())
@@ -162,7 +203,7 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
         report
             .continuity_events
             .iter()
-            .filter(|e| program_pids.contains(&e.pid.as_str()))
+            .filter(|e| event_pids.contains(&e.pid.as_str()))
             .filter_map(|e| {
                 Some(Event {
                     seconds: seconds_at(&series.pcr, e.offset_bytes)?,
@@ -182,6 +223,7 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
         pcr_interval,
         pcr_over_limit,
         gaps,
+        markers,
         events,
     }
 }
@@ -190,12 +232,14 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
 const EMPTY_MBPS_RANGE: (f64, f64) = (0.0, 1.0);
 const EMPTY_JITTER_RANGE: (f64, f64) = (-0.001, 0.001);
 
-pub fn bitrate(program: &Program) -> Bitrate {
+pub fn bitrate(report: &AnalysisReport, program: &Program) -> Bitrate {
+    let program_pids = ProgramPids::new(report, program);
     // A program whose PMT could not be read has no series.
     let Some(series) = &program.series else {
         return Bitrate {
             mbps_range: EMPTY_MBPS_RANGE,
             jitter_range: EMPTY_JITTER_RANGE,
+            program_pids,
             ..Bitrate::default()
         };
     };
@@ -225,13 +269,17 @@ pub fn bitrate(program: &Program) -> Bitrate {
         for (sum, bytes) in program_bytes.iter_mut().zip(&pid.bytes) {
             *sum += bytes;
         }
-        if is_psi(program, &pid.pid) {
+        if program_pids.is_psi(&pid.pid) {
             continue;
         }
         let pid_steps = steps(&|i| pid.bps.get(i).copied().unwrap_or(0.0));
         pids.push(PidSeries {
             pid: pid.pid.clone(),
-            label: format!("{} {}", pid.pid, carried_by(program, &pid.pid, &pid.label)),
+            label: format!(
+                "{} {}",
+                pid.pid,
+                program_pids.carried_by(&pid.pid, &pid.label)
+            ),
             drawn: decimate_steps(&pid_steps, MAX_PLOT_POINTS),
             points: pid_steps
                 .into_iter()
@@ -271,30 +319,13 @@ pub fn bitrate(program: &Program) -> Bitrate {
         jitter_drawn: decimate(&jitter, MAX_PLOT_POINTS),
         jitter_histogram: histogram(&values, HISTOGRAM_BINS),
         jitter,
+        program_pids,
     }
-}
-
-const NULL_PID: &str = "0x1fff";
-
-/// PAT and the program's PMT: a few kbit/s next to megabits of audio and
-/// video, so the Bitrate screen leaves them out of its lines and table. They
-/// stay in the program total, which is the CLI's `program_average_bps`.
-pub fn is_psi(program: &Program, pid: &str) -> bool {
-    pid == "0x0000" || pid == program.pmt_pid
 }
 
 /// `value` with 10% headroom, or `fallback` when there is nothing to show.
 fn padded(value: f64, fallback: f64) -> f64 {
     if value > 0.0 { value * 1.1 } else { fallback }
-}
-
-/// What a PID carries: the codec for elementary streams, else the CLI's label
-/// (PAT, PMT, ...).
-pub fn carried_by(program: &Program, pid: &str, cli_label: &str) -> String {
-    match program.elementary_streams.iter().find(|s| s.pid == pid) {
-        Some(stream) => stream_type_name(&stream.stream_type),
-        None => cli_label.to_owned(),
-    }
 }
 
 /// Counts values into `bins` equal-width bins over their range. Returns
@@ -480,7 +511,7 @@ mod tests {
     fn bitrate_steps_reproduce_the_averages() {
         let report = fixture();
         for program in &report.programs {
-            let bitrate = bitrate(program);
+            let bitrate = bitrate(&report, program);
             let summary = program.bitrate.as_ref().unwrap();
             let durations = &program.series.as_ref().unwrap().bitrate.duration_seconds;
             let seconds: f64 = durations.iter().sum();
@@ -507,7 +538,12 @@ mod tests {
                 .sum();
             assert!((program_bits / seconds - summary.program_average_bps).abs() < 1e-6);
             assert!(bitrate.pids.iter().all(|p| p.pid != NULL_PID));
-            assert!(bitrate.pids.iter().all(|p| !is_psi(program, &p.pid)));
+            assert!(
+                bitrate
+                    .pids
+                    .iter()
+                    .all(|p| !bitrate.program_pids.is_psi(&p.pid))
+            );
             assert!(!bitrate.pids.is_empty());
             // The fixed Y ranges hold every drawn value.
             let (low, high) = bitrate.mbps_range;
@@ -526,7 +562,7 @@ mod tests {
     fn bitrate_without_series_has_valid_ranges() {
         let mut report = fixture();
         report.programs[0].series = None;
-        let data = bitrate(&report.programs[0]);
+        let data = bitrate(&report, &report.programs[0]);
         assert_eq!(data.mbps_range, EMPTY_MBPS_RANGE);
         assert_eq!(data.jitter_range, EMPTY_JITTER_RANGE);
         assert!(data.mbps_range.0 < data.mbps_range.1 && data.jitter_range.0 < data.jitter_range.1);
@@ -608,6 +644,110 @@ mod tests {
             histogram(&[2.0, 2.0], 3).iter().map(|b| b.1).sum::<f64>(),
             2.0
         );
+    }
+
+    /// The PMT change replaces video 0x0100 by 0x0200 and changes the audio
+    /// stream type; the PAT change moves the PMT to 0x1100.
+    #[test]
+    fn follows_pat_and_pmt_changes() {
+        for sample in crate::psi::tests::VERSION_CHANGE {
+            let Some(report) = crate::psi::tests::analyze(sample) else {
+                return;
+            };
+            let program = &report.programs[0];
+            let timeline = timeline(&report, program);
+            let series = program.series.as_ref().unwrap();
+            let changes: Vec<(u64, Option<f64>)> = report
+                .psi_transitions
+                .iter()
+                .map(|t| (t.offset_bytes, seconds_at(&series.pcr, t.offset_bytes)))
+                .collect();
+            let markers: Vec<(u64, Option<f64>)> = timeline
+                .markers
+                .iter()
+                .map(|m| (m.offset_bytes, Some(m.seconds)))
+                .collect();
+            assert_eq!(markers, changes, "{sample}");
+            assert!(timeline.markers[0].label.starts_with("PMT 1 v0 → v1"));
+
+            let gap = |pid: &str| timeline.gaps.iter().find(|g| g.pid == pid).unwrap();
+            let change = timeline.markers[0].offset_bytes;
+            assert!(
+                gap("0x0100")
+                    .points
+                    .iter()
+                    .all(|p| p.offset_bytes <= change)
+            );
+            assert!(gap("0x0200").points.iter().all(|p| p.offset_bytes > change));
+            assert_eq!(gap("0x0200").label, "0x0200 MPEG-2 video");
+            assert_eq!(gap("0x0101").label, "0x0101 MPEG-1 audio → MPEG-2 audio");
+            for pid in ["0x0100", "0x0101", "0x0200"] {
+                assert_eq!(gap(pid).drawn.len(), 1, "{sample} {pid}");
+            }
+
+            let bitrate = bitrate(&report, program);
+            let drawn: Vec<&str> = bitrate.pids.iter().map(|p| p.pid.as_str()).collect();
+            assert_eq!(drawn, ["0x0100", "0x0101", "0x0200"], "{sample}");
+            for pid in ["0x0000", "0x1000", "0x1100"] {
+                assert!(bitrate.program_pids.is_psi(pid));
+            }
+        }
+    }
+
+    /// A PID that a later layout drops and a still later one lists again is
+    /// drawn as two lines, not joined across the gap.
+    #[test]
+    fn splits_gap_lines_where_the_pid_is_absent() {
+        let mut document: serde_json::Value = serde_json::from_slice(include_bytes!(
+            "../tests/fixtures/analysis_two_programs_188.json"
+        ))
+        .unwrap();
+        let program = &document["programs"][0];
+        let audio = program["elementary_streams"][1]["pid"].clone();
+        let offsets: Vec<u64> = program["series"]["pes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|p| p["pid"] == audio && p["pcr_gap_ms"].is_number())
+            .map(|p| p["offset_bytes"].as_u64().unwrap())
+            .collect();
+        let (low, high) = (offsets[offsets.len() / 3], offsets[2 * offsets.len() / 3]);
+        let entry = |streams: serde_json::Value| {
+            serde_json::json!({
+                "program_number": program["program_number"],
+                "pmt_pid": program["pmt_pid"],
+                "pcr_pid": program["pcr_pid"],
+                "elementary_streams": streams,
+            })
+        };
+        let all = program["elementary_streams"].clone();
+        let video = serde_json::json!([program["elementary_streams"][0]]);
+        let layout = |start: u64, end: u64, streams: serde_json::Value| {
+            serde_json::json!({
+                "offset_bytes": start, "end_offset_bytes": end, "transition_indices": [],
+                "pat_version": 0, "pat_offset_bytes": 0, "programs": [entry(streams)],
+            })
+        };
+        document["psi_layout"] = serde_json::json!({
+            "sections": [],
+            "layouts": [
+                layout(0, low, all.clone()),
+                layout(low, high, video),
+                layout(high, u64::MAX, all),
+            ],
+            "pids": [],
+        });
+        let report = crate::report::parse_analysis(document.to_string().as_bytes(), "1").unwrap();
+        let timeline = timeline(&report, &report.programs[0]);
+        let audio = timeline
+            .gaps
+            .iter()
+            .find(|g| g.pid == audio.as_str().unwrap())
+            .unwrap();
+        assert_eq!(audio.drawn.len(), 3);
+        let drawn: usize = audio.drawn.iter().map(Vec::len).sum();
+        assert_eq!(drawn, audio.points.len());
+        assert_eq!(timeline.gaps[0].drawn.len(), 1);
     }
 
     #[test]

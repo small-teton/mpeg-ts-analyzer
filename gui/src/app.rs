@@ -223,7 +223,11 @@ impl App {
                     .iter()
                     .map(|program| plot_data::timeline(report, program))
                     .collect(),
-                bitrates: report.programs.iter().map(plot_data::bitrate).collect(),
+                bitrates: report
+                    .programs
+                    .iter()
+                    .map(|program| plot_data::bitrate(report, program))
+                    .collect(),
             });
         }
     }

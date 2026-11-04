@@ -1,6 +1,7 @@
 use eframe::egui;
 
 use super::{Screen, badge, program_selector_labels, status_verdict};
+use crate::psi;
 use crate::range_bar;
 use crate::report::{AnalysisReport, Check, Program, stream_type_name};
 use crate::theme::Verdict;
@@ -162,6 +163,22 @@ fn report_stream(ui: &mut egui::Ui, report: &AnalysisReport, program: &Program) 
                         }
                         if let Some(error) = &program.error {
                             ui.colored_label(ui.visuals().warn_fg_color, error);
+                        }
+                        let changes: Vec<_> = report
+                            .psi_transitions
+                            .iter()
+                            .filter(|t| psi::concerns(t, program))
+                            .collect();
+                        if !changes.is_empty() {
+                            ui.add_space(4.0);
+                            ui.weak("PAT/PMT changes in this range");
+                            for change in changes {
+                                ui.monospace(format!(
+                                    "0x{:08X}  {}",
+                                    change.offset_bytes,
+                                    psi::describe(change)
+                                ));
+                            }
                         }
                     });
             });
