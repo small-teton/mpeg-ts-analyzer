@@ -137,7 +137,7 @@ Per program, per PID:
 - PCR → PTS/DTS gap, one line per elementary-stream PID, with the 1000 ms
   limit line. When a PID changes mid-range (PMT update), the old PID's line
   ends and the new one starts; there is no merging by role. A PID's line is
-  broken where no layout of the program lists it, so a PID that leaves and
+  drawn only where a layout of the program lists it, so a PID that leaves and
   comes back is not joined across the gap. A PID whose stream type changes
   keeps one line, labeled with every type it had (`MPEG-1 audio → MPEG-2
   audio`).
@@ -145,7 +145,9 @@ Per program, per PID:
   across all plots, at the time of the packet that completed the new table.
   The side panel lists them with what changed; selecting one allows "Open
   packet".
-- Event lane (CC errors, PCR NG).
+- Event lane (CC errors, PCR NG). A CC error counts for the program where the
+  layout in effect at its offset lists the PID as the program's PMT, PCR or
+  elementary stream.
 - Zoom and pan are horizontal only; the plots share the x axis. Reset zoom sits
   in the toolbar above the plots.
 - Clicking a point selects it; the side panel shows its details and "Open

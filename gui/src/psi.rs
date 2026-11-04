@@ -22,8 +22,8 @@ pub struct PsiLayout {
     /// Description of each applied change, by the offset of the packet that
     /// completed the new table.
     changes: BTreeMap<u64, String>,
-    /// Labels for PIDs no layout lists (the continuity check's, or the tables
-    /// the analysis started with when there are no layouts).
+    /// Labels when the CLI reports no layouts: the continuity check's and the
+    /// tables the analysis started with.
     fallback: BTreeMap<String, String>,
     /// Every PID of the range with what it carries, in filter order.
     pids: Vec<(String, String)>,
@@ -31,12 +31,6 @@ pub struct PsiLayout {
 
 impl PsiLayout {
     pub fn new(report: &AnalysisReport) -> Self {
-        let mut fallback = BTreeMap::new();
-        if let Some(continuity) = &report.continuity_counter {
-            for pid in &continuity.pids {
-                fallback.insert(pid.pid.clone(), pid.label.clone());
-            }
-        }
         let mut changes: BTreeMap<u64, String> = BTreeMap::new();
         for transition in &report.psi_transitions {
             let text = describe(transition);
@@ -49,6 +43,12 @@ impl PsiLayout {
                 .or_insert(text);
         }
         let Some(layout) = &report.psi_layout else {
+            let mut fallback = BTreeMap::new();
+            if let Some(continuity) = &report.continuity_counter {
+                for pid in &continuity.pids {
+                    fallback.insert(pid.pid.clone(), pid.label.clone());
+                }
+            }
             fallback.insert(PAT_PID.to_owned(), "PAT".to_owned());
             for program in &report.programs {
                 fallback.insert(
@@ -96,13 +96,7 @@ impl PsiLayout {
                         ),
                         "pcr" => ("PCR".to_owned(), 2),
                         "null" => ("null".to_owned(), 3),
-                        _ => (
-                            fallback
-                                .get(&pid.pid)
-                                .cloned()
-                                .unwrap_or_else(|| "unannounced".to_owned()),
-                            4,
-                        ),
+                        _ => ("unannounced".to_owned(), 4),
                     };
                     rank = rank.min(role_rank);
                     if !names.contains(&name) {
@@ -121,7 +115,7 @@ impl PsiLayout {
             layouts: layout.layouts.clone(),
             sections: layout.sections.clone(),
             changes,
-            fallback,
+            fallback: BTreeMap::new(),
             pids: pids
                 .into_iter()
                 .map(|(pid, label, _)| (pid, label))
@@ -159,10 +153,7 @@ impl PsiLayout {
         if self.layouts.is_empty() {
             return self.fallback.get(pid).cloned().unwrap_or_default();
         }
-        self.fallback
-            .get(pid)
-            .cloned()
-            .unwrap_or_else(|| "unannounced".to_owned())
+        "unannounced".to_owned()
     }
 
     /// The change completed by the packet at `offset`, if any.
@@ -357,6 +348,8 @@ pub struct ProgramPids {
     /// For each elementary-stream PID, the byte intervals of the layouts that
     /// list it, merged where they touch.
     present: BTreeMap<String, Vec<(u64, u64)>>,
+    /// PMT, PCR and elementary-stream PIDs of the program per layout interval.
+    members: Vec<(u64, u64, BTreeSet<String>)>,
 }
 
 impl ProgramPids {
@@ -378,7 +371,16 @@ impl ProgramPids {
         if layouts.is_empty() {
             for stream in &program.elementary_streams {
                 add_stream(&mut pids.streams, &stream.pid, &stream.stream_type);
+                pids.present.insert(stream.pid.clone(), vec![(0, u64::MAX)]);
             }
+            let members = program
+                .elementary_streams
+                .iter()
+                .map(|s| s.pid.clone())
+                .chain(program.pcr_pid.clone())
+                .chain([program.pmt_pid.clone()])
+                .collect();
+            pids.members.push((0, u64::MAX, members));
             return pids;
         }
         for layout in layouts {
@@ -388,6 +390,15 @@ impl ProgramPids {
                 .filter(|p| p.program_number == program.program_number)
             {
                 pids.psi.insert(entry.pmt_pid.clone());
+                let members = entry
+                    .elementary_streams
+                    .iter()
+                    .map(|s| s.pid.clone())
+                    .chain(entry.pcr_pid.clone())
+                    .chain([entry.pmt_pid.clone()])
+                    .collect();
+                pids.members
+                    .push((layout.offset_bytes, layout.end_offset_bytes, members));
                 for stream in &entry.elementary_streams {
                     add_stream(&mut pids.streams, &stream.pid, &stream.stream_type);
                     let intervals = pids.present.entry(stream.pid.clone()).or_default();
@@ -418,8 +429,16 @@ impl ProgramPids {
         }
     }
 
+    /// Whether `pid` is the PMT, PCR or an elementary-stream PID of the program
+    /// in the layout in effect at `offset`.
+    pub fn belongs(&self, pid: &str, offset: u64) -> bool {
+        self.members
+            .iter()
+            .any(|(start, end, pids)| (*start..*end).contains(&offset) && pids.contains(pid))
+    }
+
     /// Which presence interval of `pid` holds `offset`: points in different
-    /// intervals are not joined. None without layouts or outside them.
+    /// intervals are not joined. None where no layout of the program lists it.
     pub fn presence(&self, pid: &str, offset: u64) -> Option<usize> {
         self.present
             .get(pid)?
@@ -462,9 +481,20 @@ pub(crate) mod tests {
     #[test]
     fn labels_follow_the_layout_in_effect() {
         for sample in VERSION_CHANGE {
-            let Some(report) = analyze(sample) else {
+            let Some(mut report) = analyze(sample) else {
                 return;
             };
+            // A continuity error does not name a PID the layout no longer lists.
+            report
+                .continuity_counter
+                .as_mut()
+                .unwrap()
+                .pids
+                .push(crate::report::ContinuityPid {
+                    pid: "0x0100".to_owned(),
+                    label: "video".to_owned(),
+                    error_count: 1,
+                });
             let psi = PsiLayout::new(&report);
             let [pmt_change, pat_change] = &report.psi_transitions[..] else {
                 panic!("{sample}: two changes expected");

@@ -154,6 +154,12 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
         }
     }
     gaps.sort_by(|a, b| a.pid.cmp(&b.pid));
+    // Only where a layout of the program lists the PID.
+    for gap in &mut gaps {
+        gap.points
+            .retain(|p| program_pids.presence(&gap.pid, p.offset_bytes).is_some());
+    }
+    gaps.retain(|gap| !gap.points.is_empty());
     for gap in &mut gaps {
         let presence = |point: &Point| program_pids.presence(&gap.pid, point.offset_bytes);
         let stretches: Vec<&[Point]> = gap
@@ -180,13 +186,6 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
         })
         .collect();
 
-    let event_pids: Vec<&str> = program
-        .elementary_streams
-        .iter()
-        .map(|s| s.pid.as_str())
-        .chain(program.pcr_pid.as_deref())
-        .chain([program.pmt_pid.as_str()])
-        .collect();
     let mut events: Vec<Event> = series
         .timestamp_events
         .iter()
@@ -203,7 +202,7 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
         report
             .continuity_events
             .iter()
-            .filter(|e| event_pids.contains(&e.pid.as_str()))
+            .filter(|e| program_pids.belongs(&e.pid, e.offset_bytes))
             .filter_map(|e| {
                 Some(Event {
                     seconds: seconds_at(&series.pcr, e.offset_bytes)?,
@@ -695,7 +694,8 @@ mod tests {
     }
 
     /// A PID that a later layout drops and a still later one lists again is
-    /// drawn as two lines, not joined across the gap.
+    /// drawn as two lines, with nothing where it is absent. Continuity events
+    /// count for the program only where its layout lists their PID.
     #[test]
     fn splits_gap_lines_where_the_pid_is_absent() {
         let mut document: serde_json::Value = serde_json::from_slice(include_bytes!(
@@ -721,7 +721,10 @@ mod tests {
             })
         };
         let all = program["elementary_streams"].clone();
-        let video = serde_json::json!([program["elementary_streams"][0]]);
+        let video = serde_json::json!([
+            program["elementary_streams"][0],
+            {"pid": "0x0300", "stream_type": "0x02", "stream_type_description": "video"},
+        ]);
         let layout = |start: u64, end: u64, streams: serde_json::Value| {
             serde_json::json!({
                 "offset_bytes": start, "end_offset_bytes": end, "transition_indices": [],
@@ -737,6 +740,15 @@ mod tests {
             ],
             "pids": [],
         });
+        let event = |pid: &serde_json::Value, offset_bytes: u64| serde_json::json!({"offset_bytes": offset_bytes, "pid": pid, "expected_cc": 1, "actual_cc": 3});
+        let added = serde_json::json!("0x0300");
+        document["continuity_events"] = serde_json::json!([
+            event(&added, offsets[0]),
+            event(&audio, low - 1),
+            event(&audio, low + 1),
+            event(&added, low + 1),
+            event(&audio, high + 1),
+        ]);
         let report = crate::report::parse_analysis(document.to_string().as_bytes(), "1").unwrap();
         let timeline = timeline(&report, &report.programs[0]);
         let audio = timeline
@@ -744,10 +756,26 @@ mod tests {
             .iter()
             .find(|g| g.pid == audio.as_str().unwrap())
             .unwrap();
-        assert_eq!(audio.drawn.len(), 3);
+        assert_eq!(audio.drawn.len(), 2);
+        assert!(
+            audio
+                .points
+                .iter()
+                .all(|p| !(low..high).contains(&p.offset_bytes))
+        );
         let drawn: usize = audio.drawn.iter().map(Vec::len).sum();
         assert_eq!(drawn, audio.points.len());
         assert_eq!(timeline.gaps[0].drawn.len(), 1);
+        let events: Vec<(u64, &str)> = timeline
+            .events
+            .iter()
+            .map(|e| (e.offset_bytes, e.pid.as_str()))
+            .collect();
+        let audio = audio.pid.as_str();
+        assert_eq!(
+            events,
+            [(low - 1, audio), (low + 1, "0x0300"), (high + 1, audio)]
+        );
     }
 
     #[test]
