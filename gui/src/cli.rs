@@ -68,10 +68,15 @@ fn resolve(
     (Source::Path, PathBuf::from(CLI_NAME))
 }
 
+/// The directory under `<prefix>/lib` where the Linux packages keep the CLI.
+/// It is not put in `bin`, where the CLI's own `.deb` installs it.
+const LINUX_LIB_DIR: &str = "mpeg-ts-analyzer-gui";
+
 /// Where a packaged GUI keeps its CLI, relative to the GUI executable: next to
-/// it (Windows install directory, Linux install prefix, macOS
-/// `.app/Contents/MacOS`), in the macOS bundle's `Resources`, and under
-/// `$APPDIR/usr/bin` in an AppImage.
+/// it (Windows install directory or portable zip), in the macOS bundle's
+/// `Contents/Resources`, in `<prefix>/lib/mpeg-ts-analyzer-gui` for a `.deb`
+/// (`/usr/bin` → `/usr/lib/...`), and under `$APPDIR/usr/lib/...` in an
+/// AppImage.
 fn bundled_candidates(exe: Option<&Path>, appdir: Option<std::ffi::OsString>) -> Vec<PathBuf> {
     let name = format!("{CLI_NAME}{}", std::env::consts::EXE_SUFFIX);
     let mut candidates = Vec::new();
@@ -82,11 +87,43 @@ fn bundled_candidates(exe: Option<&Path>, appdir: Option<std::ffi::OsString>) ->
         {
             candidates.push(contents.join("Resources").join(&name));
         }
+        if dir.ends_with("bin")
+            && let Some(prefix) = dir.parent()
+        {
+            candidates.push(prefix.join("lib").join(LINUX_LIB_DIR).join(&name));
+        }
     }
     if let Some(appdir) = appdir {
-        candidates.push(PathBuf::from(appdir).join("usr/bin").join(&name));
+        candidates.push(
+            PathBuf::from(appdir)
+                .join("usr/lib")
+                .join(LINUX_LIB_DIR)
+                .join(&name),
+        );
     }
     candidates
+}
+
+/// `--check-cli`: finds the CLI as the GUI would, checks it, and reports the
+/// result on stdout without opening a window, so a package can be verified
+/// after installing it. Returns false when no usable CLI was found.
+pub fn report_check(setting: &str) -> bool {
+    let (source, path) = locate(setting);
+    match check(&path) {
+        Ok(cli) => {
+            println!(
+                "{} ({}): mpeg-ts-analyzer {}",
+                path.display(),
+                source.label(),
+                cli.version
+            );
+            true
+        }
+        Err(err) => {
+            println!("{} ({}): {err}", path.display(), source.label());
+            false
+        }
+    }
 }
 
 /// A CLI that passed the capabilities check.
@@ -576,8 +613,14 @@ mod tests {
             bundled_candidates(Some(installed), Some("/tmp/.mount_x".into())),
             [
                 Path::new("/usr/bin").join(&name),
-                Path::new("/tmp/.mount_x/usr/bin").join(&name),
+                Path::new("/usr/lib/mpeg-ts-analyzer-gui").join(&name),
+                Path::new("/tmp/.mount_x/usr/lib/mpeg-ts-analyzer-gui").join(&name),
             ]
+        );
+        let portable = Path::new("C:/tools/mpeg-ts-analyzer/mpeg-ts-analyzer-gui.exe");
+        assert_eq!(
+            bundled_candidates(Some(portable), None),
+            [Path::new("C:/tools/mpeg-ts-analyzer").join(&name)]
         );
         assert!(bundled_candidates(None, None).is_empty());
     }

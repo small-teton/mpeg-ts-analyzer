@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- mpeg-ts-analyzer GUI icon: a row of transport packets under a timing plot. -->
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="#1b2433"/>
+  <path d="M176 560 L296 560 L296 380 L416 380 L416 470 L536 470 L536 300 L656 300 L656 430 L776 430 L776 360 L848 360"
+        fill="none" stroke="#4ea8ff" stroke-width="44" stroke-linejoin="round" stroke-linecap="round"/>
+  <line x1="176" y1="250" x2="848" y2="250" stroke="#ff7a7a" stroke-width="20" stroke-dasharray="44 30" stroke-linecap="round"/>
+  <rect x="176" y="680" width="120" height="120" rx="20" fill="#f0a43c"/>
+  <rect x="314" y="680" width="120" height="120" rx="20" fill="#7fd68a"/>
+  <rect x="452" y="680" width="120" height="120" rx="20" fill="#c792ea"/>
+  <rect x="590" y="680" width="120" height="120" rx="20" fill="#7fd68a"/>
+  <rect x="728" y="680" width="120" height="120" rx="20" fill="#4ea8ff"/>
+</svg>

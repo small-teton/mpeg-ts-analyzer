@@ -14,3 +14,37 @@ egui_plot = "0.38.0"
 rfd = "0.17.2"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+
+# Packages for `gui-release.yml` (cargo-packager). The CLI is bundled from
+# target/bundled-cli/, where the workflow builds it from the same commit.
+[package.metadata.packager]
+product-name = "mpeg-ts-analyzer"
+identifier = "io.github.small-teton.mpeg-ts-analyzer"
+description = "Desktop GUI for mpeg-ts-analyzer, an MPEG-2 Transport Stream analyzer"
+homepage = "https://github.com/small-teton/mpeg-ts-analyzer"
+authors = ["Masahiko Matsuura"]
+publisher = "small-teton"
+license-file = "../LICENSE"
+category = "DeveloperTool"
+before-packaging-command = "cargo build --release --locked"
+icons = [
+  "assets/icons/32x32.png",
+  "assets/icons/64x64.png",
+  "assets/icons/128x128.png",
+  "assets/icons/256x256.png",
+  "assets/icons/512x512.png",
+  "assets/icons/1024x1024.png",
+  "assets/icons/icon.icns",
+  "assets/icons/icon.ico",
+]
+resources = ["target/bundled-cli/*"]
+
+[package.metadata.packager.macos]
+minimum-system-version = "11.0"
+
+[package.metadata.packager.deb]
+# Not mpeg-ts-analyzer: that is the CLI's own package.
+package-name = "mpeg-ts-analyzer-gui"
+
+[package.metadata.packager.nsis]
+installer-mode = "currentUser"

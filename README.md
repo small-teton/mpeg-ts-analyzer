@@ -17,6 +17,13 @@ A desktop GUI is under active development in [`gui/`](gui/). It runs the CLI
 as a subprocess and connects the Overview, Timeline, Bitrate, and Packets views
 to the same analysis results.
 
+GUI packages for macOS (Apple silicon), Linux (`.deb`, AppImage) and Windows
+(installer, portable zip) are published on the
+[releases page](https://github.com/small-teton/mpeg-ts-analyzer/releases) under
+`gui-v<version>` tags, separately from the CLI releases. Each package bundles
+the CLI of the same commit. The packages are not code-signed; the release notes
+explain how to open them and how to verify a download.
+
 <p align="center">
   <a href="docs/images/gui-overview.png">
     <img src="docs/images/gui-overview.png" alt="GUI Overview showing the stream and timing compliance results" width="49%">

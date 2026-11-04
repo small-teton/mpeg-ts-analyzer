@@ -157,7 +157,23 @@ desktop development packages (X11/Wayland, xkbcommon) are needed to run it.
 make gui-run    # build the CLI into out/gui/ and run the GUI against it
 make gui-test   # cargo test
 make gui-lint   # rustfmt check and clippy -D warnings
+make gui-package # package for this OS into gui/target/release/ (needs cargo-packager)
 ```
+
+`make gui-package` builds the CLI into `gui/target/bundled-cli/` and runs
+[cargo-packager](https://github.com/crabnebula-dev/cargo-packager) with the
+configuration in `gui/Cargo.toml` (`[package.metadata.packager]`). Install the
+version pinned in `.github/workflows/gui-release.yml`
+(`cargo install cargo-packager --version <version> --locked`). To check a
+package, run its GUI executable with `--check-cli`: it prints which CLI it found
+and from where, without opening a window, and exits non-zero when none works.
+The icons in `gui/assets/icons/` are generated from `icon.svg` by
+`gui/assets/icons/generate.sh` (macOS, ImageMagick).
+
+GUI releases are made by the `GUI release` workflow: run it on `master` to tag
+`gui-v<version of gui/Cargo.toml>` and publish the packages, or push such a tag.
+Pull requests that change the packaging build and check the packages on all
+three OSes without publishing them.
 
 The GUI finds the CLI through the `MPEG_TS_ANALYZER_CLI` environment variable,
 then the path in Settings, a CLI bundled next to the GUI, and `mpeg-ts-analyzer`
