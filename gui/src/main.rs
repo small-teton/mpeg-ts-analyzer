@@ -5,6 +5,7 @@ mod app;
 mod cli;
 mod icons;
 mod plot_data;
+mod psi;
 mod range_bar;
 mod report;
 mod settings;

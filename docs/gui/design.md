@@ -7,8 +7,8 @@ interface between the GUI and the CLI is in [cli-interface.md](cli-interface.md)
 Status: once a range has been analyzed, Overview, Timeline and Bitrate show the
 CLI's range analysis and Packets reads the range's packets from the CLI. Before
 that every screen says it is not analyzed yet and what to do; no placeholder
-data is shown. PMT-update markers, the Unit column and layout-change rows wait
-for the PSI layout output (#93).
+data is shown. PAT/PMT changes and packet labels come from the PSI layout of
+the range analysis (#93).
 Work is tracked in #101 (milestone GUI v0.1).
 
 ## Architecture
@@ -123,8 +123,9 @@ not affected by it.
 
 ### Overview
 
-Stream section first (program tree with PIDs, PCR PID, PIDs that appear or
-disappear within the range, PMT updates; file information), then compliance
+Stream section first (program tree with PIDs and PCR PID; the PAT changes and
+the program's PMT changes in the range, with the PIDs they add, remove or
+retype and PMT PID moves; file information), then compliance
 check cards, the elementary stream table, and warnings with links to the
 packet.
 
@@ -135,9 +136,18 @@ Per program, per PID:
 - PCR interval of the program's PCR PID, with the 100 ms limit line.
 - PCR → PTS/DTS gap, one line per elementary-stream PID, with the 1000 ms
   limit line. When a PID changes mid-range (PMT update), the old PID's line
-  ends and the new one starts; there is no merging by role.
-- PMT updates are drawn as vertical dashed lines across all plots.
-- Event lane (CC errors, PCR NG).
+  ends and the new one starts; there is no merging by role. A PID's line is
+  drawn only where a layout of the program lists it, so a PID that leaves and
+  comes back is not joined across the gap. A PID whose stream type changes
+  keeps one line, labeled with every type it had (`MPEG-1 audio → MPEG-2
+  audio`).
+- PAT changes and the program's PMT changes are drawn as vertical dashed lines
+  across all plots, at the time of the packet that completed the new table.
+  The side panel lists them with what changed; selecting one allows "Open
+  packet".
+- Event lane (CC errors, PCR NG). A CC error counts for the program where the
+  layout in effect at its offset lists the PID as the program's PMT, PCR or
+  elementary stream.
 - Zoom and pan are horizontal only; the plots share the x axis. Reset zoom sits
   in the toolbar above the plots.
 - Clicking a point selects it; the side panel shows its details and "Open
@@ -152,7 +162,8 @@ Per program, per PID:
 
 Per program: bitrate per PID over time as steps over the CLI's windows (the
 last one may be shorter than 1 s), the program total without null packets
-(it includes PAT and PMT, which are not drawn or listed on their own: a few
+(it includes PAT and every PMT PID the program used, which are not drawn or
+listed on their own: a few
 kbit/s next to megabits of audio and video only crowd the plot and legend);
 PCR jitter over time and its histogram; table of averages, 1-second peaks and
 shares of the program average.
@@ -172,11 +183,16 @@ data is large, so the whole range is never held in memory.
 - **PID filter**: a checkbox per PID found in the range, ordered PAT, PMT,
   elementary streams, null, PID order within each group; All / None.
 - **List**: whole rows are selectable. Columns: #, Offset, PID, Type, PUSI, AF
-  (PCR), CC, Unit, Notes; every header explains its column on hover.
-  - Type comes from the PSI layout in effect at that packet.
-  - Unit is the PES packet or PSI section the packet belongs to and its
-    position in it (`Video PES #12 · 7/48`).
-  - A highlighted row marks where the PMT was updated.
+  (PCR), CC, Sections, Notes; every header explains its column on hover.
+  - Type comes from the PSI layout in effect at that packet, so a PID shows
+    what it carried at that point (`unannounced` where no layout lists it).
+  - Sections lists the PAT/PMT sections that start in the packet with their
+    version and what the analysis did with that copy: `applied` for the copy
+    that made the table take effect, `repeat` for later identical copies, `not
+    applied`, or `invalid (reason)`. Other tables show only their table id and
+    version.
+  - The packet that completed a PAT or PMT change is highlighted, and Notes
+    says what changed.
 - **Detail pane**:
   - "Belongs to": the PES/section, the packet's position in it, first packet,
     PTS/DTS, and First / Previous / Next to move within that unit only
@@ -195,16 +211,16 @@ data is large, so the whole range is never held in memory.
     time.
 - The GUI keeps the **PSI layout** (where PAT/PMT occur and what they say,
   including mid-range changes) from the range scan, and uses it to label
-  packets. Packet pages themselves are read without PSI context.
+  packets. Packet pages themselves are read without PSI context: a section in
+  a page is matched to its run in the layout by PID, table, header and offset
+  (OPTIONS.md, "PSI layout of the range"). With a CLI that does not report the
+  layout, Type comes from the tables the analysis started with.
 - Implementation: the first request reads page 1 from the range start and
   learns the first packet boundary; page *n* is then read from
   `first + (n - 1) × 100 × packet size`, with `--packet-size` from the analysis,
   so paging visits every packet of the range once. The current page and the 4
   most recently viewed are kept; a page that is still loading when it drops
   out is cancelled, so paging quickly leaves only the last request running.
-  Until #93, Type comes from the analysis (PAT, each program's PMT and
-  elementary streams, null, and the continuity check's labels for other PIDs)
-  and the Unit column is shown only in the detail pane.
 
 ## Settings
 
@@ -278,7 +294,8 @@ Language, packets per page and cached pages are laid out but not applied yet.
 | Packets paged on demand | Per-packet data for a large range does not fit comfortably in memory | Holding all packets of the range |
 | Program selection inside Overview/Timeline/Bitrate | Those results are per program; Packets is per packet | Global program selector in the top bar |
 | Lines per PID, not per role | Shows what is actually in the stream; PID changes need no special handling | Merging PIDs by role (video, audio 1) |
-| Packets: one flat list | The PES view had no clear use; unit info is in the Unit column and detail pane | Separate PES/section list; lanes connecting packets of a unit |
+| Packets: one flat list | The PES view had no clear use; unit info is in the detail pane | Separate PES/section list; lanes connecting packets of a unit |
+| Packets: no Unit column | Pages carry no unit membership; a position such as `7/48` would need a detail request per row | A Unit column filled from per-packet detail requests |
 | English UI only for now | Most text is standard field names and values that are not translated | Fluent-based i18n (kept as a later option) |
 | No menu bar | Every action is reachable from the screens; a menu only duplicated them | File/View/Analyze/Tools/Help menus |
 | Japanese from an OS font at runtime, by file path (no new dependency) | No size cost; every desktop OS the GUI targets ships one; reading it (about 8 MB for Hiragino W3) adds only a file read at startup | Bundling Noto Sans CJK (10–20 MB, cannot be subset in advance because file names are arbitrary); `fontdb` (another dependency for the same lookup) |
@@ -286,8 +303,6 @@ Language, packets per page and cached pages are laid out but not applied yet.
 
 ## Open questions
 
-- Multi-program and PMT changes need CLI support (see
-  [cli-interface.md](cli-interface.md)).
 - Service names from the SDT (#92); ARIB text for Japanese broadcasts is not
   part of the first release.
 - Application identifier and display name before the first release.

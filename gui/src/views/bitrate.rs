@@ -3,7 +3,7 @@ use egui_plot::{Bar, BarChart, HLine, Legend, Line, LineStyle, Plot};
 
 use super::program_selector_labels;
 use super::timeline::series_color;
-use crate::plot_data::{self, carried_by, is_psi};
+use crate::plot_data;
 use crate::report::{AnalysisReport, Program as ReportProgram};
 use crate::theme;
 
@@ -116,7 +116,7 @@ pub fn show_report(
             let rows = bitrate
                 .pids
                 .iter()
-                .filter(|row| !is_psi(program, &row.pid))
+                .filter(|row| !data.program_pids.is_psi(&row.pid))
                 .chain(bitrate.null_pid.as_ref());
             egui::Grid::new("bitrate_table")
                 .striped(true)
@@ -129,7 +129,7 @@ pub fn show_report(
                     ui.end_row();
                     for row in rows {
                         ui.monospace(&row.pid);
-                        ui.label(carried_by(program, &row.pid, &row.label));
+                        ui.label(data.program_pids.carried_by(&row.pid, &row.label));
                         ui.monospace(format!("{:.3} Mbps", row.average_bps / 1e6));
                         ui.monospace(
                             row.peak_1s_bps

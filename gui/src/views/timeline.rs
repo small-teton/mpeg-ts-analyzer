@@ -1,16 +1,18 @@
 use std::collections::BTreeSet;
 
 use eframe::egui;
-use egui_plot::{HLine, Legend, Line, LineStyle, MarkerShape, Plot, PlotPoint, Points};
+use egui_plot::{HLine, Legend, Line, LineStyle, MarkerShape, Plot, PlotPoint, Points, VLine};
 
 use super::{Screen, badge, program_selector_labels};
 use crate::icons;
-use crate::plot_data::{Point, Timeline, nearest};
+use crate::plot_data::{Marker, Point, Timeline, nearest};
 use crate::range_bar;
 use crate::report::{AnalysisReport, Program as ReportProgram};
 use crate::theme::{self, Verdict};
 
 const LINK_GROUP: &str = "timeline";
+/// Series name of the PAT/PMT change markers.
+const MARKER_SERIES: &str = "PAT/PMT change";
 const SIDE_WIDTH: f32 = 260.0;
 /// How close (in screen pixels) a click must be to a point to select it.
 const PICK_DISTANCE: f32 = 12.0;
@@ -25,6 +27,7 @@ pub struct TimelineView {
     report_context: Option<(u64, usize)>,
     show_pcr: bool,
     show_events: bool,
+    show_markers: bool,
     reset_zoom: bool,
 }
 
@@ -37,6 +40,7 @@ impl Default for TimelineView {
             report_context: None,
             show_pcr: true,
             show_events: true,
+            show_markers: true,
             reset_zoom: false,
         }
     }
@@ -193,6 +197,11 @@ impl TimelineView {
         });
         let selection = self.selection.clone();
         let show_pcr = self.show_pcr;
+        let markers: &[Marker] = if self.show_markers {
+            &data.markers
+        } else {
+            &[]
+        };
         let pcr_plot =
             timeline_plot("pcr_interval", 220.0, linked, limits.0 * 1.2).show(ui, |plot| {
                 if reset_zoom {
@@ -203,6 +212,7 @@ impl TimelineView {
                         .color(theme::LIMIT_COLOR)
                         .style(LineStyle::Dashed { length: 8.0 }),
                 );
+                psi_markers(plot, markers);
                 if show_pcr {
                     plot.line(
                         Line::new(format!("PCR {pcr_label}"), data.pcr_drawn.clone())
@@ -255,13 +265,17 @@ impl TimelineView {
                     .color(theme::LIMIT_COLOR)
                     .style(LineStyle::Dashed { length: 8.0 }),
             );
+            psi_markers(plot, markers);
             for (index, gap) in data.gaps.iter().enumerate() {
                 if hidden.contains(&gap.pid) {
                     continue;
                 }
-                plot.line(
-                    Line::new(gap.label.clone(), gap.drawn.clone()).color(series_color(index)),
-                );
+                // Stretches share the name, so the legend shows the PID once.
+                for stretch in &gap.drawn {
+                    plot.line(
+                        Line::new(gap.label.clone(), stretch.clone()).color(series_color(index)),
+                    );
+                }
             }
             highlight(plot, selection.as_ref(), "PCR → PTS/DTS gap");
         });
@@ -318,6 +332,7 @@ impl TimelineView {
                     if reset_zoom {
                         plot.set_auto_bounds(true);
                     }
+                    psi_markers(plot, markers);
                     plot.points(
                         Points::new(
                             "event",
@@ -419,6 +434,33 @@ impl TimelineView {
             }
         }
         ui.checkbox(&mut self.show_events, "Event markers");
+        ui.checkbox(
+            &mut self.show_markers,
+            format!("PAT/PMT changes ({})", data.markers.len()),
+        );
+        if !data.markers.is_empty() {
+            ui.add_space(8.0);
+            ui.strong("PAT/PMT changes");
+            for marker in &data.markers {
+                let selected = self.selection.as_ref().is_some_and(|s| {
+                    s.series == MARKER_SERIES && s.point.offset_bytes == marker.offset_bytes
+                });
+                let text = format!("{}  {}", clock(marker.seconds), marker.label);
+                if ui.selectable_label(selected, text).clicked() {
+                    self.selection = Some(Selection {
+                        series: MARKER_SERIES.to_owned(),
+                        pid: marker.pid.clone(),
+                        point: Point {
+                            seconds: marker.seconds,
+                            value: 0.0,
+                            offset_bytes: marker.offset_bytes,
+                        },
+                        value: Some(marker.label.clone()),
+                        verdict: None,
+                    });
+                }
+            }
+        }
 
         ui.add_space(12.0);
         ui.strong("Selected point");
@@ -463,6 +505,17 @@ impl TimelineView {
             }
         });
         open_packet
+    }
+}
+
+/// Applied PAT and PMT changes as vertical dashed lines.
+fn psi_markers(plot: &mut egui_plot::PlotUi, markers: &[Marker]) {
+    for marker in markers {
+        plot.vline(
+            VLine::new(MARKER_SERIES, marker.seconds)
+                .color(theme::PSI_COLOR)
+                .style(LineStyle::Dashed { length: 6.0 }),
+        );
     }
 }
 

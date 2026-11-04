@@ -80,6 +80,116 @@ pub struct AnalysisReport {
     pub continuity_events: Vec<ContinuityEvent>,
     pub programs: Vec<Program>,
     pub warnings: Vec<Warning>,
+    /// Absent before CLI schema 1.x gained it, and when no program was analyzed.
+    #[serde(default)]
+    pub psi_layout: Option<PsiLayout>,
+    /// Absent when no PAT or PMT change was applied.
+    #[serde(default)]
+    pub psi_transitions: Vec<PsiTransition>,
+}
+
+/// `psi_layout`: what each PID carries at any offset of the range (OPTIONS.md,
+/// "PSI layout of the range").
+#[derive(Clone, Debug, Deserialize)]
+pub struct PsiLayout {
+    pub sections: Vec<PsiSection>,
+    pub layouts: Vec<Layout>,
+    pub pids: Vec<LayoutPid>,
+}
+
+/// A run of identical PAT or PMT section copies.
+#[derive(Clone, Debug, Deserialize)]
+pub struct PsiSection {
+    pub offset_bytes: u64,
+    pub last_offset_bytes: u64,
+    pub count: u64,
+    pub pid: String,
+    pub table: String,
+    pub status: String,
+    pub invalid_reason: Option<String>,
+    pub transport_stream_id: Option<u16>,
+    pub program_number: Option<u16>,
+    pub version_number: Option<u8>,
+    pub section_number: Option<u8>,
+    pub last_section_number: Option<u8>,
+    pub current_next_indicator: Option<u8>,
+}
+
+/// The tables in effect for the packets in `[offset_bytes, end_offset_bytes)`.
+#[derive(Clone, Debug, Deserialize)]
+pub struct Layout {
+    pub offset_bytes: u64,
+    pub end_offset_bytes: u64,
+    pub transition_indices: Vec<usize>,
+    pub programs: Vec<LayoutProgram>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct LayoutProgram {
+    pub program_number: u16,
+    pub pmt_pid: String,
+    pub pcr_pid: Option<String>,
+    pub elementary_streams: Vec<ElementaryStream>,
+}
+
+/// A PID seen in the range.
+#[derive(Clone, Debug, Deserialize)]
+pub struct LayoutPid {
+    pub pid: String,
+    pub roles: Vec<PidRole>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct PidRole {
+    pub kind: String,
+    pub program_number: Option<u16>,
+    pub stream_type: Option<String>,
+}
+
+/// One applied PAT or PMT change; the new layout applies after the packet at
+/// `offset_bytes`, which completed the new table.
+#[derive(Clone, Debug, Deserialize)]
+pub struct PsiTransition {
+    pub offset_bytes: u64,
+    pub table: String,
+    pub pid: String,
+    pub previous_version: u8,
+    pub version: u8,
+    pub program_number: Option<u16>,
+    pub previous_pcr_pid: Option<String>,
+    pub pcr_pid: Option<String>,
+    #[serde(default)]
+    pub elementary_streams_added: Vec<ElementaryStream>,
+    #[serde(default)]
+    pub elementary_streams_removed: Vec<ElementaryStream>,
+    #[serde(default)]
+    pub stream_type_changes: Vec<StreamTypeChange>,
+    #[serde(default)]
+    pub programs_added: Vec<PatProgram>,
+    #[serde(default)]
+    pub programs_removed: Vec<PatProgram>,
+    #[serde(default)]
+    pub pmt_pid_changes: Vec<PmtPidChange>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct StreamTypeChange {
+    pub pid: String,
+    pub previous_stream_type: String,
+    pub stream_type: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct PatProgram {
+    pub program_number: u16,
+    pub pmt_pid: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct PmtPidChange {
+    pub program_number: u16,
+    pub previous_pmt_pid: String,
+    pub pmt_pid: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -137,7 +247,7 @@ pub struct Program {
     pub series: Option<Series>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct ElementaryStream {
     pub pid: String,
     pub stream_type: String,
@@ -313,6 +423,19 @@ pub struct PacketSummary {
     pub adaptation_field_control: u8,
     pub continuity_counter: u8,
     pub pcr_ms: Option<f64>,
+    /// Headers of the PSI sections that start in this packet.
+    #[serde(default)]
+    pub sections: Vec<PacketSection>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct PacketSection {
+    pub table_id: String,
+    pub table_id_extension: u16,
+    pub version_number: u8,
+    pub current_next_indicator: u8,
+    pub section_number: u8,
+    pub last_section_number: u8,
 }
 
 /// `--output packet`: one packet decoded field by field.

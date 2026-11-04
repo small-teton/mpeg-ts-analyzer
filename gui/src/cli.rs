@@ -422,6 +422,23 @@ pub(crate) fn wait_until_exited(child: &Mutex<Child>) -> bool {
     false
 }
 
+/// Runs the CLI named by MPEG_TS_ANALYZER_CLI (e.g. via `make gui-test`) on a
+/// file of `sample_data` and returns its stdout; None without that CLI.
+#[cfg(test)]
+pub fn run_on_sample(sample: &str, args: &[&str]) -> Option<Vec<u8>> {
+    let cli = std::env::var_os(CLI_ENV)?;
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../sample_data")
+        .join(sample);
+    let output = Command::new(cli)
+        .arg(path)
+        .args(args)
+        .output()
+        .expect("the CLI runs");
+    assert!(output.status.success(), "{sample} {args:?}");
+    Some(output.stdout)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -4,7 +4,7 @@ use crate::theme;
 
 pub(super) const ROW_HEIGHT: f32 = 22.0;
 /// Below this width the list scrolls horizontally instead of squeezing columns.
-pub(super) const MIN_LIST_WIDTH: f32 = 900.0;
+pub(super) const MIN_LIST_WIDTH: f32 = 1100.0;
 
 pub(super) fn row_text_color(ui: &egui::Ui, selected: bool) -> egui::Color32 {
     if selected {
