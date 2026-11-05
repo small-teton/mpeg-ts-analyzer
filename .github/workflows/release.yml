@@ -1,58 +1,137 @@
 name: Release
 
+# Releases the CLI as v<VERSION>, either when dispatched on master or for a
+# vX.Y.Z tag pushed by a user (e.g. `make release`). The tag is created only
+# after a complete GoReleaser build has passed, and the release is published
+# only after a second build in the same job produced the same checksums.
 on:
   workflow_dispatch:
+  push:
+    # Only well-formed version tags; a malformed tag such as "v.1.5.0" would
+    # start a run that GoReleaser aborts as invalid semver.
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+# One CLI release at a time, and a started release is never cancelled.
+concurrency:
+  group: release-cli
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
-      - name: Read VERSION
-        id: version
-        run: echo "version=$(cat VERSION | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
-
-      - name: Check tag does not exist
+      - name: Check the release request
+        id: check
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
         run: |
-          if git rev-parse "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
-            echo "::error::Tag v${{ steps.version.outputs.version }} already exists"
-            exit 1
+          version=$(tr -d '[:space:]' < VERSION)
+          .github/scripts/release-state.sh semver "$version"
+          tag="v$version"
+          case "$EVENT_NAME" in
+            workflow_dispatch)
+              if [ "$REF" != refs/heads/master ]; then
+                echo "::error::Run the Release workflow on master, not $REF."
+                exit 1
+              fi ;;
+            push)
+              if [ "$REF_NAME" != "$tag" ]; then
+                echo "::error::Tag $REF_NAME does not match VERSION ($version)."
+                exit 1
+              fi ;;
+          esac
+          .github/scripts/release-state.sh on-master "$SHA"
+          state=$(.github/scripts/release-state.sh tag "$tag" "$SHA")
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+          if [ "$state" = published ]; then
+            echo "::notice::$tag is already released from $SHA; nothing to do."
           fi
 
-      - name: Create and push tag
-        run: |
-          git tag "v${{ steps.version.outputs.version }}"
-          git push origin "v${{ steps.version.outputs.version }}"
-
-      # GoReleaser runs in this same job rather than relying on the goreleaser
-      # workflow's `push: tags` trigger: a tag pushed with the default
-      # GITHUB_TOKEN does not start other workflow runs, so the tag push above
-      # would never kick off a separate release. Running it here releases the
-      # tag we just created.
       - name: Set up Go
+        if: steps.check.outputs.state != 'published'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: "./go.mod"
 
-      # GUI releases use gui-v* tags on the same branch. Name the CLI tags so
-      # GoReleaser does not take a GUI tag as the current or previous release.
+      # GoReleaser needs the tag in the local repository; it is pushed only
+      # after the build below has passed. GUI releases use gui-v* tags on the
+      # same branch, so the CLI tags are named for GoReleaser explicitly.
       - name: Pick the CLI tags
+        if: steps.check.outputs.state != 'published'
         env:
-          TAG: v${{ steps.version.outputs.version }}
+          TAG: ${{ steps.check.outputs.tag }}
+          SHA: ${{ github.sha }}
         run: |
+          git rev-parse --quiet --verify "refs/tags/$TAG" >/dev/null || git tag "$TAG" "$SHA"
           echo "GORELEASER_CURRENT_TAG=$TAG" >> "$GITHUB_ENV"
           previous=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$TAG^" 2>/dev/null || true)
           if [ -n "$previous" ]; then
             echo "GORELEASER_PREVIOUS_TAG=$previous" >> "$GITHUB_ENV"
           fi
 
-      - name: Run GoReleaser
+      - name: Build and check without publishing
+        if: steps.check.outputs.state != 'published'
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          version: v2.19.0
+          args: release --clean --skip=publish
+
+      - name: Check the built version and keep the checksums
+        if: steps.check.outputs.state != 'published'
+        env:
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          actual=$(dist/mpeg-ts-analyzer_linux_amd64_v1/mpeg-ts-analyzer --version)
+          if [ "$actual" != "mpeg-ts-analyzer version $VERSION" ]; then
+            echo "::error::The built CLI reports '$actual', expected version $VERSION."
+            exit 1
+          fi
+          cp dist/*_checksums.txt "$RUNNER_TEMP/checked-checksums.txt"
+
+      # The build passed: create the tag at the built commit, unless a
+      # previous run already did. The state is checked again, since a tag or
+      # release may have appeared while the job was building.
+      - name: Push the tag
+        if: steps.check.outputs.state != 'published'
+        env:
+          TAG: ${{ steps.check.outputs.tag }}
+          SHA: ${{ github.sha }}
+        run: |
+          .github/scripts/release-state.sh on-master "$SHA"
+          state=$(.github/scripts/release-state.sh tag "$TAG" "$SHA")
+          case "$state" in
+            new) git push origin "refs/tags/$TAG" ;;
+            resume) echo "$TAG already points at $SHA." ;;
+            *) echo "::error::$TAG was published while this run was building."; exit 1 ;;
+          esac
+
+      # GoReleaser OSS cannot publish a previous build, so it builds again and
+      # uploads to a draft release (.goreleaser.yaml). The build is
+      # reproducible, and the rpm records the build host, so both builds run
+      # in this job and must have the same checksums.
+      - name: Upload a draft release
+        if: steps.check.outputs.state != 'published'
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           version: v2.19.0
@@ -60,3 +139,28 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+
+      - name: Compare with the checked build
+        if: steps.check.outputs.state != 'published'
+        run: |
+          if ! diff "$RUNNER_TEMP/checked-checksums.txt" dist/*_checksums.txt; then
+            echo "::error::The uploaded artifacts differ from the checked build; the release stays a draft."
+            exit 1
+          fi
+
+      - name: Attest build provenance
+        if: steps.check.outputs.state != 'published'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.deb
+            dist/*.rpm
+            dist/*.apk
+
+      - name: Publish the release
+        if: steps.check.outputs.state != 'published'
+        env:
+          TAG: ${{ steps.check.outputs.tag }}
+        run: gh release edit "$TAG" --draft=false --latest

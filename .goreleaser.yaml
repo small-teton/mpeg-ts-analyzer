@@ -79,6 +79,14 @@ homebrew_casks:
     description: "An analyzer for MPEG-2 Transport Stream (ISO/IEC 13818-1)"
     license: "Apache-2.0"
 
+# The Release workflow uploads to a draft and publishes it only after
+# comparing the checksums with the build it checked. A rerun after a failed
+# upload replaces the draft and its assets.
+release:
+  draft: true
+  replace_existing_draft: true
+  replace_existing_artifacts: true
+
 changelog:
   sort: asc
   filters:
