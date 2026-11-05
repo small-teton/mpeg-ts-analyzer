@@ -1,0 +1,29 @@
+Desktop GUI for mpeg-ts-analyzer {{VERSION}}. Each package bundles the
+`mpeg-ts-analyzer` CLI built from the same commit; the GUI finds it without
+any setup.
+
+| OS | Download |
+|---|---|
+| macOS (Apple silicon) | `mpeg-ts-analyzer-gui_{{VERSION}}_macos_arm64.dmg` |
+| Linux (x86_64) | `mpeg-ts-analyzer-gui_{{VERSION}}_amd64.deb` or `mpeg-ts-analyzer-gui_{{VERSION}}_linux_x86_64.AppImage` |
+| Windows (x86_64) | `mpeg-ts-analyzer-gui_{{VERSION}}_windows_x86_64_setup.exe` (per-user install, no administrator rights) or `mpeg-ts-analyzer-gui_{{VERSION}}_windows_x86_64_portable.zip` |
+
+## Opening unsigned builds
+
+The packages are not code-signed, so the OS warns before the first start.
+
+- **macOS:** open the app once, then allow it under System Settings → Privacy &
+  Security → "Open Anyway". Alternatively remove the quarantine flag:
+  `xattr -d com.apple.quarantine /Applications/mpeg-ts-analyzer.app`.
+- **Windows:** SmartScreen shows "Windows protected your PC"; choose "More info"
+  → "Run anyway".
+
+## Verifying a download
+
+```sh
+sha256sum -c SHA256SUMS --ignore-missing
+gh attestation verify <file> --repo small-teton/mpeg-ts-analyzer
+```
+
+`mpeg-ts-analyzer-gui_{{VERSION}}_sbom.cdx.json` lists the Rust crates of the
+GUI (CycloneDX).

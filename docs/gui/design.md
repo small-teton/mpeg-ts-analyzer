@@ -31,10 +31,14 @@ Work is tracked in #101 (milestone GUI v0.1).
 
 1. `MPEG_TS_ANALYZER_CLI` environment variable, when set and not empty
 2. CLI path from Settings, when not empty
-3. CLI bundled with the GUI, located relative to the GUI executable: next to it
-   (Windows install directory, Linux install prefix, macOS
+3. CLI bundled with the GUI, located relative to the GUI executable: in
+   `<prefix>/lib/mpeg-ts-analyzer-gui/` for a GUI in `<prefix>/bin` (`.deb`
+   and AppImage), next to it (Windows install directory or portable zip, macOS
    `.app/Contents/MacOS`), in the macOS bundle's `Contents/Resources`, or under
-   `$APPDIR/usr/bin` in an AppImage; used only if the file exists
+   `$APPDIR/usr/lib/mpeg-ts-analyzer-gui/` in an AppImage; the first file that
+   exists is used. The Linux packages keep it out of `/usr/bin`, where the
+   CLI's own `.deb` installs `mpeg-ts-analyzer`, and look in the lib directory
+   first so that a co-installed CLI does not replace the bundled one.
 4. `mpeg-ts-analyzer` on `PATH`
 
 The first step that applies wins; the GUI does not fall through to a later
@@ -46,6 +50,11 @@ version.
 
 On Windows the CLI is started with `CREATE_NO_WINDOW`, and the GUI binary uses
 `windows_subsystem = "windows"`, so no console window appears.
+
+`mpeg-ts-analyzer-gui --check-cli` runs the same lookup (without the Settings
+path), checks the CLI and prints what it found, without opening a window. The
+release workflow uses it to check every package after installing or unpacking
+it.
 
 ## Workflow
 
@@ -266,18 +275,35 @@ Language, packets per page and cached pages are laid out but not applied yet.
 - The GUI runs on the host; a container development environment is not
   planned for now.
 
-## Distribution (planned)
+## Distribution
 
 | OS | Format |
 |---|---|
-| macOS | `.app` in a `.dmg`; Homebrew cask later |
-| Linux | `.deb` and AppImage, built on an older Ubuntu for glibc compatibility |
-| Windows | NSIS installer (per-user, no admin) and a portable zip; VC++ runtime linked statically |
+| macOS (Apple silicon) | `.app` in a `.dmg`; Homebrew cask later |
+| Linux (x86_64) | `.deb` (package `mpeg-ts-analyzer-gui`) and AppImage, built on Ubuntu 22.04 for glibc compatibility |
+| Windows (x86_64) | NSIS installer (per-user into `%LOCALAPPDATA%\mpeg-ts-analyzer`, no admin) and a portable zip; VC++ runtime linked statically |
 
-- Packaged with cargo-packager from a `gui-release.yml` workflow on `gui-v*`
-  tags. `gui/v*` is avoided because Go reads it as a sub-module version.
-- Binaries are not signed for now; the README will explain how to open them on
-  macOS and Windows.
+- The app is named `mpeg-ts-analyzer` (identifier
+  `io.github.small-teton.mpeg-ts-analyzer`); its executable is
+  `mpeg-ts-analyzer-gui`. The icon is `gui/assets/icons/icon.svg`.
+- Packaged with cargo-packager (configuration in `gui/Cargo.toml`) by the
+  `gui-release.yml` workflow, which releases `gui-v<version>` tags.
+  `gui/v*` is avoided because Go reads it as a sub-module version. The GUI
+  version (`gui/Cargo.toml`) is independent of the CLI's `VERSION`; GUI
+  releases are not marked "latest", which stays on the CLI.
+- The CLI release workflows name their current and previous `v*` tags for
+  GoReleaser, which would otherwise take a `gui-v*` tag on the same branch as
+  the previous release.
+- Every package carries `LICENSE`, the bundled fonts' licenses and
+  `THIRD-PARTY-NOTICES.txt`, generated at release time by
+  `gui/scripts/third-party-notices.sh`: the Rust crates of the GUI for all
+  three targets (cargo-about, `gui/about.toml`), including the fonts egui
+  embeds, and the Go standard library and the modules recorded in the CLI built
+  for each of the three targets (cobra uses mousetrap only on Windows).
+- Binaries are not signed for now; the release notes
+  (`.github/gui-release-notes.md`) explain how to open them on macOS and
+  Windows. Checksums, an SBOM and build provenance:
+  [release-security.md](release-security.md).
 
 ## Decisions
 
@@ -305,6 +331,9 @@ Language, packets per page and cached pages are laid out but not applied yet.
 
 - Service names from the SDT (#92); ARIB text for Japanese broadcasts is not
   part of the first release.
-- Application identifier and display name before the first release.
 - Renderer choice (wgpu or glow) after testing on older GPUs, virtual machines
   and remote desktops.
+- Windows shows the icon on the window and taskbar (set at runtime), but the
+  `.exe` file and its shortcuts use the default icon until an icon resource is
+  embedded at build time (a build script and one more build dependency).
+- Intel Mac packages (only Apple silicon is built).

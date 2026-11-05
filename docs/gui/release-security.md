@@ -1,10 +1,10 @@
 # GUI release security (design notes)
 
-Status: not implemented. The GUI is not released yet (#100); these notes record
-what a release should add and what was deliberately left out. The CLI releases
-through GoReleaser and is not covered here.
+Status: the free measures below are implemented in
+`.github/workflows/gui-release.yml` (#100); code signing is not. The CLI
+releases through GoReleaser and is not covered here.
 
-## Free measures to add with the first GUI release
+## Free measures in every GUI release
 
 - **Checksums.** Publish a `SHA256SUMS` file next to the archives, generated in
   the release job from the uploaded files. It detects corrupted or swapped
@@ -23,6 +23,22 @@ through GoReleaser and is not covered here.
 - **Release workflow hardening.** Build from a tag on `master` through
   `workflow_dispatch`, as the CLI release does, with per-job minimal
   permissions and no caches restored from pull requests.
+
+## Packaging tools fetched at build time
+
+cargo-packager and cargo-cyclonedx are installed at exact versions with
+`--locked` (updated by Renovate). cargo-packager itself downloads further tools
+while packaging:
+
+- NSIS for the Windows installer, from fixed release URLs; cargo-packager
+  checks the NSIS archive and its utility plugin against SHA-1 hashes built
+  into it.
+- linuxdeploy and its AppImage plugin for the AppImage, from `continuous`
+  release tags, without a hash check.
+
+They run only in the packaging jobs, and the build provenance records the
+workflow run that used them, but a replaced linuxdeploy download would end up
+in the AppImage. Pinning it is left for later; the `.deb` does not use it.
 
 ## Code signing (excluded for now)
 

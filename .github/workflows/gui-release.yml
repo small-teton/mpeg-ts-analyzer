@@ -1,0 +1,331 @@
+name: GUI release
+
+# Packages the GUI with the CLI of the same commit for macOS (.dmg), Linux
+# (.deb, AppImage) and Windows (NSIS installer, portable zip), checks that each
+# package finds its bundled CLI, and publishes them with checksums, an SBOM and
+# build provenance.
+#
+# - workflow_dispatch on master creates the tag gui-v<version of gui/Cargo.toml>
+#   and releases it in the same run (a tag pushed with GITHUB_TOKEN would not
+#   start another run).
+# - A gui-v* tag pushed by a user releases that tag.
+# - A pull request that changes the packaging builds and checks the packages
+#   without publishing them.
+# CLI releases use v* tags and are not started by gui-v* tags.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "gui-v[0-9]+.[0-9]+.[0-9]+"
+  pull_request:
+    paths:
+      - gui/Cargo.toml
+      - gui/Cargo.lock
+      - gui/assets/icons/**
+      - gui/about.hbs
+      - gui/about.toml
+      - gui/scripts/third-party-notices.sh
+      - gui/src/cli.rs
+      - gui/src/main.rs
+      - .github/workflows/gui-release.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gui-release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # renovate: datasource=crate depName=cargo-packager
+  CARGO_PACKAGER_VERSION: 0.11.8
+  # renovate: datasource=crate depName=cargo-cyclonedx
+  CARGO_CYCLONEDX_VERSION: 0.5.9
+  # renovate: datasource=crate depName=cargo-about
+  CARGO_ABOUT_VERSION: 0.9.3
+
+jobs:
+
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Read the GUI version
+      id: version
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        REF: ${{ github.ref }}
+        REF_NAME: ${{ github.ref_name }}
+      run: |
+        version=$(sed -n 's/^version = "\(.*\)"$/\1/p' gui/Cargo.toml | head -n 1)
+        tag="gui-v$version"
+        if [ "$EVENT_NAME" = push ] && [ "$REF_NAME" != "$tag" ]; then
+          echo "::error::Tag $REF_NAME does not match gui/Cargo.toml version $version"
+          exit 1
+        fi
+        if [ "$EVENT_NAME" = workflow_dispatch ] && [ "$REF" != refs/heads/master ]; then
+          echo "::error::Release from master only (got $REF)"
+          exit 1
+        fi
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  create-tag:
+    needs: version
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+
+    - name: Create and push the tag
+      env:
+        TAG: ${{ needs.version.outputs.tag }}
+      run: |
+        if git rev-parse "$TAG" >/dev/null 2>&1; then
+          echo "::error::Tag $TAG already exists"
+          exit 1
+        fi
+        git tag "$TAG"
+        git push origin "$TAG"
+
+  # One notice file for every package: the Rust crates of the GUI and the Go
+  # modules of the CLI, each for all three targets.
+  notices:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+    # Runs alongside create-tag, so it checks out the commit the workflow was
+    # started on, which is the commit create-tag tags.
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Install the toolchain from rust-toolchain.toml
+      working-directory: gui
+      run: rustup toolchain install
+
+    - name: Set up Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: './go.mod'
+
+    - name: Install cargo-about
+      run: cargo install cargo-about --version "$CARGO_ABOUT_VERSION" --locked --features cli
+
+    - name: Write the notices
+      run: |
+        mkdir notices
+        gui/scripts/third-party-notices.sh notices/THIRD-PARTY-NOTICES.txt
+
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: notices
+        path: notices/
+        if-no-files-found: error
+
+  package:
+    needs: [version, create-tag, notices]
+    # create-tag is skipped except on workflow_dispatch.
+    if: >-
+      always() &&
+      needs.version.result == 'success' &&
+      needs.notices.result == 'success' &&
+      (needs.create-tag.result == 'success' || needs.create-tag.result == 'skipped')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - os: macos-latest
+          formats: app,dmg
+        # An older Ubuntu, so the packages run on older glibc.
+        - os: ubuntu-22.04
+          formats: deb,appimage
+        - os: windows-latest
+          formats: nsis
+          # Links the VC++ runtime statically.
+          rustflags: -C target-feature=+crt-static
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+        ref: ${{ github.event_name == 'workflow_dispatch' && needs.version.outputs.tag || '' }}
+
+    - name: Install the toolchain from rust-toolchain.toml
+      working-directory: gui
+      run: rustup toolchain install
+
+    - name: Set up Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: './go.mod'
+
+    # The AppImage tooling is itself an AppImage and needs FUSE 2.
+    - name: Install AppImage dependencies
+      if: runner.os == 'Linux'
+      run: sudo apt-get update && sudo apt-get install -y libfuse2
+
+    - name: Install cargo-packager
+      run: cargo install cargo-packager --version "$CARGO_PACKAGER_VERSION" --locked
+
+    # Built like the CLI release (GoReleaser): static, trimmed, stripped.
+    - name: Build the CLI to bundle
+      env:
+        CGO_ENABLED: "0"
+      run: go build -trimpath -ldflags "-s -w" -o "gui/target/bundled-cli/mpeg-ts-analyzer$(go env GOEXE)" .
+
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: notices
+        path: gui/target/notices
+
+    - name: Package
+      working-directory: gui
+      env:
+        RUSTFLAGS: ${{ matrix.rustflags }}
+      run: cargo packager --release --formats "${{ matrix.formats }}"
+
+    - name: Collect the packages
+      working-directory: gui/target/release
+      run: |
+        mkdir -p "$GITHUB_WORKSPACE/dist"
+        dist="$GITHUB_WORKSPACE/dist"
+        base="mpeg-ts-analyzer-gui_${VERSION}"
+        case "$RUNNER_OS" in
+          macOS)
+            cp ./*.dmg "$dist/${base}_macos_arm64.dmg" ;;
+          Linux)
+            cp ./*.deb "$dist/${base}_amd64.deb"
+            cp ./*.AppImage "$dist/${base}_linux_x86_64.AppImage" ;;
+          Windows)
+            cp ./*-setup.exe "$dist/${base}_windows_x86_64_setup.exe"
+            portable="$RUNNER_TEMP/${base}_windows_x86_64"
+            mkdir "$portable"
+            cp mpeg-ts-analyzer-gui.exe ../bundled-cli/mpeg-ts-analyzer.exe ../../../LICENSE ../../assets/fonts/*.txt ../notices/THIRD-PARTY-NOTICES.txt "$portable/"
+            (cd "$RUNNER_TEMP" && 7z a -tzip "$dist/${base}_windows_x86_64_portable.zip" "${base}_windows_x86_64" >/dev/null) ;;
+        esac
+        ls -l "$dist"
+
+    # Each package, as a user would install or unpack it, must find the CLI
+    # bundled with it (not one from MPEG_TS_ANALYZER_CLI, Settings or PATH)
+    # and carry the license texts.
+    - name: Check that each package finds its bundled CLI
+      working-directory: dist
+      run: |
+        unset MPEG_TS_ANALYZER_CLI
+        check() {
+          echo "$ $*"
+          output=$("$@" --check-cli)
+          echo "$output"
+          case "$output" in
+            *"(bundled with the GUI): mpeg-ts-analyzer "*) ;;
+            *) echo "::error::$1 did not find its bundled CLI"; exit 1 ;;
+          esac
+        }
+        licenses() {
+          for file in LICENSE THIRD-PARTY-NOTICES.txt Inter-LICENSE.txt JetBrainsMono-OFL.txt Phosphor-LICENSE.txt; do
+            [ -f "$1/$file" ] || { echo "::error::$1/$file is missing"; exit 1; }
+          done
+        }
+        case "$RUNNER_OS" in
+          macOS)
+            mount="$RUNNER_TEMP/dmg"
+            hdiutil attach ./*.dmg -nobrowse -readonly -mountpoint "$mount" < /dev/null
+            check "$mount/mpeg-ts-analyzer.app/Contents/MacOS/mpeg-ts-analyzer-gui"
+            licenses "$mount/mpeg-ts-analyzer.app/Contents/Resources"
+            # The just-started GUI may still hold the volume for a moment.
+            hdiutil detach "$mount" -force ;;
+          Linux)
+            sudo apt-get install -y ./*.deb
+            check /usr/bin/mpeg-ts-analyzer-gui
+            licenses /usr/lib/mpeg-ts-analyzer-gui
+            appimage=$(ls "$PWD"/*.AppImage)
+            chmod +x "$appimage"
+            (cd "$RUNNER_TEMP" && "$appimage" --appimage-extract >/dev/null)
+            check "$RUNNER_TEMP/squashfs-root/AppRun"
+            licenses "$RUNNER_TEMP/squashfs-root/usr/lib/mpeg-ts-analyzer-gui" ;;
+          Windows)
+            installer=$(cygpath -w "$PWD/$(ls ./*_setup.exe)")
+            powershell -NoProfile -Command "Start-Process -FilePath '$installer' -ArgumentList '/S' -Wait"
+            check "$LOCALAPPDATA/mpeg-ts-analyzer/mpeg-ts-analyzer-gui.exe"
+            licenses "$LOCALAPPDATA/mpeg-ts-analyzer"
+            7z x -o"$RUNNER_TEMP/portable" ./*_portable.zip >/dev/null
+            portable=$(ls -d "$RUNNER_TEMP"/portable/*/)
+            check "${portable}mpeg-ts-analyzer-gui.exe"
+            licenses "$portable" ;;
+        esac
+
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: gui-${{ runner.os }}
+        path: dist/
+        if-no-files-found: error
+
+  release:
+    needs: [version, package]
+    if: >-
+      always() &&
+      github.event_name != 'pull_request' &&
+      needs.package.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      TAG: ${{ needs.version.outputs.tag }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+        ref: ${{ needs.version.outputs.tag }}
+
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        pattern: gui-*
+        merge-multiple: true
+        path: dist
+
+    - name: Generate the SBOM
+      run: |
+        cargo install cargo-cyclonedx --version "$CARGO_CYCLONEDX_VERSION" --locked
+        cargo cyclonedx --manifest-path gui/Cargo.toml --format json --override-filename sbom
+        mv gui/sbom.json "dist/mpeg-ts-analyzer-gui_${VERSION}_sbom.cdx.json"
+
+    - name: Write the checksums
+      working-directory: dist
+      run: sha256sum -- * > SHA256SUMS
+
+    - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      with:
+        subject-path: dist/*
+
+    # Not marked latest: "latest" stays on the CLI release.
+    - name: Publish the release
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        sed "s/{{VERSION}}/$VERSION/g" .github/gui-release-notes.md > "$RUNNER_TEMP/notes.md"
+        gh release create "$TAG" dist/* \
+          --repo "$GITHUB_REPOSITORY" \
+          --verify-tag \
+          --latest=false \
+          --title "mpeg-ts-analyzer GUI $VERSION" \
+          --notes-file "$RUNNER_TEMP/notes.md"

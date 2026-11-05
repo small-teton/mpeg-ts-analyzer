@@ -40,6 +40,18 @@ jobs:
         with:
           go-version-file: "./go.mod"
 
+      # GUI releases use gui-v* tags on the same branch. Name the CLI tags so
+      # GoReleaser does not take a GUI tag as the current or previous release.
+      - name: Pick the CLI tags
+        env:
+          TAG: v${{ steps.version.outputs.version }}
+        run: |
+          echo "GORELEASER_CURRENT_TAG=$TAG" >> "$GITHUB_ENV"
+          previous=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$TAG^" 2>/dev/null || true)
+          if [ -n "$previous" ]; then
+            echo "GORELEASER_PREVIOUS_TAG=$previous" >> "$GITHUB_ENV"
+          fi
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
