@@ -8,24 +8,68 @@ on:
   schedule:
     - cron: "0 6 * * 1" # Every Monday at 6:00 UTC
 
+permissions:
+  contents: read
+
 jobs:
-  analyze:
-    name: Analyze (${{ matrix.language }})
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.filter.outputs.go }}
+      rust: ${{ steps.filter.outputs.rust }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Detect changed languages
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT_NAME" = schedule ]; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          case "$EVENT_NAME" in
+            pull_request) base="$PR_BASE_SHA" ;;
+            push) base="$PUSH_BEFORE_SHA" ;;
+            *) base="" ;;
+          esac
+
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          files=$(git diff --name-only "$base" HEAD)
+          if printf '%s\n' "$files" | grep -Eq \
+            '(\.go$|^go\.(mod|sum)$|^\.github/workflows/codeql\.yml$)'; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          fi
+          if printf '%s\n' "$files" | grep -Eq \
+            '(^gui/.*\.rs$|^gui/Cargo\.(toml|lock)$|^gui/rust-toolchain\.toml$|^\.github/workflows/codeql\.yml$)'; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rust=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  analyze-go:
+    name: Analyze (go)
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       security-events: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Go is traced through an explicit build of the CLI.
-          - language: go
-            build-mode: manual
-          # Rust is extracted from source; CodeQL finds gui/Cargo.toml and
-          # uses rust-analyzer, so no cargo build runs.
-          - language: rust
-            build-mode: none
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -33,27 +77,49 @@ jobs:
           persist-credentials: false
 
       - name: Set up Go
-        if: matrix.language == 'go'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: "./go.mod"
 
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: go
+          build-mode: manual
+
+      - name: Build
+        run: go build ./...
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          category: "/language:go"
+
+  analyze-rust:
+    name: Analyze (rust)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       - name: Install the toolchain from rust-toolchain.toml
-        if: matrix.language == 'rust'
         working-directory: gui
         run: rustup toolchain install
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
-          languages: ${{ matrix.language }}
-          build-mode: ${{ matrix.build-mode }}
-
-      - name: Build
-        if: matrix.build-mode == 'manual'
-        run: go build ./...
+          languages: rust
+          build-mode: none
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
-          category: "/language:${{ matrix.language }}"
+          category: "/language:rust"
