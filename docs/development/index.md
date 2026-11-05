@@ -144,7 +144,7 @@ for example, `make check-docs-policy DOCS_POLICY_BASE=origin/master`.
 
 ## Desktop GUI
 
-The GUI in [`gui/`](../gui) is a Rust application (eframe/egui) that runs the
+The GUI in [`gui/`](../../gui) is a Rust application (eframe/egui) that runs the
 CLI as a subprocess. Design notes: [`docs/gui/design.md`](../gui/design.md) and
 [`docs/gui/cli-interface.md`](../gui/cli-interface.md).
 

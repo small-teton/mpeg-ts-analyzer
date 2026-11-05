@@ -25,12 +25,12 @@ pass and adds per-program time series (PCR intervals, PTS/DTS and PCR gaps,
 jitter, 1-second bitrate windows) under its own schema, plus the PSI layout of
 the range (`psi_layout`: PAT/PMT sections, the layouts in effect and their byte
 intervals, and every observed PID with what it carries); see
-[OPTIONS.md](#range-analysis-output---output-analysis) and
-[OPTIONS.md](#psi-layout-of-the-range). `--output
+[Range analysis output](#range-analysis-output---output-analysis) and
+[PSI layout of the range](#psi-layout-of-the-range). `--output
 packets` pages through packets (with the headers of the PSI sections that
 start in each packet) and `--output packet` decodes one packet with
 the byte position of every field, plus the exact bits of fields that do not
-fill whole bytes ([OPTIONS.md](#packet-pages---output-packets)).
+fill whole bytes ([Packet pages](#packet-pages---output-packets)).
 
 The document contains summaries, not one object per transport packet. Its size
 therefore does not grow with the input file's packet count (apart from naturally
@@ -40,7 +40,7 @@ anomalies). Analysis remains streaming, making JSON suitable for large files.
 Long-running callers can add `--progress json` to receive progress events on
 stderr, and `mpeg-ts-analyzer --capabilities` reports which machine-readable
 outputs and schema versions a build supports. See
-[OPTIONS.md](#progress-events).
+[Progress events](#progress-events).
 Packet-level flags (`--dump-ts-header`, `--dump-ts-payload`,
 `--dump-adaptation-field`, `--dump-psi`, `--dump-pes-header`, and
 `--dump-timestamp`) are intentionally incompatible with JSON mode; their large,
@@ -53,7 +53,7 @@ schema version, new fields may be added, but existing fields will not be removed
 or change type or enum meaning. New enum values may be added, so consumers must
 treat unknown values as unrecognized. Removing or retyping a field, or changing
 an existing enum's meaning, requires a schema-version increment.
-See [OPTIONS.md](#json-output) for an annotated example.
+See [JSON output](#json-output) for an annotated example.
 The machine-readable contract is published as
 [`docs/json-schema-v1.json`](../json-schema-v1.json) (JSON Schema Draft
 2020-12).

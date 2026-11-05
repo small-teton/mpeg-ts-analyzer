@@ -46,4 +46,4 @@ packet is selected, so its bytes are highlighted and its 13 bits are marked
 across the two bytes they span.
 
 Both images are rendered from fixtures by the GUI's tests rather than captured
-by hand; see [docs/DEVELOPMENT.md](../development/index.md#readme-screenshots).
+by hand; see [README screenshots](../development/index.md#readme-screenshots).
