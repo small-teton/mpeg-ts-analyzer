@@ -298,7 +298,8 @@ Language, packets per page and cached pages are laid out but not applied yet.
   `THIRD-PARTY-NOTICES.txt`, generated at release time by
   `gui/scripts/third-party-notices.sh`: the Rust crates of the GUI for all
   three targets (cargo-about, `gui/about.toml`), including the fonts egui
-  embeds, and the Go standard library and modules recorded in the bundled CLI.
+  embeds, and the Go standard library and the modules recorded in the CLI built
+  for each of the three targets (cobra uses mousetrap only on Windows).
 - Binaries are not signed for now; the release notes
   (`.github/gui-release-notes.md`) explain how to open them on macOS and
   Windows. Checksums, an SBOM and build provenance:

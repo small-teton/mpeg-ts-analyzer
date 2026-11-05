@@ -169,7 +169,8 @@ versions pinned in `.github/workflows/gui-release.yml`
 `cargo install cargo-about --version <version> --locked --features cli`). The
 notices cover the Rust crates of the GUI (cargo-about with `gui/about.toml` and
 `gui/about.hbs`; a crate under a license missing from `accepted` fails the
-build) and the Go standard library and modules recorded in the CLI binary. To check a
+build) and the Go standard library and the modules recorded in the CLI built for
+each released target. To check a
 package, run its GUI executable with `--check-cli`: it prints which CLI it found
 and from where, without opening a window, and exits non-zero when none works.
 The icons in `gui/assets/icons/` are generated from `icon.svg` by

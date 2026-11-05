@@ -47,7 +47,7 @@ gui-lint:
 gui-package:
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "gui/target/bundled-cli/mpeg-ts-analyzer$$(go env GOEXE)" .
 	mkdir -p gui/target/notices
-	gui/scripts/third-party-notices.sh "gui/target/bundled-cli/mpeg-ts-analyzer$$(go env GOEXE)" gui/target/notices/THIRD-PARTY-NOTICES.txt
+	gui/scripts/third-party-notices.sh gui/target/notices/THIRD-PARTY-NOTICES.txt
 	cd gui && cargo packager --release
 
 clean:

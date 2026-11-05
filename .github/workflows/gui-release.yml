@@ -99,17 +99,17 @@ jobs:
         git tag "$TAG"
         git push origin "$TAG"
 
-  # One notice file for every package: the Rust crates of the GUI for all
-  # three targets, and the Go modules of the CLI, which are the same on every
-  # OS.
+  # One notice file for every package: the Rust crates of the GUI and the Go
+  # modules of the CLI, each for all three targets.
   notices:
     needs: version
     runs-on: ubuntu-latest
     steps:
+    # Runs alongside create-tag, so it checks out the commit the workflow was
+    # started on, which is the commit create-tag tags.
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
-        ref: ${{ github.event_name == 'workflow_dispatch' && needs.version.outputs.tag || '' }}
 
     - name: Install the toolchain from rust-toolchain.toml
       working-directory: gui
@@ -124,12 +124,9 @@ jobs:
       run: cargo install cargo-about --version "$CARGO_ABOUT_VERSION" --locked --features cli
 
     - name: Write the notices
-      env:
-        CGO_ENABLED: "0"
       run: |
-        go build -trimpath -ldflags "-s -w" -o "$RUNNER_TEMP/mpeg-ts-analyzer" .
         mkdir notices
-        gui/scripts/third-party-notices.sh "$RUNNER_TEMP/mpeg-ts-analyzer" notices/THIRD-PARTY-NOTICES.txt
+        gui/scripts/third-party-notices.sh notices/THIRD-PARTY-NOTICES.txt
 
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
