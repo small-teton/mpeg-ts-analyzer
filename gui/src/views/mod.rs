@@ -9,7 +9,7 @@ use eframe::egui;
 use crate::icons;
 use crate::theme::Verdict;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Screen {
     Overview,
     Timeline,
@@ -60,14 +60,16 @@ pub fn badge(ui: &mut egui::Ui, text: &str, verdict: Verdict) {
 pub fn program_selector_labels(ui: &mut egui::Ui, labels: &[String], selected: &mut usize) -> bool {
     let before = *selected;
     *selected = (*selected).min(labels.len().saturating_sub(1));
-    ui.label("Program");
+    let title = ui.label("Program");
     egui::ComboBox::from_id_salt(ui.scope_id().with("program"))
         .selected_text(labels.get(*selected).map_or("none", String::as_str))
         .show_ui(ui, |ui| {
             for (index, label) in labels.iter().enumerate() {
                 ui.selectable_value(selected, index, label);
             }
-        });
+        })
+        .response
+        .labelled_by(title.id);
     ui.weak(format!("{} programs in this range", labels.len()));
     *selected != before
 }

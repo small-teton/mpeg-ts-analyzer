@@ -74,7 +74,7 @@ impl Settings {
                     .num_columns(2)
                     .spacing([16.0, 8.0])
                     .show(ui, |ui| {
-                        ui.label("Language");
+                        let label = ui.label("Language");
                         egui::ComboBox::from_id_salt("settings_language")
                             .selected_text(self.language.label())
                             .show_ui(ui, |ui| {
@@ -85,7 +85,9 @@ impl Settings {
                                         language.label(),
                                     );
                                 }
-                            });
+                            })
+                            .response
+                            .labelled_by(label.id);
                         ui.end_row();
                     });
 
@@ -94,12 +96,13 @@ impl Settings {
                     .num_columns(2)
                     .spacing([16.0, 8.0])
                     .show(ui, |ui| {
-                        ui.label("Confirm ranges above");
+                        let label = ui.label("Confirm ranges above");
                         ui.add(
                             egui::DragValue::new(&mut self.confirm_range_mib)
                                 .range(1..=65_536)
                                 .suffix(" MiB"),
-                        );
+                        )
+                        .labelled_by(label.id);
                         ui.end_row();
                     });
 
@@ -108,12 +111,14 @@ impl Settings {
                     .num_columns(2)
                     .spacing([16.0, 8.0])
                     .show(ui, |ui| {
-                        ui.label("Packets per page");
-                        ui.add(egui::DragValue::new(&mut self.packets_per_page).range(10..=10_000));
+                        let label = ui.label("Packets per page");
+                        ui.add(egui::DragValue::new(&mut self.packets_per_page).range(10..=10_000))
+                            .labelled_by(label.id);
                         ui.end_row();
 
-                        ui.label("Cached pages");
-                        ui.add(egui::DragValue::new(&mut self.cached_pages).range(1..=50));
+                        let label = ui.label("Cached pages");
+                        ui.add(egui::DragValue::new(&mut self.cached_pages).range(1..=50))
+                            .labelled_by(label.id);
                         ui.end_row();
                     });
 

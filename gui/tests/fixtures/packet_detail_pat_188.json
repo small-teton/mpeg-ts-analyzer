@@ -1,0 +1,242 @@
+{
+  "schema_version": "1.0",
+  "output": "packet",
+  "input": {
+    "path": "sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts",
+    "file_size_bytes": 311516,
+    "packet_size_bytes": 188,
+    "offset_bytes": 188
+  },
+  "status": "complete",
+  "packet": {
+    "offset_bytes": 188,
+    "bytes": "474000100000b00d0001c100000001f0002ab104b2ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "layers": [
+      {
+        "name": "ts_header",
+        "fields": [
+          {
+            "name": "sync_byte",
+            "value": "0x47",
+            "byte_offset": 0,
+            "byte_length": 1
+          },
+          {
+            "name": "transport_error_indicator",
+            "value": "0",
+            "byte_offset": 1,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 8,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "payload_unit_start_indicator",
+            "value": "1",
+            "byte_offset": 1,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 9,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "transport_priority",
+            "value": "0",
+            "byte_offset": 1,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 10,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "PID",
+            "value": "0x0000",
+            "byte_offset": 1,
+            "byte_length": 2,
+            "bits": [
+              {
+                "bit_offset": 11,
+                "bit_length": 13
+              }
+            ]
+          },
+          {
+            "name": "transport_scrambling_control",
+            "value": "0",
+            "byte_offset": 3,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 24,
+                "bit_length": 2
+              }
+            ]
+          },
+          {
+            "name": "adaptation_field_control",
+            "value": "1 (payload only)",
+            "byte_offset": 3,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 26,
+                "bit_length": 2
+              }
+            ]
+          },
+          {
+            "name": "continuity_counter",
+            "value": "0",
+            "byte_offset": 3,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 28,
+                "bit_length": 4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "payload",
+        "fields": [
+          {
+            "name": "payload",
+            "value": "184 bytes",
+            "byte_offset": 4,
+            "byte_length": 184
+          }
+        ]
+      },
+      {
+        "name": "pat",
+        "fields": [
+          {
+            "name": "pointer_field",
+            "value": "0",
+            "byte_offset": 4,
+            "byte_length": 1
+          },
+          {
+            "name": "table_id",
+            "value": "0x00",
+            "byte_offset": 5,
+            "byte_length": 1
+          },
+          {
+            "name": "section_syntax_indicator",
+            "value": "1",
+            "byte_offset": 6,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 48,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "section_length",
+            "value": "13",
+            "byte_offset": 6,
+            "byte_length": 2,
+            "bits": [
+              {
+                "bit_offset": 52,
+                "bit_length": 12
+              }
+            ]
+          },
+          {
+            "name": "transport_stream_id",
+            "value": "1",
+            "byte_offset": 8,
+            "byte_length": 2
+          },
+          {
+            "name": "version_number",
+            "value": "0",
+            "byte_offset": 10,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 82,
+                "bit_length": 5
+              }
+            ]
+          },
+          {
+            "name": "current_next_indicator",
+            "value": "1",
+            "byte_offset": 10,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 87,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "section_number",
+            "value": "0",
+            "byte_offset": 11,
+            "byte_length": 1
+          },
+          {
+            "name": "last_section_number",
+            "value": "0",
+            "byte_offset": 12,
+            "byte_length": 1
+          },
+          {
+            "name": "CRC_32",
+            "value": "0x2ab104b2",
+            "byte_offset": 17,
+            "byte_length": 4
+          }
+        ],
+        "rows": [
+          [
+            {
+              "name": "program_number",
+              "value": "1",
+              "byte_offset": 13,
+              "byte_length": 2
+            },
+            {
+              "name": "program_map_PID",
+              "value": "0x1000",
+              "byte_offset": 15,
+              "byte_length": 2,
+              "bits": [
+                {
+                  "bit_offset": 123,
+                  "bit_length": 13
+                }
+              ]
+            }
+          ]
+        ]
+      }
+    ]
+  },
+  "unit": {
+    "kind": "psi",
+    "first_offset_bytes": 188,
+    "position": 1,
+    "packets_in_range": 1,
+    "table_id": "0x00"
+  },
+  "warnings": []
+}

@@ -183,12 +183,7 @@ fn span_cells(
     highlight: &mut Option<FieldSelection>,
 ) {
     let on = highlight.as_ref() == Some(candidate);
-    let span = &candidate.bytes;
-    let hover = if span.len() == 1 {
-        format!("byte {}", span.start)
-    } else {
-        format!("bytes {}–{}", span.start, span.end - 1)
-    };
+    let hover = byte_span_text(&candidate.bytes);
     let mut clicked = false;
     for cell in cells {
         clicked |= ui
@@ -198,6 +193,15 @@ fn span_cells(
     }
     if clicked {
         *highlight = if on { None } else { Some(candidate.clone()) };
+    }
+}
+
+/// "byte 4" or "bytes 1–2".
+pub(super) fn byte_span_text(span: &ByteSpan) -> String {
+    if span.len() == 1 {
+        format!("byte {}", span.start)
+    } else {
+        format!("bytes {}–{}", span.start, span.end - 1)
     }
 }
 

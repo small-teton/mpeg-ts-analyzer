@@ -83,8 +83,15 @@ impl App {
     }
 
     fn with_settings(settings: Settings, ctx: Option<egui::Context>) -> Self {
+        let mut app = Self::without_cli_check(settings);
+        app.begin_cli_check(ctx);
+        app
+    }
+
+    /// The app before the CLI is checked; Start stays disabled.
+    fn without_cli_check(settings: Settings) -> Self {
         let cli_location = cli::locate(&settings.cli_path);
-        let mut app = Self {
+        Self {
             cli: Err(CHECKING_CLI.to_owned()),
             cli_location,
             cli_check: None,
@@ -109,9 +116,7 @@ impl App {
             settings,
             settings_open: false,
             about_open: false,
-        };
-        app.begin_cli_check(ctx);
-        app
+        }
     }
 }
 
@@ -417,12 +422,10 @@ impl App {
         }
         ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
             ui.add_space(6.0);
-            let about = egui::Button::new(icons::text(icons::INFO).size(20.0)).frame(false);
-            if ui.add(about).on_hover_text("About").clicked() {
+            if icon_button(ui, icons::INFO, "About").clicked() {
                 self.about_open = true;
             }
-            let settings = egui::Button::new(icons::text(icons::GEAR).size(20.0)).frame(false);
-            if ui.add(settings).on_hover_text("Settings").clicked() {
+            if icon_button(ui, icons::GEAR, "Settings").clicked() {
                 self.settings_open = true;
             }
         });
@@ -481,6 +484,14 @@ impl eframe::App for App {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.show(ui);
+    }
+}
+
+impl App {
+    /// Draws the whole window; separate from `eframe::App::ui` so tests can
+    /// drive it without a native window.
+    fn show(&mut self, ui: &mut egui::Ui) {
         if let Some(path) =
             ui.input(|i| i.raw.dropped_files.first().map(|f| f.path().to_path_buf()))
         {
@@ -604,6 +615,15 @@ fn empty_state(ui: &mut egui::Ui, title: &str, hint: &str) {
     });
 }
 
+/// A frameless icon button; `name` is its tooltip and its accessible name,
+/// since the icon glyph alone names nothing.
+fn icon_button(ui: &mut egui::Ui, glyph: &str, name: &str) -> egui::Response {
+    let button = egui::Button::new(icons::text(glyph).size(20.0)).frame(false);
+    let response = ui.add(button).on_hover_text(name);
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, name));
+    response
+}
+
 /// A navigation entry drawn as a raised card: a large icon over a short label.
 fn navigation_tile(ui: &mut egui::Ui, screen: Screen, selected: bool) -> egui::Response {
     let size = egui::vec2(ui.available_width(), 64.0);
@@ -651,6 +671,9 @@ fn navigation_tile(ui: &mut egui::Ui, screen: Screen, selected: bool) -> egui::R
     }
     response
 }
+
+#[cfg(test)]
+mod ui_tests;
 
 #[cfg(all(test, unix))]
 mod tests {
