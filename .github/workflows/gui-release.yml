@@ -194,9 +194,10 @@ jobs:
         case "$RUNNER_OS" in
           macOS)
             mount="$RUNNER_TEMP/dmg"
-            hdiutil attach ./*.dmg -nobrowse -readonly -mountpoint "$mount"
+            hdiutil attach ./*.dmg -nobrowse -readonly -mountpoint "$mount" < /dev/null
             check "$mount/mpeg-ts-analyzer.app/Contents/MacOS/mpeg-ts-analyzer-gui"
-            hdiutil detach "$mount" ;;
+            # The just-started GUI may still hold the volume for a moment.
+            hdiutil detach "$mount" -force ;;
           Linux)
             sudo apt-get install -y ./*.deb
             check /usr/bin/mpeg-ts-analyzer-gui

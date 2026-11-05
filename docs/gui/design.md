@@ -31,13 +31,14 @@ Work is tracked in #101 (milestone GUI v0.1).
 
 1. `MPEG_TS_ANALYZER_CLI` environment variable, when set and not empty
 2. CLI path from Settings, when not empty
-3. CLI bundled with the GUI, located relative to the GUI executable: next to it
-   (Windows install directory or portable zip, macOS `.app/Contents/MacOS`),
-   in the macOS bundle's `Contents/Resources`, in
+3. CLI bundled with the GUI, located relative to the GUI executable: in
    `<prefix>/lib/mpeg-ts-analyzer-gui/` for a GUI in `<prefix>/bin` (`.deb`
-   and AppImage), or under `$APPDIR/usr/lib/mpeg-ts-analyzer-gui/` in an
-   AppImage; used only if the file exists. The Linux packages keep it out of
-   `/usr/bin`, where the CLI's own `.deb` installs `mpeg-ts-analyzer`.
+   and AppImage), next to it (Windows install directory or portable zip, macOS
+   `.app/Contents/MacOS`), in the macOS bundle's `Contents/Resources`, or under
+   `$APPDIR/usr/lib/mpeg-ts-analyzer-gui/` in an AppImage; the first file that
+   exists is used. The Linux packages keep it out of `/usr/bin`, where the
+   CLI's own `.deb` installs `mpeg-ts-analyzer`, and look in the lib directory
+   first so that a co-installed CLI does not replace the bundled one.
 4. `mpeg-ts-analyzer` on `PATH`
 
 The first step that applies wins; the GUI does not fall through to a later

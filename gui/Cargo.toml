@@ -24,8 +24,9 @@ description = "Desktop GUI for mpeg-ts-analyzer, an MPEG-2 Transport Stream anal
 homepage = "https://github.com/small-teton/mpeg-ts-analyzer"
 authors = ["Masahiko Matsuura"]
 publisher = "small-teton"
-license-file = "../LICENSE"
 category = "DeveloperTool"
+# No license-file: cargo-packager would show it as an agreement to accept in
+# the .dmg and the installer, which Apache-2.0 does not need.
 before-packaging-command = "cargo build --release --locked"
 icons = [
   "assets/icons/32x32.png",
