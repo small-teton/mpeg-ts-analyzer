@@ -149,6 +149,9 @@ fn report_stream(ui: &mut egui::Ui, report: &AnalysisReport, program: &Program) 
                     .id_salt("overview_report_program")
                     .default_open(true)
                     .show(ui, |ui| {
+                        if let Some(service) = &program.service {
+                            ui.label(service.summary());
+                        }
                         for stream in &program.elementary_streams {
                             let pcr = if program.pcr_pid.as_deref() == Some(stream.pid.as_str()) {
                                 " (PCR)"

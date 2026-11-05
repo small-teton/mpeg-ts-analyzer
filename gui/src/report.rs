@@ -235,6 +235,7 @@ pub struct Program {
     pub pmt_pid: String,
     pub pcr_pid: Option<String>,
     pub elementary_streams: Vec<ElementaryStream>,
+    pub service: Option<Service>,
     pub status: String,
     pub reason: Option<String>,
     pub error: Option<String>,
@@ -245,6 +246,17 @@ pub struct Program {
     pub pcr_jitter: Option<PcrJitter>,
     pub bitrate: Option<Bitrate>,
     pub series: Option<Series>,
+}
+
+/// The program's service from the SDT. A name the CLI cannot decode comes as
+/// hex in `name_hex` instead of `name`.
+#[derive(Debug, Default, Deserialize)]
+pub struct Service {
+    pub service_type_description: Option<String>,
+    pub provider_name: Option<String>,
+    pub provider_name_hex: Option<String>,
+    pub name: Option<String>,
+    pub name_hex: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -578,6 +590,31 @@ pub fn stream_type_name(stream_type: &str) -> String {
     .to_owned()
 }
 
+impl Service {
+    /// One line for the Overview: the name, then the provider and service type.
+    pub fn summary(&self) -> String {
+        let name = match (&self.name, &self.name_hex) {
+            (Some(name), _) => format!("\"{}\"", name.replace('\n', " ")),
+            (None, Some(hex)) => format!("name not decodable (0x{hex})"),
+            (None, None) => "without a name".to_owned(),
+        };
+        let provider = match (&self.provider_name, &self.provider_name_hex) {
+            (Some(provider), _) => Some(provider.replace('\n', " ")),
+            (None, Some(hex)) => Some(format!("provider not decodable (0x{hex})")),
+            (None, None) => None,
+        };
+        let details: Vec<String> = provider
+            .into_iter()
+            .chain(self.service_type_description.iter().cloned())
+            .collect();
+        if details.is_empty() {
+            format!("Service {name}")
+        } else {
+            format!("Service {name} ({})", details.join(", "))
+        }
+    }
+}
+
 impl Program {
     /// What the program carries, from its PMT stream types.
     pub fn description(&self) -> String {
@@ -595,29 +632,77 @@ impl Program {
         }
     }
 
+    /// The service name from the SDT, if the CLI could decode one.
+    pub fn service_name(&self) -> Option<&str> {
+        let name = self.service.as_ref()?.name.as_deref()?;
+        (!name.trim().is_empty()).then_some(name)
+    }
+
     /// Label used by the program selector.
     pub fn label(&self) -> String {
-        match self.average_bitrate_bps {
-            Some(bps) => format!(
-                "{} · {} · {:.2} Mbps (PMT {})",
-                self.program_number,
-                self.description(),
-                bps / 1e6,
-                self.pmt_pid
-            ),
-            None => format!(
-                "{} · {} (PMT {})",
-                self.program_number,
-                self.description(),
-                self.pmt_pid
-            ),
-        }
+        let mut parts = vec![self.program_number.to_string()];
+        parts.extend(self.service_name().map(|name| name.replace('\n', " ")));
+        parts.push(self.description());
+        parts.extend(
+            self.average_bitrate_bps
+                .map(|bps| format!("{:.2} Mbps", bps / 1e6)),
+        );
+        format!("{} (PMT {})", parts.join(" · "), self.pmt_pid)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn program_with(service: &str) -> Program {
+        serde_json::from_str(&format!(
+            r#"{{"program_number": 3, "pmt_pid": "0x0100", "elementary_streams": [{{"pid": "0x0101", "stream_type": "0x1b", "stream_type_description": "AVC video"}}], {service} "status": "complete"}}"#
+        ))
+        .expect("program parses")
+    }
+
+    #[test]
+    fn labels_programs_by_service_name() {
+        assert_eq!(program_with("").label(), "3 · H.264 video (PMT 0x0100)");
+        let undecodable = program_with(r#""service": {"name_hex": "110041"},"#);
+        assert_eq!(undecodable.label(), "3 · H.264 video (PMT 0x0100)");
+        assert_eq!(
+            undecodable
+                .service
+                .as_ref()
+                .map(Service::summary)
+                .as_deref(),
+            Some("Service name not decodable (0x110041)")
+        );
+        let blank = program_with(r#""service": {"name": " "},"#);
+        assert_eq!(blank.service_name(), None);
+        let hex_provider = program_with(
+            r#""service": {"name": "Radio", "provider_name_hex": "1f02", "service_type_description": "digital radio sound service"},"#,
+        );
+        assert_eq!(
+            hex_provider
+                .service
+                .as_ref()
+                .map(Service::summary)
+                .as_deref(),
+            Some(
+                "Service \"Radio\" (provider not decodable (0x1f02), digital radio sound service)"
+            )
+        );
+        let unnamed = program_with(r#""service": {},"#);
+        assert_eq!(
+            unnamed.service.as_ref().map(Service::summary).as_deref(),
+            Some("Service without a name")
+        );
+        let two_lines =
+            program_with(r#""service": {"name": "News\nOne", "provider_name": "Broad\ncaster"},"#);
+        assert_eq!(two_lines.label(), "3 · News One · H.264 video (PMT 0x0100)");
+        assert_eq!(
+            two_lines.service.as_ref().map(Service::summary).as_deref(),
+            Some("Service \"News One\" (Broad caster)")
+        );
+    }
 
     #[test]
     fn parses_a_two_program_analysis() {
@@ -630,10 +715,13 @@ mod tests {
         assert_eq!(report.programs.len(), 2);
         let program = &report.programs[0];
         assert_eq!(program.description(), "MPEG-2 video + MPEG-1 audio");
-        assert!(
-            program
-                .label()
-                .starts_with("1 · MPEG-2 video + MPEG-1 audio · 0.32 Mbps")
+        assert_eq!(
+            program.label(),
+            "1 · Main · MPEG-2 video + MPEG-1 audio · 0.32 Mbps (PMT 0x1000)"
+        );
+        assert_eq!(
+            program.service.as_ref().map(Service::summary).as_deref(),
+            Some("Service \"Main\" (FFmpeg, digital television service)")
         );
         let series = program.series.as_ref().expect("series");
         assert!(!series.pcr.is_empty() && !series.pes.is_empty());
