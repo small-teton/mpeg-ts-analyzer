@@ -201,9 +201,9 @@ check, `gui-ci`. Its lint and test jobs run only when `gui/`, the `Makefile`,
 passes. The `Go` workflow combines formatting, lint, build, tests, coverage and
 the README demo check in one `go-ci` job. Go jobs are skipped for changes that
 only affect the GUI. The development container is built only when its inputs
-(`compose.yaml`, `docker/`, toolchain/module files or the Go workflow) change,
-plus the weekly scheduled check; ordinary Go source changes use the host CI
-toolchain and do not repeat coverage in Docker.
+(`compose.yaml`, `docker/`, `Makefile`, toolchain/module files or the Go
+workflow) change, plus the weekly scheduled check; ordinary Go source changes
+use the host CI toolchain and do not repeat coverage in Docker.
 
 CodeQL uses the changed paths to analyze only Go or only Rust on pull requests
 and pushes. Its weekly scheduled run still analyzes both languages. The weekly

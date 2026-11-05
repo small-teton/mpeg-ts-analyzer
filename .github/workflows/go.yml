@@ -68,7 +68,7 @@ jobs:
         fi
 
         if printf '%s\n' "$files" | grep -Eq \
-          '^(compose\.yaml$|docker/|mise\.toml$|go\.(mod|sum)$|\.github/tools/|\.github/workflows/go\.yml$)'; then
+          '^(compose\.yaml$|docker/|mise\.toml$|Makefile$|go\.(mod|sum)$|\.github/tools/|\.github/workflows/go\.yml$)'; then
           echo "development-container=true" >> "$GITHUB_OUTPUT"
         else
           echo "development-container=false" >> "$GITHUB_OUTPUT"
@@ -82,7 +82,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -152,52 +151,6 @@ jobs:
         valColorRange: ${{ steps.coverage.outputs.tsparser }}
         minColorRange: 50
         maxColorRange: 100
-
-    - name: Post coverage to PR
-      if: github.event_name == 'pull_request'
-      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-      with:
-        script: |
-          const { execSync } = require('child_process');
-          const bb = execSync('go tool cover -func=out/bitbuffer.out').toString();
-          const ts = execSync('go tool cover -func=out/tsparser.out').toString();
-          const output = '=== bitbuffer ===\n' + bb + '\n=== tsparser ===\n' + ts;
-
-          const bbTotal = bb.match(/total:.*?([\d.]+)%/)?.[1] || 'N/A';
-          const tsTotal = ts.match(/total:.*?([\d.]+)%/)?.[1] || 'N/A';
-
-          const body = `## Test Coverage Report\n\n` +
-            `| Package | Coverage |\n` +
-            `|---------|----------|\n` +
-            `| bitbuffer | ${bbTotal}% |\n` +
-            `| tsparser | ${tsTotal}% |\n\n` +
-            `<details><summary>Details</summary>\n\n` +
-            '```\n' + output + '```\n\n' +
-            `</details>`;
-
-          try {
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-            const existing = comments.find(c =>
-              c.user.login === 'github-actions[bot]' &&
-              c.body.includes('## Test Coverage Report')
-            );
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner, repo: context.repo.repo,
-                comment_id: existing.id, body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner, repo: context.repo.repo,
-                issue_number: context.issue.number, body,
-              });
-            }
-          } catch (error) {
-            core.warning(`Could not update the coverage PR comment: ${error.message}`);
-          }
 
   # Keep vulnerability monitoring separate: the scheduled failure handler is
   # the only Go CI path that needs permission to write issues.
