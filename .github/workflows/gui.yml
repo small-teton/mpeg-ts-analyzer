@@ -45,7 +45,7 @@ jobs:
           exit 0
         fi
         if git diff --name-only "$base" HEAD \
-          | grep -Eq '^(gui/|Makefile$|renovate\.json$|\.github/workflows/gui\.yml$)'; then
+          | grep -Eq '^(gui/|Makefile$|mise\.toml$|rust-toolchain\.toml$|renovate\.json$|\.github/workflows/gui\.yml$)'; then
           echo "gui=true" >> "$GITHUB_OUTPUT"
         else
           echo "gui=false" >> "$GITHUB_OUTPUT"
