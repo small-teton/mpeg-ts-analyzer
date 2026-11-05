@@ -51,11 +51,8 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          # Command substitution drops only the final newline, so any other
-          # whitespace in VERSION fails the check.
-          version=$(cat VERSION)
-          .github/scripts/release-state.sh semver "$version"
-          if [ "$version" != "$(git show "$BASE_SHA:VERSION")" ] &&
+          version=$(.github/scripts/release-state.sh version VERSION)
+          if ! git diff --quiet "$BASE_SHA" HEAD -- VERSION &&
             [ -n "$(git ls-remote --tags origin "refs/tags/v$version")" ]; then
             echo "::error::v$version already exists; choose a new version."
             exit 1
@@ -118,8 +115,7 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
           SHA: ${{ github.sha }}
         run: |
-          version=$(cat VERSION)
-          .github/scripts/release-state.sh semver "$version"
+          version=$(.github/scripts/release-state.sh version VERSION)
           tag="v$version"
           case "$EVENT_NAME" in
             workflow_dispatch)

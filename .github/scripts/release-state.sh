@@ -4,6 +4,9 @@
 #
 #   release-state.sh semver <value>
 #       Fails unless the value is a bare X.Y.Z version.
+#   release-state.sh version <file>
+#       Prints the version in a VERSION file: a bare X.Y.Z, optionally
+#       followed by one newline. Anything else, including blank lines, fails.
 #   release-state.sh on-master <commit>
 #       Fails unless the commit is on origin/master (it is fetched first).
 #   release-state.sh tag <tag> <commit>
@@ -26,6 +29,16 @@ fail() {
 semver() {
   [[ "$1" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] ||
     fail "'$1' is not a bare X.Y.Z version"
+}
+
+read_version() {
+  local raw
+  # A sentinel keeps the trailing newlines that command substitution drops.
+  raw=$(cat "$1" && printf x) || fail "cannot read $1"
+  raw=${raw%x}
+  raw=${raw%$'\n'}
+  semver "$raw"
+  printf '%s\n' "$raw"
 }
 
 on_master() {
@@ -73,7 +86,8 @@ tag_state() {
 
 case "${1:-}" in
   semver) semver "$2" ;;
+  version) read_version "$2" ;;
   on-master) on_master "$2" ;;
   tag) tag_state "$2" "$3" ;;
-  *) fail "usage: $0 semver <value> | on-master <commit> | tag <tag> <commit>" ;;
+  *) fail "usage: $0 semver <value> | version <file> | on-master <commit> | tag <tag> <commit>" ;;
 esac
