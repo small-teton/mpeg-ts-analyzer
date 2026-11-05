@@ -38,6 +38,10 @@ read_version() {
   raw=${raw%x}
   raw=${raw%$'\n'}
   semver "$raw"
+  # Bash drops NUL bytes when reading, so compare the file itself with the
+  # two permitted forms.
+  cmp -s "$1" <(printf '%s' "$raw") || cmp -s "$1" <(printf '%s\n' "$raw") ||
+    fail "$1 must contain only a bare X.Y.Z version and at most one final newline"
   printf '%s\n' "$raw"
 }
 
