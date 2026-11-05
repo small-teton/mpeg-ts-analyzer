@@ -20,10 +20,30 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
+    # Reproducible output: the release workflows build once to validate and
+    # again to publish, and require both builds to have the same checksums.
+    mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
   - formats:
       - tar.gz
+    builds_info:
+      owner: root
+      group: root
+      mtime: "{{ .CommitDate }}"
+    files:
+      - src: LICENSE
+        info:
+          owner: root
+          group: root
+          mode: 0644
+          mtime: "{{ .CommitDate }}"
+      - src: README.md
+        info:
+          owner: root
+          group: root
+          mode: 0644
+          mtime: "{{ .CommitDate }}"
     # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
       {{ .ProjectName }}_
@@ -44,6 +64,7 @@ nfpms:
     description: "An analyzer for MPEG-2 Transport Stream (ISO/IEC 13818-1)"
     license: "Apache-2.0"
     maintainer: "Masahiko Matsuura"
+    mtime: "{{ .CommitDate }}"
     formats:
       - deb
       - rpm
