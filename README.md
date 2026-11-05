@@ -359,6 +359,10 @@ and file owner. They run in the same job because the rpm records the build
 host. GoReleaser builds twice since its open-source edition cannot publish an
 earlier build.
 
+Pull requests that change `VERSION`, the Go modules, `.goreleaser.yaml` or the
+workflow run the same checks and first build, without a tag or a release. A
+`VERSION` that a pull request changes must not have been released yet.
+
 A tag `vX.Y.Z` pushed by a user (`make release`) starts the same workflow. The
 tag must match `VERSION` and point at a commit on `master`. Prefer the
 workflow, so the tag is created only after the build has passed.

@@ -4,8 +4,18 @@ name: Release
 # vX.Y.Z tag pushed by a user (e.g. `make release`). The tag is created only
 # after a complete GoReleaser build has passed, and the release is published
 # only after a second build in the same job produced the same checksums.
+# Pull requests that change the release inputs run the checks and the first
+# build without tagging or publishing anything.
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - VERSION
+      - go.mod
+      - go.sum
+      - .goreleaser.yaml
+      - .github/scripts/release-state.sh
+      - .github/workflows/release.yml
   push:
     # Only well-formed version tags; a malformed tag such as "v.1.5.0" would
     # start a run that GoReleaser aborts as invalid semver.
@@ -14,14 +24,72 @@ on:
 
 # One CLI release at a time, and a started release is never cancelled.
 concurrency:
-  group: release-cli
-  cancel-in-progress: false
+  group: ${{ github.event_name == 'pull_request' && format('release-cli-pr-{0}', github.ref) || 'release-cli' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
+  # The release checks and build of a pull request, without tag or release.
+  dry-run:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # A changed VERSION must not have been released already; an unchanged
+      # one may name a published release.
+      - name: Check VERSION
+        id: check
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          version=$(tr -d '[:space:]' < VERSION)
+          .github/scripts/release-state.sh semver "$version"
+          if [ "$version" != "$(git show "$BASE_SHA:VERSION" | tr -d '[:space:]')" ] &&
+            [ -n "$(git ls-remote --tags origin "refs/tags/v$version")" ]; then
+            echo "::error::v$version already exists; choose a new version."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: "./go.mod"
+
+      - name: Tag locally
+        env:
+          TAG: v${{ steps.check.outputs.version }}
+        run: |
+          git tag --force "$TAG" HEAD
+          echo "GORELEASER_CURRENT_TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: Build and check without publishing
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          version: v2.19.0
+          args: release --clean --skip=publish
+
+      - name: Check the built version
+        env:
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          actual=$(dist/mpeg-ts-analyzer_linux_amd64_v1/mpeg-ts-analyzer --version)
+          if [ "$actual" != "mpeg-ts-analyzer version $VERSION" ]; then
+            echo "::error::The built CLI reports '$actual', expected version $VERSION."
+            exit 1
+          fi
+
   release:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: write

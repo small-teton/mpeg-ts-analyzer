@@ -229,6 +229,7 @@ Release publication is kept out of ordinary CI:
 - `Release` publishes the CLI release when manually dispatched on `master`, or
   for a user-pushed `vX.Y.Z` tag that matches `VERSION`. It creates the tag
   only after a complete build has passed; see [Release](../README.md#release).
+  Pull requests that change its inputs run its checks and build as a dry run.
 - `GUI release` publishes only when manually dispatched or for a user-pushed
   `gui-vX.Y.Z` tag. On selected packaging-related pull requests it builds and
   installs the packages as a dry run, but its publication job is skipped.
