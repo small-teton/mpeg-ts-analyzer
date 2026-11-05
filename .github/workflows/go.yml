@@ -60,7 +60,7 @@ jobs:
 
         files=$(git diff --name-only "$base" HEAD)
         if printf '%s\n' "$files" \
-          | grep -Ev '^(gui/|docs/gui/|\.github/workflows/gui\.yml$)' \
+          | grep -Ev '^(gui/|docs/gui/|rust-toolchain\.toml$|\.github/workflows/gui\.yml$)' \
           | grep -q .; then
           echo "go=true" >> "$GITHUB_OUTPUT"
         else
