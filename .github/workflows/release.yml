@@ -51,9 +51,11 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          version=$(tr -d '[:space:]' < VERSION)
+          # Command substitution drops only the final newline, so any other
+          # whitespace in VERSION fails the check.
+          version=$(cat VERSION)
           .github/scripts/release-state.sh semver "$version"
-          if [ "$version" != "$(git show "$BASE_SHA:VERSION" | tr -d '[:space:]')" ] &&
+          if [ "$version" != "$(git show "$BASE_SHA:VERSION")" ] &&
             [ -n "$(git ls-remote --tags origin "refs/tags/v$version")" ]; then
             echo "::error::v$version already exists; choose a new version."
             exit 1
@@ -71,6 +73,10 @@ jobs:
         run: |
           git tag --force "$TAG" HEAD
           echo "GORELEASER_CURRENT_TAG=$TAG" >> "$GITHUB_ENV"
+          previous=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$TAG^" 2>/dev/null || true)
+          if [ -n "$previous" ]; then
+            echo "GORELEASER_PREVIOUS_TAG=$previous" >> "$GITHUB_ENV"
+          fi
 
       - name: Build and check without publishing
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
@@ -112,7 +118,7 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
           SHA: ${{ github.sha }}
         run: |
-          version=$(tr -d '[:space:]' < VERSION)
+          version=$(cat VERSION)
           .github/scripts/release-state.sh semver "$version"
           tag="v$version"
           case "$EVENT_NAME" in
