@@ -896,7 +896,10 @@ SDT is used once every section has arrived.
   3 s of PCR time (EN 300 468 repeats the SDT at least every 2 s), or 100,000
   packets when no PCR has been seen.
 - `--format json` (`programs[]` of the summary) and `--output analysis` report
-  `service` from the last complete SDT in the analyzed range.
+  `service` from the SDT version in effect at the end of the analyzed range.
+  New versions are applied as PAT and PMT versions are: a table with the
+  active `version_number` and other content is not applied, and a late
+  retransmission of a superseded version does not bring back its names.
 - The text output of an analysis does not change.
 - A stream without an SDT, or whose SDT does not list a program, has no
   `service` for it. Problems with SDT sections are not reported as warnings;

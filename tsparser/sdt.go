@@ -1,9 +1,11 @@
 package tsparser
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 )
@@ -39,11 +41,12 @@ type sdtService struct {
 
 // sdtSection is the service loop of one SDT section.
 type sdtSection struct {
+	raw      []byte
 	services []sdtService
 }
 
 func parseSdtSection(data []byte) (*sdtSection, error) {
-	section := &sdtSection{}
+	section := &sdtSection{raw: data}
 	end := len(data) - 4 // CRC_32
 	for i := sdtSectionHeaderSize; i < end; {
 		if end-i < sdtServiceHeaderSize {
@@ -84,30 +87,52 @@ func (s *sdtService) parseServiceDescriptor(body []byte) {
 	s.provider, s.name = body[2:providerEnd], body[providerEnd+1:nameEnd]
 }
 
-// sdtCollector follows the SDT actual on PID 0x0011.
+// sdtCollector follows the SDT actual on PID 0x0011. Versions are applied as
+// the PAT and PMT tracker applies them: a table with the active
+// version_number never replaces the active one, and a table byte-identical to
+// the one last applied with its version_number is a late retransmission of a
+// superseded version, so the names never roll back. version_number wraps after
+// 31, so a reused version with different content is applied.
 type sdtCollector struct {
 	reader    psiSectionReader
 	assembler *psiAssembler[*sdtSection]
-	services  map[uint16]sdtService // of the latest complete table; nil before one
+	services  map[uint16]sdtService // of the active table; nil before one
+	version   uint8                 // of the active table
+	history   map[uint8][][]byte    // sections of the last table applied with each version_number
 }
 
 func newSdtCollector() *sdtCollector {
-	return &sdtCollector{assembler: &psiAssembler[*sdtSection]{name: "SDT", tableID: sdtActualTableID, anyExtension: true, parse: parseSdtSection}}
+	return &sdtCollector{
+		assembler: &psiAssembler[*sdtSection]{name: "SDT", tableID: sdtActualTableID, anyExtension: true, parse: parseSdtSection},
+		history:   make(map[uint8][][]byte),
+	}
 }
 
 // observe passes one packet of the scan at offset pos. It reports whether the
-// packet completed a table.
+// packet completed a table that was applied.
 func (c *sdtCollector) observe(tsPacket *TsPacket, pos int64) bool {
 	if tsPacket.Pid() != sdtPidValue {
 		return false
 	}
 	sections, _ := c.reader.push(tsPacket, pos)
-	completed := false
+	applied := false
 	for _, section := range sections {
 		table, ok := c.assembler.add(section.data, section.pos)
 		if !ok {
 			continue
 		}
+		version := table[0].raw[5] >> 1 & 0x1F
+		raw := make([][]byte, len(table))
+		for i, s := range table {
+			raw[i] = s.raw
+		}
+		if c.services != nil && version == c.version {
+			continue
+		}
+		if previous, seen := c.history[version]; seen && slices.EqualFunc(previous, raw, bytes.Equal) {
+			continue
+		}
+		c.history[version], c.version = raw, version
 		// A service listed in several sections keeps its first entry.
 		c.services = make(map[uint16]sdtService)
 		for _, s := range table {
@@ -117,10 +142,10 @@ func (c *sdtCollector) observe(tsPacket *TsPacket, pos int64) bool {
 				}
 			}
 		}
-		completed = true
+		applied = true
 	}
 	c.assembler.diagnostics = nil
-	return completed
+	return applied
 }
 
 // service returns the entry of the program, if the SDT lists it.
@@ -135,7 +160,8 @@ func (c *sdtCollector) service(programNumber uint16) (sdtService, bool) {
 // findSdt looks for a complete SDT actual from start, for the program listing.
 // EN 300 468 requires the SDT actual at least every 2 s, so the search ends 3 s
 // of PCR time after the first PCR, or after a fixed number of packets when no
-// PCR has been seen by then. It also ends with the input or the range.
+// PCR has been seen by then. It also ends with the input or the range. count
+// is the number of packets read, including the current one.
 func findSdt(reader io.ReadSeeker, start int64, options options.Options, packetSize int, endOffset int64) *sdtCollector {
 	collector := newSdtCollector()
 	if _, err := reader.Seek(start, io.SeekStart); err != nil {
@@ -146,7 +172,7 @@ func findSdt(reader io.ReadSeeker, start int64, options options.Options, packetS
 	var pcrPid uint16
 	var firstPcr uint64
 	havePcr := false
-	for pos, count := start, 0; endOffset <= 0 || pos+int64(packetSize) <= endOffset; pos, count = pos+int64(packetSize), count+1 {
+	for pos, count := start, 1; endOffset <= 0 || pos+int64(packetSize) <= endOffset; pos, count = pos+int64(packetSize), count+1 {
 		if _, err := io.ReadFull(reader, tsBuffer); err != nil {
 			break
 		}
