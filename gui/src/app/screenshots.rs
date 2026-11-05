@@ -21,7 +21,8 @@ use crate::views::Screen;
 use crate::views::packet_pages::PacketPages;
 use crate::views::packet_pages::show_inspectors_for_test;
 
-/// Logical size of each tab; at one pixel per point the grid is 2580×1620.
+/// Logical size of each tab. After cropping each tab's margin, the grid is
+/// 2588×1628 pixels.
 const TAB_SIZE: egui::Vec2 = egui::vec2(1280.0, 800.0);
 /// Space between and around the tabs of the grid.
 const GUTTER: u32 = 20;
