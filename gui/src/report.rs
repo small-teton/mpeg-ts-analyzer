@@ -254,6 +254,7 @@ pub struct Program {
 pub struct Service {
     pub service_type_description: Option<String>,
     pub provider_name: Option<String>,
+    pub provider_name_hex: Option<String>,
     pub name: Option<String>,
     pub name_hex: Option<String>,
 }
@@ -597,9 +598,14 @@ impl Service {
             (None, Some(hex)) => format!("name not decodable (0x{hex})"),
             (None, None) => "without a name".to_owned(),
         };
-        let details: Vec<&str> = [&self.provider_name, &self.service_type_description]
+        let provider = match (&self.provider_name, &self.provider_name_hex) {
+            (Some(provider), _) => Some(provider.replace('\n', " ")),
+            (None, Some(hex)) => Some(format!("provider not decodable (0x{hex})")),
+            (None, None) => None,
+        };
+        let details: Vec<String> = provider
             .into_iter()
-            .filter_map(|detail| detail.as_deref())
+            .chain(self.service_type_description.iter().cloned())
             .collect();
         if details.is_empty() {
             format!("Service {name}")
@@ -671,16 +677,30 @@ mod tests {
         );
         let blank = program_with(r#""service": {"name": " "},"#);
         assert_eq!(blank.service_name(), None);
+        let hex_provider = program_with(
+            r#""service": {"name": "Radio", "provider_name_hex": "1f02", "service_type_description": "digital radio sound service"},"#,
+        );
+        assert_eq!(
+            hex_provider
+                .service
+                .as_ref()
+                .map(Service::summary)
+                .as_deref(),
+            Some(
+                "Service \"Radio\" (provider not decodable (0x1f02), digital radio sound service)"
+            )
+        );
         let unnamed = program_with(r#""service": {},"#);
         assert_eq!(
             unnamed.service.as_ref().map(Service::summary).as_deref(),
             Some("Service without a name")
         );
-        let two_lines = program_with(r#""service": {"name": "News\nOne", "provider_name": "P"},"#);
+        let two_lines =
+            program_with(r#""service": {"name": "News\nOne", "provider_name": "Broad\ncaster"},"#);
         assert_eq!(two_lines.label(), "3 · News One · H.264 video (PMT 0x0100)");
         assert_eq!(
             two_lines.service.as_ref().map(Service::summary).as_deref(),
-            Some("Service \"News One\" (P)")
+            Some("Service \"News One\" (Broad caster)")
         );
     }
 
