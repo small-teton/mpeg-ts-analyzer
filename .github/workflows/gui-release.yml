@@ -23,6 +23,9 @@ on:
       - gui/Cargo.toml
       - gui/Cargo.lock
       - gui/assets/icons/**
+      - gui/about.hbs
+      - gui/about.toml
+      - gui/scripts/third-party-notices.sh
       - gui/src/cli.rs
       - gui/src/main.rs
       - .github/workflows/gui-release.yml
@@ -39,6 +42,8 @@ env:
   CARGO_PACKAGER_VERSION: 0.11.8
   # renovate: datasource=crate depName=cargo-cyclonedx
   CARGO_CYCLONEDX_VERSION: 0.5.9
+  # renovate: datasource=crate depName=cargo-about
+  CARGO_ABOUT_VERSION: 0.9.3
 
 jobs:
 
@@ -94,12 +99,51 @@ jobs:
         git tag "$TAG"
         git push origin "$TAG"
 
+  # One notice file for every package: the Rust crates of the GUI for all
+  # three targets, and the Go modules of the CLI, which are the same on every
+  # OS.
+  notices:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+        ref: ${{ github.event_name == 'workflow_dispatch' && needs.version.outputs.tag || '' }}
+
+    - name: Install the toolchain from rust-toolchain.toml
+      working-directory: gui
+      run: rustup toolchain install
+
+    - name: Set up Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: './go.mod'
+
+    - name: Install cargo-about
+      run: cargo install cargo-about --version "$CARGO_ABOUT_VERSION" --locked --features cli
+
+    - name: Write the notices
+      env:
+        CGO_ENABLED: "0"
+      run: |
+        go build -trimpath -ldflags "-s -w" -o "$RUNNER_TEMP/mpeg-ts-analyzer" .
+        mkdir notices
+        gui/scripts/third-party-notices.sh "$RUNNER_TEMP/mpeg-ts-analyzer" notices/THIRD-PARTY-NOTICES.txt
+
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: notices
+        path: notices/
+        if-no-files-found: error
+
   package:
-    needs: [version, create-tag]
+    needs: [version, create-tag, notices]
     # create-tag is skipped except on workflow_dispatch.
     if: >-
       always() &&
       needs.version.result == 'success' &&
+      needs.notices.result == 'success' &&
       (needs.create-tag.result == 'success' || needs.create-tag.result == 'skipped')
     strategy:
       fail-fast: false
@@ -149,6 +193,11 @@ jobs:
         CGO_ENABLED: "0"
       run: go build -trimpath -ldflags "-s -w" -o "gui/target/bundled-cli/mpeg-ts-analyzer$(go env GOEXE)" .
 
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: notices
+        path: gui/target/notices
+
     - name: Package
       working-directory: gui
       env:
@@ -171,7 +220,7 @@ jobs:
             cp ./*-setup.exe "$dist/${base}_windows_x86_64_setup.exe"
             portable="$RUNNER_TEMP/${base}_windows_x86_64"
             mkdir "$portable"
-            cp mpeg-ts-analyzer-gui.exe ../bundled-cli/mpeg-ts-analyzer.exe ../../../LICENSE ../../assets/fonts/*.txt "$portable/"
+            cp mpeg-ts-analyzer-gui.exe ../bundled-cli/mpeg-ts-analyzer.exe ../../../LICENSE ../../assets/fonts/*.txt ../notices/THIRD-PARTY-NOTICES.txt "$portable/"
             (cd "$RUNNER_TEMP" && 7z a -tzip "$dist/${base}_windows_x86_64_portable.zip" "${base}_windows_x86_64" >/dev/null) ;;
         esac
         ls -l "$dist"
@@ -193,7 +242,7 @@ jobs:
           esac
         }
         licenses() {
-          for file in LICENSE Inter-LICENSE.txt JetBrainsMono-OFL.txt Phosphor-LICENSE.txt; do
+          for file in LICENSE THIRD-PARTY-NOTICES.txt Inter-LICENSE.txt JetBrainsMono-OFL.txt Phosphor-LICENSE.txt; do
             [ -f "$1/$file" ] || { echo "::error::$1/$file is missing"; exit 1; }
           done
         }

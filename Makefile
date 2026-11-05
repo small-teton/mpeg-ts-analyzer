@@ -43,9 +43,11 @@ gui-lint:
 	cargo clippy --manifest-path gui/Cargo.toml --all-targets --locked -- -D warnings
 
 # Packages the GUI for this OS with the CLI bundled, as gui-release.yml does.
-# Needs cargo-packager (see docs/DEVELOPMENT.md).
+# Needs cargo-packager and cargo-about (see docs/DEVELOPMENT.md).
 gui-package:
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "gui/target/bundled-cli/mpeg-ts-analyzer$$(go env GOEXE)" .
+	mkdir -p gui/target/notices
+	gui/scripts/third-party-notices.sh "gui/target/bundled-cli/mpeg-ts-analyzer$$(go env GOEXE)" gui/target/notices/THIRD-PARTY-NOTICES.txt
 	cd gui && cargo packager --release
 
 clean:

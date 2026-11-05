@@ -294,6 +294,11 @@ Language, packets per page and cached pages are laid out but not applied yet.
 - The CLI release workflows name their current and previous `v*` tags for
   GoReleaser, which would otherwise take a `gui-v*` tag on the same branch as
   the previous release.
+- Every package carries `LICENSE`, the bundled fonts' licenses and
+  `THIRD-PARTY-NOTICES.txt`, generated at release time by
+  `gui/scripts/third-party-notices.sh`: the Rust crates of the GUI for all
+  three targets (cargo-about, `gui/about.toml`), including the fonts egui
+  embeds, and the Go standard library and modules recorded in the bundled CLI.
 - Binaries are not signed for now; the release notes
   (`.github/gui-release-notes.md`) explain how to open them on macOS and
   Windows. Checksums, an SBOM and build provenance:
@@ -331,7 +336,3 @@ Language, packets per page and cached pages are laid out but not applied yet.
   `.exe` file and its shortcuts use the default icon until an icon resource is
   embedded at build time (a build script and one more build dependency).
 - Intel Mac packages (only Apple silicon is built).
-- Notices of the Rust crates and Go modules compiled into the packages (the
-  packages carry the project's `LICENSE` and the bundled fonts' licenses; a
-  generated third-party notice file, for example with `cargo-about`, is not
-  added yet).
