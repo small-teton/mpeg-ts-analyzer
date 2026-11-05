@@ -14,6 +14,15 @@ use crate::views::{Screen, bitrate, overview, timeline::TimelineView};
 /// Range selected when a file is opened: small enough to analyze quickly.
 const INITIAL_LIMIT: u64 = 64 * 1024 * 1024;
 
+/// A file range supplied on the GUI command line and analyzed after startup.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct LaunchRequest {
+    pub input: PathBuf,
+    pub offset: u64,
+    /// `None` uses [`INITIAL_LIMIT`]; zero means through the end of the file.
+    pub limit: Option<u64>,
+}
+
 /// An analysis in progress.
 struct Running {
     job: AnalysisJob,
@@ -37,6 +46,8 @@ pub struct App {
     /// The capabilities check in progress; it runs off the UI thread because
     /// any program can be chosen as the CLI.
     cli_check: Option<std::sync::mpsc::Receiver<Result<cli::Cli, String>>>,
+    /// Start the command-line range as soon as the asynchronous CLI check passes.
+    pending_start: bool,
     input: Option<PathBuf>,
     file_size: u64,
     /// Why the opened file cannot be analyzed, if it cannot.
@@ -74,16 +85,27 @@ impl Default for App {
 
 impl App {
     /// The app with the settings saved by the previous run, if any.
-    pub fn new(cc: &eframe::CreationContext) -> Self {
+    pub fn new(cc: &eframe::CreationContext, launch: Option<LaunchRequest>) -> Self {
         let settings = cc
             .storage
             .and_then(|storage| eframe::get_value(storage, crate::settings::STORAGE_KEY))
             .unwrap_or_default();
-        Self::with_settings(settings, Some(cc.egui_ctx.clone()))
+        Self::with_launch(settings, Some(cc.egui_ctx.clone()), launch)
     }
 
     fn with_settings(settings: Settings, ctx: Option<egui::Context>) -> Self {
+        Self::with_launch(settings, ctx, None)
+    }
+
+    fn with_launch(
+        settings: Settings,
+        ctx: Option<egui::Context>,
+        launch: Option<LaunchRequest>,
+    ) -> Self {
         let mut app = Self::without_cli_check(settings);
+        if let Some(launch) = launch {
+            app.apply_launch(launch);
+        }
         app.begin_cli_check(ctx);
         app
     }
@@ -95,6 +117,7 @@ impl App {
             cli: Err(CHECKING_CLI.to_owned()),
             cli_location,
             cli_check: None,
+            pending_start: false,
             input: None,
             file_size: 0,
             file_problem: None,
@@ -156,6 +179,7 @@ impl App {
     /// stopped, so its result cannot be shown for the new one.
     fn open(&mut self, path: PathBuf) {
         self.running = None;
+        self.pending_start = false;
         self.confirm_start = false;
         (self.file_size, self.file_problem) = match std::fs::metadata(&path) {
             Ok(meta) if AnalysisRange::is_analyzable(meta.len()) => (meta.len(), None),
@@ -174,6 +198,23 @@ impl App {
         self.plots = None;
         self.packet_pages = None;
         self.input = Some(path);
+    }
+
+    fn apply_launch(&mut self, launch: LaunchRequest) {
+        self.open(launch.input);
+        let offset = launch.offset.min(self.file_size);
+        let remaining = self.file_size.saturating_sub(offset);
+        let requested = match launch.limit {
+            Some(0) => remaining,
+            Some(limit) => limit.min(remaining),
+            None => INITIAL_LIMIT.min(remaining),
+        };
+        self.range = AnalysisRange {
+            offset,
+            limit: requested,
+        };
+        self.range.clamp(self.file_size);
+        self.pending_start = self.file_problem.is_none();
     }
 
     fn pick_file(&mut self) {
@@ -499,6 +540,12 @@ impl App {
         }
 
         self.poll_cli_check();
+        if self.pending_start && self.cli_check.is_none() {
+            self.pending_start = false;
+            if self.cli.is_ok() && self.file_problem.is_none() {
+                self.start(ui.ctx());
+            }
+        }
         self.poll_analysis();
         self.update_plots();
         egui::Panel::top("top_bar").show(ui, |ui| self.top_bar(ui));
@@ -725,5 +772,21 @@ mod tests {
             panic!("a missing CLI was accepted")
         };
         assert!(err.contains("Cannot run"), "{err}");
+    }
+
+    #[test]
+    fn launch_range_is_clamped_and_waits_for_the_cli() {
+        let sample = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts");
+        let size = std::fs::metadata(&sample).unwrap().len();
+        let mut app = App::without_cli_check(Settings::default());
+        app.apply_launch(LaunchRequest {
+            input: sample,
+            offset: 188,
+            limit: Some(0),
+        });
+        assert_eq!(app.range.offset, 188);
+        assert_eq!(app.range.limit, size - 188);
+        assert!(app.pending_start && app.running.is_none());
     }
 }

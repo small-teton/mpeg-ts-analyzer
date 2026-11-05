@@ -163,6 +163,12 @@ make gui-lint   # rustfmt check and clippy -D warnings
 make gui-package # package for this OS into gui/target/release/ (needs cargo-packager)
 ```
 
+To open and immediately analyze the same range while iterating on the UI:
+
+```bash
+make gui-run GUI_ARGS='sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts --offset 0 --limit 67108864'
+```
+
 `make gui-package` builds the CLI into `gui/target/bundled-cli/`, writes
 `gui/target/notices/THIRD-PARTY-NOTICES.txt` and runs
 [cargo-packager](https://github.com/crabnebula-dev/cargo-packager) with the

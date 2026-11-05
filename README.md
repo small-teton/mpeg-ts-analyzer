@@ -24,6 +24,20 @@ GUI packages for macOS (Apple silicon), Linux (`.deb`, AppImage) and Windows
 the CLI of the same commit. The packages are not code-signed; the release notes
 explain how to open them and how to verify a download.
 
+The GUI normally opens with a file picker. For repeatable inspection, pass a
+file and optional byte range to open it and start analysis immediately:
+
+```sh
+mpeg-ts-analyzer-gui capture.ts --offset 0 --limit 67108864
+```
+
+`--limit 0` analyzes from the offset through the end of the file. Development
+builds accept the same arguments:
+
+```sh
+make gui-run GUI_ARGS='capture.ts --offset 0 --limit 67108864'
+```
+
 <p align="center">
   <a href="docs/images/gui-overview.png">
     <img src="docs/images/gui-overview.png" alt="GUI Overview showing the stream and timing compliance results" width="49%">
