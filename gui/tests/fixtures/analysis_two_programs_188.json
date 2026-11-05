@@ -33,6 +33,12 @@
           "stream_type_description": "11172 audio"
         }
       ],
+      "service": {
+        "service_type": "0x01",
+        "service_type_description": "digital television service",
+        "provider_name": "FFmpeg",
+        "name": "Main"
+      },
       "status": "complete",
       "analysis_start_offset_bytes": 25380,
       "average_bitrate_bps": 323018.1818181818,
@@ -813,6 +819,12 @@
           "stream_type_description": "11172 audio"
         }
       ],
+      "service": {
+        "service_type": "0x01",
+        "service_type_description": "digital television service",
+        "provider_name": "FFmpeg",
+        "name": "Second"
+      },
       "status": "complete",
       "analysis_start_offset_bytes": 25568,
       "average_bitrate_bps": 398218.1818181818,

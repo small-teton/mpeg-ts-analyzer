@@ -122,12 +122,13 @@ with a main service and a second service). Overview, Timeline and Bitrate each
 show a **Program** selector; the choice is shared among the three. Packets is
 not affected by it.
 
-- Programs are labeled from what the range analysis knows, since PAT/PMT do
-  not name services:
-  `1 · H.264 video + AAC audio · 1.70 Mbps (PMT 0x1000)`.
-  The description comes from PMT stream types; the bitrate is the program's
-  average over the range. The range analysis also reports service names from
-  the SDT (`programs[].service`, #92); the label does not use them yet.
+- Programs are labeled from what the range analysis knows:
+  `1 · News · H.264 video + AAC audio · 1.70 Mbps (PMT 0x1000)`.
+  The name is the service name from the SDT (`programs[].service`, #92) and is
+  left out when the stream has no SDT or the CLI could not decode the name. The
+  description comes from PMT stream types; the bitrate is the program's
+  average over the range. Overview also shows the service with its provider
+  and service type, or the raw bytes of a name that could not be decoded.
 - Switching programs does not run the CLI again: the range scan returns every
   program.
 
@@ -330,8 +331,8 @@ Language, packets per page and cached pages are laid out but not applied yet.
 
 ## Open questions
 
-- Showing SDT service names in the program label (the CLI reports them since
-  #92); ARIB text for Japanese broadcasts is not decoded.
+- ARIB text for Japanese broadcasts (ISDB) is not decoded, so those services
+  are labeled without a name.
 - Renderer choice (wgpu or glow) after testing on older GPUs, virtual machines
   and remote desktops.
 - Windows shows the icon on the window and taskbar (set at runtime), but the
