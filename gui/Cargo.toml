@@ -26,7 +26,8 @@ authors = ["Masahiko Matsuura"]
 publisher = "small-teton"
 category = "DeveloperTool"
 # No license-file: cargo-packager would show it as an agreement to accept in
-# the .dmg and the installer, which Apache-2.0 does not need.
+# the .dmg and the installer, which Apache-2.0 does not need. The license texts
+# are shipped as resources instead, next to the bundled CLI.
 before-packaging-command = "cargo build --release --locked"
 icons = [
   "assets/icons/32x32.png",
@@ -38,7 +39,7 @@ icons = [
   "assets/icons/icon.icns",
   "assets/icons/icon.ico",
 ]
-resources = ["target/bundled-cli/*"]
+resources = ["target/bundled-cli/*", "../LICENSE", "assets/fonts/*.txt"]
 
 [package.metadata.packager.macos]
 minimum-system-version = "11.0"

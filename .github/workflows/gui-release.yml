@@ -171,13 +171,14 @@ jobs:
             cp ./*-setup.exe "$dist/${base}_windows_x86_64_setup.exe"
             portable="$RUNNER_TEMP/${base}_windows_x86_64"
             mkdir "$portable"
-            cp mpeg-ts-analyzer-gui.exe ../bundled-cli/mpeg-ts-analyzer.exe ../../../LICENSE "$portable/"
+            cp mpeg-ts-analyzer-gui.exe ../bundled-cli/mpeg-ts-analyzer.exe ../../../LICENSE ../../assets/fonts/*.txt "$portable/"
             (cd "$RUNNER_TEMP" && 7z a -tzip "$dist/${base}_windows_x86_64_portable.zip" "${base}_windows_x86_64" >/dev/null) ;;
         esac
         ls -l "$dist"
 
     # Each package, as a user would install or unpack it, must find the CLI
-    # bundled with it (not one from MPEG_TS_ANALYZER_CLI, Settings or PATH).
+    # bundled with it (not one from MPEG_TS_ANALYZER_CLI, Settings or PATH)
+    # and carry the license texts.
     - name: Check that each package finds its bundled CLI
       working-directory: dist
       run: |
@@ -191,26 +192,37 @@ jobs:
             *) echo "::error::$1 did not find its bundled CLI"; exit 1 ;;
           esac
         }
+        licenses() {
+          for file in LICENSE Inter-LICENSE.txt JetBrainsMono-OFL.txt Phosphor-LICENSE.txt; do
+            [ -f "$1/$file" ] || { echo "::error::$1/$file is missing"; exit 1; }
+          done
+        }
         case "$RUNNER_OS" in
           macOS)
             mount="$RUNNER_TEMP/dmg"
             hdiutil attach ./*.dmg -nobrowse -readonly -mountpoint "$mount" < /dev/null
             check "$mount/mpeg-ts-analyzer.app/Contents/MacOS/mpeg-ts-analyzer-gui"
+            licenses "$mount/mpeg-ts-analyzer.app/Contents/Resources"
             # The just-started GUI may still hold the volume for a moment.
             hdiutil detach "$mount" -force ;;
           Linux)
             sudo apt-get install -y ./*.deb
             check /usr/bin/mpeg-ts-analyzer-gui
+            licenses /usr/lib/mpeg-ts-analyzer-gui
             appimage=$(ls "$PWD"/*.AppImage)
             chmod +x "$appimage"
             (cd "$RUNNER_TEMP" && "$appimage" --appimage-extract >/dev/null)
-            check "$RUNNER_TEMP/squashfs-root/AppRun" ;;
+            check "$RUNNER_TEMP/squashfs-root/AppRun"
+            licenses "$RUNNER_TEMP/squashfs-root/usr/lib/mpeg-ts-analyzer-gui" ;;
           Windows)
             installer=$(cygpath -w "$PWD/$(ls ./*_setup.exe)")
             powershell -NoProfile -Command "Start-Process -FilePath '$installer' -ArgumentList '/S' -Wait"
             check "$LOCALAPPDATA/mpeg-ts-analyzer/mpeg-ts-analyzer-gui.exe"
+            licenses "$LOCALAPPDATA/mpeg-ts-analyzer"
             7z x -o"$RUNNER_TEMP/portable" ./*_portable.zip >/dev/null
-            check "$(ls -d "$RUNNER_TEMP"/portable/*/)mpeg-ts-analyzer-gui.exe" ;;
+            portable=$(ls -d "$RUNNER_TEMP"/portable/*/)
+            check "${portable}mpeg-ts-analyzer-gui.exe"
+            licenses "$portable" ;;
         esac
 
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

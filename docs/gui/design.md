@@ -331,3 +331,7 @@ Language, packets per page and cached pages are laid out but not applied yet.
   `.exe` file and its shortcuts use the default icon until an icon resource is
   embedded at build time (a build script and one more build dependency).
 - Intel Mac packages (only Apple silicon is built).
+- Notices of the Rust crates and Go modules compiled into the packages (the
+  packages carry the project's `LICENSE` and the bundled fonts' licenses; a
+  generated third-party notice file, for example with `cargo-about`, is not
+  added yet).
