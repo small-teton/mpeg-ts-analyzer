@@ -48,6 +48,7 @@ type ReportProgram struct {
 	PMTPID            string                   `json:"pmt_pid"`
 	PCRPID            string                   `json:"pcr_pid,omitempty"`
 	ElementaryStreams []ReportElementaryStream `json:"elementary_streams"`
+	Service           *ReportService           `json:"service,omitempty"`
 	Status            string                   `json:"status"`
 	Reason            string                   `json:"reason,omitempty"`
 	Error             string                   `json:"error,omitempty"`

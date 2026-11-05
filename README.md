@@ -146,7 +146,7 @@ Flags:
       --format string           Output format: text or json. (default "text")
   -h, --help                    help for mpeg-ts-analyzer
       --limit int               Stop reading after this many bytes (0 = no limit).
-      --list-programs           List every program (program_number, PMT PID, elementary streams) and exit.
+      --list-programs           List every program (program_number, PMT PID, service name, elementary streams) and exit.
       --offset int              Start reading from this byte offset.
       --output string           JSON output: summary, analysis (every program with time series), packets (a page of packets) or packet (one packet decoded); needs --format json. (default "summary")
       --packet-size int         With --output packets or packet: packet size 188 or 192 (0 = detect).
@@ -256,6 +256,9 @@ $ ./mpeg-ts-analyzer capture.ts --list-programs # list only the programs, even w
 ```
 
 Listing only parses each program's PMT (no PES analysis), so it stays lightweight.
+When the stream names its services in a DVB SDT (as FFmpeg does), the listing
+adds a `Service:` line with the service and provider name, and JSON output adds
+`service` to each program; see [OPTIONS.md](OPTIONS.md#service-names-sdt).
 
 PAT and PMT tables split into several sections are collected completely before
 programs are listed or selected, and programs are listed in `program_number`

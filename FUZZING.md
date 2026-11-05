@@ -3,7 +3,8 @@
 The parser has focused Go fuzz targets for its untrusted-input boundaries:
 
 - TS packets and adaptation fields, and the PSI section headers listed by `--output packets`
-- PAT and PMT sections, including TS-packet reassembly and multi-section table assembly
+- PAT, PMT and SDT sections, including TS-packet reassembly and multi-section table assembly
+- DVB text of SDT service and provider names
 - PAT and PMT version tracking during the analysis pass and the PSI layout
   report of `--output analysis`
 - descriptors
@@ -30,6 +31,7 @@ go test ./tsparser -run '^$' -fuzz '^FuzzPsiSections$' -fuzztime 5m
 go test ./tsparser -run '^$' -fuzz '^FuzzPsiBuffering$' -fuzztime 5m
 go test ./tsparser -run '^$' -fuzz '^FuzzPsiTracking$' -fuzztime 5m
 go test ./tsparser -run '^$' -fuzz '^FuzzDescriptors$' -fuzztime 5m
+go test ./tsparser -run '^$' -fuzz '^FuzzDVBText$' -fuzztime 5m
 go test ./tsparser -run '^$' -fuzz '^FuzzPesHeader$' -fuzztime 5m
 go test ./tsparser -run '^$' -fuzz '^FuzzPacketDiscovery$' -fuzztime 5m
 ```

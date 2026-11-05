@@ -126,7 +126,8 @@ not affected by it.
   not name services:
   `1 · H.264 video + AAC audio · 1.70 Mbps (PMT 0x1000)`.
   The description comes from PMT stream types; the bitrate is the program's
-  average over the range. Service names from the SDT may be added later (#92).
+  average over the range. The range analysis also reports service names from
+  the SDT (`programs[].service`, #92); the label does not use them yet.
 - Switching programs does not run the CLI again: the range scan returns every
   program.
 
@@ -329,8 +330,8 @@ Language, packets per page and cached pages are laid out but not applied yet.
 
 ## Open questions
 
-- Service names from the SDT (#92); ARIB text for Japanese broadcasts is not
-  part of the first release.
+- Showing SDT service names in the program label (the CLI reports them since
+  #92); ARIB text for Japanese broadcasts is not decoded.
 - Renderer choice (wgpu or glow) after testing on older GPUs, virtual machines
   and remote desktops.
 - Windows shows the icon on the window and taskbar (set at runtime), but the

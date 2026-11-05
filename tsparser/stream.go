@@ -279,6 +279,7 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 		analysis, err = bufferPes(reader, &pos, pmtPid, pcrPid, programs, tables, options, packetSize, endOffset, report != nil)
 		if report != nil && analysis != nil {
 			report.Programs = []ReportProgram{reportProgram(selectedProgram, pmtPid, pmt.Pmt)}
+			report.Programs[0].Service = analysis.sdt.reportService(selectedProgram)
 			report.SelectedProgramNumber = &selectedProgram
 			report.Compliance = reportCompliance(analysis.compliance)
 			report.ContinuityCounter = reportContinuity(analysis.continuity)
@@ -329,6 +330,7 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 // listPrograms parses each program's PMT (no PES analysis, so it only reads far
 // enough to find each PMT) and prints a summary of what the stream contains.
 func listPrograms(reader io.ReadSeeker, programs []Program, start int64, options options.Options, packetSize int, endOffset int64, report *AnalysisReport) {
+	sdt := findSdt(reader, start, options, packetSize, endOffset)
 	for _, prog := range programs {
 		pos := start
 		_, _ = reader.Seek(pos, 0)
@@ -337,20 +339,32 @@ func listPrograms(reader io.ReadSeeker, programs []Program, start int64, options
 		if err != nil {
 			if report != nil {
 				r := reportProgram(prog.ProgramNumber, prog.PmtPid, nil)
+				r.Service = sdt.reportService(prog.ProgramNumber)
 				r.Reason = "pmt_parse_failed"
 				r.Error = err.Error()
 				report.Programs = append(report.Programs, r)
 			} else {
 				fmt.Printf("Program %d: PMT PID 0x%x (PMT parse error: %s)\n", prog.ProgramNumber, prog.PmtPid, err)
+				printService(sdt, prog.ProgramNumber)
 			}
 			continue
 		}
 		if report != nil {
-			report.Programs = append(report.Programs, reportProgram(prog.ProgramNumber, prog.PmtPid, pmt.Pmt))
+			r := reportProgram(prog.ProgramNumber, prog.PmtPid, pmt.Pmt)
+			r.Service = sdt.reportService(prog.ProgramNumber)
+			report.Programs = append(report.Programs, r)
 		} else {
 			fmt.Printf("Program %d: PMT PID 0x%x, PCR PID 0x%x\n", prog.ProgramNumber, prog.PmtPid, pmt.PcrPid())
+			printService(sdt, prog.ProgramNumber)
 			pmt.DumpProgramInfos(false)
 		}
+	}
+}
+
+// printService prints the SDT service of a listed program, if it is named.
+func printService(sdt *sdtCollector, programNumber uint16) {
+	if description := sdt.describeService(programNumber); description != "" {
+		fmt.Println(description)
 	}
 }
 

@@ -3,6 +3,7 @@ package tsparser
 import (
 	"bytes"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 )
@@ -89,6 +90,28 @@ func FuzzPsiSections(f *testing.F) {
 		pmt := NewPmt()
 		pmt.Append(data)
 		_ = pmt.Parse()
+
+		_, _ = parseSdtSection(data)
+	})
+}
+
+func FuzzDVBText(f *testing.F) {
+	f.Add([]byte("Service01"))
+	f.Add([]byte{0xC2, 'e', 0xE0, 0x8A})
+	f.Add([]byte{0xC2})
+	f.Add([]byte{0x01, 0xB0, 0x86})
+	f.Add([]byte{0x10, 0x00, 0x02, 0xA1})
+	f.Add([]byte{0x15, 0xEE, 0x82, 0x8A})
+	f.Add([]byte{})
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		// A DVB string has a one-byte length.
+		if len(data) > 255 {
+			return
+		}
+		if text, ok := decodeDVBText(data); ok && !utf8.ValidString(text) {
+			t.Fatalf("decoded % x to invalid UTF-8 %q", data, text)
+		}
 	})
 }
 

@@ -96,6 +96,7 @@ type psiTracker struct {
 	warnings    []psiDiagnostic
 	warned      map[string]bool
 	layout      *psiLayoutRecorder // records sections and PIDs for --output analysis
+	sdt         *sdtCollector
 }
 
 type trackedProgram struct {
@@ -123,6 +124,7 @@ func newPsiTracker(pat *patTable, continuity *continuityCounterSummary, options 
 		patHistory:  map[uint8]*patTable{first.versionNumber: pat},
 		pat:         &psiAssembler[*Pat]{name: "PAT", tableID: 0x00, extension: first.transportStreamID, parse: parsePatSection},
 		warned:      make(map[string]bool),
+		sdt:         newSdtCollector(),
 	}
 }
 
@@ -166,6 +168,7 @@ func (t *psiTracker) observe(tsPacket *TsPacket, pos int64, continuity *continui
 	if t.layout != nil {
 		t.layout.observe(tsPacket, pos)
 	}
+	t.sdt.observe(tsPacket, pos)
 	pid := tsPacket.Pid()
 	if pid == patPidValue {
 		for _, sections := range collectTables(t, &t.patReader, t.pat, tsPacket, pos) {

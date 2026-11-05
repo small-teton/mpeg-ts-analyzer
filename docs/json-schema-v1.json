@@ -135,6 +135,9 @@
             "$ref": "#/$defs/elementaryStream"
           }
         },
+        "service": {
+          "$ref": "#/$defs/service"
+        },
         "status": {
           "$ref": "#/$defs/status",
           "description": "Current values: complete, incomplete."
@@ -146,6 +149,33 @@
         "error": {
           "type": "string",
           "description": "Human-readable error detail; not a stable matching interface."
+        }
+      }
+    },
+    "service": {
+      "type": "object",
+      "description": "The program's service from the SDT actual (table_id 0x42) whose service_id equals program_number; absent when the stream has no SDT or the SDT does not list the program. The fields come from the service_descriptor and are absent without one. Each name is either decoded text or, when its DVB character table is not supported, the raw bytes including the table selector as lowercase hex.",
+      "properties": {
+        "service_type": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{2}$"
+        },
+        "service_type_description": {
+          "type": "string"
+        },
+        "provider_name": {
+          "type": "string"
+        },
+        "provider_name_hex": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{2})+$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "name_hex": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{2})+$"
         }
       }
     },
