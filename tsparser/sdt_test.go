@@ -127,6 +127,27 @@ func TestSdtCollector(t *testing.T) {
 	if got := c.describeService(1); got != "" {
 		t.Errorf("describeService of an unlisted program: %q", got)
 	}
+
+	// A late retransmission of version 0 does not roll the names back, and a
+	// version 1 with other content is not applied without a version change.
+	if observeSdtPacket(c, buildTsPacket(0x0011, true, 4, section0)) || observeSdtPacket(c, buildTsPacket(0x0011, true, 5, section1)) {
+		t.Error("late version 0 was applied")
+	}
+	changed := sdtTestSection(0x42, 1, 0, 0, sdtTestService(2, serviceDescriptor(0x01, "P", "Changed")))
+	if observeSdtPacket(c, buildTsPacket(0x0011, true, 6, changed)) {
+		t.Error("version 1 with other content was applied")
+	}
+	if r := c.reportService(2); r == nil || *r != want || c.reportService(1) != nil {
+		t.Errorf("names changed: %+v, %+v", c.reportService(1), c.reportService(2))
+	}
+	// After version_number wraps, version 0 with new content is applied.
+	wrapped := sdtTestSection(0x42, 0, 0, 0, sdtTestService(1, serviceDescriptor(0x01, "P", "Wrapped")))
+	if !observeSdtPacket(c, buildTsPacket(0x0011, true, 7, wrapped)) {
+		t.Fatal("reused version 0 with new content was not applied")
+	}
+	if r := c.reportService(1); r == nil || r.Name != "Wrapped" || c.reportService(2) != nil {
+		t.Errorf("after the wrap: %+v, %+v", c.reportService(1), c.reportService(2))
+	}
 }
 
 func TestServiceTypeString(t *testing.T) {
