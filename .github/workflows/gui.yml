@@ -21,6 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       gui: ${{ steps.filter.outputs.gui }}
+      screenshots: ${{ steps.filter.outputs.screenshots }}
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -37,18 +38,29 @@ jobs:
         case "$EVENT_NAME" in
           pull_request) base="$PR_BASE_SHA" ;;
           push) base="$PUSH_BEFORE_SHA" ;;
-          *) echo "gui=false" >> "$GITHUB_OUTPUT"; exit 0 ;;
+          *)
+            echo "gui=false" >> "$GITHUB_OUTPUT"
+            echo "screenshots=false" >> "$GITHUB_OUTPUT"
+            exit 0 ;;
         esac
         # A new branch or an unknown base: check everything.
         if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
           echo "gui=true" >> "$GITHUB_OUTPUT"
+          echo "screenshots=true" >> "$GITHUB_OUTPUT"
           exit 0
         fi
-        if git diff --name-only "$base" HEAD \
+        files=$(git diff --name-only "$base" HEAD)
+        if printf '%s\n' "$files" \
           | grep -Eq '^(gui/|Makefile$|mise\.toml$|rust-toolchain\.toml$|renovate\.json$|\.github/workflows/gui\.yml$)'; then
           echo "gui=true" >> "$GITHUB_OUTPUT"
+          echo "screenshots=true" >> "$GITHUB_OUTPUT"
+        elif printf '%s\n' "$files" | grep -Eq '^(docs/images/gui-|README\.md$)'; then
+          # The committed images or the README that shows them changed.
+          echo "gui=false" >> "$GITHUB_OUTPUT"
+          echo "screenshots=true" >> "$GITHUB_OUTPUT"
         else
           echo "gui=false" >> "$GITHUB_OUTPUT"
+          echo "screenshots=false" >> "$GITHUB_OUTPUT"
         fi
 
   lint:
@@ -71,6 +83,9 @@ jobs:
 
     - name: Clippy
       run: cargo clippy --all-targets --locked -- -D warnings
+
+    - name: Clippy with the screenshots feature
+      run: cargo clippy --all-targets --locked --features screenshots -- -D warnings
 
   test:
     needs: changes
@@ -105,6 +120,39 @@ jobs:
     - name: Build and test
       shell: bash
       run: MPEG_TS_ANALYZER_CLI="$RUNNER_TEMP/mpeg-ts-analyzer$(go env GOEXE)" cargo test --locked
+
+  # The README screenshots (docs/images/gui-*.png) must match a fresh rendering.
+  # macOS is the canonical renderer, so the images are only checked here; the
+  # semantic UI tests run on all three systems in the test job.
+  screenshots:
+    needs: changes
+    if: needs.changes.outputs.screenshots == 'true'
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: gui
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Install the toolchain from rust-toolchain.toml
+      run: rustup toolchain install
+
+    - name: Check the README screenshots
+      run: cargo test --locked --features screenshots readme_screenshots
+
+    # On a mismatch, the new renderings and their differences are kept for
+    # review. CI never commits them: run `make gui-screenshots` instead.
+    - name: Upload the new renderings
+      if: failure()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: gui-screenshots
+        path: |
+          gui/target/screenshots/*.new.png
+          gui/target/screenshots/*.diff.png
+        if-no-files-found: ignore
 
   # RustSec advisories for gui/Cargo.lock. Runs on GUI changes and weekly; the
   # scheduled run covers advisories published while Cargo.lock is unchanged,
@@ -165,7 +213,7 @@ jobs:
   # The single check to require in branch protection. It always runs and fails
   # when any GUI job failed or was cancelled.
   gui-ci:
-    needs: [changes, lint, test, cargo-audit]
+    needs: [changes, lint, test, screenshots, cargo-audit]
     if: always()
     runs-on: ubuntu-latest
     permissions: {}

@@ -190,7 +190,40 @@ when its output changes). egui_kittest's accessibility check is on, so every
 input widget a test reaches needs an accessible name: tie a field to its label
 with `labelled_by`, and give an icon-only button a name with `widget_info`. Run
 only these tests with `cargo test --manifest-path gui/Cargo.toml ui_tests`.
-Image snapshot tests are not enabled yet.
+
+### README screenshots
+
+The two GUI images in the README are rendered, not captured:
+
+- `docs/images/gui-tabs.png`: Overview, Timeline, Bitrate and Packets in a
+  2×2 grid.
+- `docs/images/gui-inspectors.png`: the Byte and Bit inspectors with the
+  13-bit PID of a PMT packet selected. It is drawn by the same function as the
+  Packets screen.
+
+```bash
+make gui-screenshots        # render both images into docs/images/
+make check-gui-screenshots  # render them again and compare with docs/images/
+```
+
+The generator is `gui/src/app/screenshots.rs`, a test behind the cargo feature
+`screenshots`. The feature enables egui_kittest's wgpu renderer and image
+output, so ordinary builds and tests do not depend on them. It renders the app
+with the same fixtures as the UI tests, at a fixed size, pixels per point and
+dark theme. It uses only the bundled fonts, never the OS Japanese font. The
+input is shown as the relative path the fixture names, so the images contain
+no local paths, times or cursor.
+
+macOS is the canonical renderer:
+
+- Regenerate the images there and commit them with the change that alters the
+  UI.
+- The `screenshots` job of the `GUI` workflow runs the check on `macos-latest`
+  whenever GUI files, `docs/images/gui-*` or the README change. On a mismatch
+  it fails and uploads `*.new.png` and `*.diff.png` as the `gui-screenshots`
+  artifact. It never commits images.
+- The pre-push hook also runs the check on macOS. Locally the same files are
+  in `gui/target/screenshots/`.
 
 GUI releases are made by the `GUI release` workflow: run it on `master` to tag
 `gui-v<version of gui/Cargo.toml>` and publish the packages, or push such a tag.
@@ -210,7 +243,10 @@ Editors using rust-analyzer need the GUI manifest declared, because
 ```
 
 The pre-push hook runs `make gui-lint` and `make gui-test` when `gui/`, the
-`Makefile` or the Go/Rust toolchain configuration changed.
+`Makefile` or the Go/Rust toolchain configuration changed. On macOS it also
+runs `make check-gui-screenshots` when those files, `docs/images/` or the README
+changed. `make gui-lint` runs clippy with and without the `screenshots`
+feature.
 In CI, the `GUI` workflow runs for every pull request and reports one aggregate
 check, `gui-ci`. Its lint and test jobs run only when `gui/`, the `Makefile`,
 `mise.toml`, `rust-toolchain.toml`, `renovate.json` or the workflow changed;

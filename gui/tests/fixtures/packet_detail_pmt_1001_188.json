@@ -1,0 +1,310 @@
+{
+  "schema_version": "1.0",
+  "output": "packet",
+  "input": {
+    "path": "sample_data/sample_188byte_two_programs_mpeg2_160x120_25fps_mp2.ts",
+    "file_size_bytes": 202852,
+    "packet_size_bytes": 188,
+    "offset_bytes": 564
+  },
+  "status": "complete",
+  "packet": {
+    "offset_bytes": 564,
+    "bytes": "475001100002b0170002c10000e102f00002e102f00003e103f0001058355affffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "layers": [
+      {
+        "name": "ts_header",
+        "fields": [
+          {
+            "name": "sync_byte",
+            "value": "0x47",
+            "byte_offset": 0,
+            "byte_length": 1
+          },
+          {
+            "name": "transport_error_indicator",
+            "value": "0",
+            "byte_offset": 1,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 8,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "payload_unit_start_indicator",
+            "value": "1",
+            "byte_offset": 1,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 9,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "transport_priority",
+            "value": "0",
+            "byte_offset": 1,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 10,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "PID",
+            "value": "0x1001",
+            "byte_offset": 1,
+            "byte_length": 2,
+            "bits": [
+              {
+                "bit_offset": 11,
+                "bit_length": 13
+              }
+            ]
+          },
+          {
+            "name": "transport_scrambling_control",
+            "value": "0",
+            "byte_offset": 3,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 24,
+                "bit_length": 2
+              }
+            ]
+          },
+          {
+            "name": "adaptation_field_control",
+            "value": "1 (payload only)",
+            "byte_offset": 3,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 26,
+                "bit_length": 2
+              }
+            ]
+          },
+          {
+            "name": "continuity_counter",
+            "value": "0",
+            "byte_offset": 3,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 28,
+                "bit_length": 4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "payload",
+        "fields": [
+          {
+            "name": "payload",
+            "value": "184 bytes",
+            "byte_offset": 4,
+            "byte_length": 184
+          }
+        ]
+      },
+      {
+        "name": "pmt",
+        "fields": [
+          {
+            "name": "pointer_field",
+            "value": "0",
+            "byte_offset": 4,
+            "byte_length": 1
+          },
+          {
+            "name": "table_id",
+            "value": "0x02",
+            "byte_offset": 5,
+            "byte_length": 1
+          },
+          {
+            "name": "section_syntax_indicator",
+            "value": "1",
+            "byte_offset": 6,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 48,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "section_length",
+            "value": "23",
+            "byte_offset": 6,
+            "byte_length": 2,
+            "bits": [
+              {
+                "bit_offset": 52,
+                "bit_length": 12
+              }
+            ]
+          },
+          {
+            "name": "program_number",
+            "value": "2",
+            "byte_offset": 8,
+            "byte_length": 2
+          },
+          {
+            "name": "version_number",
+            "value": "0",
+            "byte_offset": 10,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 82,
+                "bit_length": 5
+              }
+            ]
+          },
+          {
+            "name": "current_next_indicator",
+            "value": "1",
+            "byte_offset": 10,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 87,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "section_number",
+            "value": "0",
+            "byte_offset": 11,
+            "byte_length": 1
+          },
+          {
+            "name": "last_section_number",
+            "value": "0",
+            "byte_offset": 12,
+            "byte_length": 1
+          },
+          {
+            "name": "PCR_PID",
+            "value": "0x0102",
+            "byte_offset": 13,
+            "byte_length": 2,
+            "bits": [
+              {
+                "bit_offset": 107,
+                "bit_length": 13
+              }
+            ]
+          },
+          {
+            "name": "program_info_length",
+            "value": "0",
+            "byte_offset": 15,
+            "byte_length": 2,
+            "bits": [
+              {
+                "bit_offset": 124,
+                "bit_length": 12
+              }
+            ]
+          },
+          {
+            "name": "CRC_32",
+            "value": "0x1058355a",
+            "byte_offset": 27,
+            "byte_length": 4
+          }
+        ],
+        "rows": [
+          [
+            {
+              "name": "stream_type",
+              "value": "0x02 (13818-2 video or 11172-2 constrained parameter video stream)",
+              "byte_offset": 17,
+              "byte_length": 1
+            },
+            {
+              "name": "elementary_PID",
+              "value": "0x0102",
+              "byte_offset": 18,
+              "byte_length": 2,
+              "bits": [
+                {
+                  "bit_offset": 147,
+                  "bit_length": 13
+                }
+              ]
+            },
+            {
+              "name": "ES_info_length",
+              "value": "0",
+              "byte_offset": 20,
+              "byte_length": 2,
+              "bits": [
+                {
+                  "bit_offset": 164,
+                  "bit_length": 12
+                }
+              ]
+            }
+          ],
+          [
+            {
+              "name": "stream_type",
+              "value": "0x03 (11172 audio)",
+              "byte_offset": 22,
+              "byte_length": 1
+            },
+            {
+              "name": "elementary_PID",
+              "value": "0x0103",
+              "byte_offset": 23,
+              "byte_length": 2,
+              "bits": [
+                {
+                  "bit_offset": 187,
+                  "bit_length": 13
+                }
+              ]
+            },
+            {
+              "name": "ES_info_length",
+              "value": "0",
+              "byte_offset": 25,
+              "byte_length": 2,
+              "bits": [
+                {
+                  "bit_offset": 204,
+                  "bit_length": 12
+                }
+              ]
+            }
+          ]
+        ]
+      }
+    ]
+  },
+  "unit": {
+    "kind": "psi",
+    "first_offset_bytes": 564,
+    "position": 1,
+    "packets_in_range": 1,
+    "table_id": "0x02"
+  },
+  "warnings": []
+}

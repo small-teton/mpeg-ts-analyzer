@@ -1,4 +1,4 @@
-.PHONY: build test coverage demo check-demo check-docs-policy clean setup install uninstall release gui-run gui-test gui-lint gui-package
+.PHONY: build test coverage demo check-demo check-docs-policy clean setup install uninstall release gui-run gui-test gui-lint gui-screenshots check-gui-screenshots gui-package
 
 DOCS_POLICY_BASE ?= origin/master
 
@@ -41,6 +41,16 @@ gui-test:
 gui-lint:
 	cargo fmt --manifest-path gui/Cargo.toml --check
 	cargo clippy --manifest-path gui/Cargo.toml --all-targets --locked -- -D warnings
+	cargo clippy --manifest-path gui/Cargo.toml --all-targets --locked --features screenshots -- -D warnings
+
+# README screenshots (docs/images/gui-*.png), rendered from fixtures on macOS,
+# the canonical renderer. gui-screenshots writes them; check-gui-screenshots
+# compares fresh renderings with them.
+gui-screenshots:
+	UPDATE_SNAPSHOTS=1 cargo test --manifest-path gui/Cargo.toml --locked --features screenshots readme_screenshots
+
+check-gui-screenshots:
+	cargo test --manifest-path gui/Cargo.toml --locked --features screenshots readme_screenshots
 
 # Packages the GUI for this OS with the CLI bundled, as gui-release.yml does.
 # Needs cargo-packager and cargo-about (see docs/DEVELOPMENT.md).

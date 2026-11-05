@@ -672,6 +672,8 @@ fn navigation_tile(ui: &mut egui::Ui, screen: Screen, selected: bool) -> egui::R
     response
 }
 
+#[cfg(all(test, feature = "screenshots"))]
+mod screenshots;
 #[cfg(test)]
 mod ui_tests;
 

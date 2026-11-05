@@ -49,7 +49,19 @@ pub const LIMIT_COLOR: Color32 = Color32::from_rgb(0xff, 0x7a, 0x7a);
 
 /// Larger than egui's defaults so menus, dialogs and controls are easy to read and hit.
 pub fn apply(ctx: &egui::Context) {
-    install_fonts(ctx);
+    install_fonts(ctx, true);
+    apply_style(ctx);
+}
+
+/// The theme with the bundled fonts only, for screenshots that must not depend
+/// on the fonts of the machine that renders them.
+#[cfg(all(test, feature = "screenshots"))]
+pub fn apply_with_bundled_fonts(ctx: &egui::Context) {
+    install_fonts(ctx, false);
+    apply_style(ctx);
+}
+
+fn apply_style(ctx: &egui::Context) {
     ctx.all_styles_mut(|style| {
         style.text_styles = [
             (TextStyle::Small, FontId::proportional(12.0)),
@@ -77,7 +89,7 @@ pub fn apply(ctx: &egui::Context) {
 /// Inter for UI text, JetBrains Mono for data, Phosphor for icons (all bundled under
 /// `assets/fonts` with their licenses). egui's default fonts stay as fallbacks, and
 /// a Japanese font the OS ships comes last so Japanese file names can be shown.
-fn install_fonts(ctx: &egui::Context) {
+fn install_fonts(ctx: &egui::Context, with_os_japanese: bool) {
     let mut fonts = egui::FontDefinitions::default();
     for (name, bytes) in [
         (
@@ -116,10 +128,14 @@ fn install_fonts(ctx: &egui::Context) {
         .or_default()
         .insert(0, "JetBrains Mono".to_owned());
 
-    if let Some(bytes) = cjk_candidates()
-        .into_iter()
-        .chain(std::iter::once_with(fontconfig_cjk).flatten())
-        .find_map(|path| std::fs::read(path).ok())
+    if let Some(bytes) = with_os_japanese
+        .then(|| {
+            cjk_candidates()
+                .into_iter()
+                .chain(std::iter::once_with(fontconfig_cjk).flatten())
+                .find_map(|path| std::fs::read(path).ok())
+        })
+        .flatten()
     {
         fonts.font_data.insert(
             CJK_FONT.to_owned(),

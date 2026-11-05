@@ -2,15 +2,15 @@
   "schema_version": "1.0",
   "output": "packet",
   "input": {
-    "path": "sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts",
-    "file_size_bytes": 311516,
+    "path": "sample_data/sample_188byte_two_programs_mpeg2_160x120_25fps_mp2.ts",
+    "file_size_bytes": 202852,
     "packet_size_bytes": 188,
     "offset_bytes": 188
   },
   "status": "complete",
   "packet": {
     "offset_bytes": 188,
-    "bytes": "474000100000b00d0001c100000001f0002ab104b2ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "bytes": "474000100000b0110001c100000001f0000002f00120827a4dffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
     "layers": [
       {
         "name": "ts_header",
@@ -147,7 +147,7 @@
           },
           {
             "name": "section_length",
-            "value": "13",
+            "value": "17",
             "byte_offset": 6,
             "byte_length": 2,
             "bits": [
@@ -201,8 +201,8 @@
           },
           {
             "name": "CRC_32",
-            "value": "0x2ab104b2",
-            "byte_offset": 17,
+            "value": "0x20827a4d",
+            "byte_offset": 21,
             "byte_length": 4
           }
         ],
@@ -222,6 +222,26 @@
               "bits": [
                 {
                   "bit_offset": 123,
+                  "bit_length": 13
+                }
+              ]
+            }
+          ],
+          [
+            {
+              "name": "program_number",
+              "value": "2",
+              "byte_offset": 17,
+              "byte_length": 2
+            },
+            {
+              "name": "program_map_PID",
+              "value": "0x1001",
+              "byte_offset": 19,
+              "byte_length": 2,
+              "bits": [
+                {
+                  "bit_offset": 155,
                   "bit_length": 13
                 }
               ]
