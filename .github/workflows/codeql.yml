@@ -8,9 +8,61 @@ on:
   schedule:
     - cron: "0 6 * * 1" # Every Monday at 6:00 UTC
 
+permissions:
+  contents: read
+
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      languages: ${{ steps.filter.outputs.languages }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Detect changed languages
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          go=true
+          rust=true
+          case "$EVENT_NAME" in
+            pull_request) base="$PR_BASE_SHA" ;;
+            push) base="$PUSH_BEFORE_SHA" ;;
+            *) base="" ;;
+          esac
+
+          # Scheduled and unknown-base runs analyze both languages. Otherwise,
+          # keep the existing analyze job identity but narrow its matrix.
+          if [ "$EVENT_NAME" != schedule ] && [ -n "$base" ] \
+            && git cat-file -e "$base^{commit}" 2>/dev/null; then
+            files=$(git diff --name-only "$base" HEAD)
+            printf '%s\n' "$files" | grep -Eq \
+              '(\.go$|^go\.(mod|sum)$|^\.github/workflows/codeql\.yml$)' || go=false
+            printf '%s\n' "$files" | grep -Eq \
+              '(^gui/.*\.rs$|^gui/Cargo\.(toml|lock)$|^gui/rust-toolchain\.toml$|^\.github/workflows/codeql\.yml$)' || rust=false
+          fi
+
+          languages=""
+          if [ "$go" = true ]; then
+            languages='"go"'
+          fi
+          if [ "$rust" = true ]; then
+            languages="${languages:+$languages,}\"rust\""
+          fi
+          echo "languages=[$languages]" >> "$GITHUB_OUTPUT"
+
+  # Keep this job id and the categories stable: GitHub identifies a code-
+  # scanning configuration by workflow, job id and category together.
   analyze:
     name: Analyze (${{ matrix.language }})
+    needs: changes
+    if: needs.changes.outputs.languages != '[]'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -18,14 +70,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # Go is traced through an explicit build of the CLI.
-          - language: go
-            build-mode: manual
-          # Rust is extracted from source; CodeQL finds gui/Cargo.toml and
-          # uses rust-analyzer, so no cargo build runs.
-          - language: rust
-            build-mode: none
+        language: ${{ fromJSON(needs.changes.outputs.languages) }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -47,10 +92,10 @@ jobs:
         uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           languages: ${{ matrix.language }}
-          build-mode: ${{ matrix.build-mode }}
+          build-mode: ${{ matrix.language == 'go' && 'manual' || 'none' }}
 
       - name: Build
-        if: matrix.build-mode == 'manual'
+        if: matrix.language == 'go'
         run: go build ./...
 
       - name: Perform CodeQL Analysis

@@ -1,5 +1,4 @@
-# This workflow will build a golang project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
+# Go CI and scheduled vulnerability monitoring.
 
 name: Go
 
@@ -8,7 +7,8 @@ on:
     branches: [master]
   pull_request:
   schedule:
-    # Weekly, so govulncheck catches advisories published against unchanged deps.
+    # Weekly, so govulncheck catches advisories published against unchanged deps
+    # and the development container is checked against current package sources.
     - cron: "0 6 * * 1"
 
 permissions:
@@ -16,59 +16,72 @@ permissions:
 
 jobs:
 
-  # Required checks must report on every pull request, so changes that touch
-  # only the GUI skip these jobs (a skipped job counts as passing) instead of
-  # filtering the workflow by path.
+  # Required checks must report on every pull request, so this workflow always
+  # runs and the downstream jobs skip instead of filtering the workflow by path.
   changes:
     runs-on: ubuntu-latest
     outputs:
       go: ${{ steps.filter.outputs.go }}
+      development-container: ${{ steps.filter.outputs.development-container }}
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
         fetch-depth: 0
 
-    - name: Detect non-GUI changes
+    - name: Detect relevant changes
       id: filter
       env:
         EVENT_NAME: ${{ github.event_name }}
-        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        PUSH_BEFORE_SHA: ${{ github.event.before }}
       run: |
-        if [ "$EVENT_NAME" != "pull_request" ]; then
-          echo "go=true" >> "$GITHUB_OUTPUT"
+        if [ "$EVENT_NAME" = schedule ]; then
+          echo "go=false" >> "$GITHUB_OUTPUT"
+          echo "development-container=true" >> "$GITHUB_OUTPUT"
           exit 0
         fi
-        if git diff --name-only "$BASE_SHA" HEAD \
-          | grep -Ev '^(gui/|docs/gui/|\.github/workflows/gui\.yml$)' | grep -q .; then
+
+        case "$EVENT_NAME" in
+          pull_request) base="$PR_BASE_SHA" ;;
+          push) base="$PUSH_BEFORE_SHA" ;;
+          *)
+            echo "go=true" >> "$GITHUB_OUTPUT"
+            echo "development-container=true" >> "$GITHUB_OUTPUT"
+            exit 0 ;;
+        esac
+
+        # A new branch or an unknown base: check everything.
+        if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+          echo "go=true" >> "$GITHUB_OUTPUT"
+          echo "development-container=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        files=$(git diff --name-only "$base" HEAD)
+        if printf '%s\n' "$files" \
+          | grep -Ev '^(gui/|docs/gui/|\.github/workflows/gui\.yml$)' \
+          | grep -q .; then
           echo "go=true" >> "$GITHUB_OUTPUT"
         else
           echo "go=false" >> "$GITHUB_OUTPUT"
         fi
 
-  development-container:
+        if printf '%s\n' "$files" | grep -Eq \
+          '^(compose\.yaml$|docker/|mise\.toml$|Makefile$|go\.(mod|sum)$|\.github/tools/|\.github/workflows/go\.yml$)'; then
+          echo "development-container=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "development-container=false" >> "$GITHUB_OUTPUT"
+        fi
+
+  # Keep the ordinary Go checks in one job. This avoids six separate required
+  # contexts and reuses one checkout, Go setup and module cache.
+  go-ci:
     needs: changes
     if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        persist-credentials: false
-
-    - name: Build development container
-      run: DEV_UID="$(id -u)" docker compose build dev
-
-    - name: Check development tools and coverage
-      run: |
-        docker compose run --rm dev go version
-        docker compose run --rm dev ffprobe -version
-        docker compose run --rm dev tsanalyze --version
-        docker compose run --rm dev make coverage
-
-  golangci-lint:
-    needs: changes
-    if: needs.changes.outputs.go == 'true'
-    runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -82,12 +95,68 @@ jobs:
           go.sum
           .github/tools/go.sum
 
-    - name: golangci-lint
+    - name: Check gofmt
+      run: |
+        unformatted=$(gofmt -l .)
+        if [ -n "$unformatted" ]; then
+          echo "The following files are not gofmt-formatted:"
+          echo "$unformatted"
+          echo "Run 'gofmt -w .' to fix."
+          exit 1
+        fi
+
+    - name: Run golangci-lint
       run: go tool -modfile=.github/tools/go.mod golangci-lint run ./...
 
+    - name: Build and test
+      run: |
+        go build -v ./...
+        go test -v ./...
+
+    - name: Check 100% package coverage
+      id: coverage
+      run: |
+        mkdir -p out
+        go test -coverprofile=out/bitbuffer.out -covermode=set ./bitbuffer/...
+        go test -coverprofile=out/tsparser.out -covermode=set ./tsparser/...
+
+        echo "=== bitbuffer ==="
+        go tool cover -func=out/bitbuffer.out
+        echo ""
+        echo "=== tsparser ==="
+        go tool cover -func=out/tsparser.out
+
+        bitbuffer=$(go tool cover -func=out/bitbuffer.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')
+        tsparser=$(go tool cover -func=out/tsparser.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')
+        echo "bitbuffer=$bitbuffer" >> "$GITHUB_OUTPUT"
+        echo "tsparser=$tsparser" >> "$GITHUB_OUTPUT"
+
+        if [ "$bitbuffer" != "100.0" ] || [ "$tsparser" != "100.0" ]; then
+          echo "Expected 100.0% coverage for bitbuffer and tsparser; got $bitbuffer% and $tsparser%."
+          exit 1
+        fi
+
+    - name: Verify README demo is current
+      run: make check-demo
+
+    - name: Update coverage badge
+      if: github.ref == 'refs/heads/master'
+      uses: Schneegans/dynamic-badges-action@28b0fa8bdeb46170ac397105ece0c1fe58f68910 # v1.9.0
+      with:
+        auth: ${{ secrets.GIST_TOKEN }}
+        gistID: 9d60b1e4226ac2926940b20ce3381621
+        filename: coverage.json
+        label: coverage
+        message: "bitbuffer ${{ steps.coverage.outputs.bitbuffer }}% | tsparser ${{ steps.coverage.outputs.tsparser }}%"
+        valColorRange: ${{ steps.coverage.outputs.tsparser }}
+        minColorRange: 50
+        maxColorRange: 100
+
+  # Keep vulnerability monitoring separate: the scheduled failure handler is
+  # the only Go CI path that needs permission to write issues.
   govulncheck:
     needs: changes
-    if: needs.changes.outputs.go == 'true'
+    if: needs.changes.outputs.go == 'true' || github.event_name == 'schedule'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -105,11 +174,9 @@ jobs:
           go.sum
           .github/tools/go.sum
 
-    - name: govulncheck
+    - name: Run govulncheck
       run: go tool -modfile=.github/tools/go.mod govulncheck ./...
 
-    # On a scheduled run, a failure means a new advisory landed against otherwise
-    # unchanged code (no push/PR would surface it), so open/refresh an issue.
     - name: Open an issue on scheduled failure
       if: failure() && github.event_name == 'schedule'
       uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -119,179 +186,40 @@ jobs:
           const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
           const body = `The scheduled \`govulncheck\` run reported vulnerabilities.\n\nRun: ${runUrl}`;
           const { data: issues } = await github.rest.issues.listForRepo({
-            owner: context.repo.owner, repo: context.repo.repo, state: 'open', labels: 'security',
+            owner: context.repo.owner, repo: context.repo.repo,
+            state: 'open', labels: 'security',
           });
           const existing = issues.find(i => i.title === title);
           if (existing) {
             await github.rest.issues.createComment({
-              owner: context.repo.owner, repo: context.repo.repo, issue_number: existing.number, body,
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: existing.number, body,
             });
           } else {
             await github.rest.issues.create({
-              owner: context.repo.owner, repo: context.repo.repo, title, body, labels: ['security'],
+              owner: context.repo.owner, repo: context.repo.repo,
+              title, body, labels: ['security'],
             });
           }
 
-  gofmt:
+  # Building the development image and rerunning coverage in it protects the
+  # environment definition, not each Go source edit. Run it only when that
+  # definition changes and once a week to catch upstream package drift.
+  development-container:
     needs: changes
-    if: needs.changes.outputs.go == 'true'
+    if: needs.changes.outputs.development-container == 'true'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
 
-    - name: Set up Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-      with:
-        go-version-file: './go.mod'
+    - name: Build development container
+      run: DEV_UID="$(id -u)" docker compose build dev
 
-    - name: Check gofmt
+    - name: Check development tools and coverage
       run: |
-        unformatted=$(gofmt -l .)
-        if [ -n "$unformatted" ]; then
-          echo "The following files are not gofmt-formatted:"
-          echo "$unformatted"
-          echo "Run 'gofmt -w .' to fix."
-          exit 1
-        fi
-
-  readme-demo:
-    needs: changes
-    if: needs.changes.outputs.go == 'true'
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        persist-credentials: false
-
-    - name: Set up Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-      with:
-        go-version-file: './go.mod'
-
-    - name: Verify README demo is current
-      run: make check-demo
-
-  build:
-    needs: changes
-    if: needs.changes.outputs.go == 'true'
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        persist-credentials: false
-
-    - name: Set up Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-      with:
-        go-version-file: './go.mod'
-
-    - name: Build
-      run: go build -v ./...
-
-    - name: Test
-      run: go test -v ./...
-
-  coverage:
-    needs: changes
-    if: needs.changes.outputs.go == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        persist-credentials: false
-
-    - name: Set up Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-      with:
-        go-version-file: './go.mod'
-
-    - name: Run tests with coverage
-      run: |
-        mkdir -p out
-        go test -coverprofile=out/bitbuffer.out -covermode=set ./bitbuffer/...
-        go test -coverprofile=out/tsparser.out -covermode=set ./tsparser/...
-
-    - name: Display coverage
-      run: |
-        echo "=== bitbuffer ==="
-        go tool cover -func=out/bitbuffer.out
-        echo ""
-        echo "=== tsparser ==="
-        go tool cover -func=out/tsparser.out
-
-    - name: Calculate coverage
-      id: coverage
-      run: |
-        BB=$(go tool cover -func=out/bitbuffer.out | grep total | awk '{print $NF}' | tr -d '%')
-        TS=$(go tool cover -func=out/tsparser.out | grep total | awk '{print $NF}' | tr -d '%')
-        echo "bitbuffer=$BB" >> "$GITHUB_OUTPUT"
-        echo "tsparser=$TS" >> "$GITHUB_OUTPUT"
-
-    - name: Update coverage badge
-      if: github.ref == 'refs/heads/master'
-      uses: Schneegans/dynamic-badges-action@28b0fa8bdeb46170ac397105ece0c1fe58f68910 # v1.9.0
-      with:
-        auth: ${{ secrets.GIST_TOKEN }}
-        gistID: 9d60b1e4226ac2926940b20ce3381621
-        filename: coverage.json
-        label: coverage
-        message: "bitbuffer ${{ steps.coverage.outputs.bitbuffer }}% | tsparser ${{ steps.coverage.outputs.tsparser }}%"
-        valColorRange: ${{ steps.coverage.outputs.tsparser }}
-        minColorRange: 50
-        maxColorRange: 100
-
-    - name: Post coverage to PR
-      if: github.event_name == 'pull_request'
-      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-      with:
-        script: |
-          const { execSync } = require('child_process');
-          const bb = execSync('go tool cover -func=out/bitbuffer.out').toString();
-          const ts = execSync('go tool cover -func=out/tsparser.out').toString();
-          const output = '=== bitbuffer ===\n' + bb + '\n=== tsparser ===\n' + ts;
-
-          const bbTotal = bb.match(/total:.*?([\d.]+)%/)?.[1] || 'N/A';
-          const tsTotal = ts.match(/total:.*?([\d.]+)%/)?.[1] || 'N/A';
-
-          const body = `## Test Coverage Report\n\n` +
-            `| Package | Coverage |\n` +
-            `|---------|----------|\n` +
-            `| bitbuffer | ${bbTotal}% |\n` +
-            `| tsparser | ${tsTotal}% |\n\n` +
-            `<details><summary>Details</summary>\n\n` +
-            '```\n' + output + '```\n\n' +
-            `</details>`;
-
-          try {
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-            const existing = comments.find(c =>
-              c.user.login === 'github-actions[bot]' &&
-              c.body.includes('## Test Coverage Report')
-            );
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body,
-              });
-            }
-          } catch (error) {
-            core.warning(`Could not update the coverage PR comment: ${error.message}`);
-          }
+        docker compose run --rm dev go version
+        docker compose run --rm dev ffprobe -version
+        docker compose run --rm dev tsanalyze --version
+        docker compose run --rm dev make coverage

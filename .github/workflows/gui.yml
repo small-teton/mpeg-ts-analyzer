@@ -106,14 +106,15 @@ jobs:
       shell: bash
       run: MPEG_TS_ANALYZER_CLI="$RUNNER_TEMP/mpeg-ts-analyzer$(go env GOEXE)" cargo test --locked
 
-  # RustSec advisories for gui/Cargo.lock. Runs on GUI changes, on every push
-  # to master and weekly; a vulnerability fails the job. Unmaintained, unsound
-  # and yanked crates are reported as warnings in the log.
+  # RustSec advisories for gui/Cargo.lock. Runs on GUI changes and weekly; the
+  # scheduled run covers advisories published while Cargo.lock is unchanged,
+  # so unrelated pushes to master do not need to repeat this expensive install.
+  # A vulnerability fails the job. Unmaintained, unsound and yanked crates are
+  # reported as warnings in the log.
   cargo-audit:
     needs: changes
     if: >-
       needs.changes.outputs.gui == 'true' ||
-      github.event_name == 'push' ||
       github.event_name == 'schedule'
     runs-on: ubuntu-latest
     env:

@@ -211,8 +211,27 @@ The pre-push hook runs `make gui-lint` and `make gui-test` when `gui/` or the
 In CI, the `GUI` workflow runs for every pull request and reports one aggregate
 check, `gui-ci`. Its lint and test jobs run only when `gui/`, the `Makefile`,
 `renovate.json` or the workflow changed; otherwise they are skipped and `gui-ci`
-passes. The Go jobs are skipped for pull requests that change only `gui/` and
-`docs/gui/`.
+passes. The `Go` workflow combines formatting, lint, build, tests, coverage and
+the README demo check in one `go-ci` job. Go jobs are skipped for changes that
+only affect the GUI. The development container is built only when its inputs
+(`compose.yaml`, `docker/`, `Makefile`, toolchain/module files or the Go
+workflow) change, plus the weekly scheduled check; ordinary Go source changes
+use the host CI toolchain and do not repeat coverage in Docker.
+
+CodeQL uses the changed paths to analyze only Go or only Rust on pull requests
+and pushes. Its weekly scheduled run still analyzes both languages. The weekly
+`govulncheck` and `cargo-audit` runs cover new advisories against unchanged lock
+files, so those expensive checks do not need to be repeated for unrelated
+pushes to `master`.
+
+Release publication is kept out of ordinary CI:
+
+- `Release` runs only when manually dispatched and publishes the CLI release.
+- `goreleaser` runs only for a user-pushed `vX.Y.Z` tag.
+- `GUI release` publishes only when manually dispatched or for a user-pushed
+  `gui-vX.Y.Z` tag. On selected packaging-related pull requests it builds and
+  installs the packages as a dry run, but its publication job is skipped.
+- `Bump Version` runs only when manually dispatched.
 
 ## Dependency and supply-chain checks
 
@@ -220,10 +239,10 @@ passes. The Go jobs are skipped for pull requests that change only `gui/` and
 |---|---|---|
 | Renovate | `renovate.json` | Weekly grouped updates (Go, Rust, GitHub Actions, CI tools), weekly `Cargo.lock` maintenance, and immediate security pull requests |
 | Dependabot alerts | repository settings | Advisories for the dependency graph (`go.mod`, `gui/Cargo.lock`, Actions); Renovate reads them, and also OSV, to open security pull requests |
-| `govulncheck` | `Go` workflow | Go advisories that reach the CLI's code, on pull requests, `master` and weekly |
-| `cargo-audit` | `GUI` workflow | RustSec advisories in `gui/Cargo.lock`, on GUI changes, every push to `master` and weekly |
+| `govulncheck` | `Go` workflow | Go advisories that reach the CLI's code, on Go changes and weekly |
+| `cargo-audit` | `GUI` workflow | RustSec advisories in `gui/Cargo.lock`, on GUI changes and weekly |
 | Dependency review | `Dependency review` workflow | A pull request that adds a dependency version with a known advisory |
-| CodeQL | `CodeQL` workflow | Code-level issues in the Go CLI and the Rust GUI |
+| CodeQL | `CodeQL` workflow | Code-level issues in changed Go/Rust code, with a weekly full scan |
 
 Renovate waits three days before proposing a newly published crate
 (`security:minimumReleaseAgeCrate`), so a release that crates.io pulls in its
@@ -241,8 +260,9 @@ and are resolved by updating those crates.
 
 GitHub Actions are pinned to full commit SHAs and tools to exact versions
 (`cargo-audit` through a `# renovate:` comment), all updated by Renovate.
-Release-time measures for the GUI (checksums, SBOM, build provenance, code
-signing) are planned in [`docs/gui/release-security.md`](gui/release-security.md).
+Release-time measures for the GUI (checksums, SBOM and build provenance) and the
+remaining code-signing work are documented in
+[`docs/gui/release-security.md`](gui/release-security.md).
 
 ## README demo
 
