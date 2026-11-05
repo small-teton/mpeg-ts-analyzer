@@ -9,8 +9,8 @@ use eframe::egui;
 
 use super::packets::{
     ByteLayer, ByteSpan, Field, FieldSelection, MIN_LIST_WIDTH, ROW_HEIGHT, TEXT_INSET,
-    bit_inspector, field_tree, header_row, hex_dump_bytes, key_values, layer_color, paint_cells,
-    paint_row_background, row_text_color, span_table,
+    bit_inspector, byte_span_text, field_tree, header_row, hex_dump_bytes, key_values, layer_color,
+    paint_cells, paint_row_background, row_text_color, span_table,
 };
 use crate::cli::{self, Cli, Request};
 use crate::icons;
@@ -184,6 +184,18 @@ impl PacketPages {
             hidden_pids: BTreeSet::new(),
             highlight: None,
         }
+    }
+
+    /// Packets whose first page and one decoded packet are already read, so a
+    /// test can show the screen without running the CLI.
+    #[cfg(test)]
+    pub(crate) fn loaded_for_test(page: PacketsPage, offset: u64, detail: PacketDetail) -> Self {
+        let mut pages = Self::new_for_test(PathBuf::from("fixture.ts"));
+        pages.range_end = page.next_offset_bytes.unwrap_or_default();
+        pages.accept_first_page(page);
+        pages.select(offset);
+        pages.detail = Some((offset, Fetch::Ready(detail)));
+        pages
     }
 
     /// Learns where the range's packets start from the first page and keeps
@@ -533,7 +545,12 @@ impl PacketPages {
         let raw = packet.raw();
         let colors = byte_colors(raw.len(), &packet.layers);
         let bytes: Vec<(u8, egui::Color32)> = raw.into_iter().zip(colors).collect();
-        ui.strong("Byte inspector");
+        ui.horizontal(|ui| {
+            ui.strong("Byte inspector");
+            if let Some(selection) = &highlight {
+                ui.weak(format!("{} selected", byte_span_text(&selection.bytes)));
+            }
+        });
         hex_dump_bytes(ui, &bytes, highlight.as_ref().map(|s| &s.bytes));
         ui.add_space(8.0);
         ui.separator();

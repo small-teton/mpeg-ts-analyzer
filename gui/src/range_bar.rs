@@ -190,10 +190,12 @@ impl AnalysisRange {
     /// Exact byte fields. Values accept decimal (commas allowed) or 0x-prefixed hex.
     pub fn fields(&mut self, ui: &mut egui::Ui, file_size: u64) {
         let before = (self.offset, self.limit);
-        ui.label("Offset");
-        ui.add(byte_value(&mut self.offset, file_size));
-        ui.label("Limit");
-        ui.add(byte_value(&mut self.limit, file_size));
+        let label = ui.label("Offset");
+        ui.add(byte_value(&mut self.offset, file_size))
+            .labelled_by(label.id);
+        let label = ui.label("Limit");
+        ui.add(byte_value(&mut self.limit, file_size))
+            .labelled_by(label.id);
         if (self.offset, self.limit) != before {
             self.clamp(file_size);
         }

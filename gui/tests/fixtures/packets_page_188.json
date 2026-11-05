@@ -1,0 +1,129 @@
+{
+  "schema_version": "1.0",
+  "output": "packets",
+  "input": {
+    "path": "sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts",
+    "file_size_bytes": 311516,
+    "packet_size_bytes": 188,
+    "offset_bytes": 0
+  },
+  "status": "complete",
+  "first_offset_bytes": 0,
+  "next_offset_bytes": 1504,
+  "end_of_file": false,
+  "total_packets": 1657,
+  "packets": [
+    {
+      "offset_bytes": 0,
+      "valid": true,
+      "pid": "0x0011",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 1,
+      "continuity_counter": 0,
+      "sections": [
+        {
+          "table_id": "0x42",
+          "table_id_extension": 1,
+          "version_number": 0,
+          "current_next_indicator": 1,
+          "section_number": 0,
+          "last_section_number": 0
+        }
+      ]
+    },
+    {
+      "offset_bytes": 188,
+      "valid": true,
+      "pid": "0x0000",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 1,
+      "continuity_counter": 0,
+      "sections": [
+        {
+          "table_id": "0x00",
+          "table_id_extension": 1,
+          "version_number": 0,
+          "current_next_indicator": 1,
+          "section_number": 0,
+          "last_section_number": 0
+        }
+      ]
+    },
+    {
+      "offset_bytes": 376,
+      "valid": true,
+      "pid": "0x1000",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 1,
+      "continuity_counter": 0,
+      "sections": [
+        {
+          "table_id": "0x02",
+          "table_id_extension": 1,
+          "version_number": 0,
+          "current_next_indicator": 1,
+          "section_number": 0,
+          "last_section_number": 0
+        }
+      ]
+    },
+    {
+      "offset_bytes": 564,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 0,
+      "pcr_ms": 700
+    },
+    {
+      "offset_bytes": 752,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": false,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 1,
+      "continuity_counter": 1
+    },
+    {
+      "offset_bytes": 940,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": false,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 1,
+      "continuity_counter": 2
+    },
+    {
+      "offset_bytes": 1128,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": false,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 1,
+      "continuity_counter": 3
+    },
+    {
+      "offset_bytes": 1316,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": false,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 1,
+      "continuity_counter": 4
+    }
+  ],
+  "warnings": []
+}

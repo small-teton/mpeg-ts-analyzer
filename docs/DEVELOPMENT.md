@@ -176,6 +176,19 @@ and from where, without opening a window, and exits non-zero when none works.
 The icons in `gui/assets/icons/` are generated from `icon.svg` by
 `gui/assets/icons/generate.sh` (macOS, ImageMagick).
 
+`make gui-test` also runs the UI tests in `gui/src/app/ui_tests.rs`. They use
+[egui_kittest](https://docs.rs/egui_kittest) (a dev-dependency kept at the
+egui version) to drive the window through its accessibility tree, without a
+native window, file dialog or CLI process. They find widgets by role and
+accessible name, not by screen position. The state they need, such as a checked CLI,
+an opened sample file or an analysis, is set directly from the fixtures in
+`gui/tests/fixtures/` (CLI output for `sample_data`, regenerated with the CLI
+when its output changes). egui_kittest's accessibility check is on, so every
+input widget a test reaches needs an accessible name: tie a field to its label
+with `labelled_by`, and give an icon-only button a name with `widget_info`. Run
+only these tests with `cargo test --manifest-path gui/Cargo.toml ui_tests`.
+Image snapshot tests are not enabled yet.
+
 GUI releases are made by the `GUI release` workflow: run it on `master` to tag
 `gui-v<version of gui/Cargo.toml>` and publish the packages, or push such a tag.
 Pull requests that change the packaging build and check the packages on all
