@@ -79,7 +79,7 @@ func analyzeAllPrograms(reader io.ReadSeeker, pat *patTable, leadStart, programS
 
 	pos := slices.MinFunc(analyzers, func(a, b *programAnalyzer) int { return cmp.Compare(a.start, b.start) }).start
 	analysis.scanStart = pos
-	if err := observeLead(reader, leadStart, pos, analysis.psi.layout, options, packetSize); err != nil {
+	if err := observeLead(reader, leadStart, pos, analysis.psi.layout, analysis.psi.sdt, options, packetSize); err != nil {
 		return err
 	}
 	if _, err := reader.Seek(pos, io.SeekStart); err != nil {
@@ -241,6 +241,9 @@ func rangeAnalysisReport(report *AnalysisReport) *RangeAnalysisReport {
 	}
 	for _, entry := range analysis.programs {
 		p := RangeAnalysisProgram{ReportProgram: reportProgram(entry.program.ProgramNumber, entry.pmtPid, entry.pmt)}
+		if analysis.scanned {
+			p.Service = analysis.psi.sdt.reportService(entry.program.ProgramNumber)
+		}
 		if entry.err != nil {
 			p.Reason = "pmt_parse_failed"
 			p.Error = entry.err.Error()

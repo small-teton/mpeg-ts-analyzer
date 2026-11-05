@@ -99,6 +99,7 @@ type pesAnalysis struct {
 	// transitions and psiWarnings come from following PAT/PMT version changes.
 	transitions []psiTransition
 	psiWarnings []psiDiagnostic
+	sdt         *sdtCollector
 }
 
 // trackedTables are the PAT and PMT a single-program analysis starts from;
@@ -150,7 +151,7 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 	report := analyzer.complianceReport()
 	result := &pesAnalysis{compliance: report, continuity: continuity, anomalies: analyzer.anomaly, truncatedBytes: scan.truncatedBytes, truncatedPos: scan.truncatedPos}
 	if psi != nil {
-		result.transitions, result.psiWarnings = psi.transitions, psi.warnings
+		result.transitions, result.psiWarnings, result.sdt = psi.transitions, psi.warnings, psi.sdt
 	}
 	if options.DumpPcrJitter {
 		result.jitter = &analyzer.pcrJitter

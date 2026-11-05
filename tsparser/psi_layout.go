@@ -259,7 +259,7 @@ func (r *psiLayoutRecorder) classify() {
 // observeLead passes the packets from the first packet of the range up to the
 // start of the scan, which PAT/PMT discovery read before the scan, to the
 // recorder. A packet that cannot be parsed there is skipped.
-func observeLead(reader io.ReadSeeker, start, end int64, recorder *psiLayoutRecorder, options options.Options, packetSize int) error {
+func observeLead(reader io.ReadSeeker, start, end int64, recorder *psiLayoutRecorder, sdt *sdtCollector, options options.Options, packetSize int) error {
 	if _, err := reader.Seek(start, io.SeekStart); err != nil {
 		return fmt.Errorf("file seek error: %w", err)
 	}
@@ -273,6 +273,7 @@ func observeLead(reader io.ReadSeeker, start, end int64, recorder *psiLayoutReco
 		tsPacket.Append(tsBuffer[packetSize-tsPayloadSize:])
 		if tsPacket.Parse() == nil {
 			recorder.observe(tsPacket, pos)
+			sdt.observe(tsPacket, pos)
 		}
 	}
 	return nil

@@ -126,6 +126,12 @@ $ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_
           "stream_type_description": "11172 audio"
         }
       ],
+      "service": {
+        "service_type": "0x01",
+        "service_type_description": "digital television service",
+        "provider_name": "FFmpeg",
+        "name": "Service01"
+      },
       "status": "complete"
     }
   ],
@@ -192,6 +198,9 @@ at end of input)`) and do not change the analysis result. With `--limit`, this
 applies when the range reaches the end of the input; a range that ends
 mid-packet inside the file reports nothing.
 
+`programs[].service` is the program's service from the DVB SDT, when the
+stream carries one; see [Service names (SDT)](#service-names-sdt).
+
 When the PAT or the selected program's PMT changes version during the
 analysis, `psi_transitions` lists each applied change; `programs` keeps the
 layout the analysis started with. The field is absent when no change was
@@ -244,6 +253,7 @@ Abridged output for the two-program sample:
       "pmt_pid": "0x1000",
       "pcr_pid": "0x0100",
       "elementary_streams": [ ... ],
+      "service": { "service_type": "0x01", "service_type_description": "digital television service", "provider_name": "FFmpeg", "name": "Main" },
       "status": "complete",
       "analysis_start_offset_bytes": 25380,
       "average_bitrate_bps": 323018.1818181818,
@@ -808,9 +818,11 @@ Input file:  sample_data/sample_188byte_two_programs_multi_section_psi_mpeg2_160
 Packet size: 188 bytes
 Detected PAT: 2 program(s)
 Program 1: PMT PID 0x1000, PCR PID 0x100
+Service: name "Main", provider "FFmpeg", service_type 0x01 (digital television service)
 PMT : Program Info : elementary_PID     : 0x100, stream_type : 0x02 (13818-2 video or 11172-2 constrained parameter video stream)
 PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x03 (11172 audio)
 Program 2: PMT PID 0x1001, PCR PID 0x102
+Service: name "Second", provider "FFmpeg", service_type 0x01 (digital television service)
 PMT : Program Info : elementary_PID     : 0x102, stream_type : 0x02 (13818-2 video or 11172-2 constrained parameter video stream)
 PMT : Program Info : elementary_PID     : 0x103, stream_type : 0x03 (11172 audio)
 ```
@@ -865,6 +877,55 @@ when no usable section arrived. For an incomplete PMT, `--list-programs` and
 `reason: "pmt_parse_failed"`, and the message as `error`. Version changes
 after the tables have been collected are described in
 [PAT and PMT version changes](#pat-and-pmt-version-changes).
+
+## Service names (SDT)
+
+DVB streams, and streams written by FFmpeg (`-metadata service_name=...`,
+`-metadata service_provider=...`), name their programs in the SDT (Service
+Description Table, ETSI EN 300 468) on PID 0x0011. The analyzer reads the SDT
+of the analyzed transport stream (SDT actual, `table_id` 0x42); the SDT of
+other transport streams (`table_id` 0x46) and other tables on the PID are
+ignored. A service is matched to the program whose `program_number` equals its
+`service_id`. Sections are assembled as described in
+[Multi-section PAT and PMT](#multi-section-pat-and-pmt), so a multi-section
+SDT is used once every section has arrived.
+
+- `--list-programs` and the automatic multi-program listing print a `Service:`
+  line under each program the SDT names, and add `service` to each program in
+  JSON. The listing reads from the PAT until it has a complete SDT, for at most
+  3 s of PCR time (EN 300 468 repeats the SDT at least every 2 s), or 100,000
+  packets when no PCR has been seen.
+- `--format json` (`programs[]` of the summary) and `--output analysis` report
+  `service` from the last complete SDT in the analyzed range.
+- The text output of an analysis does not change.
+- A stream without an SDT, or whose SDT does not list a program, has no
+  `service` for it. Problems with SDT sections are not reported as warnings;
+  the names are left out and no verdict depends on them.
+
+```json
+"service": {
+  "service_type": "0x01",
+  "service_type_description": "digital television service",
+  "provider_name": "FFmpeg",
+  "name": "Service01"
+}
+```
+
+`service_type`, `service_type_description`, `provider_name` and `name` come
+from the service's service_descriptor (tag 0x48) and are absent without one;
+an empty name is also absent. Names are decoded from the DVB character tables
+(EN 300 468 Annex A): the default table (ISO/IEC 6937, with the euro sign at
+0xA4), ISO/IEC 8859 parts selected by the first byte (0x01-0x0B, or 0x10 0x00
+0xNN) and UTF-8 (0x15). Control codes 0x8A (line break) become `\n`; the other
+control codes, such as character emphasis, are dropped. A name in another
+table (UCS-2, KS X 1001, GB2312, Big5, an `encoding_type_id`, ARIB STD-B24 text
+of Japanese broadcasts), or with a code its table does not assign, is reported
+as `name_hex` or `provider_name_hex` instead: the raw bytes, including the
+table selector, as lowercase hex.
+
+```
+Service: name (undecodable) 0x110041, provider "Prö", service_type 0x02 (digital radio sound service)
+```
 
 ## PAT and PMT version changes
 

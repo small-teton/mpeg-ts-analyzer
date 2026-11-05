@@ -125,5 +125,5 @@ Tracking: #101 (milestone GUI v0.1).
 | #109 | Bit ranges of packet detail fields (bit inspector) |
 | #89 | Capabilities query |
 | #90 | Progress events on stderr (`--progress json`) |
-| #92 | SDT service names (after v0.1; ARIB excluded) |
+| #92 | SDT service names (`programs[].service`; ARIB excluded) |
 | #86 | Closed: separate scan and emission ranges are not needed |

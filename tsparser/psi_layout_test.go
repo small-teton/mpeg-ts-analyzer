@@ -271,11 +271,11 @@ func TestPsiLayoutSyntheticStream(t *testing.T) {
 
 func TestObserveLeadReadError(t *testing.T) {
 	recorder := newPsiLayoutRecorder()
-	err := observeLead(&errReadSeeker{data: make([]byte, 376), failAt: 0}, 0, 376, recorder, options.Options{}, 188)
+	err := observeLead(&errReadSeeker{data: make([]byte, 376), failAt: 0}, 0, 376, recorder, newSdtCollector(), options.Options{}, 188)
 	if err == nil || !strings.Contains(err.Error(), "file read error") {
 		t.Errorf("read: err = %v", err)
 	}
-	err = observeLead(&errReadSeeker{data: make([]byte, 376), failAt: -1, seekFailAt: 1}, 0, 376, recorder, options.Options{}, 188)
+	err = observeLead(&errReadSeeker{data: make([]byte, 376), failAt: -1, seekFailAt: 1}, 0, 376, recorder, newSdtCollector(), options.Options{}, 188)
 	if err == nil || !strings.Contains(err.Error(), "file seek error") {
 		t.Errorf("seek: err = %v", err)
 	}
