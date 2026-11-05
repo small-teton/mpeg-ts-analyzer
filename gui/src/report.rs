@@ -88,8 +88,8 @@ pub struct AnalysisReport {
     pub psi_transitions: Vec<PsiTransition>,
 }
 
-/// `psi_layout`: what each PID carries at any offset of the range (OPTIONS.md,
-/// "PSI layout of the range").
+/// `psi_layout`: what each PID carries at any offset of the range
+/// (docs/reference/json-output.md, "PSI layout of the range").
 #[derive(Clone, Debug, Deserialize)]
 pub struct PsiLayout {
     pub sections: Vec<PsiSection>,

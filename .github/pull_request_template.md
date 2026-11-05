@@ -25,8 +25,9 @@ applicable. Say explicitly when there is no compatibility impact.
 
 <!--
 For changes to CLI syntax, flags/defaults, help text, text or JSON output, or
-exit codes, describe the documentation audit and updates. Check README.md,
-OPTIONS.md, CLI help/examples, JSON schema, and the README demo as applicable.
+exit codes, describe the documentation audit and updates. Check README.md, the
+pages under docs/ (docs/cli/usage.md, docs/reference/json-output.md), CLI
+help/examples, JSON schema, and the README demo as applicable.
 Explain why any expected document or generated artifact does not need a change.
 -->
 
@@ -45,7 +46,7 @@ Explain non-obvious N/A decisions in the sections above.
 
 - [ ] The final pushed commit passed `.githooks/pre-push`.
 - [ ] The documentation-policy check passes and advisory warnings were assessed.
-- [ ] Public-interface changes are reflected in README, OPTIONS, help/examples,
+- [ ] Public-interface changes are reflected in README, docs/, help/examples,
       schemas, and the README demo where applicable.
 - [ ] Generated assets are current and were inspected where applicable.
 - [ ] Independent reference-tool validation is included where applicable.

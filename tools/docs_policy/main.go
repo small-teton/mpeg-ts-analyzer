@@ -148,6 +148,13 @@ func gitCommand(args ...string) *exec.Cmd {
 	return command
 }
 
+// The canonical documents the policy enforces.
+const (
+	usageDoc  = "docs/cli/usage.md"             // every flag, the help text, verdicts and exit codes
+	jsonDoc   = "docs/reference/json-output.md" // the JSON outputs, with complete examples
+	schemaDoc = "docs/json-schema-v1.json"
+)
+
 func evaluate(root string, changed map[string]bool, patches map[string]string, body string) findings {
 	var result findings
 
@@ -163,13 +170,13 @@ func evaluate(root string, changed map[string]bool, patches map[string]string, b
 	if err != nil {
 		result.failures = append(result.failures, "Could not read `cmd/root.go` to verify documented flags.")
 	} else {
-		optionsText, readErr := os.ReadFile(filepath.Join(root, "OPTIONS.md"))
+		usageText, readErr := os.ReadFile(filepath.Join(root, filepath.FromSlash(usageDoc)))
 		if readErr != nil {
-			result.failures = append(result.failures, "Could not read `OPTIONS.md` to verify documented flags.")
+			result.failures = append(result.failures, fmt.Sprintf("Could not read `%s` to verify documented flags.", usageDoc))
 		} else {
 			for _, name := range definedFlags(string(rootSource)) {
-				if !documentedFlag(string(optionsText), name) {
-					result.failures = append(result.failures, fmt.Sprintf("CLI flag `--%s` is not documented in `OPTIONS.md`.", name))
+				if !documentedFlag(string(usageText), name) {
+					result.failures = append(result.failures, fmt.Sprintf("CLI flag `--%s` is not documented in `%s`.", name, usageDoc))
 				}
 			}
 		}
@@ -182,10 +189,10 @@ func evaluate(root string, changed map[string]bool, patches map[string]string, b
 	jsonContract := patchMatches(patches["tsparser/report.go"], jsonContractRE)
 
 	if cliContract {
-		requireDocumentation(&result, changed, body, "public CLI interface", []string{"README.md", "OPTIONS.md"})
+		requireDocumentation(&result, changed, body, "public CLI interface", []string{usageDoc})
 	}
 	if jsonContract {
-		requireDocumentation(&result, changed, body, "JSON contract", []string{"README.md", "OPTIONS.md", "docs/json-schema-v1.json"})
+		requireDocumentation(&result, changed, body, "JSON contract", []string{jsonDoc, schemaDoc})
 	}
 
 	var ambiguous []string
@@ -200,15 +207,26 @@ func evaluate(root string, changed map[string]bool, patches map[string]string, b
 	if changed["cmd/root.go"] && !cliContract {
 		ambiguous = append(ambiguous, "cmd/root.go")
 	}
-	if len(ambiguous) > 0 && (!changed["README.md"] || !changed["OPTIONS.md"]) {
+	if len(ambiguous) > 0 && !userDocsChanged(changed) {
 		sort.Strings(ambiguous)
 		result.warnings = append(result.warnings,
-			"Possible user-visible output changes were detected in `"+strings.Join(ambiguous, "`, `")+"`. Confirm the documentation impact in the PR `Documentation` section; update `README.md` and `OPTIONS.md` if behavior or output changed.")
+			"Possible user-visible output changes were detected in `"+strings.Join(ambiguous, "`, `")+"`. Confirm the documentation impact in the PR `Documentation` section; update the CLI pages under `docs/cli/` or `"+jsonDoc+"` if behavior or output changed.")
 	}
 
 	sort.Strings(result.failures)
 	sort.Strings(result.warnings)
 	return result
+}
+
+// userDocsChanged reports whether a page that documents CLI behavior or output
+// changed.
+func userDocsChanged(changed map[string]bool) bool {
+	for name, isChanged := range changed {
+		if isChanged && (strings.HasPrefix(name, "docs/cli/") || name == jsonDoc) {
+			return true
+		}
+	}
+	return false
 }
 
 func definedFlags(source string) []string {

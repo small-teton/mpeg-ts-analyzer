@@ -221,7 +221,7 @@ impl PsiLayout {
 }
 
 /// Whether the copy of `section` in the packet of `pid` at `offset` is one of
-/// `run` (OPTIONS.md, "PSI layout of the range", "Per packet").
+/// `run` (docs/reference/json-output.md, "PSI layout of the range", "Per packet").
 fn holds(run: &PsiSection, pid: &str, offset: u64, section: &PacketSection) -> bool {
     let extension = match (section.table_id.as_str(), run.table.as_str()) {
         ("0x00", "pat") => run.transport_stream_id,

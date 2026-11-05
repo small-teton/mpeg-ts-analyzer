@@ -20,7 +20,7 @@ issues. This document records the requirements those issues have to meet.
   range or by a page size), so streaming formats such as JSON Lines are not
   needed. The existing `--format json` summary stays as it is.
 - **Exit codes and `status` / `reason` values** follow the existing contract in
-  README.md and OPTIONS.md.
+  [CLI usage](../cli/usage.md) and [Machine-readable output](../reference/json-output.md).
 - **Byte offset** is the key shared by all outputs; every record that refers to
   a place in the file carries `offset_bytes`.
 - **The CLI reads only `[offset, offset + limit)`**, as today. (Detecting a
@@ -63,8 +63,8 @@ switching programs or screens never runs the CLI again.
   count), not a per-packet index; the packet page carries what each
   section-start packet says (`sections`: `table_id`, `table_id_extension`,
   version and section numbers), which matches at most one run by PID, header
-  and offset, giving the copy's status (including invalid). See OPTIONS.md,
-  "PSI layout of the range".
+  and offset, giving the copy's status (including invalid). See
+  [PSI layout of the range](../reference/json-output.md#psi-layout-of-the-range).
 - **Analysis start**: statistics start after the PAT section and the needed
   PMTs are complete, not at the first PAT. The output reports that offset (per
   program), so the GUI can show the unanalyzed lead.

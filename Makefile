@@ -26,7 +26,7 @@ check-demo:
 check-docs-policy:
 	go run ./tools/docs_policy --base "$(DOCS_POLICY_BASE)" --head HEAD
 
-# Desktop GUI (gui/, Rust). Runs on the host; see docs/DEVELOPMENT.md.
+# Desktop GUI (gui/, Rust). Runs on the host; see docs/development/index.md.
 GUI_CLI := $(CURDIR)/out/gui/mpeg-ts-analyzer
 
 gui-run:
@@ -53,7 +53,7 @@ check-gui-screenshots:
 	cargo test --manifest-path gui/Cargo.toml --locked --features screenshots readme_screenshots
 
 # Packages the GUI for this OS with the CLI bundled, as gui-release.yml does.
-# Needs cargo-packager and cargo-about (see docs/DEVELOPMENT.md).
+# Needs cargo-packager and cargo-about (see docs/development/index.md).
 gui-package:
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "gui/target/bundled-cli/mpeg-ts-analyzer$$(go env GOEXE)" .
 	mkdir -p gui/target/notices
