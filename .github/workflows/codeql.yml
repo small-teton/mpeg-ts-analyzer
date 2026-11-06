@@ -45,7 +45,7 @@ jobs:
             printf '%s\n' "$files" | grep -Eq \
               '(\.go$|^go\.(mod|sum)$|^\.github/workflows/codeql\.yml$)' || go=false
             printf '%s\n' "$files" | grep -Eq \
-              '(^gui/.*\.rs$|^gui/Cargo\.(toml|lock)$|^gui/rust-toolchain\.toml$|^\.github/workflows/codeql\.yml$)' || rust=false
+              '(^gui/.*\.rs$|^gui/Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^\.github/workflows/codeql\.yml$)' || rust=false
           fi
 
           languages=""

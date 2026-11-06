@@ -268,9 +268,9 @@ Language, packets per page and cached pages are laid out but not applied yet.
 
 ## Development
 
-- Rust is pinned in `gui/rust-toolchain.toml`. egui 0.37 changed many APIs
-  (`App::ui`, `Panel`, `show` instead of `show_inside`, `Id::unique`); older
-  examples do not apply as-is.
+- Rust is pinned in the repository-root `rust-toolchain.toml`. egui 0.37
+  changed many APIs (`App::ui`, `Panel`, `show` instead of `show_inside`,
+  `Id::unique`); older examples do not apply as-is.
 - `make gui-run` builds the CLI into `out/gui/` and runs the GUI against it
   (through `MPEG_TS_ANALYZER_CLI`). Checks: `make gui-lint` (rustfmt, clippy
   `-D warnings`) and `make gui-test`. See `docs/DEVELOPMENT.md`.

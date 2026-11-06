@@ -20,6 +20,7 @@ on:
       - "gui-v[0-9]+.[0-9]+.[0-9]+"
   pull_request:
     paths:
+      - rust-toolchain.toml
       - gui/Cargo.toml
       - gui/Cargo.lock
       - gui/assets/icons/**

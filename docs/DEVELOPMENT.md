@@ -148,10 +148,13 @@ CLI as a subprocess. Design notes: [`docs/gui/design.md`](gui/design.md) and
 [`docs/gui/cli-interface.md`](gui/cli-interface.md).
 
 Develop the GUI on the host, not in the development container: OpenGL/wgpu
-windows do not work through the container. Install
-[rustup](https://rustup.rs/); the toolchain version is pinned in
-`gui/rust-toolchain.toml` and installed on first use. On Linux, the usual
-desktop development packages (X11/Wayland, xkbcommon) are needed to run it.
+windows do not work through the container. Run `mise install` at the repository
+root to install the pinned Go and Rust toolchains. Mise reads the root
+`rust-toolchain.toml` and uses [rustup](https://rustup.rs/) to install its
+minimal profile plus clippy and rustfmt. Developers who do not use mise can
+install rustup directly; its proxies select the same file automatically from
+the repository root. On Linux, the usual desktop development packages
+(X11/Wayland, xkbcommon) are needed to run it.
 
 ```bash
 make gui-run    # build the CLI into out/gui/ and run the GUI against it
@@ -206,14 +209,15 @@ Editors using rust-analyzer need the GUI manifest declared, because
 { "rust-analyzer.linkedProjects": ["gui/Cargo.toml"] }
 ```
 
-The pre-push hook runs `make gui-lint` and `make gui-test` when `gui/` or the
-`Makefile` changed.
+The pre-push hook runs `make gui-lint` and `make gui-test` when `gui/`, the
+`Makefile` or the Go/Rust toolchain configuration changed.
 In CI, the `GUI` workflow runs for every pull request and reports one aggregate
 check, `gui-ci`. Its lint and test jobs run only when `gui/`, the `Makefile`,
-`renovate.json` or the workflow changed; otherwise they are skipped and `gui-ci`
-passes. The `Go` workflow combines formatting, lint, build, tests, coverage and
-the README demo check in one `go-ci` job. Go jobs are skipped for changes that
-only affect the GUI. The development container is built only when its inputs
+`mise.toml`, `rust-toolchain.toml`, `renovate.json` or the workflow changed;
+otherwise they are skipped and `gui-ci` passes. The `Go` workflow combines
+formatting, lint, build, tests, coverage and the README demo check in one
+`go-ci` job. Go jobs are skipped for changes that only affect the GUI. The
+development container is built only when its inputs
 (`compose.yaml`, `docker/`, `Makefile`, toolchain/module files or the Go
 workflow) change, plus the weekly scheduled check; ordinary Go source changes
 use the host CI toolchain and do not repeat coverage in Docker.
