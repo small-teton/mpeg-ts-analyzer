@@ -265,3 +265,35 @@ fn selecting_a_field_shows_its_bytes_and_bits() {
     click_field(&mut harness, "current_next_indicator");
     harness.get_by_label("Click a field to see its bits.");
 }
+
+/// The decoded PMT packet of program 2 (PID 0x1001) at offset 564, whose PID
+/// has set bits in both bytes it spans.
+pub(super) fn pmt_packet_detail() -> PacketDetail {
+    serde_json::from_str(include_str!(
+        "../../tests/fixtures/packet_detail_pmt_1001_188.json"
+    ))
+    .expect("packet fixture")
+}
+
+/// The left edge of the packet detail pane, where its "This packet" label starts.
+fn detail_pane_left(offset: u64, detail: PacketDetail) -> f64 {
+    let mut app = analyzed_app();
+    app.screen = Screen::Packets;
+    app.packet_pages = Some(PacketPages::loaded_for_test(packets_page(), offset, detail));
+    let harness = harness(app);
+    harness
+        .get_by_label("This packet")
+        .accesskit_node()
+        .bounding_box()
+        .expect("label bounds")
+        .x0
+}
+
+/// The PMT packet decodes into rows wider than the pane's default width. They
+/// scroll inside the pane instead of widening it over the packet list.
+#[test]
+fn packet_detail_pane_keeps_its_width_for_every_packet() {
+    let pat = detail_pane_left(188, pat_packet_detail());
+    let pmt = detail_pane_left(564, pmt_packet_detail());
+    assert_eq!(pat, pmt);
+}

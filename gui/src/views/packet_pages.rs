@@ -337,7 +337,12 @@ impl PacketPages {
             .resizable(true)
             .default_size(480.0)
             .show(ui, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| self.detail(ui));
+                // Scrolls both ways: a packet wider than the pane scrolls
+                // inside it instead of widening the pane over the list, so the
+                // pane keeps the width it was dragged to.
+                egui::ScrollArea::both()
+                    .auto_shrink(false)
+                    .show(ui, |ui| self.detail(ui));
             });
         egui::CentralPanel::default().show(ui, |ui| {
             crate::theme::compact(ui);
