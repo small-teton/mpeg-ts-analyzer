@@ -60,9 +60,11 @@ jobs:
 
         files=$(git diff --name-only "$base" HEAD)
         # The GUI, Markdown and the README images do not reach the Go checks;
-        # the documentation-policy workflow checks the Markdown. The demo
-        # sources and the JSON schemas under docs/ do (check-demo, tests).
-        if printf '%s\n' "$files" \
+        # the documentation-policy workflow checks the Markdown. README.md does
+        # (check-demo requires its link to docs/demo.gif), and so do the demo
+        # sources and the JSON schemas under docs/ (check-demo, tests).
+        if printf '%s\n' "$files" | grep -qx README.md ||
+          printf '%s\n' "$files" \
           | grep -Ev '^(gui/|docs/images/|rust-toolchain\.toml$|\.github/workflows/gui\.yml$)' \
           | grep -Ev '\.md$' \
           | grep -q .; then

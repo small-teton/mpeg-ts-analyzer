@@ -260,8 +260,9 @@ check, `gui-ci`. Its lint and test jobs run only when `gui/`, the `Makefile`,
 otherwise they are skipped and `gui-ci` passes. The `Go` workflow combines
 formatting, lint, build, tests, coverage and the README demo check in one
 `go-ci` job. Go jobs are skipped for changes that only affect the GUI, Markdown
-files or `docs/images/`; the JSON schemas and the demo sources under `docs/`
-still run them. The
+files other than `README.md`, or `docs/images/`. `README.md` (whose link to
+`docs/demo.gif` the demo check requires), the JSON schemas and the demo sources
+under `docs/` still run them. The
 development container is built only when its inputs
 (`compose.yaml`, `docker/`, `Makefile`, toolchain/module files or the Go
 workflow) change, plus the weekly scheduled check; ordinary Go source changes
@@ -289,9 +290,10 @@ Release publication is kept out of ordinary CI:
   `gui-vX.Y.Z` tag. On pull requests that change the packaging it builds and
   installs the packages as a dry run, and its publication job is skipped. The
   packaging means the icons, the notices configuration, `cli.rs`, `main.rs`,
-  the toolchain, the workflow, and in `gui/Cargo.toml` the `[package]` table,
-  the release profile and the dependencies that are always built. Other changes
-  to `gui/Cargo.toml` or `gui/Cargo.lock` only check the third-party notices.
+  the toolchain, the workflow, and any change to `gui/Cargo.toml` other than
+  dev-dependencies and the optional dependencies and features that the default
+  features do not enable. Those, and `gui/Cargo.lock` changes, only check the
+  third-party notices.
 - `Bump Version` runs only when manually dispatched.
 
 ## Dependency and supply-chain checks

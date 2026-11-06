@@ -10,10 +10,10 @@ name: GUI release
 #   start another run).
 # - A gui-v* tag pushed by a user releases that tag.
 # - A pull request that changes the packaging builds and checks the packages
-#   without publishing them. Changes to gui/Cargo.toml build the packages only
-#   when they touch the package metadata, the release profile or a dependency
-#   that is always built (not dev-only or optional); other changes to
-#   Cargo.toml or Cargo.lock only check the third-party notices. Pull requests
+#   without publishing them. A change to gui/Cargo.toml builds the packages
+#   unless it only touches dev-dependencies, or optional dependencies and
+#   features that the default features do not enable; those, and Cargo.lock
+#   changes, only check the third-party notices. Pull requests
 #   restore the cargo tools from a cache; releases always build them.
 # CLI releases use v* tags and are not started by gui-v* tags.
 
@@ -81,22 +81,41 @@ jobs:
           package=true
         elif printf '%s\n' "$files" | grep -qx gui/Cargo.toml; then
           git show "$BASE_SHA:gui/Cargo.toml" > "$RUNNER_TEMP/base-Cargo.toml"
-          # Compares what reaches the packages: the [package] table (metadata
-          # included), the release profile and the dependencies that are always
-          # built.
+          # Compares the manifest without what cannot reach the packages:
+          # dev-dependencies, and optional dependencies and features that the
+          # default features do not enable. Everything else counts, including
+          # [package], profiles, targets and build-dependencies.
           if python3 - "$RUNNER_TEMP/base-Cargo.toml" gui/Cargo.toml <<'EOF'
         import sys, tomllib
 
         def shipped(path):
             with open(path, "rb") as f:
                 manifest = tomllib.load(f)
-            def required(table):
-                return {name: spec for name, spec in table.items()
-                        if not (isinstance(spec, dict) and spec.get("optional"))}
-            targets = {name: required(target.get("dependencies", {}))
-                       for name, target in manifest.get("target", {}).items()}
-            return (manifest.get("package"), manifest.get("profile", {}).get("release"),
-                    required(manifest.get("dependencies", {})), targets)
+            features = manifest.pop("features", {})
+            enabled, active, pending = set(), set(), ["default"]
+            while pending:
+                name = pending.pop()
+                if name in enabled:
+                    continue
+                enabled.add(name)
+                for item in features.get(name, []):
+                    head, _, _ = item.partition("/")
+                    if head.endswith("?"):
+                        continue  # "dep?/feature" does not enable the dependency
+                    head = head.removeprefix("dep:")
+                    active.add(head)
+                    pending.append(head)
+            manifest["features"] = {name: features[name] for name in enabled if name in features}
+            tables = [manifest] + list(manifest.get("target", {}).values())
+            for table in tables:
+                table.pop("dev-dependencies", None)
+                for key in ("dependencies", "build-dependencies"):
+                    deps = table.get(key, {})
+                    for name in list(deps):
+                        spec = deps[name]
+                        if isinstance(spec, dict) and spec.get("optional") and name not in active:
+                            del deps[name]
+            return manifest
 
         sys.exit(0 if shipped(sys.argv[1]) != shipped(sys.argv[2]) else 1)
         EOF
