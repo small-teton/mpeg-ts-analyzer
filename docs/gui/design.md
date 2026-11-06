@@ -25,7 +25,9 @@ Work is tracked in #101 (milestone GUI v0.1).
 - Analysis logic and verdicts live only in the CLI, so the GUI and the CLI
   cannot disagree. CLI changes for the GUI add output surfaces; they do not
   change analysis results.
-- The CLI binary is built from the same commit and bundled with the GUI.
+- The GUI packages bundle a published CLI release, named in
+  `gui/BUNDLED_CLI_VERSION`. A GUI change that needs new CLI output is released
+  after the CLI release that provides it.
 
 ### CLI discovery order
 
@@ -289,7 +291,8 @@ Language, packets per page and cached pages are laid out but not applied yet.
   `io.github.small-teton.mpeg-ts-analyzer`); its executable is
   `mpeg-ts-analyzer-gui`. The icon is `gui/assets/icons/icon.svg`.
 - Packaged with cargo-packager (configuration in `gui/Cargo.toml`) by the
-  `gui-release.yml` workflow, which releases `gui-v<version>` tags.
+  `gui-release.yml` workflow, which releases `gui-v<version>` tags; see
+  [Release](../development/release.md#gui-release).
   `gui/v*` is avoided because Go reads it as a sub-module version. The GUI
   version (`gui/Cargo.toml`) is independent of the CLI's `VERSION`; GUI
   releases are not marked "latest", which stays on the CLI.
@@ -300,8 +303,9 @@ Language, packets per page and cached pages are laid out but not applied yet.
   `THIRD-PARTY-NOTICES.txt`, generated at release time by
   `gui/scripts/third-party-notices.sh`: the Rust crates of the GUI for all
   three targets (cargo-about, `gui/about.toml`), including the fonts egui
-  embeds, and the Go standard library and the modules recorded in the CLI built
-  for each of the three targets (cobra uses mousetrap only on Windows).
+  embeds, and the Go standard library and the modules recorded in the bundled
+  CLI binary of each of the three targets (cobra uses mousetrap only on
+  Windows).
 - Binaries are not signed for now; the release notes
   (`.github/gui-release-notes.md`) explain how to open them on macOS and
   Windows. Checksums, an SBOM and build provenance:
@@ -313,7 +317,7 @@ Language, packets per page and cached pages are laid out but not applied yet.
 |---|---|---|
 | egui (eframe) | Immediate-mode UI suited to analysis tools; good plotting; single binary | Qt (dated), Electron/Tauri (web stack), browser/WASM build (hard to get running) |
 | CLI as a subprocess, JSON over stdout | One implementation of the analysis; the JSON schema is the boundary; easy cross-builds | cgo/c-shared FFI |
-| GUI in this repository under `gui/` | Schema and GUI change in one PR; bundled CLI from the same commit | Separate repository |
+| GUI in this repository under `gui/` | Schema and GUI change in one PR; the CLI release a GUI bundles is named in the same tree | Separate repository |
 | cargo-packager | Covers `.app`/`.dmg`/`.deb`/AppImage/NSIS/MSI from one config | cargo-dist (CLI oriented) |
 | No code signing for now | Personal OSS; users are engineers | Paid signing services until requested |
 | One scan of a byte range for Overview/Timeline/Bitrate | Results are small (summaries, time series) and bounded by the range; no paging inside these screens | Calling the CLI per screen; paging Timeline/Bitrate |

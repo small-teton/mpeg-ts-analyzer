@@ -1,6 +1,8 @@
 Desktop GUI for mpeg-ts-analyzer {{VERSION}}. Each package bundles the
-`mpeg-ts-analyzer` CLI built from the same commit; the GUI finds it without
-any setup.
+published `mpeg-ts-analyzer` CLI {{CLI_VERSION}} (the binary of release
+`v{{CLI_VERSION}}`, checked against its checksums and build provenance); the
+GUI finds it without any setup. `mpeg-ts-analyzer-gui_{{VERSION}}_manifest.json`
+records the GUI and CLI versions and the commits they were built from.
 
 | OS | Download |
 |---|---|

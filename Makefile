@@ -53,7 +53,8 @@ gui-screenshots:
 check-gui-screenshots:
 	cargo test --manifest-path gui/Cargo.toml --locked --features screenshots readme_screenshots
 
-# Packages the GUI for this OS with the CLI bundled, as gui-release.yml does.
+# Packages the GUI for this OS with a CLI built from this tree. (Releases bundle
+# the published CLI release named in gui/BUNDLED_CLI_VERSION instead.)
 # Needs cargo-packager and cargo-about (see docs/development/index.md).
 gui-package:
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "gui/target/bundled-cli/mpeg-ts-analyzer$$(go env GOEXE)" .

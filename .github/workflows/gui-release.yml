@@ -1,14 +1,20 @@
 name: GUI release
 
-# Packages the GUI with the CLI of the same commit for macOS (.dmg), Linux
-# (.deb, AppImage) and Windows (NSIS installer, portable zip), checks that each
-# package finds its bundled CLI, and publishes them with checksums, an SBOM and
-# build provenance.
+# Packages the GUI for macOS (.dmg), Linux (.deb, AppImage) and Windows (NSIS
+# installer, portable zip) with the published CLI release named in
+# gui/BUNDLED_CLI_VERSION (verified against its checksums and build
+# provenance), checks that each package finds that CLI, and publishes them with
+# checksums, an SBOM, build provenance and a manifest of both versions.
 #
-# - workflow_dispatch on master creates the tag gui-v<version of gui/Cargo.toml>
-#   and releases it in the same run (a tag pushed with GITHUB_TOKEN would not
+# - workflow_dispatch on master releases gui-v<version of gui/Cargo.toml>. The
+#   tag is created at the built commit only after every package has passed its
+#   checks, in the publishing job (a tag pushed with GITHUB_TOKEN would not
 #   start another run).
 # - A gui-v* tag pushed by a user releases that tag.
+# - A rerun continues when the tag already points at the built commit and no
+#   published release exists, and stops without changes when the release is
+#   published. A tag at another commit fails the run; tags are never moved or
+#   deleted. Release runs never run concurrently or get cancelled.
 # - A pull request that changes the packaging builds and checks the packages
 #   without publishing them. A change to gui/Cargo.toml builds the packages
 #   unless it only touches dev-dependencies, or optional dependencies and
@@ -33,13 +39,18 @@ on:
       - gui/scripts/third-party-notices.sh
       - gui/src/cli.rs
       - gui/src/main.rs
+      - gui/BUNDLED_CLI_VERSION
+      - VERSION
+      - .github/scripts/release-state.sh
+      - .github/scripts/bundled-cli.sh
+      - .github/gui-release-notes.md
       - .github/workflows/gui-release.yml
 
 permissions:
   contents: read
 
 concurrency:
-  group: gui-release-${{ github.ref }}
+  group: ${{ github.event_name == 'pull_request' && format('gui-release-pr-{0}', github.ref) || 'gui-release' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -57,6 +68,8 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
+      state: ${{ steps.version.outputs.state }}
+      cli-version: ${{ steps.version.outputs.cli-version }}
       package: ${{ steps.scope.outputs.package }}
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -78,7 +91,7 @@ jobs:
         package=false
         # Here-strings, not pipes: with pipefail, grep -q exiting at the first
         # match could fail the upstream printf with SIGPIPE.
-        if grep -Eq '^(rust-toolchain\.toml$|gui/assets/icons/|gui/about\.(hbs|toml)$|gui/scripts/third-party-notices\.sh$|gui/src/(cli|main)\.rs$|\.github/workflows/gui-release\.yml$)' \
+        if grep -Eq '^(rust-toolchain\.toml$|gui/assets/icons/|gui/about\.(hbs|toml)$|gui/scripts/third-party-notices\.sh$|gui/src/(cli|main)\.rs$|gui/BUNDLED_CLI_VERSION$|VERSION$|\.github/scripts/(release-state|bundled-cli)\.sh$|\.github/gui-release-notes\.md$|\.github/workflows/gui-release\.yml$)' \
           <<<"$files"; then
           package=true
         elif grep -qx gui/Cargo.toml <<<"$files"; then
@@ -128,59 +141,77 @@ jobs:
         echo "package=$package" >> "$GITHUB_OUTPUT"
         echo "Build the packages: $package"
 
-    - name: Read the GUI version
+    # The release preflight, also run on pull requests: versions, the tag and
+    # the release. GH_TOKEN is only read.
+    - name: Check the versions, tag and release
       id: version
       env:
+        GH_TOKEN: ${{ github.token }}
         EVENT_NAME: ${{ github.event_name }}
         REF: ${{ github.ref }}
         REF_NAME: ${{ github.ref_name }}
+        SHA: ${{ github.sha }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
       run: |
+        state=.github/scripts/release-state.sh
         version=$(sed -n 's/^version = "\(.*\)"$/\1/p' gui/Cargo.toml | head -n 1)
-        tag="gui-v$version"
-        if [ "$EVENT_NAME" = push ] && [ "$REF_NAME" != "$tag" ]; then
-          echo "::error::Tag $REF_NAME does not match gui/Cargo.toml version $version"
+        "$state" semver "$version"
+        locked=$(awk '/^name = "mpeg-ts-analyzer-gui"$/ { found = 1; next } found && /^version = / { gsub(/"/, "", $3); print $3; exit }' gui/Cargo.lock)
+        if [ "$locked" != "$version" ]; then
+          echo "::error::gui/Cargo.lock has version $locked for mpeg-ts-analyzer-gui, gui/Cargo.toml $version"
           exit 1
         fi
-        if [ "$EVENT_NAME" = workflow_dispatch ] && [ "$REF" != refs/heads/master ]; then
-          echo "::error::Release from master only (got $REF)"
-          exit 1
+        cli_version=$("$state" version gui/BUNDLED_CLI_VERSION)
+        tag="gui-v$version"
+        case "$EVENT_NAME" in
+          pull_request)
+            # A GUI version that this pull request changes must not have
+            # been released yet.
+            base_version=$(git show "$BASE_SHA:gui/Cargo.toml" | sed -n 's/^version = "\(.*\)"$/\1/p' | head -n 1)
+            if [ "$version" != "$base_version" ] && [ -n "$(git ls-remote --tags origin "refs/tags/$tag")" ]; then
+              echo "::error::$tag already exists; choose a new GUI version."
+              exit 1
+            fi
+            release_state=pull-request ;;
+          push)
+            if [ "$REF_NAME" != "$tag" ]; then
+              echo "::error::Tag $REF_NAME does not match gui/Cargo.toml version $version"
+              exit 1
+            fi
+            "$state" on-master "$SHA"
+            release_state=$("$state" tag "$tag" "$SHA") ;;
+          workflow_dispatch)
+            if [ "$REF" != refs/heads/master ]; then
+              echo "::error::Release from master only (got $REF)"
+              exit 1
+            fi
+            "$state" on-master "$SHA"
+            release_state=$("$state" tag "$tag" "$SHA") ;;
+        esac
+        if [ "$release_state" = published ]; then
+          echo "::notice::$tag is already released from $SHA; nothing to do."
         fi
         echo "version=$version" >> "$GITHUB_OUTPUT"
         echo "tag=$tag" >> "$GITHUB_OUTPUT"
+        echo "state=$release_state" >> "$GITHUB_OUTPUT"
+        echo "cli-version=$cli_version" >> "$GITHUB_OUTPUT"
+        echo "GUI $version ($tag, $release_state) bundling CLI $cli_version"
 
-  create-tag:
-    needs: version
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        fetch-depth: 0
-
-    - name: Create and push the tag
-      env:
-        TAG: ${{ needs.version.outputs.tag }}
-      run: |
-        if git rev-parse "$TAG" >/dev/null 2>&1; then
-          echo "::error::Tag $TAG already exists"
-          exit 1
-        fi
-        git tag "$TAG"
-        git push origin "$TAG"
-
-  # One notice file for every package: the Rust crates of the GUI and the Go
-  # modules of the CLI, each for all three targets.
+  # Provides the bundled CLI for all three targets once, and one notice file
+  # for every package: the Rust crates of the GUI and the Go modules recorded
+  # in the bundled CLI binaries.
   notices:
     needs: version
+    if: needs.version.outputs.state != 'published'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      attestations: read
     steps:
-    # Runs alongside create-tag, so it checks out the commit the workflow was
-    # started on, which is the commit create-tag tags.
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
+        fetch-depth: 0
 
     - name: Install the toolchain from rust-toolchain.toml
       working-directory: gui
@@ -203,10 +234,16 @@ jobs:
       if: steps.cargo-about.outputs.cache-hit != 'true'
       run: cargo install cargo-about --version "$CARGO_ABOUT_VERSION" --locked --features cli
 
+    - name: Provide the bundled CLI
+      env:
+        GH_TOKEN: ${{ github.token }}
+        ALLOW_STAND_IN: ${{ github.event_name == 'pull_request' }}
+      run: .github/scripts/bundled-cli.sh bundled-cli darwin/arm64 linux/amd64 windows/amd64
+
     - name: Write the notices
       run: |
         mkdir notices
-        gui/scripts/third-party-notices.sh notices/THIRD-PARTY-NOTICES.txt
+        gui/scripts/third-party-notices.sh notices/THIRD-PARTY-NOTICES.txt bundled-cli
 
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
@@ -214,15 +251,15 @@ jobs:
         path: notices/
         if-no-files-found: error
 
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: bundled-cli
+        path: bundled-cli/
+        if-no-files-found: error
+
   package:
-    needs: [version, create-tag, notices]
-    # create-tag is skipped except on workflow_dispatch.
-    if: >-
-      always() &&
-      needs.version.result == 'success' &&
-      needs.version.outputs.package == 'true' &&
-      needs.notices.result == 'success' &&
-      (needs.create-tag.result == 'success' || needs.create-tag.result == 'skipped')
+    needs: [version, notices]
+    if: needs.version.outputs.package == 'true' && needs.version.outputs.state != 'published'
     strategy:
       fail-fast: false
       matrix:
@@ -242,20 +279,16 @@ jobs:
         shell: bash
     env:
       VERSION: ${{ needs.version.outputs.version }}
+      CLI_VERSION: ${{ needs.version.outputs.cli-version }}
     steps:
+    # The commit the run started on; a release tags it only after this job.
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
-        ref: ${{ github.event_name == 'workflow_dispatch' && needs.version.outputs.tag || '' }}
 
     - name: Install the toolchain from rust-toolchain.toml
       working-directory: gui
       run: rustup toolchain install
-
-    - name: Set up Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-      with:
-        go-version-file: './go.mod'
 
     # The AppImage tooling is itself an AppImage and needs FUSE 2.
     - name: Install AppImage dependencies
@@ -274,11 +307,29 @@ jobs:
       if: steps.cargo-packager.outputs.cache-hit != 'true'
       run: cargo install cargo-packager --version "$CARGO_PACKAGER_VERSION" --locked
 
-    # Built like the CLI release (GoReleaser): static, trimmed, stripped.
-    - name: Build the CLI to bundle
-      env:
-        CGO_ENABLED: "0"
-      run: go build -trimpath -ldflags "-s -w" -o "gui/target/bundled-cli/mpeg-ts-analyzer$(go env GOEXE)" .
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: bundled-cli
+        path: ${{ runner.temp }}/bundled-cli
+
+    # The CLI verified by the notices job, for this runner's target. It must
+    # report the declared version before it is packaged.
+    - name: Take the bundled CLI
+      run: |
+        case "$RUNNER_OS" in
+          macOS) target=darwin-arm64 exe= ;;
+          Linux) target=linux-amd64 exe= ;;
+          Windows) target=windows-amd64 exe=.exe ;;
+        esac
+        mkdir -p gui/target/bundled-cli
+        cp "$RUNNER_TEMP/bundled-cli/$target/mpeg-ts-analyzer$exe" gui/target/bundled-cli/
+        chmod +x "gui/target/bundled-cli/mpeg-ts-analyzer$exe"
+        actual=$("gui/target/bundled-cli/mpeg-ts-analyzer$exe" --version)
+        if [ "$actual" != "mpeg-ts-analyzer version $CLI_VERSION" ]; then
+          echo "::error::The bundled CLI reports '$actual', expected version $CLI_VERSION."
+          exit 1
+        fi
+        echo "$actual"
 
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
       with:
@@ -324,7 +375,7 @@ jobs:
           output=$("$@" --check-cli)
           echo "$output"
           case "$output" in
-            *"(bundled with the GUI): mpeg-ts-analyzer "*) ;;
+            *"(bundled with the GUI): mpeg-ts-analyzer $CLI_VERSION") ;;
             *) echo "::error::$1 did not find its bundled CLI"; exit 1 ;;
           esac
         }
@@ -370,8 +421,8 @@ jobs:
   release:
     needs: [version, package]
     if: >-
-      always() &&
       github.event_name != 'pull_request' &&
+      needs.version.outputs.state != 'published' &&
       needs.package.result == 'success'
     runs-on: ubuntu-latest
     permissions:
@@ -381,17 +432,52 @@ jobs:
     env:
       VERSION: ${{ needs.version.outputs.version }}
       TAG: ${{ needs.version.outputs.tag }}
+      CLI_VERSION: ${{ needs.version.outputs.cli-version }}
+      SHA: ${{ github.sha }}
+      GH_TOKEN: ${{ github.token }}
     steps:
+    # The built commit, with the credentials to push its tag.
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        persist-credentials: false
-        ref: ${{ needs.version.outputs.tag }}
+        fetch-depth: 0
 
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
       with:
         pattern: gui-*
         merge-multiple: true
         path: dist
+
+    # Every package passed: tag the built commit, unless a previous run did.
+    # The state is checked again, since a tag or release may have appeared
+    # while the packages were built. A draft left by a failed run is replaced.
+    - name: Push the tag
+      run: |
+        .github/scripts/release-state.sh on-master "$SHA"
+        state=$(.github/scripts/release-state.sh tag "$TAG" "$SHA")
+        case "$state" in
+          new) git tag "$TAG" "$SHA" && git push origin "refs/tags/$TAG" ;;
+          resume) echo "$TAG already points at $SHA." ;;
+          *) echo "::error::$TAG was published while this run was building."; exit 1 ;;
+        esac
+        if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)" = true ]; then
+          gh release delete "$TAG" --yes
+        fi
+
+    # Which GUI and which published CLI the packages contain.
+    - name: Write the manifest
+      run: |
+        cli_commit=$(git ls-remote --tags origin "refs/tags/v$CLI_VERSION^{}" "refs/tags/v$CLI_VERSION" | awk '{ print $1 }' | head -n 1)
+        cat > "dist/mpeg-ts-analyzer-gui_${VERSION}_manifest.json" <<EOF
+        {
+          "gui_version": "$VERSION",
+          "gui_tag": "$TAG",
+          "gui_commit": "$SHA",
+          "bundled_cli_version": "$CLI_VERSION",
+          "bundled_cli_tag": "v$CLI_VERSION",
+          "bundled_cli_commit": "$cli_commit"
+        }
+        EOF
+        cat "dist/mpeg-ts-analyzer-gui_${VERSION}_manifest.json"
 
     - name: Generate the SBOM
       run: |
@@ -409,13 +495,11 @@ jobs:
 
     # Not marked latest: "latest" stays on the CLI release.
     - name: Publish the release
-      env:
-        GH_TOKEN: ${{ github.token }}
       run: |
-        sed "s/{{VERSION}}/$VERSION/g" .github/gui-release-notes.md > "$RUNNER_TEMP/notes.md"
+        sed -e "s/{{VERSION}}/$VERSION/g" -e "s/{{CLI_VERSION}}/$CLI_VERSION/g" .github/gui-release-notes.md > "$RUNNER_TEMP/notes.md"
         gh release create "$TAG" dist/* \
           --repo "$GITHUB_REPOSITORY" \
           --verify-tag \
           --latest=false \
-          --title "mpeg-ts-analyzer GUI $VERSION" \
+          --title "mpeg-ts-analyzer GUI $VERSION (CLI $CLI_VERSION)" \
           --notes-file "$RUNNER_TEMP/notes.md"
