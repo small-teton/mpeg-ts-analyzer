@@ -59,16 +59,23 @@ jobs:
         fi
 
         files=$(git diff --name-only "$base" HEAD)
-        if printf '%s\n' "$files" \
-          | grep -Ev '^(gui/|docs/gui/|rust-toolchain\.toml$|\.github/workflows/gui\.yml$)' \
-          | grep -q .; then
+        # The GUI, Markdown and the README images do not reach the Go checks;
+        # the documentation-policy workflow checks the Markdown. README.md does
+        # (check-demo requires its link to docs/demo.gif), and so do the demo
+        # sources and the JSON schemas under docs/ (check-demo, tests).
+        # Here-strings and command substitutions, not grep -q at the end of a
+        # pipe: with pipefail, grep -q exiting at the first match could fail an
+        # upstream command with SIGPIPE.
+        relevant=$(grep -Ev '^(gui/|docs/images/|rust-toolchain\.toml$|\.github/workflows/gui\.yml$)' <<<"$files" \
+          | grep -Ev '\.md$' || true)
+        if grep -qx README.md <<<"$files" || [ -n "$relevant" ]; then
           echo "go=true" >> "$GITHUB_OUTPUT"
         else
           echo "go=false" >> "$GITHUB_OUTPUT"
         fi
 
-        if printf '%s\n' "$files" | grep -Eq \
-          '^(compose\.yaml$|docker/|mise\.toml$|Makefile$|go\.(mod|sum)$|\.github/tools/|\.github/workflows/go\.yml$)'; then
+        if grep -Eq '^(compose\.yaml$|docker/|mise\.toml$|Makefile$|go\.(mod|sum)$|\.github/tools/|\.github/workflows/go\.yml$)' \
+          <<<"$files"; then
           echo "development-container=true" >> "$GITHUB_OUTPUT"
         else
           echo "development-container=false" >> "$GITHUB_OUTPUT"

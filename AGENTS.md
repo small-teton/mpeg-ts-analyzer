@@ -71,7 +71,8 @@ is a methodology difference, not a bug.
 
 > Bitrate caveat: this tool measures over the PCR-bracketed window it processes
 > (first observed PCR after PSI acquisition → last PCR), so it reads a few percent
-> low versus TSDuck's whole-file pass on very short clips. See README.md.
+> low versus TSDuck's whole-file pass on very short clips. See
+> [Dump bitrate](docs/cli/dumps.md#dump-bitrate).
 
 A local (gitignored) comparison helper lives at `local/compare_bitrate.py`.
 
@@ -84,7 +85,7 @@ coverage target.
 - After changing Go code, run `make coverage` and confirm both packages report
   `100.0%`.
 - Active fuzzing commands and the regression-corpus workflow are documented in
-  [FUZZING.md](FUZZING.md).
+  [docs/development/fuzzing.md](docs/development/fuzzing.md).
 - Add or update tests whenever a change would otherwise reduce coverage.
 - Before pushing or opening a pull request, run `.githooks/pre-push`; do not
   treat the work as complete unless every check passes.
@@ -106,13 +107,16 @@ coverage target.
   part of an unrelated cleanup.
 - Treat CLI syntax, flag placement or defaults, help text, human-readable or
   JSON output, and exit codes as public interfaces. When any of them changes,
-  audit and update `README.md`, the annotated examples in `OPTIONS.md`, CLI
+  audit and update the user documentation under `docs/` (`docs/cli/usage.md`
+  for flags, help text, verdicts and exit codes; `docs/cli/psi.md` and
+  `docs/cli/dumps.md` for their output; `docs/reference/json-output.md` for
+  JSON), the README where its overview or quick start is affected, CLI
   help/examples, schemas, and the README demo as applicable in the same pull
   request. Explicitly explain in the pull request when an expected document or
   generated artifact does not need an update.
-- When the JSON contract changes, update `docs/json-schema-v1.json`, the README
-  contract, the complete example in `OPTIONS.md`, and decoding/compatibility
-  tests together. Preserve the documented additive-change policy within a
+- When the JSON contract changes, update `docs/json-schema-v1.json`, the
+  contract and the complete examples in `docs/reference/json-output.md`, and
+  decoding/compatibility tests together. Preserve the documented additive-change policy within a
   schema version; breaking field, type, or enum-meaning changes require a
   schema-version increment.
 
@@ -138,9 +142,9 @@ coverage target.
   user-visible or structured output, include representative real examples and
   explain relevant output-size or resource characteristics.
 - For every public-interface change, include a documentation-impact audit in
-  the description. Name the updated README, `OPTIONS.md`, help/examples,
-  schema, and generated-demo artifacts, or state why each relevant item is not
-  affected.
+  the description. Name the updated README, pages under `docs/`,
+  help/examples, schema, and generated-demo artifacts, or state why each
+  relevant item is not affected.
 - Use `Closes #N` only when the pull request fully resolves the issue. Use
   `Follow-up to #N` or a plain reference when it extends earlier work without
   closing the original request.

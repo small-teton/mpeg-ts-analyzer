@@ -224,7 +224,7 @@ data is large, so the whole range is never held in memory.
   including mid-range changes) from the range scan, and uses it to label
   packets. Packet pages themselves are read without PSI context: a section in
   a page is matched to its run in the layout by PID, table, header and offset
-  (OPTIONS.md, "PSI layout of the range"). With a CLI that does not report the
+  ([PSI layout of the range](../reference/json-output.md#psi-layout-of-the-range)). With a CLI that does not report the
   layout, Type comes from the tables the analysis started with.
 - Implementation: the first request reads page 1 from the range start and
   learns the first packet boundary; page *n* is then read from
@@ -273,7 +273,7 @@ Language, packets per page and cached pages are laid out but not applied yet.
   `Id::unique`); older examples do not apply as-is.
 - `make gui-run` builds the CLI into `out/gui/` and runs the GUI against it
   (through `MPEG_TS_ANALYZER_CLI`). Checks: `make gui-lint` (rustfmt, clippy
-  `-D warnings`) and `make gui-test`. See `docs/DEVELOPMENT.md`.
+  `-D warnings`) and `make gui-test`. See [Development](../development/index.md).
 - The GUI runs on the host; a container development environment is not
   planned for now.
 

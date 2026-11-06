@@ -33,7 +33,7 @@ func TestEvaluateRequiresCLIDocumentation(t *testing.T) {
 
 	result := evaluate(root, changed, patches, body)
 	joined := strings.Join(result.failures, "\n")
-	if !strings.Contains(joined, "`README.md` was not updated") || !strings.Contains(joined, "`OPTIONS.md` was not updated") {
+	if !strings.Contains(joined, "`docs/cli/usage.md` was not updated") {
 		t.Fatalf("missing documentation failures: %s", joined)
 	}
 }
@@ -42,7 +42,7 @@ func TestEvaluateAcceptsExplicitUnaffectedDocumentation(t *testing.T) {
 	root := policyFixture(t)
 	changed := map[string]bool{"cmd/root.go": true}
 	patches := map[string]string{"cmd/root.go": "+rootCmd.Flags().BoolVar(&opt.New, \"new\", false, \"New.\")\n"}
-	body := completeBody("`README.md` is not affected. `OPTIONS.md` does not need an update.")
+	body := completeBody("`docs/cli/usage.md` does not need an update.")
 
 	result := evaluate(root, changed, patches, body)
 	if len(result.failures) != 0 {
@@ -67,13 +67,12 @@ func TestEvaluateAcceptsDocumentedJSONContractChange(t *testing.T) {
 	writeFile(t, root, "docs/json-schema-v1.json", "{}\n")
 	trackFiles(t, root)
 	changed := map[string]bool{
-		"tsparser/report.go":       true,
-		"README.md":                true,
-		"OPTIONS.md":               true,
-		"docs/json-schema-v1.json": true,
+		"tsparser/report.go":            true,
+		"docs/reference/json-output.md": true,
+		"docs/json-schema-v1.json":      true,
 	}
 	patches := map[string]string{"tsparser/report.go": "+\tValue string `json:\"value\"`\n"}
-	body := completeBody("- Updated `README.md`.\n- Updated `OPTIONS.md`.\n- Updated `docs/json-schema-v1.json`.")
+	body := completeBody("- Updated `docs/reference/json-output.md`.\n- Updated `docs/json-schema-v1.json`.")
 
 	result := evaluate(root, changed, patches, body)
 	if len(result.failures) != 0 {
@@ -89,6 +88,12 @@ func TestEvaluateWarnsForPossibleOutputChange(t *testing.T) {
 	result := evaluate(root, changed, patches, completeBody("No interface changes."))
 	if len(result.failures) != 0 || len(result.warnings) != 1 {
 		t.Fatalf("failures=%v warnings=%v", result.failures, result.warnings)
+	}
+
+	changed["docs/cli/dumps.md"] = true
+	result = evaluate(root, changed, patches, completeBody("Updated `docs/cli/dumps.md`."))
+	if len(result.warnings) != 0 {
+		t.Fatalf("warning despite an updated CLI page: %v", result.warnings)
 	}
 }
 
@@ -255,7 +260,7 @@ func policyFixture(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
 	writeFile(t, root, "cmd/root.go", `rootCmd.Flags().BoolVar(&opt.Dump, "dump", false, "Dump.")`)
-	writeFile(t, root, "OPTIONS.md", "Use `--dump`.\n")
+	writeFile(t, root, "docs/cli/usage.md", "Use `--dump`.\n")
 	writeFile(t, root, "README.md", "# Test\n")
 	if err := gitCommand("-C", root, "init", "--quiet").Run(); err != nil {
 		t.Fatal(err)

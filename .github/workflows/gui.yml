@@ -22,6 +22,7 @@ jobs:
     outputs:
       gui: ${{ steps.filter.outputs.gui }}
       screenshots: ${{ steps.filter.outputs.screenshots }}
+      lockfile: ${{ steps.filter.outputs.lockfile }}
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -41,20 +42,29 @@ jobs:
           *)
             echo "gui=false" >> "$GITHUB_OUTPUT"
             echo "screenshots=false" >> "$GITHUB_OUTPUT"
+            echo "lockfile=false" >> "$GITHUB_OUTPUT"
             exit 0 ;;
         esac
         # A new branch or an unknown base: check everything.
         if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
           echo "gui=true" >> "$GITHUB_OUTPUT"
           echo "screenshots=true" >> "$GITHUB_OUTPUT"
+          echo "lockfile=true" >> "$GITHUB_OUTPUT"
           exit 0
         fi
         files=$(git diff --name-only "$base" HEAD)
-        if printf '%s\n' "$files" \
-          | grep -Eq '^(gui/|Makefile$|mise\.toml$|rust-toolchain\.toml$|renovate\.json$|\.github/workflows/gui\.yml$)'; then
+        # Here-strings, not pipes: with pipefail, grep -q exiting at the first
+        # match could fail the upstream printf with SIGPIPE.
+        if grep -Eq '^(gui/Cargo\.lock|\.github/workflows/gui\.yml)$' <<<"$files"; then
+          echo "lockfile=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "lockfile=false" >> "$GITHUB_OUTPUT"
+        fi
+        if grep -Eq '^(gui/|Makefile$|mise\.toml$|rust-toolchain\.toml$|renovate\.json$|\.github/workflows/gui\.yml$)' \
+          <<<"$files"; then
           echo "gui=true" >> "$GITHUB_OUTPUT"
           echo "screenshots=true" >> "$GITHUB_OUTPUT"
-        elif printf '%s\n' "$files" | grep -Eq '^(docs/images/gui-|README\.md$)'; then
+        elif grep -Eq '^(docs/images/gui-|README\.md$)' <<<"$files"; then
           # The committed images or the README that shows them changed.
           echo "gui=false" >> "$GITHUB_OUTPUT"
           echo "screenshots=true" >> "$GITHUB_OUTPUT"
@@ -154,15 +164,15 @@ jobs:
           gui/target/screenshots/*.diff.png
         if-no-files-found: ignore
 
-  # RustSec advisories for gui/Cargo.lock. Runs on GUI changes and weekly; the
-  # scheduled run covers advisories published while Cargo.lock is unchanged,
-  # so unrelated pushes to master do not need to repeat this expensive install.
-  # A vulnerability fails the job. Unmaintained, unsound and yanked crates are
-  # reported as warnings in the log.
+  # RustSec advisories for gui/Cargo.lock. The advisories concern the locked
+  # dependencies, so this runs when Cargo.lock (or this workflow) changes and
+  # weekly; the scheduled run covers advisories published while Cargo.lock is
+  # unchanged. A vulnerability fails the job. Unmaintained, unsound and yanked
+  # crates are reported as warnings in the log.
   cargo-audit:
     needs: changes
     if: >-
-      needs.changes.outputs.gui == 'true' ||
+      needs.changes.outputs.lockfile == 'true' ||
       github.event_name == 'schedule'
     runs-on: ubuntu-latest
     env:
@@ -173,7 +183,15 @@ jobs:
       with:
         persist-credentials: false
 
+    - name: Restore cargo-audit
+      id: cargo-audit
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cargo/bin/cargo-audit
+        key: cargo-audit-${{ runner.os }}-${{ env.CARGO_AUDIT_VERSION }}
+
     - name: Install cargo-audit
+      if: steps.cargo-audit.outputs.cache-hit != 'true'
       run: cargo install cargo-audit --version "$CARGO_AUDIT_VERSION" --locked
 
     - name: cargo audit
