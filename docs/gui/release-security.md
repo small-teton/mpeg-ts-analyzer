@@ -46,7 +46,7 @@ They run only in the packaging jobs, and the build provenance records the
 workflow run that used them, but a replaced linuxdeploy download would end up
 in the AppImage. Pinning it is left for later; the `.deb` does not use it.
 
-## Code signing (excluded for now)
+## Identity-backed code signing and notarization (excluded for now)
 
 The macOS app is signed ad hoc (`gui/scripts/sign-macos-app.sh`): the
 signature seals `Info.plist` and the resources, including the bundled CLI,
