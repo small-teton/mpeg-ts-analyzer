@@ -1,0 +1,87 @@
+# The documentation site (GitHub Pages), built from the Markdown under docs/.
+# The Markdown stays the only source: the site adds navigation and search.
+# Build and preview: docs/development/index.md#documentation-site.
+site_name: mpeg-ts-analyzer
+site_description: MPEG-2 Transport Stream analyzer (ISO/IEC 13818-1) for timing compliance, packet decoding and a desktop GUI
+site_url: https://small-teton.github.io/mpeg-ts-analyzer/
+repo_url: https://github.com/small-teton/mpeg-ts-analyzer
+repo_name: small-teton/mpeg-ts-analyzer
+edit_uri: edit/master/docs/
+docs_dir: docs
+strict: true
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.highlight
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      # GitHub's heading anchors, so in-page links work on both GitHub and the site.
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+
+# Every page must be in the navigation, and every link and anchor must resolve.
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+    absolute_links: warn
+  links:
+    not_found: warn
+    anchors: warn
+    absolute_links: warn
+    unrecognized_links: warn
+
+# Not published: a pointer to the page that replaced it, and the scripts that
+# render the README demo.
+exclude_docs: |
+  DEVELOPMENT.md
+  demo/*
+  !demo/README.md
+
+nav:
+  - Home: index.md
+  - Get started:
+      - Installation: getting-started/installation.md
+      - Quick start: getting-started/quickstart.md
+  - Command-line analyzer:
+      - CLI usage: cli/usage.md
+      - PSI tables: cli/psi.md
+      - Dump output examples: cli/dumps.md
+  - Desktop GUI: gui/overview.md
+  - Reference:
+      - Machine-readable output: reference/json-output.md
+  - Develop and release:
+      - Development: development/index.md
+      - Fuzz testing: development/fuzzing.md
+      - Sample data: development/sample-data.md
+      - Release: development/release.md
+      - README demo: demo/README.md
+      - GUI design: gui/design.md
+      - GUI CLI interface: gui/cli-interface.md
+      - GUI release security: gui/release-security.md

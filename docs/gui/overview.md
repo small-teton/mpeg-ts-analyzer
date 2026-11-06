@@ -2,7 +2,7 @@
 
 [Documentation home](../index.md)
 
-A desktop GUI is under active development in [`gui/`](../../gui). It runs the CLI
+A desktop GUI is under active development in [`gui/`](https://github.com/small-teton/mpeg-ts-analyzer/tree/master/gui). It runs the CLI
 as a subprocess and connects the Overview, Timeline, Bitrate, and Packets views
 to the same analysis results.
 

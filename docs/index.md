@@ -2,7 +2,7 @@
 
 mpeg-ts-analyzer checks the transport-layer timing of MPEG-2 Transport Streams
 (ISO/IEC 13818-1) and decodes their packets, from the command line or in a
-desktop GUI. The [README](../README.md) gives a short overview.
+desktop GUI. The [README](https://github.com/small-teton/mpeg-ts-analyzer#readme) gives a short overview.
 
 ## Get started
 

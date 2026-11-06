@@ -13,6 +13,17 @@
   "major": {
     "dependencyDashboardApproval": true
   },
+  "pip-compile": {
+    "managerFilePatterns": [
+      "/^\\.github/docs-site/requirements\\.txt$/"
+    ]
+  },
+  "pip_requirements": {
+    "enabled": false
+  },
+  "constraints": {
+    "python": "3.13"
+  },
   "packageRules": [
     {
       "description": "Keep all Go runtime pins on the latest stable release",
@@ -69,6 +80,13 @@
         "cargo"
       ],
       "groupName": "Rust dependencies"
+    },
+    {
+      "description": "Group the documentation site toolchain (mkdocs.yml); requirements.txt is compiled from requirements.in with hashes",
+      "matchManagers": [
+        "pip-compile"
+      ],
+      "groupName": "Documentation site"
     },
     {
       "description": "Group GitHub Actions updates",

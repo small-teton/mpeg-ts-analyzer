@@ -121,7 +121,7 @@ make uninstall  # remove from $GOPATH/bin (run on the host)
 make clean      # remove build/coverage artifacts
 ```
 
-The version string is managed in the [`VERSION`](../../VERSION) file and injected
+The version string is managed in the [`VERSION`](https://github.com/small-teton/mpeg-ts-analyzer/blob/master/VERSION) file and injected
 at build time.
 
 Coverage is measured for `bitbuffer` and `tsparser` packages only. The CLI entry
@@ -144,7 +144,7 @@ for example, `make check-docs-policy DOCS_POLICY_BASE=origin/master`.
 
 ## Desktop GUI
 
-The GUI in [`gui/`](../../gui) is a Rust application (eframe/egui) that runs the
+The GUI in [`gui/`](https://github.com/small-teton/mpeg-ts-analyzer/tree/master/gui) is a Rust application (eframe/egui) that runs the
 CLI as a subprocess. Design notes: [`docs/gui/design.md`](../gui/design.md) and
 [`docs/gui/cli-interface.md`](../gui/cli-interface.md).
 
@@ -351,9 +351,50 @@ and the JSON outputs in
 documentation-policy check enforces both. `OPTIONS.md`, `FUZZING.md` and
 `docs/DEVELOPMENT.md` remain only as pointers to the pages that replaced them.
 
+### Documentation site
+
+The same pages are published as a site on GitHub Pages,
+<https://small-teton.github.io/mpeg-ts-analyzer/>, with navigation and search.
+The Markdown stays the only source: the site adds nothing that GitHub does not
+show.
+
+- [`mkdocs.yml`](https://github.com/small-teton/mpeg-ts-analyzer/blob/master/mkdocs.yml)
+  configures the site with [MkDocs](https://www.mkdocs.org/) and
+  [Material for MkDocs](https://squidfunk.github.io/mkdocs-material/). Its
+  `nav` lists every published page, so a new page under `docs/` must be added
+  there too. `docs/DEVELOPMENT.md` and the demo's render scripts are not
+  published.
+- The build is strict: an unlisted page, a missing page or a broken link or
+  anchor fails it. Heading anchors follow GitHub's rules, so an in-page link
+  works on both GitHub and the site. Link to files outside `docs/` (the
+  README, `gui/`, `VERSION`) with their GitHub URLs, since the site does not
+  contain them.
+- `.github/workflows/docs-pages.yml` builds the site on pull requests that
+  change `docs/`, `mkdocs.yml` or the toolchain, and publishes it from
+  `master`.
+- The toolchain is pinned with hashes in `.github/docs-site/requirements.txt`,
+  compiled with `pip-compile --generate-hashes` from
+  `.github/docs-site/requirements.in`. Renovate updates both.
+
+To build and preview the site locally:
+
+```bash
+python3 -m venv .venv-docs
+.venv-docs/bin/pip install --require-hashes --no-deps -r .github/docs-site/requirements.txt
+.venv-docs/bin/mkdocs build --strict    # into site/
+.venv-docs/bin/mkdocs serve             # http://127.0.0.1:8000/
+```
+
+Material for MkDocs is in maintenance mode: its maintainers announced that it
+reaches end of life on May 5, 2027, and that its successor is
+[Zensical](https://zensical.org/), which reads `mkdocs.yml`. Zensical was in
+beta when this site was set up. The pages use only plain Markdown, tables,
+admonitions and heading anchors, so moving to Zensical should need only the
+toolchain and the workflow; plan the move before the end of life.
+
 ## README demo
 
-The animated terminal demo near the top of the [README](../../README.md) is
+The animated terminal demo near the top of the [README](https://github.com/small-teton/mpeg-ts-analyzer#readme) is
 generated from the current binary and the bundled 188-byte sample:
 
 ```sh

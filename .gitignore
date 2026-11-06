@@ -16,3 +16,7 @@ local/
 
 # GUI (Rust) build output
 gui/target/
+
+# Documentation site build (mkdocs.yml)
+/site/
+/.venv-docs/

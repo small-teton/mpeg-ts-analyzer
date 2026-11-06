@@ -114,6 +114,11 @@ coverage target.
   help/examples, schemas, and the README demo as applicable in the same pull
   request. Explicitly explain in the pull request when an expected document or
   generated artifact does not need an update.
+- The pages under `docs/` are also published as a site (`mkdocs.yml`,
+  `.github/workflows/docs-pages.yml`). Add a new page to the `nav` in
+  `mkdocs.yml`, and link to files outside `docs/` with their GitHub URLs; the
+  strict site build fails otherwise. See the documentation site section of
+  `docs/development/index.md`.
 - When the JSON contract changes, update `docs/json-schema-v1.json`, the
   contract and the complete examples in `docs/reference/json-output.md`, and
   decoding/compatibility tests together. Preserve the documented additive-change policy within a
