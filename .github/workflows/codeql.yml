@@ -42,10 +42,12 @@ jobs:
           if [ "$EVENT_NAME" != schedule ] && [ -n "$base" ] \
             && git cat-file -e "$base^{commit}" 2>/dev/null; then
             files=$(git diff --name-only "$base" HEAD)
-            printf '%s\n' "$files" | grep -Eq \
-              '(\.go$|^go\.(mod|sum)$|^\.github/workflows/codeql\.yml$)' || go=false
-            printf '%s\n' "$files" | grep -Eq \
-              '(^gui/.*\.rs$|^gui/Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^\.github/workflows/codeql\.yml$)' || rust=false
+            # Here-strings, not pipes: with pipefail, grep -q exiting at the
+            # first match could fail the upstream printf with SIGPIPE.
+            grep -Eq '(\.go$|^go\.(mod|sum)$|^\.github/workflows/codeql\.yml$)' \
+              <<<"$files" || go=false
+            grep -Eq '(^gui/.*\.rs$|^gui/Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^\.github/workflows/codeql\.yml$)' \
+              <<<"$files" || rust=false
           fi
 
           languages=""

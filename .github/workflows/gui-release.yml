@@ -76,10 +76,12 @@ jobs:
         fi
         files=$(git diff --name-only "$BASE_SHA" HEAD)
         package=false
-        if printf '%s\n' "$files" | grep -Eq \
-          '^(rust-toolchain\.toml$|gui/assets/icons/|gui/about\.(hbs|toml)$|gui/scripts/third-party-notices\.sh$|gui/src/(cli|main)\.rs$|\.github/workflows/gui-release\.yml$)'; then
+        # Here-strings, not pipes: with pipefail, grep -q exiting at the first
+        # match could fail the upstream printf with SIGPIPE.
+        if grep -Eq '^(rust-toolchain\.toml$|gui/assets/icons/|gui/about\.(hbs|toml)$|gui/scripts/third-party-notices\.sh$|gui/src/(cli|main)\.rs$|\.github/workflows/gui-release\.yml$)' \
+          <<<"$files"; then
           package=true
-        elif printf '%s\n' "$files" | grep -qx gui/Cargo.toml; then
+        elif grep -qx gui/Cargo.toml <<<"$files"; then
           git show "$BASE_SHA:gui/Cargo.toml" > "$RUNNER_TEMP/base-Cargo.toml"
           # Compares the manifest without what cannot reach the packages:
           # dev-dependencies, and optional dependencies and features that the

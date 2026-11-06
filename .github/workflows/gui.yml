@@ -53,16 +53,18 @@ jobs:
           exit 0
         fi
         files=$(git diff --name-only "$base" HEAD)
-        if printf '%s\n' "$files" | grep -Eq '^(gui/Cargo\.lock|\.github/workflows/gui\.yml)$'; then
+        # Here-strings, not pipes: with pipefail, grep -q exiting at the first
+        # match could fail the upstream printf with SIGPIPE.
+        if grep -Eq '^(gui/Cargo\.lock|\.github/workflows/gui\.yml)$' <<<"$files"; then
           echo "lockfile=true" >> "$GITHUB_OUTPUT"
         else
           echo "lockfile=false" >> "$GITHUB_OUTPUT"
         fi
-        if printf '%s\n' "$files" \
-          | grep -Eq '^(gui/|Makefile$|mise\.toml$|rust-toolchain\.toml$|renovate\.json$|\.github/workflows/gui\.yml$)'; then
+        if grep -Eq '^(gui/|Makefile$|mise\.toml$|rust-toolchain\.toml$|renovate\.json$|\.github/workflows/gui\.yml$)' \
+          <<<"$files"; then
           echo "gui=true" >> "$GITHUB_OUTPUT"
           echo "screenshots=true" >> "$GITHUB_OUTPUT"
-        elif printf '%s\n' "$files" | grep -Eq '^(docs/images/gui-|README\.md$)'; then
+        elif grep -Eq '^(docs/images/gui-|README\.md$)' <<<"$files"; then
           # The committed images or the README that shows them changed.
           echo "gui=false" >> "$GITHUB_OUTPUT"
           echo "screenshots=true" >> "$GITHUB_OUTPUT"
