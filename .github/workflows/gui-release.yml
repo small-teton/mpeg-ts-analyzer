@@ -5,6 +5,9 @@ name: GUI release
 # gui/BUNDLED_CLI_VERSION (verified against its checksums and build
 # provenance), checks that each package finds that CLI, and publishes them with
 # checksums, an SBOM, build provenance and a manifest of both versions.
+# The update packages (.app.tar.gz, AppImage, NSIS installer) are also signed
+# for the GUI's in-app update, with the key of the gui-release environment, and
+# published with their signatures and an update manifest.
 #
 # - workflow_dispatch on master releases gui-v<version of gui/Cargo.toml>. The
 #   tag is created at the built commit only after every package has passed its
@@ -44,6 +47,8 @@ on:
       - VERSION
       - .github/scripts/release-state.sh
       - .github/scripts/bundled-cli.sh
+      - .github/scripts/sign-gui-updates.sh
+      - gui/updater.pub
       - .github/gui-release-notes.md
       - .github/workflows/gui-release.yml
 
@@ -351,7 +356,11 @@ jobs:
         base="mpeg-ts-analyzer-gui_${VERSION}"
         case "$RUNNER_OS" in
           macOS)
-            cp ./*.dmg "$dist/${base}_macos_arm64.dmg" ;;
+            cp ./*.dmg "$dist/${base}_macos_arm64.dmg"
+            # The in-app update replaces the installed .app with the top-level
+            # directory of this archive: the ad-hoc signed .app, without
+            # AppleDouble (._*) files, which would break the bundle's seal.
+            COPYFILE_DISABLE=1 tar --no-mac-metadata -czf "$dist/${base}_macos_arm64.app.tar.gz" mpeg-ts-analyzer.app ;;
           Linux)
             cp ./*.deb "$dist/${base}_amd64.deb"
             cp ./*.AppImage "$dist/${base}_linux_x86_64.AppImage" ;;
@@ -403,7 +412,17 @@ jobs:
             licenses "$app/Contents/Resources"
             same_cli "$app/Contents/Resources/mpeg-ts-analyzer" "$cli/darwin-arm64/mpeg-ts-analyzer"
             # The just-started GUI may still hold the volume for a moment.
-            hdiutil detach "$mount" -force ;;
+            hdiutil detach "$mount" -force
+            # The update archive, unpacked as the updater does, holds the same
+            # signed app.
+            update="$RUNNER_TEMP/update"
+            mkdir "$update"
+            tar -xzf ./*.app.tar.gz -C "$update"
+            [ "$(ls "$update")" = mpeg-ts-analyzer.app ] || { echo "::error::The update archive must hold only mpeg-ts-analyzer.app"; exit 1; }
+            [ -z "$(find "$update" -name '._*')" ] || { echo "::error::The update archive contains AppleDouble files"; exit 1; }
+            codesign --verify --deep --strict --verbose=2 "$update/mpeg-ts-analyzer.app"
+            check "$update/mpeg-ts-analyzer.app/Contents/MacOS/mpeg-ts-analyzer-gui"
+            same_cli "$update/mpeg-ts-analyzer.app/Contents/Resources/mpeg-ts-analyzer" "$cli/darwin-arm64/mpeg-ts-analyzer" ;;
           Linux)
             sudo apt-get install -y ./*.deb
             check /usr/bin/mpeg-ts-analyzer-gui
@@ -432,12 +451,116 @@ jobs:
         path: dist/
         if-no-files-found: error
 
-  release:
+  # Signs the update packages for the in-app update and writes the update
+  # manifest (docs/gui/release-security.md, "Update signing"). The only job
+  # that uses the gui-release environment, whose secrets hold the signing key;
+  # it runs after the version job required the commit to be on master. Its
+  # artifact, gui-updates, joins the packages in the release job. Ubuntu 22.04
+  # like the Linux packaging job, which shares the cargo-packager cache key.
+  sign-updates:
     needs: [version, package]
     if: >-
       github.event_name != 'pull_request' &&
       needs.version.outputs.state != 'published' &&
       needs.package.result == 'success'
+    runs-on: ubuntu-22.04
+    environment: gui-release
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      TAG: ${{ needs.version.outputs.tag }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Install the toolchain from rust-toolchain.toml
+      working-directory: gui
+      run: rustup toolchain install
+
+    # Release runs build the tool from source; no cache is restored.
+    - name: Install cargo-packager and minisign
+      run: |
+        cargo install cargo-packager --version "$CARGO_PACKAGER_VERSION" --locked
+        sudo apt-get update && sudo apt-get install -y minisign
+
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        pattern: gui-*
+        merge-multiple: true
+        path: packages
+
+    - name: Sign the update packages
+      env:
+        CARGO_PACKAGER_SIGN_PRIVATE_KEY: ${{ secrets.GUI_UPDATER_PRIVATE_KEY }}
+        CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD: ${{ secrets.GUI_UPDATER_PRIVATE_KEY_PASSWORD }}
+      run: .github/scripts/sign-gui-updates.sh packages "$VERSION" "$TAG" gui/updater.pub updates
+
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: gui-updates
+        path: updates/
+        if-no-files-found: error
+
+  # The same signing on pull requests, with a key generated here instead of the
+  # gui-release environment's, which pull requests never reference. Nothing is
+  # uploaded.
+  sign-updates-dry-run:
+    needs: [version, package]
+    if: github.event_name == 'pull_request' && needs.package.result == 'success'
+    runs-on: ubuntu-22.04
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      TAG: ${{ needs.version.outputs.tag }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Install the toolchain from rust-toolchain.toml
+      working-directory: gui
+      run: rustup toolchain install
+
+    - name: Restore cargo-packager
+      id: cargo-packager
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cargo/bin/cargo-packager*
+        key: cargo-packager-${{ runner.os }}-${{ env.CARGO_PACKAGER_VERSION }}
+
+    - name: Install cargo-packager
+      if: steps.cargo-packager.outputs.cache-hit != 'true'
+      run: cargo install cargo-packager --version "$CARGO_PACKAGER_VERSION" --locked
+
+    - name: Install minisign
+      run: sudo apt-get update && sudo apt-get install -y minisign
+
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        pattern: gui-*
+        merge-multiple: true
+        path: packages
+
+    # The committed key must at least be a public key in cargo-packager's
+    # format; whether the release key matches it is checked by sign-updates.
+    - name: Check the committed public key
+      run: |
+        base64 --decode gui/updater.pub | grep -q '^untrusted comment: minisign public key'
+
+    - name: Sign the update packages with a throwaway key
+      run: |
+        key="$RUNNER_TEMP/throwaway.key"
+        CI=true cargo packager signer generate --path "$key"
+        CARGO_PACKAGER_SIGN_PRIVATE_KEY=$(cat "$key") \
+        CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD='' \
+          .github/scripts/sign-gui-updates.sh packages "$VERSION" "$TAG" "$key.pub" "$RUNNER_TEMP/updates"
+
+  release:
+    needs: [version, package, sign-updates]
+    if: >-
+      github.event_name != 'pull_request' &&
+      needs.version.outputs.state != 'published' &&
+      needs.package.result == 'success' &&
+      needs.sign-updates.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write

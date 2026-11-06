@@ -1,8 +1,8 @@
 # GUI release security (design notes)
 
 Status: the free measures below are implemented in
-`.github/workflows/gui-release.yml` (#100); signing for the in-app update is
-designed but not implemented (#150); code signing with a Developer ID or a
+`.github/workflows/gui-release.yml` (#100), and so is the signing for the
+in-app update (#150), whose GUI side is not implemented yet; code signing with a Developer ID or a
 commercial certificate is not. The macOS app is only signed ad hoc. The CLI
 releases through GoReleaser and is not covered here.
 
@@ -33,7 +33,8 @@ releases through GoReleaser and is not covered here.
 
 ## Update signing
 
-Status: design only (#150). The GUI's in-app update
+Status: the release workflow signs the update packages and publishes the
+update manifest (#150); the GUI does not use them yet. The GUI's in-app update
 ([design](design.md#updates)) installs packages only when their signature
 verifies against a public key compiled into the GUI. The signature is a
 minisign signature made with `cargo packager signer`, the format
@@ -44,10 +45,12 @@ the updater needs to trust, and it costs nothing.
 ### Keys
 
 - The repository owner generates the key pair once with
-  `cargo packager signer generate`, protected by a password.
+  `cargo packager signer generate --path <file>`, protected by a password
+  (setup: [GUI release](../development/release.md#gui-release)).
 - The public key is committed as `gui/updater.pub` and compiled into the GUI
   (`include_str!`).
-- The private key and its password are stored only as secrets of a GitHub
+- The private key and its password are stored only as the secrets
+  `GUI_UPDATER_PRIVATE_KEY` and `GUI_UPDATER_PRIVATE_KEY_PASSWORD` of a GitHub
   environment, `gui-release`, plus the owner's offline backup. The
   environment's deployment rules allow the `master` branch and `gui-v*` tags,
   the two ways a release starts; GitHub matches them against the triggering
@@ -65,7 +68,9 @@ the updater needs to trust, and it costs nothing.
 1. The packaging jobs also produce the update packages, unsigned:
    `mpeg-ts-analyzer-gui_<version>_macos_arm64.app.tar.gz` (the ad-hoc signed
    `mpeg-ts-analyzer.app`, as its top-level directory), the AppImage, and the
-   NSIS installer.
+   NSIS installer. The macOS packaging job checks that the archive holds only
+   the signed `.app`, without AppleDouble files, that its signature verifies
+   and that it finds its bundled CLI.
 2. A separate job on Ubuntu, `sign-updates`, the only one that uses the
    `gui-release` environment, signs those three files with
    `cargo packager signer sign` and writes
@@ -74,8 +79,8 @@ the updater needs to trust, and it costs nothing.
    key that does not match the GUI's public key fails the release before
    anything is published. cargo-packager stores the public key and each
    signature as Base64 of the minisign text, so the job decodes both before
-   running `minisign -V` (or verifies them with the GUI's own verification
-   code).
+   running `minisign -V`, and it also requires the signed trusted comment to
+   name the file. The script is `.github/scripts/sign-gui-updates.sh`.
 3. The release job publishes the update packages, their `.sig` files and the
    manifest with the other assets, so they are covered by `SHA256SUMS` and the
    build provenance like everything else.

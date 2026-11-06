@@ -10,6 +10,10 @@ records the GUI and CLI versions and the commits they were built from.
 | Linux (x86_64) | `mpeg-ts-analyzer-gui_{{VERSION}}_amd64.deb` or `mpeg-ts-analyzer-gui_{{VERSION}}_linux_x86_64.AppImage` |
 | Windows (x86_64) | `mpeg-ts-analyzer-gui_{{VERSION}}_windows_x86_64_setup.exe` (per-user install, no administrator rights) or `mpeg-ts-analyzer-gui_{{VERSION}}_windows_x86_64_portable.zip` |
 
+The `.app.tar.gz` archive, the `.sig` files and
+`mpeg-ts-analyzer-gui_{{VERSION}}_update.json` are for the GUI's in-app update;
+download the packages above instead.
+
 ## Opening the app the first time
 
 The packages are not signed with a Developer ID or notarized (the macOS app is
