@@ -88,6 +88,15 @@ jobs:
     - name: Install the toolchain from rust-toolchain.toml
       run: rustup toolchain install
 
+    # Dependencies only; the GUI crate itself is always rebuilt. Only master
+    # saves, so pull requests restore master's cache and do not evict it.
+    - name: Restore the Rust build cache
+      uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      with:
+        workspaces: gui
+        key: ${{ runner.os }}
+        save-if: ${{ github.ref == 'refs/heads/master' }}
+
     - name: Check formatting
       run: cargo fmt --check
 
@@ -115,6 +124,15 @@ jobs:
 
     - name: Install the toolchain from rust-toolchain.toml
       run: rustup toolchain install
+
+    # Dependencies only; the GUI crate itself is always rebuilt. Only master
+    # saves, so pull requests restore master's cache and do not evict it.
+    - name: Restore the Rust build cache
+      uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      with:
+        workspaces: gui
+        key: ${{ runner.os }}
+        save-if: ${{ github.ref == 'refs/heads/master' }}
 
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -148,6 +166,15 @@ jobs:
 
     - name: Install the toolchain from rust-toolchain.toml
       run: rustup toolchain install
+
+    # Dependencies only; the GUI crate itself is always rebuilt. Only master
+    # saves, so pull requests restore master's cache and do not evict it.
+    - name: Restore the Rust build cache
+      uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      with:
+        workspaces: gui
+        key: ${{ runner.os }}
+        save-if: ${{ github.ref == 'refs/heads/master' }}
 
     - name: Check the README screenshots
       run: cargo test --locked --features screenshots readme_screenshots
