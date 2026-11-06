@@ -5,6 +5,7 @@ pub mod packets;
 pub mod timeline;
 
 use eframe::egui;
+use egui_plot::PlotUi;
 
 use crate::icons;
 use crate::theme::Verdict;
@@ -80,5 +81,47 @@ pub fn status_verdict(status: &str) -> Verdict {
         "ok" | "complete" => Verdict::Ok,
         "ng" | "errors" | "failed" => Verdict::Ng,
         _ => Verdict::Warn,
+    }
+}
+
+/// Keeps a time plot inside the analyzed interval while preserving its zoom.
+///
+/// egui_plot does not currently expose pan limits. Bounds set here are applied
+/// on the next paint, so an out-of-range drag snaps back immediately instead
+/// of leaving the user in empty space.
+pub(crate) fn constrain_time_axis(plot: &mut PlotUi<'_>, allowed: (f64, f64)) {
+    let bounds = plot.plot_bounds();
+    let current = (bounds.min()[0], bounds.max()[0]);
+    let constrained = constrain_range(current, allowed);
+    if constrained != current {
+        plot.set_plot_bounds_x(constrained.0..=constrained.1);
+    }
+}
+
+fn constrain_range(current: (f64, f64), allowed: (f64, f64)) -> (f64, f64) {
+    let width = current.1 - current.0;
+    let allowed_width = allowed.1 - allowed.0;
+    if !width.is_finite() || width <= 0.0 || width >= allowed_width {
+        return allowed;
+    }
+    if current.0 < allowed.0 {
+        return (allowed.0, allowed.0 + width);
+    }
+    if current.1 > allowed.1 {
+        return (allowed.1 - width, allowed.1);
+    }
+    current
+}
+
+#[cfg(test)]
+mod tests {
+    use super::constrain_range;
+
+    #[test]
+    fn plot_range_stays_inside_the_analyzed_interval() {
+        assert_eq!(constrain_range((-3.0, 2.0), (0.0, 10.0)), (0.0, 5.0));
+        assert_eq!(constrain_range((8.0, 13.0), (0.0, 10.0)), (5.0, 10.0));
+        assert_eq!(constrain_range((2.0, 7.0), (0.0, 10.0)), (2.0, 7.0));
+        assert_eq!(constrain_range((-5.0, 15.0), (0.0, 10.0)), (0.0, 10.0));
     }
 }

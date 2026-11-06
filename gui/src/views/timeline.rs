@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use eframe::egui;
 use egui_plot::{HLine, Legend, Line, LineStyle, MarkerShape, Plot, PlotPoint, Points, VLine};
 
-use super::{Screen, badge, program_selector_labels};
+use super::{Screen, badge, constrain_time_axis, program_selector_labels};
 use crate::icons;
 use crate::plot_data::{Marker, Point, Timeline, nearest};
 use crate::range_bar;
@@ -202,33 +202,40 @@ impl TimelineView {
         } else {
             &[]
         };
-        let pcr_plot =
-            timeline_plot("pcr_interval", 220.0, linked, limits.0 * 1.2).show(ui, |plot| {
-                if reset_zoom {
-                    plot.set_auto_bounds(true);
-                }
-                plot.hline(
-                    HLine::new("limit", limits.0)
-                        .color(theme::LIMIT_COLOR)
-                        .style(LineStyle::Dashed { length: 8.0 }),
+        let pcr_plot = timeline_plot(
+            "pcr_interval",
+            220.0,
+            linked,
+            limits.0 * 1.2,
+            data.time_range,
+            reset_zoom,
+        )
+        .show(ui, |plot| {
+            // This first linked plot alone owns the X limit. Having every
+            // linked plot write it back makes their one-frame updates fight.
+            constrain_time_axis(plot, data.time_range);
+            plot.hline(
+                HLine::new("limit", limits.0)
+                    .color(theme::LIMIT_COLOR)
+                    .style(LineStyle::Dashed { length: 8.0 }),
+            );
+            psi_markers(plot, markers);
+            if show_pcr {
+                plot.line(
+                    Line::new(format!("PCR {pcr_label}"), data.pcr_drawn.clone())
+                        .color(theme::PCR_COLOR),
                 );
-                psi_markers(plot, markers);
-                if show_pcr {
-                    plot.line(
-                        Line::new(format!("PCR {pcr_label}"), data.pcr_drawn.clone())
-                            .color(theme::PCR_COLOR),
+                if !data.pcr_over_limit.is_empty() {
+                    plot.points(
+                        Points::new("over limit", data.pcr_over_limit.clone())
+                            .color(theme::LIMIT_COLOR)
+                            .radius(5.0)
+                            .filled(true),
                     );
-                    if !data.pcr_over_limit.is_empty() {
-                        plot.points(
-                            Points::new("over limit", data.pcr_over_limit.clone())
-                                .color(theme::LIMIT_COLOR)
-                                .radius(5.0)
-                                .filled(true),
-                        );
-                    }
                 }
-                highlight(plot, selection.as_ref(), "PCR interval");
-            });
+            }
+            highlight(plot, selection.as_ref(), "PCR interval");
+        });
         if let Some(pick) = pick(
             &pcr_plot,
             show_pcr
@@ -256,10 +263,15 @@ impl TimelineView {
             ));
         });
         let hidden = &self.hidden_series;
-        let gap_plot = timeline_plot("pts_gap", 200.0, linked, limits.1 * 1.2).show(ui, |plot| {
-            if reset_zoom {
-                plot.set_auto_bounds(true);
-            }
+        let gap_plot = timeline_plot(
+            "pts_gap",
+            200.0,
+            linked,
+            limits.1 * 1.2,
+            data.time_range,
+            false,
+        )
+        .show(ui, |plot| {
             plot.hline(
                 HLine::new("limit", limits.1)
                     .color(theme::LIMIT_COLOR)
@@ -320,6 +332,7 @@ impl TimelineView {
                 .collect();
             let events_plot = Plot::new("events")
                 .height(60.0)
+                .default_x_bounds(data.time_range.0, data.time_range.1)
                 .link_axis(egui::Id::unique(LINK_GROUP), linked)
                 .link_cursor(egui::Id::unique(LINK_GROUP), linked)
                 .show_axes([true, false])
@@ -327,27 +340,24 @@ impl TimelineView {
                 .include_y(-1.0)
                 .include_y(1.0)
                 .allow_zoom(false)
-                .allow_drag(false)
-                .show(ui, |plot| {
-                    if reset_zoom {
-                        plot.set_auto_bounds(true);
-                    }
-                    psi_markers(plot, markers);
-                    plot.points(
-                        Points::new(
-                            "event",
-                            event_points
-                                .iter()
-                                .map(|p| [p.seconds, 0.0])
-                                .collect::<Vec<_>>(),
-                        )
-                        .shape(MarkerShape::Diamond)
-                        .color(Verdict::Warn.colors().0)
-                        .radius(6.0)
-                        .filled(true),
-                    );
-                    highlight(plot, selection.as_ref(), "Event");
-                });
+                .allow_drag(false);
+            let events_plot = events_plot.show(ui, |plot| {
+                psi_markers(plot, markers);
+                plot.points(
+                    Points::new(
+                        "event",
+                        event_points
+                            .iter()
+                            .map(|p| [p.seconds, 0.0])
+                            .collect::<Vec<_>>(),
+                    )
+                    .shape(MarkerShape::Diamond)
+                    .color(Verdict::Warn.colors().0)
+                    .radius(6.0)
+                    .filled(true),
+                );
+                highlight(plot, selection.as_ref(), "Event");
+            });
             if let Some(pick) = pick(&events_plot, event_points.iter())
                 && let Some(event) = data
                     .events
@@ -520,9 +530,17 @@ fn psi_markers(plot: &mut egui_plot::PlotUi, markers: &[Marker]) {
 }
 
 /// A time plot linked to the other Timeline plots: zoom and pan act on time only.
-fn timeline_plot(id: &str, height: f32, linked: egui::Vec2b, top: f64) -> Plot<'static> {
-    Plot::new(id.to_owned())
+fn timeline_plot(
+    id: &str,
+    height: f32,
+    linked: egui::Vec2b,
+    top: f64,
+    time_range: (f64, f64),
+    reset: bool,
+) -> Plot<'static> {
+    let plot = Plot::new(id.to_owned())
         .height(height)
+        .default_x_bounds(time_range.0, time_range.1)
         .legend(Legend::default())
         .link_axis(egui::Id::unique(LINK_GROUP), linked)
         .link_cursor(egui::Id::unique(LINK_GROUP), linked)
@@ -532,7 +550,8 @@ fn timeline_plot(id: &str, height: f32, linked: egui::Vec2b, top: f64) -> Plot<'
         .allow_drag([true, false])
         .allow_scroll([true, false])
         .allow_axis_zoom_drag([true, false])
-        .allow_boxed_zoom(false)
+        .allow_boxed_zoom(false);
+    if reset { plot.reset() } else { plot }
 }
 
 /// Rings the selected point when it belongs to this plot.
