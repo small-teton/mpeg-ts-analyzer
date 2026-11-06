@@ -46,6 +46,8 @@ pub const VIDEO_COLOR: Color32 = Color32::from_rgb(0x4e, 0xa8, 0xff);
 pub const AUDIO_COLOR: Color32 = Color32::from_rgb(0x7f, 0xd6, 0x8a);
 pub const PSI_COLOR: Color32 = Color32::from_rgb(0xc7, 0x92, 0xea);
 pub const LIMIT_COLOR: Color32 = Color32::from_rgb(0xff, 0x7a, 0x7a);
+/// Fill of the buttons that start an analysis, with white text.
+pub const START_COLOR: Color32 = Color32::from_rgb(0x2e, 0x8b, 0x4f);
 
 /// Larger than egui's defaults so menus, dialogs and controls are easy to read and hit.
 pub fn apply(ctx: &egui::Context) {

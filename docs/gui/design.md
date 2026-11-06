@@ -90,6 +90,9 @@ separate Analyze step per screen.
   confirmation threshold (Settings, default 1024 MiB): blue (≤ 1/8), teal
   (≤ 1/4), yellow (≤ 1/2), orange (≤ 1), red (above). Start on a red range
   asks for confirmation.
+- **Start** is filled green while it can be pressed, and so is Analyze in the
+  confirmation. Otherwise (already analyzed, no usable file or CLI) it is a
+  plain button, with the reason on hover.
 - The initial range after opening a file is 64 MiB from the start.
 - The range is scanned from its first byte. Statistics start once the PAT
   section and each program's PMT are complete, so the beginning of the range

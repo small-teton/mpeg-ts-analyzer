@@ -431,12 +431,16 @@ impl App {
             self.range.bar(ui, bar_width, self.file_size, load);
             self.range.fields(ui, self.file_size);
             let changed = self.analyzed != Some((self.range.offset, self.range.limit));
-            let start = egui::Button::new((icons::text(icons::PLAY), "Start"));
             let why_not = match (&self.cli, &self.file_problem) {
                 (Err(err), _) => Some(err.as_str()),
                 (Ok(_), Some(problem)) => Some(problem.as_str()),
                 (Ok(_), None) if !changed => Some("This range is already analyzed"),
                 (Ok(_), None) => None,
+            };
+            let start = if why_not.is_none() {
+                primary_button("Start")
+            } else {
+                egui::Button::new((icons::text(icons::PLAY), "Start"))
             };
             if ui
                 .add_enabled(why_not.is_none(), start)
@@ -490,7 +494,7 @@ impl App {
             ));
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                if ui.button((icons::text(icons::PLAY), "Analyze")).clicked() {
+                if ui.add(primary_button("Analyze")).clicked() {
                     self.start(ctx);
                     self.confirm_start = false;
                 }
@@ -660,6 +664,18 @@ fn empty_state(ui: &mut egui::Ui, title: &str, hint: &str) {
         ui.heading(title);
         ui.weak(hint);
     });
+}
+
+/// The button that starts an analysis, filled green so it stands out from the
+/// other controls and from the blue scan-range bar next to it. Shown only
+/// while it can be pressed: a plain button says there is nothing to start.
+fn primary_button(label: &str) -> egui::Button<'static> {
+    let color = egui::Color32::WHITE;
+    egui::Button::new((
+        icons::text(icons::PLAY).color(color),
+        egui::RichText::new(label).color(color).strong(),
+    ))
+    .fill(crate::theme::START_COLOR)
 }
 
 /// A frameless icon button; `name` is its tooltip and its accessible name,
