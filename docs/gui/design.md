@@ -293,7 +293,7 @@ Language, packets per page and cached pages are laid out but not applied yet.
   `gui/v*` is avoided because Go reads it as a sub-module version. The GUI
   version (`gui/Cargo.toml`) is independent of the CLI's `VERSION`; GUI
   releases are not marked "latest", which stays on the CLI.
-- The CLI release workflows name their current and previous `v*` tags for
+- The CLI release workflow names its current and previous `v*` tags for
   GoReleaser, which would otherwise take a `gui-v*` tag on the same branch as
   the previous release.
 - Every package carries `LICENSE`, the bundled fonts' licenses and
