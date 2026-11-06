@@ -1,0 +1,133 @@
+name: GUI Bump Version
+
+# Opens a pull request that bumps the GUI version (gui/Cargo.toml and
+# gui/Cargo.lock) and, optionally, the CLI release bundled with the GUI
+# (gui/BUNDLED_CLI_VERSION). The GUI release workflow publishes it after the
+# pull request is merged; see docs/development/release.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "GUI version bump type"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      cli-version:
+        description: "CLI release to bundle (X.Y.Z); leave empty to keep gui/BUNDLED_CLI_VERSION"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+
+      - name: Bump versions
+        id: bump
+        env:
+          BUMP: ${{ inputs.bump }}
+          CLI_VERSION: ${{ inputs.cli-version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("gui/Cargo.toml", "rb"))["package"]["version"])')
+          IFS='.' read -r major minor patch <<< "$VERSION"
+          case "$BUMP" in
+            patch) patch=$((patch + 1)) ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+          esac
+          NEW_VERSION="${major}.${minor}.${patch}"
+          # The first version line is the one in [package].
+          sed -i "0,/^version = \"$VERSION\"/s//version = \"$NEW_VERSION\"/" gui/Cargo.toml
+          if [ "$(python3 -c 'import tomllib; print(tomllib.load(open("gui/Cargo.toml", "rb"))["package"]["version"])')" != "$NEW_VERSION" ]; then
+            echo "::error::Could not set the version in gui/Cargo.toml"
+            exit 1
+          fi
+          # Updates only the GUI's own entry in Cargo.lock.
+          cargo update --workspace --manifest-path gui/Cargo.toml
+
+          OLD_CLI_VERSION=$(tr -d '[:space:]' < gui/BUNDLED_CLI_VERSION)
+          NEW_CLI_VERSION="$OLD_CLI_VERSION"
+          if [ -n "$CLI_VERSION" ]; then
+            if ! [[ "$CLI_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::cli-version must be a bare X.Y.Z, got '$CLI_VERSION'"
+              exit 1
+            fi
+            # The GUI release bundles a published CLI release. A version that
+            # VERSION already names but that is not released yet is accepted
+            # with a warning, so the bumps can be prepared together; release
+            # the CLI before running the GUI release.
+            if [ "$(gh release view "v$CLI_VERSION" --json isDraft -q .isDraft 2>/dev/null)" = false ]; then
+              :
+            elif [ "$CLI_VERSION" = "$(tr -d '[:space:]' < VERSION)" ]; then
+              echo "::warning::CLI release v$CLI_VERSION is not published yet. Release the CLI before running the GUI release."
+            else
+              echo "::error::CLI release v$CLI_VERSION is not published and VERSION does not name it"
+              exit 1
+            fi
+            NEW_CLI_VERSION="$CLI_VERSION"
+            echo "$NEW_CLI_VERSION" > gui/BUNDLED_CLI_VERSION
+          fi
+
+          {
+            echo "old_version=$VERSION"
+            echo "new_version=$NEW_VERSION"
+            echo "old_cli_version=$OLD_CLI_VERSION"
+            echo "new_cli_version=$NEW_CLI_VERSION"
+          } >> "$GITHUB_OUTPUT"
+          git diff --stat
+
+      - name: Create Pull Request
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUMP: ${{ inputs.bump }}
+          OLD_VERSION: ${{ steps.bump.outputs.old_version }}
+          NEW_VERSION: ${{ steps.bump.outputs.new_version }}
+          OLD_CLI_VERSION: ${{ steps.bump.outputs.old_cli_version }}
+          NEW_CLI_VERSION: ${{ steps.bump.outputs.new_cli_version }}
+        run: |
+          BRANCH="chore/bump-gui-v${NEW_VERSION}"
+          TITLE="bump GUI version to ${NEW_VERSION}"
+          if [ "$NEW_CLI_VERSION" != "$OLD_CLI_VERSION" ]; then
+            TITLE="${TITLE} and bundle CLI ${NEW_CLI_VERSION}"
+          fi
+          PR_BODY=$(mktemp)
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add gui/Cargo.toml gui/Cargo.lock gui/BUNDLED_CLI_VERSION
+          git commit -m "$TITLE"
+          git push origin "$BRANCH"
+          {
+            printf '## Why\n\nPrepare the next GUI release.\n\n'
+            printf '## What changed\n\n'
+            printf -- '- Bump the GUI version in `gui/Cargo.toml` and `gui/Cargo.lock` from `%s` to `%s` (%s).\n' \
+              "$OLD_VERSION" "$NEW_VERSION" "$BUMP"
+            if [ "$NEW_CLI_VERSION" != "$OLD_CLI_VERSION" ]; then
+              printf -- '- Bundle CLI `%s` instead of `%s` (`gui/BUNDLED_CLI_VERSION`).\n' \
+                "$NEW_CLI_VERSION" "$OLD_CLI_VERSION"
+            else
+              printf -- '- The bundled CLI stays at `%s`.\n' "$NEW_CLI_VERSION"
+            fi
+            printf '\n## Compatibility\n\nNo CLI, output, schema, or transport-stream compatibility impact.\n\n'
+            printf '## Documentation\n\nNo documentation changes: this PR only updates release versions.\n\n'
+            printf '## Validation\n\n'
+            printf -- '- The GUI version was derived from the existing `gui/Cargo.toml` value, and `cargo update --workspace` updated only the GUI entry in `gui/Cargo.lock`.\n'
+            printf -- '- This PR was opened with `GITHUB_TOKEN`, so its pull request checks do not start on their own. Close and reopen it to run them, including the GUI release dry run.\n'
+          } > "$PR_BODY"
+          gh pr create \
+            --title "$TITLE" \
+            --body-file "$PR_BODY"
