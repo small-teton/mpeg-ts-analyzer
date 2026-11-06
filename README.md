@@ -110,6 +110,14 @@ mpeg-ts-analyzer instead gives you:
 
 mpeg-ts-analyzer deliberately stays small and focused on the compliance check rather than duplicating what TSDuck already does well.
 
+### Background
+
+mpeg-ts-analyzer started in 2016 as a small tool for checking timestamp gaps,
+written partly to learn Go. To learn MPEG-2 TS itself, it also printed every
+header field in detail — the origin of today's spec-level dumps. It has since
+grown into a timing-compliance checker with machine-readable output and a
+desktop GUI.
+
 **Note:** The accuracy of the output is not guaranteed.
 
 ## License
