@@ -369,6 +369,9 @@ show.
   works on both GitHub and the site. Link to files outside `docs/` (the
   README, `gui/`, `VERSION`) with their GitHub URLs, since the site does not
   contain them.
+- Show images with Markdown image syntax, not an HTML
+  `<img>` tag. MkDocs rewrites Markdown paths for the site's page URLs but
+  leaves paths in HTML as written, and the strict build does not check them.
 - `.github/workflows/docs-pages.yml` builds the site on pull requests that
   change `docs/`, `mkdocs.yml` or the toolchain, and publishes it from
   `master`.
