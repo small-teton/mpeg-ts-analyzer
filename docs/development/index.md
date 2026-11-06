@@ -253,7 +253,9 @@ check, `gui-ci`. Its lint and test jobs run only when `gui/`, the `Makefile`,
 `mise.toml`, `rust-toolchain.toml`, `renovate.json` or the workflow changed;
 otherwise they are skipped and `gui-ci` passes. The `Go` workflow combines
 formatting, lint, build, tests, coverage and the README demo check in one
-`go-ci` job. Go jobs are skipped for changes that only affect the GUI. The
+`go-ci` job. Go jobs are skipped for changes that only affect the GUI, Markdown
+files or `docs/images/`; the JSON schemas and the demo sources under `docs/`
+still run them. The
 development container is built only when its inputs
 (`compose.yaml`, `docker/`, `Makefile`, toolchain/module files or the Go
 workflow) change, plus the weekly scheduled check; ordinary Go source changes
@@ -263,7 +265,13 @@ CodeQL uses the changed paths to analyze only Go or only Rust on pull requests
 and pushes. Its weekly scheduled run still analyzes both languages. The weekly
 `govulncheck` and `cargo-audit` runs cover new advisories against unchanged lock
 files, so those expensive checks do not need to be repeated for unrelated
-pushes to `master`.
+pushes to `master`. `cargo-audit` otherwise runs only when `gui/Cargo.lock` or
+the `GUI` workflow changed, since the advisories concern the locked
+dependencies, not the GUI's own code.
+
+Pull requests restore `cargo-audit`, `cargo-about` and `cargo-packager` from a
+cache keyed by their pinned version instead of compiling them each time.
+Release runs never use the cache and build the tools from source.
 
 Release publication is kept out of ordinary CI:
 
@@ -272,8 +280,12 @@ Release publication is kept out of ordinary CI:
   only after a complete build has passed; see [Release](release.md).
   Pull requests that change its inputs run its checks and build as a dry run.
 - `GUI release` publishes only when manually dispatched or for a user-pushed
-  `gui-vX.Y.Z` tag. On selected packaging-related pull requests it builds and
-  installs the packages as a dry run, but its publication job is skipped.
+  `gui-vX.Y.Z` tag. On pull requests that change the packaging it builds and
+  installs the packages as a dry run, and its publication job is skipped. The
+  packaging means the icons, the notices configuration, `cli.rs`, `main.rs`,
+  the toolchain, the workflow, and in `gui/Cargo.toml` the `[package]` table,
+  the release profile and the dependencies that are always built. Other changes
+  to `gui/Cargo.toml` or `gui/Cargo.lock` only check the third-party notices.
 - `Bump Version` runs only when manually dispatched.
 
 ## Dependency and supply-chain checks
@@ -283,7 +295,7 @@ Release publication is kept out of ordinary CI:
 | Renovate | `renovate.json` | Weekly grouped updates (Go, Rust, GitHub Actions, CI tools), weekly `Cargo.lock` maintenance, and immediate security pull requests |
 | Dependabot alerts | repository settings | Advisories for the dependency graph (`go.mod`, `gui/Cargo.lock`, Actions); Renovate reads them, and also OSV, to open security pull requests |
 | `govulncheck` | `Go` workflow | Go advisories that reach the CLI's code, on Go changes and weekly |
-| `cargo-audit` | `GUI` workflow | RustSec advisories in `gui/Cargo.lock`, on GUI changes and weekly |
+| `cargo-audit` | `GUI` workflow | RustSec advisories in `gui/Cargo.lock`, when it changes and weekly |
 | Dependency review | `Dependency review` workflow | A pull request that adds a dependency version with a known advisory |
 | CodeQL | `CodeQL` workflow | Code-level issues in changed Go/Rust code, with a weekly full scan |
 
