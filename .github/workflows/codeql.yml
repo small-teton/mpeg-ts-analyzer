@@ -50,6 +50,13 @@ jobs:
               <<<"$files" || rust=false
           fi
 
+          # The Rust analysis takes several minutes and is not a required
+          # check, so pull requests skip it; pushes to master and the weekly
+          # run analyze Rust.
+          if [ "$EVENT_NAME" = pull_request ]; then
+            rust=false
+          fi
+
           languages=""
           if [ "$go" = true ]; then
             languages='"go"'

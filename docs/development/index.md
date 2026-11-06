@@ -269,8 +269,10 @@ development container is built only when its inputs
 workflow) change, plus the weekly scheduled check; ordinary Go source changes
 use the host CI toolchain and do not repeat coverage in Docker.
 
-CodeQL uses the changed paths to analyze only Go or only Rust on pull requests
-and pushes. Its weekly scheduled run still analyzes both languages. The weekly
+CodeQL uses the changed paths to analyze only Go or only Rust on pushes to
+`master`, and only Go on pull requests: the Rust analysis takes several minutes
+and is not a required check, so Rust code is analyzed after the merge. Its
+weekly scheduled run still analyzes both languages. The weekly
 `govulncheck` and `cargo-audit` runs cover new advisories against unchanged lock
 files, so those expensive checks do not need to be repeated for unrelated
 pushes to `master`. `cargo-audit` otherwise runs only when `gui/Cargo.lock` or
@@ -280,6 +282,11 @@ dependencies, not the GUI's own code.
 Pull requests restore `cargo-audit`, `cargo-about` and `cargo-packager` from a
 cache keyed by their pinned version instead of compiling them each time.
 Release runs never use the cache and build the tools from source.
+
+The `GUI` workflow's lint, test and screenshot jobs restore the compiled Rust
+dependencies with `Swatinem/rust-cache`, one cache per job and operating
+system. Only pushes to `master` save it, so pull requests reuse `master`'s
+cache without evicting it. `GUI release` does not use this cache.
 
 Release publication is kept out of ordinary CI:
 
@@ -310,7 +317,7 @@ Release publication is kept out of ordinary CI:
 | `govulncheck` | `Go` workflow | Go advisories that reach the CLI's code, on Go changes and weekly |
 | `cargo-audit` | `GUI` workflow | RustSec advisories in `gui/Cargo.lock`, when it changes and weekly |
 | Dependency review | `Dependency review` workflow | A pull request that adds a dependency version with a known advisory |
-| CodeQL | `CodeQL` workflow | Code-level issues in changed Go/Rust code, with a weekly full scan |
+| CodeQL | `CodeQL` workflow | Code-level issues in changed Go code (pull requests and `master`) and Rust code (`master`), with a weekly full scan |
 
 Renovate waits three days before proposing a newly published crate
 (`security:minimumReleaseAgeCrate`), so a release that crates.io pulls in its
