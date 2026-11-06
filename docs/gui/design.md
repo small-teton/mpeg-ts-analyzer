@@ -347,15 +347,25 @@ GUI releases are never marked "latest", so `releases/latest` cannot be used.
    prereleases), and take the highest version.
 3. If it is not higher than the running version, the GUI is up to date. Lower
    or equal versions are never offered.
-4. Otherwise read the release's update manifest asset,
-   `mpeg-ts-analyzer-gui_<version>_update.json`, which the
-   [release workflow](release-security.md#update-signing) writes in the format
-   `cargo-packager-updater` expects (version, notes, and per platform the
-   package URL, its signature and its format).
+4. Otherwise read two assets of that release:
+   - `mpeg-ts-analyzer-gui_<version>_manifest.json`, which every GUI release
+     already has, for `bundled_cli_version`;
+   - `mpeg-ts-analyzer-gui_<version>_update.json`, which the
+     [release workflow](release-security.md#update-signing) writes in the
+     format `cargo-packager-updater` expects (version, notes, and per platform
+     the package URL, its signature and its format). The library keeps only
+     those fields, so the CLI version cannot come from this file.
 
-Only `api.github.com` and GitHub's release-download hosts are contacted, over
-HTTPS. Nothing about the user or the machine is sent beyond what an HTTP
-request carries (the GUI's `User-Agent` names the GUI and its version).
+   Both asset names must contain the selected version, and the version in the
+   update manifest must equal it; otherwise the check fails.
+
+`cargo-packager-updater` accepts any URL in the (unsigned) update manifest, so
+the GUI validates every URL before using it or handing it to the library: only
+`https` URLs to `api.github.com`, to this repository's release downloads on
+`github.com`, and to GitHub's release-download hosts that those redirect to
+are accepted. No other host is contacted. Nothing about the user or the
+machine is sent beyond what an HTTP request carries (the GUI's `User-Agent`
+names the GUI and its version).
 
 ### Checking
 
@@ -379,16 +389,17 @@ the public key compiled into the GUI, and installs it:
 |---|---|---|
 | macOS `.app` | Running from `<name>.app/Contents/MacOS` | Replace the bundle with the signed `.app.tar.gz`, then offer to restart |
 | Windows NSIS install | Executable in `%LOCALAPPDATA%\mpeg-ts-analyzer` next to the NSIS uninstaller | Run the new installer (passive mode); the GUI exits first |
-| Linux AppImage | `APPIMAGE` is set | Replace the AppImage file, then offer to restart |
+| Linux AppImage | `APPIMAGE` is set and the file can be replaced | Replace the AppImage file, then offer to restart |
+| Linux AppImage, not writable | `APPIMAGE` is set but the file or its directory is not writable | Notify only, saying why |
+| Unsupported macOS location | Started from the mounted `.dmg` (`/Volumes/…`) or from an App Translocation path | Notify only, saying why (for example "move the app to Applications first") |
 | Linux `.deb`, Windows portable zip | Anything else | Notify only: show the release page |
-| Not writable | macOS app started from the mounted `.dmg` (`/Volumes/…`) or from an App Translocation path, or a failed write test of the install location | Notify only, saying why (for example "move the app to Applications first") |
 
 - Install is disabled while an analysis is running.
 - Settings are saved before installing, because the Windows path exits the
   process right after starting the installer.
-- If the macOS bundle cannot be moved by the user, the library asks for an
-  administrator password through `osascript`; cancelling leaves the old app in
-  place.
+- An installed macOS app is not write-tested beforehand: if the user cannot
+  move the bundle, the library asks for an administrator password through
+  `osascript`; cancelling leaves the old app in place.
 - A signature that does not verify, or a download that fails, aborts the
   update and leaves the installation unchanged; the window shows the error.
 

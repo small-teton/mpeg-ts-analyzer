@@ -48,9 +48,13 @@ the updater needs to trust, and it costs nothing.
 - The public key is committed as `gui/updater.pub` and compiled into the GUI
   (`include_str!`).
 - The private key and its password are stored only as secrets of a GitHub
-  environment, `gui-release`, whose deployment branches are limited to
-  `master`, plus the owner's offline backup. Pull requests and other jobs
-  cannot read them.
+  environment, `gui-release`, plus the owner's offline backup. The
+  environment's deployment rules allow the `master` branch and `gui-v*` tags,
+  the two ways a release starts; GitHub matches them against the triggering
+  ref, not the tagged commit. The job that uses the environment depends on the
+  `version` job, which already requires the commit to be on `master`
+  (`release-state.sh on-master`). Pull requests never reference the
+  environment.
 - Rotation: a release built with a new public key is still signed with the old
   key, so existing installations accept it; from then on releases use the new
   key. A leaked key cannot be revoked in installations that still embed it:
@@ -63,18 +67,22 @@ the updater needs to trust, and it costs nothing.
    `mpeg-ts-analyzer.app`, as its top-level directory), the AppImage, and the
    NSIS installer.
 2. A separate job on Ubuntu, `sign-updates`, the only one that uses the
-   `gui-release` environment, signs those three files and writes
+   `gui-release` environment, signs those three files with
+   `cargo packager signer sign` and writes
    `mpeg-ts-analyzer-gui_<version>_update.json` with each URL, signature and
-   format. It then verifies every signature with `minisign` against
-   `gui/updater.pub`, so a key that does not match the GUI's public key fails
-   the release before anything is published.
+   format. It then verifies every signature against `gui/updater.pub`, so a
+   key that does not match the GUI's public key fails the release before
+   anything is published. cargo-packager stores the public key and each
+   signature as Base64 of the minisign text, so the job decodes both before
+   running `minisign -V` (or verifies them with the GUI's own verification
+   code).
 3. The release job publishes the update packages, their `.sig` files and the
    manifest with the other assets, so they are covered by `SHA256SUMS` and the
    build provenance like everything else.
 
-On pull requests the same job signs with a key generated in the job and
-verifies against that key's public half; no secret is available and nothing is
-published.
+On pull requests a separate job, which does not reference the environment,
+signs with a key generated in the job and verifies against that key's public
+half; no secret is available and nothing is published.
 
 ### What the signature does and does not cover
 
