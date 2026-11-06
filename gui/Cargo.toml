@@ -42,8 +42,10 @@ category = "DeveloperTool"
 # are shipped as resources instead, next to the bundled CLI, with the notices of
 # the Rust crates and Go modules (gui/scripts/third-party-notices.sh).
 before-packaging-command = "cargo build --release --locked"
-# Signs the .app ad hoc before the .dmg is made (scripts/sign-macos-app.sh).
-before-each-package-command = "scripts/sign-macos-app.sh"
+# Signs the .app ad hoc before the .dmg is made (scripts/sign-macos-app.sh; it
+# does nothing for the other formats). Run through sh, since cargo-packager
+# runs the hook with cmd on Windows.
+before-each-package-command = "sh scripts/sign-macos-app.sh"
 icons = [
   "assets/icons/32x32.png",
   "assets/icons/64x64.png",
