@@ -1,8 +1,9 @@
 # GUI release security (design notes)
 
 Status: the free measures below are implemented in
-`.github/workflows/gui-release.yml` (#100); code signing with a Developer ID
-or a commercial certificate is not. The macOS app is only signed ad hoc. The CLI
+`.github/workflows/gui-release.yml` (#100); signing for the in-app update is
+designed but not implemented (#150); code signing with a Developer ID or a
+commercial certificate is not. The macOS app is only signed ad hoc. The CLI
 releases through GoReleaser and is not covered here.
 
 ## Free measures in every GUI release
@@ -29,6 +30,62 @@ releases through GoReleaser and is not covered here.
   `gui/BUNDLED_CLI_VERSION`. Its archives are checked against the release's
   checksums and its build provenance from the CLI `Release` workflow, and the
   binary must report that version before it is packaged.
+
+## Update signing
+
+Status: design only (#150). The GUI's in-app update
+([design](design.md#updates)) installs packages only when their signature
+verifies against a public key compiled into the GUI. The signature is a
+minisign signature made with `cargo packager signer`, the format
+`cargo-packager-updater` verifies. It is independent of OS code signing: it
+says the package came from this repository's release workflow, which is what
+the updater needs to trust, and it costs nothing.
+
+### Keys
+
+- The repository owner generates the key pair once with
+  `cargo packager signer generate`, protected by a password.
+- The public key is committed as `gui/updater.pub` and compiled into the GUI
+  (`include_str!`).
+- The private key and its password are stored only as secrets of a GitHub
+  environment, `gui-release`, whose deployment branches are limited to
+  `master`, plus the owner's offline backup. Pull requests and other jobs
+  cannot read them.
+- Rotation: a release built with a new public key is still signed with the old
+  key, so existing installations accept it; from then on releases use the new
+  key. A leaked key cannot be revoked in installations that still embed it:
+  publish an advisory and ask users to reinstall from the release page.
+
+### Release workflow
+
+1. The packaging jobs also produce the update packages, unsigned:
+   `mpeg-ts-analyzer-gui_<version>_macos_arm64.app.tar.gz` (the ad-hoc signed
+   `mpeg-ts-analyzer.app`, as its top-level directory), the AppImage, and the
+   NSIS installer.
+2. A separate job on Ubuntu, `sign-updates`, the only one that uses the
+   `gui-release` environment, signs those three files and writes
+   `mpeg-ts-analyzer-gui_<version>_update.json` with each URL, signature and
+   format. It then verifies every signature with `minisign` against
+   `gui/updater.pub`, so a key that does not match the GUI's public key fails
+   the release before anything is published.
+3. The release job publishes the update packages, their `.sig` files and the
+   manifest with the other assets, so they are covered by `SHA256SUMS` and the
+   build provenance like everything else.
+
+On pull requests the same job signs with a key generated in the job and
+verifies against that key's public half; no secret is available and nothing is
+published.
+
+### What the signature does and does not cover
+
+- It covers the package bytes. A package altered on its way from GitHub, or
+  uploaded by someone without the private key, is rejected.
+- The manifest itself is not signed; its version and URLs are trusted because
+  they come from this repository's releases over HTTPS. Someone who can edit
+  the releases could point a newer version number at an older, genuinely
+  signed package (a downgrade to an earlier official build), but not at code
+  the release workflow did not sign.
+- The GUI never offers a version lower than or equal to the running one.
 
 ## Packaging tools fetched at build time
 

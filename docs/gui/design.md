@@ -250,6 +250,7 @@ data is large, so the whole range is never held in memory.
 | Packets per page | 100 | |
 | Cached pages | 5 | Packet pages kept in memory |
 | CLI path | empty | See [CLI discovery order](#cli-discovery-order) |
+| Check for updates at startup | On | See [Updates](#updates) |
 
 Settings are saved with eframe's `persistence` feature when the GUI exits and
 loaded at startup; fields missing from an older save take their defaults.
@@ -320,6 +321,84 @@ Language, packets per page and cached pages are laid out but not applied yet.
   Windows. Checksums, an SBOM and build provenance:
   [release-security.md](release-security.md).
 
+## Updates
+
+Status: design only (#150); nothing below is implemented yet.
+
+The GUI can update itself from GitHub Releases. The main reason is macOS: the
+app is signed ad hoc, so a `.dmg` downloaded in a browser carries
+`com.apple.quarantine` and macOS 15 and later only open it through System
+Settings → Privacy & Security → "Open Anyway". An update the GUI downloads
+itself is not quarantined (the GUI does not set `LSFileQuarantineEnabled`), so
+that detour is needed only for the first install. Windows and Linux users get
+the same one-click update instead of picking the right asset by hand.
+
+The bundled CLI is a resource inside each package, so it is updated together
+with the app. A CLI installed separately (Homebrew, `go install`, a release
+archive) is never touched.
+
+### Finding a release
+
+GUI releases are never marked "latest", so `releases/latest` cannot be used.
+
+1. `GET https://api.github.com/repos/small-teton/mpeg-ts-analyzer/releases`
+   (unauthenticated; one request per check, well under the rate limit).
+2. Keep published releases whose tag is `gui-vX.Y.Z` (not drafts, not
+   prereleases), and take the highest version.
+3. If it is not higher than the running version, the GUI is up to date. Lower
+   or equal versions are never offered.
+4. Otherwise read the release's update manifest asset,
+   `mpeg-ts-analyzer-gui_<version>_update.json`, which the
+   [release workflow](release-security.md#update-signing) writes in the format
+   `cargo-packager-updater` expects (version, notes, and per platform the
+   package URL, its signature and its format).
+
+Only `api.github.com` and GitHub's release-download hosts are contacted, over
+HTTPS. Nothing about the user or the machine is sent beyond what an HTTP
+request carries (the GUI's `User-Agent` names the GUI and its version).
+
+### Checking
+
+- **At startup**, when the setting is on (default), once, in the background.
+  A failure is silent apart from a line in the log. When an update exists,
+  an "Update available X.Y.Z" button appears in the top bar next to About;
+  nothing pops up.
+- **Manually**, from a "Check for Updates…" button in the About window. The
+  result is shown in the update window: up to date, an update, or the error.
+
+The update window shows the running and new GUI versions, the CLI version the
+new release bundles, and a link to the release notes. It offers Install (when
+this installation can be updated, see below) or Open release page.
+
+### Installing
+
+`cargo-packager-updater` downloads the package, verifies its signature against
+the public key compiled into the GUI, and installs it:
+
+| Installation | How it is detected | Update |
+|---|---|---|
+| macOS `.app` | Running from `<name>.app/Contents/MacOS` | Replace the bundle with the signed `.app.tar.gz`, then offer to restart |
+| Windows NSIS install | Executable in `%LOCALAPPDATA%\mpeg-ts-analyzer` next to the NSIS uninstaller | Run the new installer (passive mode); the GUI exits first |
+| Linux AppImage | `APPIMAGE` is set | Replace the AppImage file, then offer to restart |
+| Linux `.deb`, Windows portable zip | Anything else | Notify only: show the release page |
+| Not writable | macOS app started from the mounted `.dmg` (`/Volumes/…`) or from an App Translocation path, or a failed write test of the install location | Notify only, saying why (for example "move the app to Applications first") |
+
+- Install is disabled while an analysis is running.
+- Settings are saved before installing, because the Windows path exits the
+  process right after starting the installer.
+- If the macOS bundle cannot be moved by the user, the library asks for an
+  administrator password through `osascript`; cancelling leaves the old app in
+  place.
+- A signature that does not verify, or a download that fails, aborts the
+  update and leaves the installation unchanged; the window shows the error.
+
+### Not covered
+
+- Updating a separately installed CLI.
+- Background downloads, delta updates, or update channels (prereleases).
+- Developer ID signing and notarization (still excluded, see
+  [release-security.md](release-security.md)).
+
 ## Decisions
 
 | Decision | Why | Rejected |
@@ -340,6 +419,9 @@ Language, packets per page and cached pages are laid out but not applied yet.
 | English UI only for now | Most text is standard field names and values that are not translated | Fluent-based i18n (kept as a later option) |
 | No menu bar | Every action is reachable from the screens; a menu only duplicated them | File/View/Analyze/Tools/Help menus |
 | Japanese from an OS font at runtime, by file path (no new dependency) | No size cost; every desktop OS the GUI targets ships one; reading it (about 8 MB for Hiragino W3) adds only a file read at startup | Bundling Noto Sans CJK (10–20 MB, cannot be subset in advance because file names are arbitrary); `fontdb` (another dependency for the same lookup) |
+| In-app update with `cargo-packager-updater` (#150) | Avoids the macOS "Open Anyway" detour after the first install; already part of the packaging toolchain; verifies a minisign signature and handles `.app`, NSIS and AppImage | Own downloader and installer; Sparkle (macOS only); only linking to the release page |
+| Find updates through the Releases API and a manifest asset of each release | No extra hosting; works with GUI releases that are not "latest" | A fixed-URL manifest on GitHub Pages (the docs workflow owns the Pages deployment) |
+| Startup update check on by default, with a setting | Users learn about releases without action; one unauthenticated request | Manual check only |
 | Modal progress dialog during analysis | Results of every analysis screen are being replaced; one clear place to wait and cancel | Per-screen overlays while other screens stay usable |
 
 ## Open questions
