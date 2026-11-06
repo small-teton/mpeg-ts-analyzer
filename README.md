@@ -77,7 +77,9 @@ press **Start**. More in the [Quick start](docs/getting-started/quickstart.md).
 
 ## Documentation
 
-The [documentation home](docs/index.md) lists every guide:
+The [documentation home](docs/index.md) lists every guide. The same pages are
+published with navigation and search at
+<https://small-teton.github.io/mpeg-ts-analyzer/>.
 
 - [Installation](docs/getting-started/installation.md) and
   [Quick start](docs/getting-started/quickstart.md)

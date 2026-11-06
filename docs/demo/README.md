@@ -15,7 +15,7 @@ This check requires only Go and does not render the GIF. It builds the current
 binary, runs every command represented in the animation, and fingerprints the
 visible output together with both render scripts and the Dockerfile. It then
 checks that fingerprint and the GIF checksum against
-[`manifest.sha256`](manifest.sha256).
+[`manifest.sha256`](https://github.com/small-teton/mpeg-ts-analyzer/blob/master/docs/demo/manifest.sha256).
 
 The same check runs in GitHub Actions and in `.githooks/pre-push`. A change to
 the displayed CLI output or animation script therefore fails until the demo is
@@ -43,7 +43,7 @@ DEMO_CONTAINER_RUNTIME=docker make demo
 Apple container requires Apple silicon and macOS 26. Start its services once
 after installation with `container system start`.
 
-Both paths build [`Dockerfile`](Dockerfile), which pins the Go/Alpine base image
+Both paths build [`Dockerfile`](https://github.com/small-teton/mpeg-ts-analyzer/blob/master/docs/demo/Dockerfile), which pins the Go/Alpine base image
 by digest and installs ImageMagick 7 and DejaVu Sans Mono. Rendering as the
 current user keeps the generated files writable on the host. The runner uses a
 1 GB container limit. Each scene is optimized separately so ImageMagick can
