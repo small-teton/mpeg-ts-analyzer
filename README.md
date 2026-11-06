@@ -24,7 +24,7 @@ bits.
   including tables split into sections and version changes.
 
 Results are text for people, or JSON with a published schema for CI and other
-programs. See [CLI usage](docs/cli/usage.md).
+programs. See [CLI usage][docs-cli-usage].
 
 ## Desktop GUI
 
@@ -46,7 +46,7 @@ when a field such as the 13-bit PID spans two bytes:
   </a>
 </p>
 
-See the [GUI guide](docs/gui/overview.md).
+See the [GUI guide][docs-gui].
 
 ## Install
 
@@ -57,7 +57,7 @@ go install github.com/small-teton/mpeg-ts-analyzer/v2@latest
 
 Linux packages, pre-built binaries and the GUI packages for macOS, Linux and
 Windows are on the [releases page](https://github.com/small-teton/mpeg-ts-analyzer/releases);
-see [Installation](docs/getting-started/installation.md).
+see [Installation][docs-installation].
 
 ## Quick start
 
@@ -73,23 +73,21 @@ PCR-PTS/DTS max gap: 726.666667ms [OK, limit: <= 1000.000000ms]
 ```
 
 In the GUI, open a file (or drop it on the window), choose the scan range and
-press **Start**. More in the [Quick start](docs/getting-started/quickstart.md).
+press **Start**. More in the [Quick start][docs-quickstart].
 
 ## Documentation
 
-The [documentation home](docs/index.md) lists every guide. The same pages are
-published with navigation and search at
-<https://small-teton.github.io/mpeg-ts-analyzer/>.
+The [documentation site][docs-site] has every guide, with navigation and
+search. Its pages are the Markdown under [`docs/`](docs/), which also reads on
+GitHub.
 
-- [Installation](docs/getting-started/installation.md) and
-  [Quick start](docs/getting-started/quickstart.md)
-- [CLI usage](docs/cli/usage.md), [PSI tables](docs/cli/psi.md) and
-  [dump output examples](docs/cli/dumps.md)
-- [Desktop GUI](docs/gui/overview.md)
-- [Machine-readable output](docs/reference/json-output.md) and the
-  [JSON schema](docs/json-schema-v1.json)
-- [Development](docs/development/index.md), [release](docs/development/release.md)
-  and [security policy](SECURITY.md)
+- [Installation][docs-installation] and [Quick start][docs-quickstart]
+- [CLI usage][docs-cli-usage], [PSI tables][docs-psi] and
+  [dump output examples][docs-dumps]
+- [Desktop GUI][docs-gui]
+- [Machine-readable output][docs-json-output] and the [JSON schema][docs-json-schema]
+- [Development][docs-development], [release][docs-release] and
+  [security policy](SECURITY.md)
 
 ## Why mpeg-ts-analyzer?
 
@@ -117,3 +115,15 @@ mpeg-ts-analyzer deliberately stays small and focused on the compliance check ra
 ## License
 
 Apache License 2.0; see [LICENSE](LICENSE).
+
+[docs-cli-usage]: https://small-teton.github.io/mpeg-ts-analyzer/cli/usage/
+[docs-gui]: https://small-teton.github.io/mpeg-ts-analyzer/gui/overview/
+[docs-installation]: https://small-teton.github.io/mpeg-ts-analyzer/getting-started/installation/
+[docs-quickstart]: https://small-teton.github.io/mpeg-ts-analyzer/getting-started/quickstart/
+[docs-site]: https://small-teton.github.io/mpeg-ts-analyzer/
+[docs-psi]: https://small-teton.github.io/mpeg-ts-analyzer/cli/psi/
+[docs-dumps]: https://small-teton.github.io/mpeg-ts-analyzer/cli/dumps/
+[docs-json-output]: https://small-teton.github.io/mpeg-ts-analyzer/reference/json-output/
+[docs-json-schema]: https://small-teton.github.io/mpeg-ts-analyzer/json-schema-v1.json
+[docs-development]: https://small-teton.github.io/mpeg-ts-analyzer/development/
+[docs-release]: https://small-teton.github.io/mpeg-ts-analyzer/development/release/
