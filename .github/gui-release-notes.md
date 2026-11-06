@@ -10,13 +10,14 @@ records the GUI and CLI versions and the commits they were built from.
 | Linux (x86_64) | `mpeg-ts-analyzer-gui_{{VERSION}}_amd64.deb` or `mpeg-ts-analyzer-gui_{{VERSION}}_linux_x86_64.AppImage` |
 | Windows (x86_64) | `mpeg-ts-analyzer-gui_{{VERSION}}_windows_x86_64_setup.exe` (per-user install, no administrator rights) or `mpeg-ts-analyzer-gui_{{VERSION}}_windows_x86_64_portable.zip` |
 
-## Opening unsigned builds
+## Opening the app the first time
 
-The packages are not code-signed, so the OS warns before the first start.
+The packages are not signed with a Developer ID or notarized (the macOS app is
+signed ad hoc), so the OS warns before the first start.
 
 - **macOS:** open the app once, then allow it under System Settings → Privacy &
   Security → "Open Anyway". Alternatively remove the quarantine flag:
-  `xattr -d com.apple.quarantine /Applications/mpeg-ts-analyzer.app`.
+  `xattr -dr com.apple.quarantine /Applications/mpeg-ts-analyzer.app`.
 - **Windows:** SmartScreen shows "Windows protected your PC"; choose "More info"
   → "Run anyway".
 

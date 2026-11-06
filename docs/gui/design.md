@@ -306,7 +306,10 @@ Language, packets per page and cached pages are laid out but not applied yet.
   embeds, and the Go standard library and the modules recorded in the bundled
   CLI binary of each of the three targets (cobra uses mousetrap only on
   Windows).
-- Binaries are not signed for now; the release notes
+- The macOS app is signed ad hoc (`gui/scripts/sign-macos-app.sh`, run by
+  cargo-packager before the `.dmg` is made), which seals the bundle but leaves
+  the bundled CLI unchanged; without it macOS reports the downloaded app as
+  "damaged". Nothing is signed with a Developer ID or notarized; the release notes
   (`.github/gui-release-notes.md`) explain how to open them on macOS and
   Windows. Checksums, an SBOM and build provenance:
   [release-security.md](release-security.md).
@@ -319,7 +322,7 @@ Language, packets per page and cached pages are laid out but not applied yet.
 | CLI as a subprocess, JSON over stdout | One implementation of the analysis; the JSON schema is the boundary; easy cross-builds | cgo/c-shared FFI |
 | GUI in this repository under `gui/` | Schema and GUI change in one PR; the CLI release a GUI bundles is named in the same tree | Separate repository |
 | cargo-packager | Covers `.app`/`.dmg`/`.deb`/AppImage/NSIS/MSI from one config | cargo-dist (CLI oriented) |
-| No code signing for now | Personal OSS; users are engineers | Paid signing services until requested |
+| No identity-backed code signing or notarization for now (the macOS app is signed ad hoc) | Personal OSS; users are engineers | Developer ID or certificate signing and notarization until requested |
 | One scan of a byte range for Overview/Timeline/Bitrate | Results are small (summaries, time series) and bounded by the range; no paging inside these screens | Calling the CLI per screen; paging Timeline/Bitrate |
 | No lead-in, no pre-scan | The range start is the only place PSI is missing; simpler for both GUI and CLI | Reading ahead of the range; analyzing before Start |
 | Byte-based range, no time input | Maps directly to `--offset`/`--limit`; time needs a bitrate estimate | Time-based range |

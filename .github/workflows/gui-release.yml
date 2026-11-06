@@ -37,6 +37,7 @@ on:
       - gui/about.hbs
       - gui/about.toml
       - gui/scripts/third-party-notices.sh
+      - gui/scripts/sign-macos-app.sh
       - gui/src/cli.rs
       - gui/src/main.rs
       - gui/BUNDLED_CLI_VERSION
@@ -91,7 +92,7 @@ jobs:
         package=false
         # Here-strings, not pipes: with pipefail, grep -q exiting at the first
         # match could fail the upstream printf with SIGPIPE.
-        if grep -Eq '^(rust-toolchain\.toml$|gui/assets/icons/|gui/about\.(hbs|toml)$|gui/scripts/third-party-notices\.sh$|gui/src/(cli|main)\.rs$|gui/BUNDLED_CLI_VERSION$|VERSION$|\.github/scripts/(release-state|bundled-cli)\.sh$|\.github/gui-release-notes\.md$|\.github/workflows/gui-release\.yml$)' \
+        if grep -Eq '^(rust-toolchain\.toml$|gui/assets/icons/|gui/about\.(hbs|toml)$|gui/scripts/(third-party-notices|sign-macos-app)\.sh$|gui/src/(cli|main)\.rs$|gui/BUNDLED_CLI_VERSION$|VERSION$|\.github/scripts/(release-state|bundled-cli)\.sh$|\.github/gui-release-notes\.md$|\.github/workflows/gui-release\.yml$)' \
           <<<"$files"; then
           package=true
         elif grep -qx gui/Cargo.toml <<<"$files"; then
@@ -384,18 +385,30 @@ jobs:
             [ -f "$1/$file" ] || { echo "::error::$1/$file is missing"; exit 1; }
           done
         }
+        # The packaged CLI must be byte for byte the one verified by the
+        # notices job (on macOS, signing the .app must not re-sign it).
+        same_cli() {
+          cmp "$1" "$2" || { echo "::error::$1 differs from the bundled CLI $2"; exit 1; }
+        }
+        cli="$RUNNER_TEMP/bundled-cli"
         case "$RUNNER_OS" in
           macOS)
             mount="$RUNNER_TEMP/dmg"
             hdiutil attach ./*.dmg -nobrowse -readonly -mountpoint "$mount" < /dev/null
-            check "$mount/mpeg-ts-analyzer.app/Contents/MacOS/mpeg-ts-analyzer-gui"
-            licenses "$mount/mpeg-ts-analyzer.app/Contents/Resources"
+            app="$mount/mpeg-ts-analyzer.app"
+            # A downloaded app whose bundle is not signed is reported as
+            # "damaged" by macOS; an ad-hoc signed one can be opened anyway.
+            codesign --verify --deep --strict --verbose=2 "$app"
+            check "$app/Contents/MacOS/mpeg-ts-analyzer-gui"
+            licenses "$app/Contents/Resources"
+            same_cli "$app/Contents/Resources/mpeg-ts-analyzer" "$cli/darwin-arm64/mpeg-ts-analyzer"
             # The just-started GUI may still hold the volume for a moment.
             hdiutil detach "$mount" -force ;;
           Linux)
             sudo apt-get install -y ./*.deb
             check /usr/bin/mpeg-ts-analyzer-gui
             licenses /usr/lib/mpeg-ts-analyzer-gui
+            same_cli /usr/lib/mpeg-ts-analyzer-gui/mpeg-ts-analyzer "$cli/linux-amd64/mpeg-ts-analyzer"
             appimage=$(ls "$PWD"/*.AppImage)
             chmod +x "$appimage"
             (cd "$RUNNER_TEMP" && "$appimage" --appimage-extract >/dev/null)
@@ -406,6 +419,7 @@ jobs:
             powershell -NoProfile -Command "Start-Process -FilePath '$installer' -ArgumentList '/S' -Wait"
             check "$LOCALAPPDATA/mpeg-ts-analyzer/mpeg-ts-analyzer-gui.exe"
             licenses "$LOCALAPPDATA/mpeg-ts-analyzer"
+            same_cli "$LOCALAPPDATA/mpeg-ts-analyzer/mpeg-ts-analyzer.exe" "$cli/windows-amd64/mpeg-ts-analyzer.exe"
             7z x -o"$RUNNER_TEMP/portable" ./*_portable.zip >/dev/null
             portable=$(ls -d "$RUNNER_TEMP"/portable/*/)
             check "${portable}mpeg-ts-analyzer-gui.exe"

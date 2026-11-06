@@ -1,7 +1,8 @@
 # GUI release security (design notes)
 
 Status: the free measures below are implemented in
-`.github/workflows/gui-release.yml` (#100); code signing is not. The CLI
+`.github/workflows/gui-release.yml` (#100); code signing with a Developer ID
+or a commercial certificate is not. The macOS app is only signed ad hoc. The CLI
 releases through GoReleaser and is not covered here.
 
 ## Free measures in every GUI release
@@ -45,10 +46,21 @@ They run only in the packaging jobs, and the build provenance records the
 workflow run that used them, but a replaced linuxdeploy download would end up
 in the AppImage. Pinning it is left for later; the `.deb` does not use it.
 
-## Code signing (excluded for now)
+## Identity-backed code signing and notarization (excluded for now)
 
-macOS Gatekeeper and Windows SmartScreen warn about unsigned applications, but
-signing needs paid accounts and long-lived secrets:
+The macOS app is signed ad hoc (`gui/scripts/sign-macos-app.sh`): the
+signature seals `Info.plist` and the resources, including the bundled CLI,
+which keeps its own linker signature and stays byte for byte the published
+release binary. That is required: a downloaded app with an unsigned bundle is
+reported by macOS as "damaged", with no way to open it. An ad-hoc signature
+proves nothing about who built the app, so Gatekeeper still asks before the
+first start (`spctl` assesses it as "rejected", and "Open Anyway" is offered).
+The release job checks the signature with `codesign --verify --deep --strict`
+and that the bundled CLI equals the verified release binary.
+
+macOS Gatekeeper and Windows SmartScreen warn about applications that are not
+signed by a known developer, but such signing needs paid accounts and
+long-lived secrets:
 
 - **macOS:** an Apple Developer Program membership (yearly fee), a Developer ID
   Application certificate, and notarization with an App Store Connect API key.
