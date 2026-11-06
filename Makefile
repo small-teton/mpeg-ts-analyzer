@@ -28,10 +28,11 @@ check-docs-policy:
 
 # Desktop GUI (gui/, Rust). Runs on the host; see docs/development/index.md.
 GUI_CLI := $(CURDIR)/out/gui/mpeg-ts-analyzer
+GUI_ARGS ?=
 
 gui-run:
 	go build -o "$(GUI_CLI)" .
-	MPEG_TS_ANALYZER_CLI="$(GUI_CLI)" cargo run --manifest-path gui/Cargo.toml
+	MPEG_TS_ANALYZER_CLI="$(GUI_CLI)" cargo run --manifest-path gui/Cargo.toml -- $(GUI_ARGS)
 
 # The CLI integration tests in gui/ run against the CLI built from this tree.
 gui-test:

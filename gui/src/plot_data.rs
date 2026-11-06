@@ -58,6 +58,8 @@ pub struct Event {
 /// What the Timeline draws for one program.
 #[derive(Debug, Default)]
 pub struct Timeline {
+    /// Valid horizontal plot range in elapsed seconds.
+    pub time_range: (f64, f64),
     /// PCR interval (ms) at each PCR that has one.
     pub pcr_interval: Vec<Point>,
     /// `pcr_interval` reduced for drawing.
@@ -75,6 +77,8 @@ pub struct Timeline {
 /// What the Bitrate screen draws for one program.
 #[derive(Debug, Default)]
 pub struct Bitrate {
+    /// Valid horizontal plot range in elapsed seconds.
+    pub time_range: (f64, f64),
     /// Mbps per PID as steps over the windows, in PID order, without PAT and
     /// PMT (see `ProgramPids::is_psi`).
     pub pids: Vec<PidSeries>,
@@ -108,7 +112,10 @@ pub fn seconds_at(pcr: &[PcrPoint], offset: u64) -> Option<f64> {
 
 pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
     let Some(series) = &program.series else {
-        return Timeline::default();
+        return Timeline {
+            time_range: EMPTY_TIME_RANGE,
+            ..Timeline::default()
+        };
     };
     let pcr_interval: Vec<Point> = series
         .pcr
@@ -217,7 +224,13 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
     );
     events.sort_by_key(|e| e.offset_bytes);
 
+    let elapsed = series
+        .pcr
+        .last()
+        .map_or(0.0, |point| point.elapsed_ms / 1000.0);
+
     Timeline {
+        time_range: elapsed_range(elapsed),
         pcr_drawn,
         pcr_interval,
         pcr_over_limit,
@@ -230,12 +243,22 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
 /// Y ranges for a program with nothing to plot.
 const EMPTY_MBPS_RANGE: (f64, f64) = (0.0, 1.0);
 const EMPTY_JITTER_RANGE: (f64, f64) = (-0.001, 0.001);
+const EMPTY_TIME_RANGE: (f64, f64) = (0.0, 1.0);
+
+fn elapsed_range(seconds: f64) -> (f64, f64) {
+    if seconds.is_finite() && seconds > 0.0 {
+        (0.0, seconds)
+    } else {
+        EMPTY_TIME_RANGE
+    }
+}
 
 pub fn bitrate(report: &AnalysisReport, program: &Program) -> Bitrate {
     let program_pids = ProgramPids::new(report, program);
     // A program whose PMT could not be read has no series.
     let Some(series) = &program.series else {
         return Bitrate {
+            time_range: EMPTY_TIME_RANGE,
             mbps_range: EMPTY_MBPS_RANGE,
             jitter_range: EMPTY_JITTER_RANGE,
             program_pids,
@@ -308,6 +331,7 @@ pub fn bitrate(report: &AnalysisReport, program: &Program) -> Bitrate {
     let top = program_series.iter().map(|p| p[1]).fold(0.0, f64::max);
     let deviation = values.iter().map(|v| v.abs()).fold(0.0, f64::max);
     Bitrate {
+        time_range: elapsed_range(elapsed),
         mbps_range: (0.0, padded(top, EMPTY_MBPS_RANGE.1)),
         jitter_range: {
             let half = padded(deviation, EMPTY_JITTER_RANGE.1);
@@ -473,6 +497,10 @@ mod tests {
         for program in &report.programs {
             let series = program.series.as_ref().unwrap();
             let timeline = timeline(&report, program);
+            assert_eq!(
+                timeline.time_range,
+                (0.0, series.pcr.last().unwrap().elapsed_ms / 1000.0)
+            );
             let intervals = series
                 .pcr
                 .iter()
@@ -514,6 +542,7 @@ mod tests {
             let summary = program.bitrate.as_ref().unwrap();
             let durations = &program.series.as_ref().unwrap().bitrate.duration_seconds;
             let seconds: f64 = durations.iter().sum();
+            assert_eq!(bitrate.time_range, (0.0, seconds));
             for pid in &bitrate.pids {
                 // Each window is a horizontal step: the area under it is bytes * 8.
                 let bits: f64 = pid
@@ -562,6 +591,9 @@ mod tests {
         let mut report = fixture();
         report.programs[0].series = None;
         let data = bitrate(&report, &report.programs[0]);
+        let timeline = timeline(&report, &report.programs[0]);
+        assert_eq!(data.time_range, EMPTY_TIME_RANGE);
+        assert_eq!(timeline.time_range, EMPTY_TIME_RANGE);
         assert_eq!(data.mbps_range, EMPTY_MBPS_RANGE);
         assert_eq!(data.jitter_range, EMPTY_JITTER_RANGE);
         assert!(data.mbps_range.0 < data.mbps_range.1 && data.jitter_range.0 < data.jitter_range.1);

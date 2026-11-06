@@ -1,8 +1,8 @@
 use eframe::egui;
 use egui_plot::{Bar, BarChart, HLine, Legend, Line, LineStyle, Plot};
 
-use super::program_selector_labels;
 use super::timeline::series_color;
+use super::{constrain_time_axis, program_selector_labels};
 use crate::plot_data;
 use crate::report::{AnalysisReport, Program as ReportProgram};
 use crate::theme;
@@ -33,18 +33,28 @@ pub fn show_report(
             ui.strong("Bitrate per PID");
             ui.weak("Mbps · PCR time base · 1 s windows (the last one may be shorter)");
         });
-        time_plot(("bitrate", context), 240.0, data.mbps_range)
+        time_plot(
+            ("bitrate", context),
+            240.0,
+            data.time_range,
+            data.mbps_range,
+        )
             .legend(Legend::default())
             .show(ui, |plot| {
+                constrain_time_axis(plot, data.time_range);
                 plot.line(
                     Line::new("Program (incl. PSI)", data.program_drawn.clone())
                         .color(egui::Color32::LIGHT_GRAY)
-                        .style(LineStyle::Dashed { length: 6.0 }),
+                        .style(LineStyle::Dashed { length: 6.0 })
+                        .allow_band(false),
                 );
                 for (index, pid) in data.pids.iter().enumerate() {
                     plot.line(
                         Line::new(pid.label.clone(), pid.drawn.clone())
-                            .color(series_color(index)),
+                            .color(series_color(index))
+                            // Duplicate X values form the vertical edges of a
+                            // step, not a min/max area to aggregate as a band.
+                            .allow_band(false),
                     );
                 }
             });
@@ -59,8 +69,14 @@ pub fn show_report(
                     program.pcr_pid.as_deref().unwrap_or("none")
                 ));
             });
-            time_plot(("pcr_jitter", context), 160.0, data.jitter_range)
+            time_plot(
+                ("pcr_jitter", context),
+                160.0,
+                data.time_range,
+                data.jitter_range,
+            )
                 .show(&mut columns[0], |plot| {
+                    constrain_time_axis(plot, data.time_range);
                     plot.hline(HLine::new("expected", 0.0).color(egui::Color32::DARK_GRAY));
                     plot.line(
                         Line::new("jitter", data.jitter_drawn.clone())
@@ -164,9 +180,15 @@ pub fn show_report(
 
 /// A plot over time like Timeline's: zoom, scroll and drag move the time axis
 /// only, and the Y axis stays at `y_range` (a reset returns to it).
-fn time_plot(id: impl egui::AsIdSalt, height: f32, y_range: (f64, f64)) -> Plot<'static> {
+fn time_plot(
+    id: impl egui::AsIdSalt,
+    height: f32,
+    time_range: (f64, f64),
+    y_range: (f64, f64),
+) -> Plot<'static> {
     Plot::new(id)
         .height(height)
+        .default_x_bounds(time_range.0, time_range.1)
         .default_y_bounds(y_range.0, y_range.1)
         .allow_zoom([true, false])
         .allow_drag([true, false])

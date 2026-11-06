@@ -42,6 +42,9 @@ the JSON.
    ([Installation](installation.md#desktop-gui)). It bundles the CLI.
 2. Open a TS or M2TS file with **Open…**, or drop it on the window.
 3. Choose the scan range (the first 64 MiB by default) and press **Start**.
+   Or start the GUI with the file and range as arguments, for example
+   `mpeg-ts-analyzer-gui capture.ts --offset 0 --limit 67108864`, to analyze
+   right away.
 4. Switch between Overview, Timeline, Bitrate and Packets; they all show the
    same analysis.
 

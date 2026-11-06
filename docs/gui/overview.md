@@ -25,6 +25,22 @@ Packages for macOS, Linux and Windows are described in
 - **Packets** pages through the packets of the range and decodes the selected
   one, with the PES or section it belongs to.
 
+## Open a file from the command line
+
+The GUI normally opens with a file picker. For repeatable inspection, pass a
+file and optional byte range to open it and start analysis immediately:
+
+```sh
+mpeg-ts-analyzer-gui capture.ts --offset 0 --limit 67108864
+```
+
+`--limit 0` analyzes from the offset through the end of the file. Development
+builds accept the same arguments:
+
+```sh
+make gui-run GUI_ARGS='capture.ts --offset 0 --limit 67108864'
+```
+
 ## Inspect packets down to individual bits
 
 Select any decoded TS, adaptation-field, PSI, or PES field to highlight both
