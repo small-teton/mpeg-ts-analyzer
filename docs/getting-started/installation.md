@@ -48,6 +48,6 @@ go install github.com/small-teton/mpeg-ts-analyzer/v2@latest
 GUI packages for macOS (Apple silicon), Linux (`.deb`, AppImage) and Windows
 (installer, portable zip) are published on the
 [releases page](https://github.com/small-teton/mpeg-ts-analyzer/releases) under
-`gui-v<version>` tags, separately from the CLI releases. Each package bundles
-the CLI of the same commit. The packages are not code-signed; the release notes
+`gui-v<version>` tags, separately from the CLI releases. Each package bundles a
+published CLI release, named in the release title and in its manifest file. The packages are not code-signed; the release notes
 explain how to open them and how to verify a download.

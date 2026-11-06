@@ -46,5 +46,41 @@ A failed run can be started again:
 - If the tag points at another commit, the run fails. The workflow never moves
   or deletes a tag.
 
-GUI releases use the `GUI release` workflow and `gui-vX.Y.Z` tags; see
-[Development](index.md) for how it is run and checked.
+## GUI release
+
+GUI releases are independent of the CLI's `VERSION`: the GUI version is the
+`version` in `gui/Cargo.toml`, released as `gui-vX.Y.Z` and never marked
+"latest". The packages bundle a published CLI release, never a CLI built from
+the GUI's commit.
+
+1. **Release the CLI first** when the GUI needs CLI output that is not
+   published yet (see above).
+2. **Set the versions in a PR.** `version` in `gui/Cargo.toml` (and
+   `gui/Cargo.lock`) and the CLI version to bundle in
+   `gui/BUNDLED_CLI_VERSION` (a bare `X.Y.Z`). Merge the PR to `master`.
+3. **Run the GUI release workflow.** In GitHub → Actions → **GUI release** →
+   *Run workflow* on `master`. It:
+   1. checks the versions, that the commit is on `master`, and the state of the
+      `gui-v<version>` tag and release;
+   2. downloads the CLI archives of release `v<BUNDLED_CLI_VERSION>`, checks
+      them against that release's checksums and build provenance from the CLI
+      `Release` workflow, and checks the tag's `VERSION`;
+   3. builds the packages on macOS, Linux and Windows, checks that the bundled
+      CLI reports that version, installs or unpacks each package and checks
+      that it finds that CLI;
+   4. only then creates the tag at the built commit, and publishes the packages
+      with `SHA256SUMS`, an SBOM, build provenance and
+      `mpeg-ts-analyzer-gui_<version>_manifest.json`, which names the GUI and
+      CLI versions, tags and commits.
+
+A tag `gui-vX.Y.Z` pushed by a user starts the same workflow; it must match
+`gui/Cargo.toml` and point at a commit on `master`. Reruns behave as for the
+CLI: they continue when the tag points at the built commit and no published
+release exists (a draft is replaced), stop when the release is published, and
+fail when the tag points elsewhere. Tags are never moved or deleted.
+
+Pull requests that change the packaging, the versions or the release scripts
+run the same checks and build the packages without a tag or a release. When
+the declared CLI release is not published yet but `VERSION` already names it,
+those pull requests bundle a CLI built from their commit instead, with a
+warning; a release always requires the published CLI.

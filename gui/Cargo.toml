@@ -27,7 +27,8 @@ egui_kittest = "0.37.0"
 screenshots = ["egui_kittest/wgpu", "egui_kittest/snapshot", "dep:image"]
 
 # Packages for `gui-release.yml` (cargo-packager). The CLI is bundled from
-# target/bundled-cli/, where the workflow builds it from the same commit.
+# target/bundled-cli/: releases fill it with the published CLI release named in
+# BUNDLED_CLI_VERSION, and make gui-package with a CLI built from this tree.
 [package.metadata.packager]
 product-name = "mpeg-ts-analyzer"
 identifier = "io.github.small-teton.mpeg-ts-analyzer"

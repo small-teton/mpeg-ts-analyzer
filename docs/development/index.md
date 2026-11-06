@@ -170,7 +170,8 @@ To open and immediately analyze the same range while iterating on the UI:
 make gui-run GUI_ARGS='sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts --offset 0 --limit 67108864'
 ```
 
-`make gui-package` builds the CLI into `gui/target/bundled-cli/`, writes
+`make gui-package` builds the CLI from this tree into `gui/target/bundled-cli/`
+(a release bundles the published CLI release instead), writes
 `gui/target/notices/THIRD-PARTY-NOTICES.txt` and runs
 [cargo-packager](https://github.com/crabnebula-dev/cargo-packager) with the
 configuration in `gui/Cargo.toml` (`[package.metadata.packager]`). Install the
@@ -232,10 +233,10 @@ macOS is the canonical renderer:
 - The pre-push hook also runs the check on macOS. Locally the same files are
   in `gui/target/screenshots/`.
 
-GUI releases are made by the `GUI release` workflow: run it on `master` to tag
-`gui-v<version of gui/Cargo.toml>` and publish the packages, or push such a tag.
-Pull requests that change the packaging build and check the packages on all
-three OSes without publishing them.
+GUI releases are made by the `GUI release` workflow and bundle the published
+CLI release named in `gui/BUNDLED_CLI_VERSION`; see
+[GUI release](release.md#gui-release). Pull requests that change the packaging
+build and check the packages on all three OSes without publishing them.
 
 The GUI finds the CLI through the `MPEG_TS_ANALYZER_CLI` environment variable,
 then the path in Settings, a CLI bundled next to the GUI, and `mpeg-ts-analyzer`
@@ -286,11 +287,14 @@ Release publication is kept out of ordinary CI:
   for a user-pushed `vX.Y.Z` tag that matches `VERSION`. It creates the tag
   only after a complete build has passed; see [Release](release.md).
   Pull requests that change its inputs run its checks and build as a dry run.
-- `GUI release` publishes only when manually dispatched or for a user-pushed
-  `gui-vX.Y.Z` tag. On pull requests that change the packaging it builds and
-  installs the packages as a dry run, and its publication job is skipped. The
-  packaging means the icons, the notices configuration, `cli.rs`, `main.rs`,
-  the toolchain, the workflow, and any change to `gui/Cargo.toml` other than
+- `GUI release` publishes only when manually dispatched on `master` or for a
+  user-pushed `gui-vX.Y.Z` tag, and creates the tag only after every package
+  passed; see [GUI release](release.md#gui-release). On pull requests that
+  change the packaging it builds and installs the packages as a dry run, and
+  its publication job is skipped. The packaging means the icons, the notices
+  configuration, `cli.rs`, `main.rs`, the toolchain, the workflow,
+  `gui/BUNDLED_CLI_VERSION`, `VERSION`, the release scripts and notes, and any
+  change to `gui/Cargo.toml` other than
   dev-dependencies and the optional dependencies and features that the default
   features do not enable. Those, and `gui/Cargo.lock` changes, only check the
   third-party notices.

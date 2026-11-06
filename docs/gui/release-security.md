@@ -20,9 +20,14 @@ releases through GoReleaser and is not covered here.
   `gh attestation verify <file> --repo small-teton/mpeg-ts-analyzer`. The
   release job then needs `id-token: write` and `attestations: write`, and only
   that job.
-- **Release workflow hardening.** Build from a tag on `master` through
-  `workflow_dispatch`, as the CLI release does, with per-job minimal
-  permissions and no caches restored from pull requests.
+- **Release workflow hardening.** Build the commit `workflow_dispatch` was
+  started on (`master` only), and create the tag only after every package has
+  passed its checks, as the CLI release does. Per-job minimal permissions, and
+  no caches restored in release runs.
+- **Bundled CLI.** The packages bundle the published CLI release named in
+  `gui/BUNDLED_CLI_VERSION`. Its archives are checked against the release's
+  checksums and its build provenance from the CLI `Release` workflow, and the
+  binary must report that version before it is packaged.
 
 ## Packaging tools fetched at build time
 
