@@ -466,7 +466,9 @@ jobs:
     # Which GUI and which published CLI the packages contain.
     - name: Write the manifest
       run: |
-        cli_commit=$(git ls-remote --tags origin "refs/tags/v$CLI_VERSION^{}" "refs/tags/v$CLI_VERSION" | awk '{ print $1 }' | head -n 1)
+        # Peeled, so an annotated tag names its commit, not the tag object.
+        git fetch --quiet origin "+refs/tags/v$CLI_VERSION:refs/tags/v$CLI_VERSION"
+        cli_commit=$(git rev-parse "v$CLI_VERSION^{commit}")
         cat > "dist/mpeg-ts-analyzer-gui_${VERSION}_manifest.json" <<EOF
         {
           "gui_version": "$VERSION",

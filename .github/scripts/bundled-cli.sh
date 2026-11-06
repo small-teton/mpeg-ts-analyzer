@@ -47,7 +47,15 @@ sha256() {
     awk '{ print $1 }'
 }
 
-published=$(gh release view "$tag" --repo "$repo" --json isDraft --jq '.isDraft | not' 2>/dev/null || echo false)
+# Only a release that does not exist (or is a draft) counts as unpublished;
+# any other lookup failure stops, so it cannot enable the stand-in.
+if published=$(gh release view "$tag" --repo "$repo" --json isDraft --jq '.isDraft | not' 2>&1); then
+  :
+elif [[ "$published" == *"release not found"* ]]; then
+  published=false
+else
+  fail "cannot look up release $tag: $published"
+fi
 
 if [ "$published" = true ]; then
   git -C "$root" fetch --quiet origin "+refs/tags/$tag:refs/tags/$tag"
