@@ -12,6 +12,7 @@ use egui_kittest::{Harness, Node};
 
 use super::App;
 use crate::cli::Cli;
+use crate::range_bar::AnalysisRange;
 use crate::report::{AnalysisReport, PacketDetail, PacketsPage};
 use crate::settings::Settings;
 use crate::views::Screen;
@@ -20,7 +21,7 @@ use crate::views::packet_pages::PacketPages;
 /// A CLI that passed the capabilities check. It is never run.
 fn checked_cli() -> Cli {
     Cli {
-        path: PathBuf::from("/fixture/mpeg-ts-analyzer"),
+        path: PathBuf::from("mpeg-ts-analyzer"),
         version: "2.3.0".to_owned(),
         packet_outputs: true,
     }
@@ -38,25 +39,43 @@ fn app(cli: Result<Cli, String>) -> App {
     }
 }
 
+/// The first 40 packets of the two-program sample.
+pub(super) fn packets_page() -> PacketsPage {
+    serde_json::from_str(include_str!("../../tests/fixtures/packets_page_188.json"))
+        .expect("packets fixture")
+}
+
+/// The decoded PAT packet at offset 188 of the two-program sample.
+pub(super) fn pat_packet_detail() -> PacketDetail {
+    serde_json::from_str(include_str!(
+        "../../tests/fixtures/packet_detail_pat_188.json"
+    ))
+    .expect("packet fixture")
+}
+
 /// An app showing the two-program analysis fixture, with the Packets screen
-/// already holding a page and the decoded PAT packet at offset 188.
-fn analyzed_app() -> App {
+/// already holding a page and the decoded PAT packet at offset 188. The input
+/// is the relative path the fixture names, so nothing specific to the machine
+/// running the tests is shown.
+pub(super) fn analyzed_app() -> App {
     let report: AnalysisReport = serde_json::from_str(include_str!(
         "../../tests/fixtures/analysis_two_programs_188.json"
     ))
     .expect("analysis fixture");
-    let page: PacketsPage =
-        serde_json::from_str(include_str!("../../tests/fixtures/packets_page_188.json"))
-            .expect("packets fixture");
-    let detail: PacketDetail = serde_json::from_str(include_str!(
-        "../../tests/fixtures/packet_detail_pat_188.json"
-    ))
-    .expect("packet fixture");
     let mut app = app(Ok(checked_cli()));
-    app.open(sample());
-    app.analyzed = Some((app.range.offset, app.range.limit));
+    app.input = Some(PathBuf::from(&report.input.path));
+    app.file_size = report.input.file_size_bytes;
+    app.range = AnalysisRange {
+        offset: 0,
+        limit: app.file_size,
+    };
+    app.analyzed = Some((0, app.file_size));
     app.analysis = Some(Box::new(report));
-    app.packet_pages = Some(PacketPages::loaded_for_test(page, 188, detail));
+    app.packet_pages = Some(PacketPages::loaded_for_test(
+        packets_page(),
+        188,
+        pat_packet_detail(),
+    ));
     app.analysis_generation = 1;
     app
 }

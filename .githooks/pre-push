@@ -53,4 +53,12 @@ if [ -n "$GUI_BASE" ] && [ -n "$(git diff --name-only "$GUI_BASE" HEAD -- gui/ M
     make gui-test || { echo "FAILED: GUI test"; exit 1; }
 fi
 
+# The README screenshots are rendered on macOS, the canonical renderer; on other
+# systems the GUI CI job checks them.
+if [ "$(uname -s)" = Darwin ] && [ -n "$GUI_BASE" ] &&
+    [ -n "$(git diff --name-only "$GUI_BASE" HEAD -- gui/ Makefile mise.toml rust-toolchain.toml docs/images/ README.md)" ]; then
+    echo "=== pre-push: GUI screenshots ==="
+    make check-gui-screenshots || { echo "FAILED: README screenshots are stale; run make gui-screenshots"; exit 1; }
+fi
+
 echo "=== pre-push: all checks passed ==="

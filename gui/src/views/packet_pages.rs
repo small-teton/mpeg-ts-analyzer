@@ -17,7 +17,8 @@ use crate::icons;
 use crate::psi::{NULL_PID, PsiLayout};
 use crate::range_bar;
 use crate::report::{
-    AnalysisReport, PacketDetail, PacketLayer, PacketSummary, PacketUnit, PacketsPage,
+    AnalysisReport, DecodedPacket, PacketDetail, PacketLayer, PacketSummary, PacketUnit,
+    PacketsPage,
 };
 use crate::theme;
 
@@ -196,6 +197,20 @@ impl PacketPages {
         pages.select(offset);
         pages.detail = Some((offset, Fetch::Ready(detail)));
         pages
+    }
+
+    /// Selects a field of the decoded packet, as a click on it does.
+    #[cfg(all(test, feature = "screenshots"))]
+    pub(crate) fn select_field_for_test(&mut self, name: &str) {
+        let Some((offset, Fetch::Ready(detail))) = &self.detail else {
+            panic!("no decoded packet");
+        };
+        let selection = detail
+            .packet
+            .as_ref()
+            .and_then(|packet| field_selection(packet, name))
+            .unwrap_or_else(|| panic!("no field {name}"));
+        self.highlight = Some((*offset, selection));
     }
 
     /// Learns where the range's packets start from the first page and keeps
@@ -542,26 +557,56 @@ impl PacketPages {
 
         ui.add_space(8.0);
         ui.separator();
-        let raw = packet.raw();
-        let colors = byte_colors(raw.len(), &packet.layers);
-        let bytes: Vec<(u8, egui::Color32)> = raw.into_iter().zip(colors).collect();
-        ui.horizontal(|ui| {
-            ui.strong("Byte inspector");
-            if let Some(selection) = &highlight {
-                ui.weak(format!("{} selected", byte_span_text(&selection.bytes)));
-            }
-        });
-        hex_dump_bytes(ui, &bytes, highlight.as_ref().map(|s| &s.bytes));
-        ui.add_space(8.0);
-        ui.separator();
-        let raw: Vec<u8> = bytes.iter().map(|(byte, _)| *byte).collect();
-        bit_inspector(ui, &raw, highlight.as_ref());
+        inspectors(ui, packet, highlight.as_ref());
         self.highlight = highlight.map(|selection| (offset, selection));
 
         if let Some(target) = target {
             self.go_to(target);
         }
     }
+}
+
+/// The Byte and Bit inspectors of a decoded packet, with the selected field's
+/// bytes and bits marked.
+fn inspectors(ui: &mut egui::Ui, packet: &DecodedPacket, highlight: Option<&FieldSelection>) {
+    let raw = packet.raw();
+    let colors = byte_colors(raw.len(), &packet.layers);
+    let bytes: Vec<(u8, egui::Color32)> = raw.iter().copied().zip(colors).collect();
+    ui.horizontal(|ui| {
+        ui.strong("Byte inspector");
+        if let Some(selection) = highlight {
+            ui.weak(format!("{} selected", byte_span_text(&selection.bytes)));
+        }
+    });
+    hex_dump_bytes(ui, &bytes, highlight.map(|s| &s.bytes));
+    ui.add_space(8.0);
+    ui.separator();
+    bit_inspector(ui, &raw, highlight);
+}
+
+/// The production inspectors with the named field of a decoded packet
+/// selected, for screenshots.
+#[cfg(all(test, feature = "screenshots"))]
+pub(crate) fn show_inspectors_for_test(ui: &mut egui::Ui, detail: &PacketDetail, name: &str) {
+    let packet = detail.packet.as_ref().expect("a decoded packet");
+    let selection = field_selection(packet, name).unwrap_or_else(|| panic!("no field {name}"));
+    inspectors(ui, packet, Some(&selection));
+}
+
+/// The selection a click on a field of the decoded packet makes.
+#[cfg(all(test, feature = "screenshots"))]
+fn field_selection(packet: &DecodedPacket, name: &str) -> Option<FieldSelection> {
+    let field = packet
+        .layers
+        .iter()
+        .flat_map(|layer| &layer.fields)
+        .find(|field| field.name == name)?;
+    Some(FieldSelection {
+        key: field.name.clone(),
+        value: field.value.clone(),
+        bytes: span(field),
+        bits: field.bit_ranges(),
+    })
 }
 
 fn start<T: Send + 'static>(
