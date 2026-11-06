@@ -298,7 +298,8 @@ Release publication is kept out of ordinary CI:
   dev-dependencies and the optional dependencies and features that the default
   features do not enable. Those, and `gui/Cargo.lock` changes, only check the
   third-party notices.
-- `Bump Version` runs only when manually dispatched.
+- `Bump Version` (CLI) and `GUI Bump Version` run only when manually
+  dispatched.
 
 ## Dependency and supply-chain checks
 

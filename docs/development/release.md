@@ -58,6 +58,13 @@ the GUI's commit.
 2. **Set the versions in a PR.** `version` in `gui/Cargo.toml` (and
    `gui/Cargo.lock`) and the CLI version to bundle in
    `gui/BUNDLED_CLI_VERSION` (a bare `X.Y.Z`). Merge the PR to `master`.
+
+   GitHub → Actions → **GUI Bump Version** → *Run workflow* opens this PR:
+   choose patch, minor or major, and optionally the CLI version to bundle
+   (empty keeps the current one). It accepts a published CLI release, or the
+   version in `VERSION` with a warning when that is not released yet. The PR
+   is opened with `GITHUB_TOKEN`, so its checks do not start on their own:
+   close and reopen it to run them.
 3. **Run the GUI release workflow.** In GitHub → Actions → **GUI release** →
    *Run workflow* on `master`. It:
    1. checks the versions, that the commit is on `master`, and the state of the
