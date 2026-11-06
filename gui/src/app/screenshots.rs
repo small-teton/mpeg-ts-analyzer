@@ -15,8 +15,7 @@ use egui_kittest::{Harness, SnapshotOptions};
 use image::{Rgba, RgbaImage, imageops};
 
 use super::App;
-use super::ui_tests::{analyzed_app, packets_page};
-use crate::report::PacketDetail;
+use super::ui_tests::{analyzed_app, packets_page, pmt_packet_detail};
 use crate::views::Screen;
 use crate::views::packet_pages::PacketPages;
 use crate::views::packet_pages::show_inspectors_for_test;
@@ -28,15 +27,6 @@ const TAB_SIZE: egui::Vec2 = egui::vec2(1280.0, 800.0);
 const GUTTER: u32 = 20;
 /// Logical size of the inspector close-up, rendered at two pixels per point.
 const INSPECTOR_SIZE: egui::Vec2 = egui::vec2(540.0, 460.0);
-
-/// The decoded PMT packet of program 2 (PID 0x1001) at offset 564, whose PID
-/// has set bits in both bytes it spans.
-fn pmt_packet_detail() -> PacketDetail {
-    serde_json::from_str(include_str!(
-        "../../tests/fixtures/packet_detail_pmt_1001_188.json"
-    ))
-    .expect("packet fixture")
-}
 
 fn render_tab(screen: Screen) -> RgbaImage {
     let mut app = analyzed_app();

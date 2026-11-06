@@ -207,6 +207,9 @@ data is large, so the whole range is never held in memory.
   - The packet that completed a PAT or PMT change is highlighted, and Notes
     says what changed.
 - **Detail pane**:
+  - Keeps the width it was dragged to for every packet. A packet whose fields
+    are wider than the pane scrolls inside it, horizontally as well as
+    vertically, instead of widening the pane over the packet list.
   - "Belongs to": the PES/section, the packet's position in it, first packet,
     PTS/DTS, and First / Previous / Next to move within that unit only
     (switching pages as needed).
