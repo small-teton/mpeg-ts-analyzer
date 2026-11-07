@@ -53,13 +53,13 @@ impl Screen {
 /// text.
 pub fn badge(ui: &mut egui::Ui, text: &str, verdict: Verdict) -> egui::Response {
     let (foreground, background) = verdict.colors();
-    let galley = egui::WidgetText::from(egui::RichText::new(text).strong().small()).into_galley(
+    let galley = egui::WidgetText::from(crate::theme::badge_text(text)).into_galley(
         ui,
         Some(egui::TextWrapMode::Extend),
         f32::INFINITY,
-        egui::TextStyle::Small,
+        egui::TextStyle::Body,
     );
-    let margin = egui::vec2(6.0, 1.0);
+    let margin = crate::theme::BADGE_MARGIN;
     let (rect, response) =
         ui.allocate_exact_size(galley.size() + 2.0 * margin, egui::Sense::hover());
     if ui.is_rect_visible(rect) {

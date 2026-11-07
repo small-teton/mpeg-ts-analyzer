@@ -507,12 +507,8 @@ pub(crate) fn text_width(ui: &egui::Ui, text: egui::RichText) -> f32 {
 
 /// Width of a status badge.
 pub(crate) fn badge_width(ui: &egui::Ui, status: &str) -> f32 {
-    text_width(ui, badge_text(&status_label(status))) + 12.0
-}
-
-/// The text of a badge, as [`badge`] draws it.
-fn badge_text(text: &str) -> egui::RichText {
-    egui::RichText::new(text).strong().small()
+    text_width(ui, crate::theme::badge_text(&status_label(status)))
+        + 2.0 * crate::theme::BADGE_MARGIN.x
 }
 
 /// Column widths of the Transport health table: Check takes what Value,
