@@ -373,7 +373,8 @@ func TestSyncNotAcquired(t *testing.T) {
 		t.Fatal(err)
 	}
 	report, err := decodeJSONReport(t, func() error { return ParseTsFile(path, options.Options{Format: "json"}) })
-	if !errors.Is(err, errSyncNotAcquired) || report.Status != "failed" || report.Reason != "sync_not_acquired" || report.Sync != nil {
+	var acquisitionErr *acquisitionError
+	if !errors.As(err, &acquisitionErr) || report.Status != "failed" || report.Reason != "sync_not_acquired" || report.Sync != nil || report.Input.PacketSizeBytes != 0 {
 		t.Errorf("err = %v, report %s", err, toJSON(t, report))
 	}
 	// Aligned packets without a PAT are a different failure.
@@ -381,7 +382,7 @@ func TestSyncNotAcquired(t *testing.T) {
 		t.Fatal(err)
 	}
 	report, err = decodeJSONReport(t, func() error { return ParseTsFile(path, options.Options{Format: "json"}) })
-	if err == nil || errors.Is(err, errSyncNotAcquired) || report.Reason != "analysis_failed" {
+	if err == nil || report.Reason != "pat_not_observed" {
 		t.Errorf("err = %v, report %s", err, toJSON(t, report))
 	}
 	// Also when the first read has no alignment (detection falls back to 188
@@ -394,7 +395,7 @@ func TestSyncNotAcquired(t *testing.T) {
 		t.Fatal(err)
 	}
 	report, err = decodeJSONReport(t, func() error { return ParseTsFile(path, options.Options{Format: "json"}) })
-	if err == nil || errors.Is(err, errSyncNotAcquired) || report.Reason != "analysis_failed" {
+	if err == nil || report.Reason != "pat_not_observed" || report.Acquisition.Alignment.AlignedPacketCount != 0 {
 		t.Errorf("late M2TS alignment: err = %v, report %s", err, toJSON(t, report))
 	}
 }

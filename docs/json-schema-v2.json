@@ -30,6 +30,10 @@
       "type": "string",
       "description": "Human-readable error detail; not a stable matching interface."
     },
+    "acquisition": {
+      "$ref": "#/$defs/acquisition",
+      "description": "Evidence of a failed initial acquisition: present with status failed and reason sync_not_acquired, insufficient_data_for_sync, pat_not_observed or pat_not_acquired, and absent otherwise."
+    },
     "programs": {
       "type": "array",
       "items": {
@@ -358,6 +362,136 @@
         },
         "error_count": {
           "$ref": "#/$defs/nonNegativeInteger"
+        }
+      }
+    },
+    "acquisition": {
+      "type": "object",
+      "description": "What the scan observed before program analysis stopped: no packet alignment or no usable PAT. The range is [range_start_offset_bytes, range_end_offset_bytes), the selected --offset/--limit range clipped to the input. Fixed size: three layouts and a set of PAT counters.",
+      "required": [
+        "range_start_offset_bytes",
+        "range_end_offset_bytes",
+        "scanned_bytes",
+        "alignment"
+      ],
+      "properties": {
+        "range_start_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "range_end_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Exclusive end of the scanned range."
+        },
+        "scanned_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "alignment": {
+          "type": "object",
+          "required": [
+            "status",
+            "aligned_packet_count",
+            "layouts"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/$defs/status",
+              "description": "Current values: acquired, not_acquired (the range was long enough to show every layout), insufficient_data (the range was too short to show at least one layout)."
+            },
+            "packet_size_bytes": {
+              "type": "integer",
+              "enum": [188, 192, 204],
+              "description": "Detected packet size; present when status is acquired."
+            },
+            "first_aligned_offset_bytes": {
+              "$ref": "#/$defs/nonNegativeInteger",
+              "description": "Offset of the first aligned packet; present when at least one was found."
+            },
+            "aligned_packet_count": {
+              "$ref": "#/$defs/nonNegativeInteger",
+              "description": "Packets of packet_size_bytes that started with the sync byte inside an alignment the detector accepts; 0 unless status is acquired."
+            },
+            "layouts": {
+              "type": "array",
+              "description": "Every supported layout, in the order 188, 192, 204.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "packet_size_bytes",
+                  "required_sync_bytes",
+                  "required_bytes",
+                  "status"
+                ],
+                "properties": {
+                  "packet_size_bytes": {
+                    "type": "integer",
+                    "enum": [188, 192, 204]
+                  },
+                  "required_sync_bytes": {
+                    "$ref": "#/$defs/nonNegativeInteger",
+                    "description": "Consecutive sync bytes, one packet apart, that the detector requires."
+                  },
+                  "required_bytes": {
+                    "$ref": "#/$defs/nonNegativeInteger",
+                    "description": "Shortest range that can hold them."
+                  },
+                  "status": {
+                    "$ref": "#/$defs/status",
+                    "description": "Current values: found, not_found, insufficient_data (scanned_bytes is less than required_bytes)."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "pat": {
+          "type": "object",
+          "description": "PID 0 in the aligned packets; present when alignment.status is acquired. Problem counts follow psi_health.tables[].",
+          "required": [
+            "status",
+            "packet_count",
+            "section_start_count",
+            "complete_table_count",
+            "crc_error_count",
+            "malformed_section_count",
+            "incomplete_count",
+            "wrong_table_id_count",
+            "unusable_packet_count"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/$defs/status",
+              "description": "Current values: not_observed (no packet on PID 0), not_acquired (packets on PID 0 but no usable PAT)."
+            },
+            "packet_count": {
+              "$ref": "#/$defs/nonNegativeInteger"
+            },
+            "section_start_count": {
+              "$ref": "#/$defs/nonNegativeInteger",
+              "description": "Packets on PID 0 with payload_unit_start_indicator set."
+            },
+            "first_packet_offset_bytes": {
+              "$ref": "#/$defs/nonNegativeInteger"
+            },
+            "complete_table_count": {
+              "$ref": "#/$defs/nonNegativeInteger",
+              "description": "Complete PATs assembled from the range that PAT discovery could not start from (for example, one in the last two packets)."
+            },
+            "crc_error_count": {
+              "$ref": "#/$defs/nonNegativeInteger"
+            },
+            "malformed_section_count": {
+              "$ref": "#/$defs/nonNegativeInteger"
+            },
+            "incomplete_count": {
+              "$ref": "#/$defs/nonNegativeInteger"
+            },
+            "wrong_table_id_count": {
+              "$ref": "#/$defs/nonNegativeInteger"
+            },
+            "unusable_packet_count": {
+              "$ref": "#/$defs/nonNegativeInteger"
+            }
+          }
         }
       }
     },
