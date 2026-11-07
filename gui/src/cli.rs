@@ -1,14 +1,16 @@
 //! Running the mpeg-ts-analyzer CLI as a subprocess.
 
+mod process;
+
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{ChildStderr, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
-use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::report::{self, AnalysisReport, Capabilities, ProgressEvent};
+use process::{Finished, Process};
 
 /// Overrides the CLI location, mainly for development against a locally built CLI.
 const CLI_ENV: &str = "MPEG_TS_ANALYZER_CLI";
@@ -252,7 +254,9 @@ pub enum JobUpdate {
 
 /// A range analysis running in a child process.
 pub struct AnalysisJob {
-    child: Arc<Mutex<Child>>,
+    /// Dropping the job (closing the app, opening another file) kills the
+    /// process, since dropping a `Child` does not.
+    process: Process,
     progress: Receiver<ProgressEvent>,
     result: Receiver<Result<Box<AnalysisReport>, String>>,
     latest: Option<ProgressEvent>,
@@ -268,7 +272,8 @@ impl AnalysisJob {
         limit: u64,
         repaint: impl Fn() + Send + Clone + 'static,
     ) -> Result<Self, String> {
-        let mut child = command(&cli.path)
+        let mut command = command(&cli.path);
+        command
             .arg(input)
             .args([
                 "--format",
@@ -283,22 +288,20 @@ impl AnalysisJob {
                 &offset.to_string(),
                 "--limit",
                 &limit.to_string(),
-            ])
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|err| format!("Cannot start {}: {err}", cli.path.display()))?;
-        let stdout = child.stdout.take().expect("stdout is piped");
-        let stderr = child.stderr.take().expect("stderr is piped");
-        let child = Arc::new(Mutex::new(child));
+            ]);
+        Self::spawn(command, repaint)
+            .map_err(|err| format!("Cannot start {}: {err}", cli.path.display()))
+    }
 
+    fn spawn(
+        command: Command,
+        repaint: impl Fn() + Send + Clone + 'static,
+    ) -> std::io::Result<Self> {
         // stderr carries progress events and, on failure, diagnostics.
         let (progress_tx, progress) = mpsc::channel();
-        let diagnostics = Arc::new(Mutex::new(String::new()));
-        let stderr_lines = Arc::clone(&diagnostics);
         let stderr_repaint = repaint.clone();
-        let stderr_thread = thread::spawn(move || {
+        let read_stderr = move |stderr: ChildStderr| {
+            let mut diagnostics = String::new();
             for line in BufReader::new(stderr).lines().map_while(Result::ok) {
                 match serde_json::from_str::<ProgressEvent>(&line) {
                     Ok(event) if event.kind == "progress" => {
@@ -306,42 +309,43 @@ impl AnalysisJob {
                         stderr_repaint();
                     }
                     _ => {
-                        let mut text = stderr_lines.lock().expect("diagnostics lock");
-                        text.push_str(&line);
-                        text.push('\n');
+                        diagnostics.push_str(&line);
+                        diagnostics.push('\n');
                     }
                 }
             }
-        });
+            diagnostics
+        };
 
-        // stdout carries the JSON document, written once the analysis ends. The
-        // child is locked only after stdout closes, so cancel can always kill it.
+        // stdout carries the JSON document, written once the analysis ends.
         let (result_tx, result) = mpsc::channel();
-        let waiter_child = Arc::clone(&child);
-        thread::spawn(move || {
-            let mut json = Vec::new();
-            let read = BufReader::new(stdout).read_to_end(&mut json);
-            let status = waiter_child.lock().expect("child lock").wait();
-            let _ = stderr_thread.join();
-            let diagnostics = diagnostics.lock().expect("diagnostics lock").clone();
-            let outcome = match read {
-                Ok(_) if json.iter().any(|b| !b.is_ascii_whitespace()) => {
-                    report::parse_analysis(&json, ANALYSIS_SCHEMA_MAJOR).map(Box::new)
-                }
-                _ => Err(match status {
-                    Ok(status) if !diagnostics.trim().is_empty() => {
-                        format!("The CLI failed ({status}): {}", diagnostics.trim())
+        let process = Process::spawn(
+            command,
+            Some(Box::new(read_stderr)),
+            move |Finished {
+                      status,
+                      stdout,
+                      diagnostics,
+                  }| {
+                let outcome = match stdout {
+                    Ok(json) if json.iter().any(|b| !b.is_ascii_whitespace()) => {
+                        report::parse_analysis(&json, ANALYSIS_SCHEMA_MAJOR).map(Box::new)
                     }
-                    Ok(status) => format!("The CLI ended without a result ({status})."),
-                    Err(err) => format!("The CLI could not be waited for: {err}"),
-                }),
-            };
-            let _ = result_tx.send(outcome);
-            repaint();
-        });
+                    _ => Err(match status {
+                        Ok(status) if !diagnostics.trim().is_empty() => {
+                            format!("The CLI failed ({status}): {}", diagnostics.trim())
+                        }
+                        Ok(status) => format!("The CLI ended without a result ({status})."),
+                        Err(err) => format!("The CLI could not be waited for: {err}"),
+                    }),
+                };
+                let _ = result_tx.send(outcome);
+                repaint();
+            },
+        )?;
 
         Ok(Self {
-            child,
+            process,
             progress,
             result,
             latest: None,
@@ -349,15 +353,15 @@ impl AnalysisJob {
     }
 
     /// Kills the process; its result, if any, is ignored by dropping the job.
+    /// Returns at once: the process is killed and reaped by its supervisor.
     pub fn cancel(&self) {
-        if let Ok(mut child) = self.child.lock() {
-            let _ = child.kill();
-        }
+        self.process.cancel();
     }
 
-    #[cfg(all(test, unix))]
-    pub(crate) fn child(&self) -> Arc<Mutex<Child>> {
-        Arc::clone(&self.child)
+    /// Whether the process has exited and been reaped.
+    #[cfg(test)]
+    pub(crate) fn child(&self) -> process::ExitProbe {
+        self.process.exited()
     }
 
     /// Collects what happened since the last call.
@@ -378,7 +382,7 @@ impl AnalysisJob {
 /// A short CLI run that writes one JSON document, such as a page of packets.
 /// Dropping the request kills the process.
 pub struct Request<T> {
-    child: Arc<Mutex<Child>>,
+    process: Process,
     result: Receiver<Result<T, String>>,
 }
 
@@ -390,30 +394,28 @@ impl<T: Send + 'static> Request<T> {
         parse: fn(&[u8]) -> Result<T, String>,
         repaint: impl Fn() + Send + 'static,
     ) -> Result<Self, String> {
-        let mut child = command(&cli.path)
-            .args(&args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|err| format!("Cannot start {}: {err}", cli.path.display()))?;
-        let stdout = child.stdout.take().expect("stdout is piped");
-        let child = Arc::new(Mutex::new(child));
-        let waiter_child = Arc::clone(&child);
+        let mut command = command(&cli.path);
+        command.args(&args);
+        Self::spawn(command, parse, repaint)
+            .map_err(|err| format!("Cannot start {}: {err}", cli.path.display()))
+    }
+
+    pub(crate) fn spawn(
+        command: Command,
+        parse: fn(&[u8]) -> Result<T, String>,
+        repaint: impl Fn() + Send + 'static,
+    ) -> std::io::Result<Self> {
         let (result_tx, result) = mpsc::channel();
-        thread::spawn(move || {
-            let mut json = Vec::new();
-            let read = BufReader::new(stdout).read_to_end(&mut json);
-            let _ = waiter_child.lock().expect("child lock").wait();
-            let outcome = match read {
-                Ok(_) if json.iter().any(|b| !b.is_ascii_whitespace()) => parse(&json),
+        let process = Process::spawn(command, None, move |finished| {
+            let outcome = match finished.stdout {
+                Ok(json) if json.iter().any(|b| !b.is_ascii_whitespace()) => parse(&json),
                 Ok(_) => Err("The CLI ended without a result.".to_owned()),
                 Err(err) => Err(format!("Cannot read the CLI output: {err}")),
             };
             let _ = result_tx.send(outcome);
             repaint();
-        });
-        Ok(Self { child, result })
+        })?;
+        Ok(Self { process, result })
     }
 
     /// The result once the CLI has finished.
@@ -426,21 +428,18 @@ impl<T: Send + 'static> Request<T> {
             }
         }
     }
-}
 
-impl<T> Drop for Request<T> {
-    fn drop(&mut self) {
-        if let Ok(mut child) = self.child.lock() {
-            let _ = child.kill();
-        }
+    /// Whether the process has exited and been reaped.
+    #[cfg(test)]
+    pub(crate) fn child(&self) -> process::ExitProbe {
+        self.process.exited()
     }
 }
 
-/// A job owns its process: dropping it (closing the app, opening another
-/// file) stops the analysis, since dropping a `Child` does not.
-impl Drop for AnalysisJob {
+impl<T> Drop for Request<T> {
+    /// Returns at once: the process is killed and reaped by its supervisor.
     fn drop(&mut self) {
-        self.cancel();
+        self.process.cancel();
     }
 }
 
@@ -458,18 +457,10 @@ pub(crate) fn fake_cli(dir: &Path, script: &str) -> Cli {
     }
 }
 
-/// Waits until a killed or finished child has been reaped.
-#[cfg(all(test, unix))]
-pub(crate) fn wait_until_exited(child: &Mutex<Child>) -> bool {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    while std::time::Instant::now() < deadline {
-        if matches!(child.lock().expect("child lock").try_wait(), Ok(Some(_))) {
-            return true;
-        }
-        thread::sleep(std::time::Duration::from_millis(20));
-    }
-    false
-}
+#[cfg(test)]
+pub(crate) use process::{
+    closes_output_and_hangs, returns_promptly, wait_for_closed_output, wait_until_exited,
+};
 
 /// Runs the CLI named by MPEG_TS_ANALYZER_CLI (e.g. via `make gui-test`) on a
 /// file of `sample_data` and returns its stdout; None without that CLI.
@@ -545,6 +536,60 @@ mod tests {
             wait_until_exited(&child),
             "the CLI kept running after the job was dropped"
         );
+    }
+
+    /// A CLI that closes its output and keeps running must not hold up
+    /// Cancel: the UI thread never waits for the process.
+    #[test]
+    fn cancels_an_analysis_whose_cli_closed_its_output_and_hangs() {
+        let marker = tempfile_dir("job-closed").join("closed");
+        let job = AnalysisJob::spawn(closes_output_and_hangs(&marker), || {}).expect("start");
+        let child = job.child();
+        wait_for_closed_output(&marker);
+        assert!(!child.is_set(), "the fake CLI ended by itself");
+        let job = std::sync::Arc::new(std::sync::Mutex::new(Some(job)));
+        let cancelled = std::sync::Arc::clone(&job);
+        assert!(
+            returns_promptly(move || cancelled.lock().unwrap().as_ref().unwrap().cancel()),
+            "Cancel waited for the process"
+        );
+        assert!(wait_until_exited(&child), "Cancel did not stop the CLI");
+        assert!(
+            returns_promptly(move || drop(job.lock().unwrap().take())),
+            "dropping the job waited for the process"
+        );
+    }
+
+    #[test]
+    fn dropping_a_job_whose_cli_closed_its_output_stops_it() {
+        let marker = tempfile_dir("job-drop-closed").join("closed");
+        let job = AnalysisJob::spawn(closes_output_and_hangs(&marker), || {}).expect("start");
+        let child = job.child();
+        wait_for_closed_output(&marker);
+        assert!(
+            returns_promptly(move || drop(job)),
+            "dropping the job waited for the process"
+        );
+        assert!(wait_until_exited(&child), "the CLI kept running");
+    }
+
+    #[test]
+    fn dropping_a_request_whose_cli_closed_its_output_stops_it() {
+        let marker = tempfile_dir("request-closed").join("closed");
+        let request = Request::spawn(
+            closes_output_and_hangs(&marker),
+            |_| Ok::<(), String>(()),
+            || {},
+        )
+        .expect("start");
+        let child = request.child();
+        wait_for_closed_output(&marker);
+        assert!(request.poll().is_none(), "the hanging CLI gave a result");
+        assert!(
+            returns_promptly(move || drop(request)),
+            "dropping the request waited for the process"
+        );
+        assert!(wait_until_exited(&child), "the CLI kept running");
     }
 
     #[cfg(unix)]

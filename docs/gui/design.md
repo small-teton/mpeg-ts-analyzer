@@ -22,6 +22,12 @@ Work is tracked in #101 (milestone GUI v0.1).
 
 - The GUI runs the CLI as a child process and reads JSON from stdout. There is
   no FFI (cgo / c-shared).
+- Each CLI run is owned by one supervisor thread, the only owner of the child
+  process: it polls the process, reaps it, and kills it on request. stdout and
+  stderr are read on threads of their own. Cancelling or dropping a run (Cancel,
+  opening another file, a packet page leaving the cache) only sends the
+  supervisor a message, so the UI thread never waits for the process, even when
+  a CLI has closed its output and keeps running.
 - Analysis logic and verdicts live only in the CLI, so the GUI and the CLI
   cannot disagree. CLI changes for the GUI add output surfaces; they do not
   change analysis results.
