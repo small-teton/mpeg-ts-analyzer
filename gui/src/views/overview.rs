@@ -211,7 +211,7 @@ fn summary(
             .show(ui, |ui| {
                 for item in &unavailable {
                     ui.horizontal_wrapped(|ui| {
-                        status_badge(ui, &item.status);
+                        status_badge(ui, &item.status, Some(item.check));
                         help_link(ui, item.check.title(), item.check, state);
                         ui.add(egui::Label::new(&item.reason).wrap());
                     });
@@ -609,7 +609,7 @@ fn health_table(ui: &mut egui::Ui, rows: &[Row], state: &mut OverviewState) {
                         ui.label(&row.value);
                     }
                     Cell::Status => {
-                        status_badge(ui, &row.status);
+                        status_badge(ui, &row.status, Some(row.check));
                     }
                     Cell::Help => {
                         let button = info_button(ui, row.check);
@@ -814,24 +814,28 @@ pub(crate) fn status_label(status: &str) -> String {
     status.to_uppercase().replace('_', " ")
 }
 
-/// The CLI's status as a badge, verbatim. A status this GUI does not know
-/// says so in its tooltip.
-pub(crate) fn status_badge(ui: &mut egui::Ui, status: &str) -> egui::Response {
+/// The CLI's status of `check` as a badge, verbatim. A status this GUI does
+/// not describe for that check says so in its tooltip. Analyzer warnings
+/// (`check` is `None`) carry the GUI's own `warning`.
+pub(crate) fn status_badge(
+    ui: &mut egui::Ui,
+    status: &str,
+    check: Option<Check>,
+) -> egui::Response {
     let response = badge(ui, &status_label(status), status_verdict(status));
-    if is_known_status(status) {
+    if check.is_none_or(|check| is_known_status(check, status)) {
         response
     } else {
         response.on_hover_text(format!(
-            "Status \"{status}\" as the CLI reported it; this GUI does not describe it."
+            "Status \"{status}\" as the CLI reported it; this GUI does not describe it for this check."
         ))
     }
 }
 
-/// Whether any check of this GUI describes `status`.
-pub(crate) fn is_known_status(status: &str) -> bool {
-    Check::ALL
-        .iter()
-        .any(|check| check.verdict_meaning(status).is_some())
+/// Whether this GUI describes `status` for `check`. A status another check
+/// knows (such as `warning`) is still unknown for a check without it.
+pub(crate) fn is_known_status(check: Check, status: &str) -> bool {
+    check.verdict_meaning(status).is_some()
 }
 
 /// Where a finding applies.
@@ -1026,7 +1030,7 @@ pub(crate) fn findings(
 
 fn finding_row(ui: &mut egui::Ui, finding: &Finding, state: &mut OverviewState) {
     ui.horizontal_wrapped(|ui| {
-        status_badge(ui, &finding.status);
+        status_badge(ui, &finding.status, finding.check);
         match finding.check {
             Some(check) => help_link(ui, &finding.label, check, state),
             None => {
@@ -1149,8 +1153,12 @@ mod tests {
                 reason: "need a parsed PTS/DTS bracketed by PCR observations".to_owned()
             }]
         );
-        assert!(!is_known_status("indeterminate"));
-        assert!(is_known_status("not_assessable"));
+        assert!(!is_known_status(Check::PcrJitter, "indeterminate"));
+        assert!(is_known_status(Check::PcrJitter, "not_assessable"));
+        // Known for PCR jitter, but not a status Max PCR interval describes.
+        assert!(is_known_status(Check::PcrJitter, "warning"));
+        assert!(!is_known_status(Check::MaxPcrInterval, "warning"));
+        assert!(!is_known_status(Check::MaxPcrInterval, "not_assessable"));
     }
 
     /// A PCR jitter estimate the CLI did not grade is unavailable analysis

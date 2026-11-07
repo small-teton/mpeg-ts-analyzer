@@ -913,6 +913,27 @@ fn unknown_status_stays_visible() {
     }
 }
 
+/// A status that another check describes is still unknown for a check
+/// without it: `warning` exists for PCR jitter, not for Max PCR interval.
+#[test]
+fn status_knowledge_is_per_check() {
+    let report = edited_report(|d| {
+        d["programs"][0]["compliance"]["max_pcr_interval"]["status"] = "warning".into();
+    });
+    let mut harness = harness_sized(app_with_report(report), WIDE);
+    open_detail(&mut harness, Check::MaxPcrInterval, false);
+    harness.get_by_label("Status: WARNING");
+    harness.get_by_label_contains(
+        "The CLI reported the status \"warning\", which this GUI does not describe.",
+    );
+    let verdicts = harness.get_by_role_and_label(Role::Table, "Verdicts");
+    assert!(
+        verdicts
+            .query_all_by_role(Role::Row)
+            .all(|row| row.accesskit_node().is_selected() != Some(true))
+    );
+}
+
 /// PCR jitter that the CLI did not grade: its status in the table, the
 /// delivery evidence and reason on its page, and no finding.
 #[test]

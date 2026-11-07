@@ -63,7 +63,7 @@ fn page(ui: &mut egui::Ui, context: &Context<'_>, check: Check) -> Option<Overvi
         let title = ui.label(egui::RichText::new(help.title).heading().size(26.0));
         title.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Heading, true, help.title));
         if let Some(row) = &row {
-            let status = status_badge(ui, &row.status);
+            let status = status_badge(ui, &row.status, Some(check));
             let name = format!("Status: {}", status_label(&row.status));
             status.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &name));
         }
@@ -75,7 +75,7 @@ fn page(ui: &mut egui::Ui, context: &Context<'_>, check: Check) -> Option<Overvi
     match &row {
         Some(row) => {
             facts(ui, &row.facts);
-            if !is_known_status(&row.status) {
+            if !is_known_status(check, &row.status) {
                 ui.add_space(4.0);
                 let note = if is_finding(&row.status) {
                     "It is shown as reported and listed as a finding."
@@ -186,7 +186,7 @@ fn finding_row(
 ) -> Option<OverviewAction> {
     let mut action = None;
     ui.horizontal_wrapped(|ui| {
-        status_badge(ui, &finding.status);
+        status_badge(ui, &finding.status, finding.check);
         ui.weak(finding.scope.text());
         if let Some(offset) = finding.offset {
             ui.monospace(format!("0x{offset:08X}"));
@@ -268,7 +268,8 @@ fn verdict_table(ui: &mut egui::Ui, statuses: &[(&str, &str)], current: Option<&
                     Some((&label, selected)),
                     |ui, column| {
                         if column == 0 {
-                            status_badge(ui, status);
+                            // The check's own statuses: always described.
+                            status_badge(ui, status, None);
                         } else {
                             ui.add(egui::Label::new(*meaning).wrap());
                         }
