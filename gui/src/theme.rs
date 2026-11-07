@@ -42,22 +42,32 @@ pub const VIDEO_COLOR: Color32 = Color32::from_rgb(0x4e, 0xa8, 0xff);
 pub const AUDIO_COLOR: Color32 = Color32::from_rgb(0x7f, 0xd6, 0x8a);
 pub const PSI_COLOR: Color32 = Color32::from_rgb(0xc7, 0x92, 0xea);
 pub const LIMIT_COLOR: Color32 = Color32::from_rgb(0xff, 0x7a, 0x7a);
-/// Fill of a table's column-header row: a little apart from the panel in the
-/// current light or dark theme (never a fixed color, which would be a dark
-/// bar on a light panel or the reverse).
-pub fn table_header_fill(visuals: &egui::Visuals) -> Color32 {
-    visuals.widgets.noninteractive.weak_bg_fill
+// Tables follow Material Design 3's data tables: the header row sits on the
+// same surface as the rows (no fill) with medium-emphasis semibold text and a
+// stronger rule below it; rows are separated by thin dividers; a category is a
+// subheader in the accent color. Every color comes from the current light or
+// dark visuals, never a fixed value.
+
+/// Text of a table's column headers: semibold, in the theme's ordinary
+/// (medium-emphasis) text color.
+pub fn table_header_text(text: &str, visuals: &egui::Visuals) -> egui::RichText {
+    egui::RichText::new(text)
+        .family(FontFamily::Name(HEADING_FAMILY.into()))
+        .color(visuals.text_color())
 }
 
-/// Fill of a category row inside a table, between the panel and the header.
-pub fn table_category_fill(visuals: &egui::Visuals) -> Color32 {
-    visuals.faint_bg_color
+/// The rule under a table's header row, stronger than the row dividers.
+pub fn table_header_rule(visuals: &egui::Visuals) -> egui::Stroke {
+    egui::Stroke::new(1.5, visuals.text_color().gamma_multiply(0.45))
 }
 
-/// Text of table header and category rows: the theme's ordinary text color,
-/// quieter than strong text.
-pub fn table_header_text(visuals: &egui::Visuals) -> Color32 {
-    visuals.text_color()
+/// Text of a category subheader inside a table: small semibold capitals in
+/// the accent color.
+pub fn table_category_text(text: &str, visuals: &egui::Visuals) -> egui::RichText {
+    egui::RichText::new(text.to_uppercase())
+        .small()
+        .family(FontFamily::Name(HEADING_FAMILY.into()))
+        .color(visuals.hyperlink_color)
 }
 
 /// Size of the text in a status badge: close to body text, so a verdict

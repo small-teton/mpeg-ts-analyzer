@@ -245,25 +245,26 @@ fn verdict_table(ui: &mut egui::Ui, statuses: &[(&str, &str)], current: Option<&
         ui.set_width(inner);
         accessible_scope(ui, builder, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
-            let header_fill = crate::theme::table_header_fill(ui.visuals());
             verdict_row(
                 ui,
                 [status_width, condition_width],
                 None,
                 |ui, column| {
-                    ui.label(
-                        egui::RichText::new(["Status", "Condition"][column])
-                            .strong()
-                            .color(crate::theme::table_header_text(ui.visuals())),
-                    );
+                    ui.label(crate::theme::table_header_text(
+                        ["Status", "Condition"][column],
+                        ui.visuals(),
+                    ));
                 },
-                Some(header_fill),
+                None,
                 None,
             );
-            for (status, meaning) in statuses {
-                let rect = ui.allocate_exact_size(egui::vec2(inner, 1.0), egui::Sense::hover());
-                ui.painter()
-                    .hline(rect.0.x_range(), rect.0.center().y, stroke);
+            overview::rule(ui, inner, crate::theme::table_header_rule(ui.visuals()));
+            for (index, (status, meaning)) in statuses.iter().enumerate() {
+                if index > 0 {
+                    let rect = ui.allocate_exact_size(egui::vec2(inner, 1.0), egui::Sense::hover());
+                    ui.painter()
+                        .hline(rect.0.x_range(), rect.0.center().y, stroke);
+                }
                 let selected = current == Some(*status);
                 let label = format!("{}: {meaning}", status_label(status));
                 verdict_row(

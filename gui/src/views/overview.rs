@@ -575,24 +575,23 @@ fn health_table(ui: &mut egui::Ui, rows: &[Row], state: &mut OverviewState) {
         ui.set_width(inner);
         accessible_scope(ui, builder, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
-            let header_fill = crate::theme::table_header_fill(ui.visuals());
-            table_row(ui, &columns, Some(header_fill), None, |ui, cell| {
-                ui.label(
-                    egui::RichText::new(match cell {
-                        Cell::Check => "Check",
-                        Cell::Value => "Value",
-                        Cell::Status => "Status",
-                        Cell::Help => "Help",
-                    })
-                    .strong()
-                    .color(crate::theme::table_header_text(ui.visuals())),
-                );
+            table_row(ui, &columns, None, None, |ui, cell| {
+                let title = match cell {
+                    Cell::Check => "Check",
+                    Cell::Value => "Value",
+                    Cell::Status => "Status",
+                    Cell::Help => "Help",
+                };
+                ui.label(crate::theme::table_header_text(title, ui.visuals()));
             });
+            rule(ui, inner, crate::theme::table_header_rule(ui.visuals()));
             let mut category = None;
             for row in rows {
                 if category != Some(row.check.category()) {
+                    if category.is_some() {
+                        separator(ui, inner);
+                    }
                     category = Some(row.check.category());
-                    separator(ui, inner);
                     category_row(ui, row.check.category().title(), inner);
                 }
                 separator(ui, inner);
@@ -771,32 +770,33 @@ pub(crate) fn accessible_scope<R>(
 /// Room a growing cell may take; any real cell is far shorter.
 const CELL_MAX_HEIGHT: f32 = 10_000.0;
 
-/// A category row: the title in capitals across the table, announced as a
-/// heading with its title as written.
+/// A category subheader: the title in accent capitals across the table, with
+/// room above it, announced as a heading with its title as written.
 fn category_row(ui: &mut egui::Ui, title: &str, width: f32) {
     egui::Frame::new()
-        .fill(crate::theme::table_category_fill(ui.visuals()))
-        .inner_margin(egui::Margin::symmetric(CELL_PADDING as i8, 4))
+        .inner_margin(egui::Margin {
+            left: CELL_PADDING as i8,
+            right: CELL_PADDING as i8,
+            top: 10,
+            bottom: 4,
+        })
         .show(ui, |ui| {
             ui.set_width(width - 2.0 * CELL_PADDING);
-            let response = ui.label(
-                egui::RichText::new(title.to_uppercase())
-                    .small()
-                    .strong()
-                    .color(crate::theme::table_header_text(ui.visuals())),
-            );
+            let response = ui.label(crate::theme::table_category_text(title, ui.visuals()));
             response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Heading, true, title));
         });
 }
 
 /// A line between table rows.
 fn separator(ui: &mut egui::Ui, width: f32) {
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 1.0), egui::Sense::hover());
-    ui.painter().hline(
-        rect.x_range(),
-        rect.center().y,
-        ui.visuals().widgets.noninteractive.bg_stroke,
-    );
+    rule(ui, width, ui.visuals().widgets.noninteractive.bg_stroke);
+}
+
+/// A horizontal line across the table.
+pub(crate) fn rule(ui: &mut egui::Ui, width: f32, stroke: egui::Stroke) {
+    let (rect, _) =
+        ui.allocate_exact_size(egui::vec2(width, stroke.width.ceil()), egui::Sense::hover());
+    ui.painter().hline(rect.x_range(), rect.center().y, stroke);
 }
 
 /// The focusable button that opens the detail page of a check.
