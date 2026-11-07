@@ -16,7 +16,8 @@ use crate::range_bar::AnalysisRange;
 use crate::report::{AnalysisReport, PacketDetail, PacketsPage};
 use crate::settings::Settings;
 use crate::views::Screen;
-use crate::views::metric_help::Metric;
+use crate::views::check_help::Check;
+use crate::views::overview::OverviewPage;
 use crate::views::packet_pages::PacketPages;
 
 /// A CLI that passed the capabilities check. It is never run.
@@ -310,7 +311,7 @@ fn packet_detail_pane_keeps_its_width_for_every_packet() {
 }
 
 /// The CLI's analysis of `sample_data/sample_188byte_all_findings.ts`, in
-/// which every compliance card reports a problem.
+/// which every transport-health check reports a problem.
 fn all_findings_report() -> AnalysisReport {
     serde_json::from_str(include_str!(
         "../../tests/fixtures/analysis_all_findings_188.json"
@@ -318,14 +319,55 @@ fn all_findings_report() -> AnalysisReport {
     .expect("all-findings fixture")
 }
 
-fn info_button<'a>(harness: &'a Harness<'_, App>, metric: Metric) -> Node<'a> {
-    let name = metric.about();
+/// The all-findings report with `edit` applied to its JSON.
+fn edited_report(edit: impl FnOnce(&mut serde_json::Value)) -> AnalysisReport {
+    let mut document: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/analysis_all_findings_188.json"
+    ))
+    .unwrap();
+    edit(&mut document);
+    serde_json::from_value(document).unwrap()
+}
+
+/// The window sizes the Overview tests use: wide, and narrow enough that
+/// check names wrap.
+const WIDE: egui::Vec2 = egui::vec2(1280.0, 800.0);
+const NARROW: egui::Vec2 = egui::vec2(480.0, 900.0);
+
+fn info_button<'a>(harness: &'a Harness<'_, App>, check: Check) -> Node<'a> {
+    let name = check.about();
     harness.get_by(move |node| node.role() == Role::Button && node.label() == Some(name.clone()))
 }
 
-/// The title label of a compliance card.
-fn card_title<'a>(harness: &'a Harness<'_, App>, metric: Metric) -> Node<'a> {
-    harness.get_by_role_and_label(Role::Label, metric.title())
+/// Opens the detail page of `check` from its information button, with the
+/// keyboard when `keyboard` is set.
+fn open_detail(harness: &mut Harness<'_, App>, check: Check, keyboard: bool) {
+    info_button(harness, check).scroll_to_me();
+    harness.run();
+    if keyboard {
+        info_button(harness, check).focus();
+        harness.run();
+        harness.key_press(egui::Key::Enter);
+    } else {
+        info_button(harness, check).click();
+    }
+    harness.run();
+    assert_eq!(
+        harness.state().overview.page(),
+        OverviewPage::CheckDetail(check)
+    );
+}
+
+fn back_button<'a>(harness: &'a Harness<'_, App>) -> Node<'a> {
+    harness.get_by_role_and_label(Role::Button, "Back to Overview")
+}
+
+/// The row of a check in the Transport health table.
+fn table_row<'a>(harness: &'a Harness<'_, App>, check: Check) -> Node<'a> {
+    let prefix = format!("{}: ", check.title());
+    harness.get_by(move |node| {
+        node.role() == Role::Row && node.label().is_some_and(|l| l.starts_with(&prefix))
+    })
 }
 
 fn bounds(node: &Node<'_>) -> egui::Rect {
@@ -336,179 +378,489 @@ fn bounds(node: &Node<'_>) -> egui::Rect {
     )
 }
 
+/// The cell widths of a table row, left to right.
+fn cell_widths(row: &Node<'_>) -> Vec<f32> {
+    row.children()
+        .filter(|cell| {
+            matches!(
+                cell.accesskit_node().role(),
+                Role::Cell | Role::ColumnHeader
+            )
+        })
+        .map(|cell| bounds(&cell).width())
+        .collect()
+}
+
+/// Whether `node` is inside a table, row or cell.
+fn in_table(node: &Node<'_>) -> bool {
+    std::iter::successors(node.parent(), |n| n.parent()).any(|n| {
+        matches!(
+            n.accesskit_node().role(),
+            Role::Table | Role::Row | Role::Cell | Role::Grid | Role::ColumnHeader
+        )
+    })
+}
+
+/// The content area right of the navigation rail.
+fn content_area(size: egui::Vec2) -> egui::Rect {
+    egui::Rect::from_min_size(egui::pos2(96.0, 0.0), size - egui::vec2(96.0, 0.0))
+}
+
+/// Every check once, in the documented order under its category, at every
+/// width; no scope column, badge or accordion.
 #[test]
-fn every_card_has_an_information_button_with_an_explanation() {
-    let mut harness = harness(app_with_report(all_findings_report()));
-    for metric in Metric::ALL {
-        info_button(&harness, metric).click();
-        harness.run();
-        assert_eq!(harness.state().overview.help, Some(metric));
-        harness.get_by_role_and_label(Role::Window, metric.title());
-        harness.get_by_label(metric.help().measures);
-        harness.get_by_label(metric.help().limitations);
-        harness.key_press(egui::Key::Escape);
-        harness.run();
-        assert_eq!(harness.state().overview.help, None);
+fn transport_health_table_lists_every_check_once_in_order() {
+    for size in [WIDE, NARROW] {
+        let mut harness = harness_sized(app_with_report(all_findings_report()), size);
+        harness.get_by_role_and_label(Role::Heading, "Transport health");
+        let table = harness.get_by_role_and_label(Role::Table, "Transport health");
+        let headers: Vec<String> = table
+            .query_all_by_role(Role::ColumnHeader)
+            .map(|cell| {
+                cell.query_by_role(Role::Label)
+                    .unwrap()
+                    .accesskit_node()
+                    .value()
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(headers, ["Check", "Value", "Status", "Help"], "{size:?}");
+        assert!(harness.query_by_label("Scope").is_none());
+
+        let mut tops = Vec::new();
+        for check in Check::ALL {
+            assert_eq!(
+                harness
+                    .query_all_by(|n| n.role() == Role::Row
+                        && n.label()
+                            .is_some_and(|l| l.starts_with(&format!("{}: ", check.title()))))
+                    .count(),
+                1,
+                "{size:?} {check:?}"
+            );
+            assert_eq!(
+                harness
+                    .query_all_by_role_and_label(Role::Button, &check.about())
+                    .count(),
+                1
+            );
+            tops.push((
+                check.category().title(),
+                bounds(&table_row(&harness, check)).top(),
+            ));
+        }
+        // Categories are headings above their rows, in table order.
+        let mut previous = f32::MIN;
+        for (category, top) in &tops {
+            let heading = bounds(&harness.get_by_role_and_label(Role::Heading, category));
+            assert!(heading.top() < *top, "{size:?} {category} below its row");
+            assert!(*top > previous, "{size:?}: rows out of order");
+            previous = *top;
+        }
+        let categories: Vec<f32> = ["Timing", "PES / Timestamps", "Integrity"]
+            .iter()
+            .map(|c| bounds(&harness.get_by_role_and_label(Role::Heading, c)).top())
+            .collect();
+        assert!(categories.is_sorted(), "{size:?}");
+
+        // Every row is reachable and inside the window; the table has no
+        // collapsing headers.
+        let area = content_area(size);
+        for check in Check::ALL {
+            info_button(&harness, check).scroll_to_me();
+            harness.run();
+            let row = bounds(&table_row(&harness, check));
+            assert!(area.contains_rect(row), "{size:?} {check:?} row {row:?}");
+            assert!(
+                area.contains_rect(bounds(&info_button(&harness, check))),
+                "{size:?} {check:?} button"
+            );
+        }
+        assert!(
+            harness
+                .get_by_role_and_label(Role::Table, "Transport health")
+                .query_all_by_role(Role::Button)
+                .all(|b| b
+                    .accesskit_node()
+                    .label()
+                    .is_some_and(|l| l.starts_with("About ")))
+        );
     }
 }
 
+/// Value, Status and Help take their content's width, the same at every
+/// window width, and Check the rest; check names wrap in a narrow window.
 #[test]
-fn help_opens_and_closes_without_changing_the_analysis() {
-    let mut app = app_with_report(all_findings_report());
-    app.program = 0;
-    let mut harness = harness(app);
-    let generation = harness.state().analysis_generation;
-    let unchanged = |harness: &Harness<'_, App>| {
+fn table_columns_are_compact_and_check_names_wrap() {
+    let widths = |size: egui::Vec2| {
+        let harness = harness_sized(app_with_report(all_findings_report()), size);
+        let table = harness.get_by_role_and_label(Role::Table, "Transport health");
+        let rows: Vec<Vec<f32>> = table
+            .query_all_by_role(Role::Row)
+            .map(|row| cell_widths(&row))
+            .collect();
+        assert_eq!(rows.len(), 1 + Check::ALL.len());
+        for row in &rows {
+            assert_eq!(row.len(), 4, "{size:?}");
+            // Columns line up.
+            for (cell, first) in row.iter().zip(&rows[0]) {
+                assert!((cell - first).abs() < 0.5, "{size:?} {row:?}");
+            }
+        }
+        let title_heights: Vec<f32> = Check::ALL
+            .iter()
+            .map(|c| bounds(&harness.get_by_role_and_label(Role::Label, c.title())).height())
+            .collect();
+        let badge = bounds(&harness.get_all_by_label("NG").next().unwrap());
+        (rows[0].clone(), title_heights, badge)
+    };
+    let (wide, wide_titles, wide_badge) = widths(WIDE);
+    let (narrow, narrow_titles, narrow_badge) = widths(NARROW);
+    for compact in 1..4 {
+        assert!(wide[compact] < wide[0], "{wide:?}");
+        assert!(narrow[compact] < narrow[0], "{narrow:?}");
+        // Not stretched: the same width at both window sizes.
+        assert!((wide[compact] - narrow[compact]).abs() < 0.5);
+    }
+    assert!(wide[0] > 2.0 * (wide[1] + wide[2] + wide[3]), "{wide:?}");
+    assert!(narrow[0] < wide[0]);
+    // A badge is as large as its text.
+    assert!(wide_badge.width() < 40.0 && wide_badge.height() < 24.0);
+    assert_eq!(wide_badge.size(), narrow_badge.size());
+    // One line each when wide; some check name wraps when narrow.
+    let line = wide_titles[0];
+    assert!(wide_titles.iter().all(|h| (h - line).abs() < 0.5));
+    assert!(
+        narrow_titles.iter().any(|h| *h > 1.5 * line),
+        "{narrow_titles:?}"
+    );
+}
+
+/// The information button opens a page inside Overview, not a window; Back
+/// returns to the summary with the focus on the same button, and nothing is
+/// analyzed or derived again.
+#[test]
+fn detail_page_opens_and_closes_with_the_keyboard() {
+    for size in [WIDE, NARROW] {
+        let mut harness = harness_sized(app_with_report(all_findings_report()), size);
+        let report = harness.state().analysis.as_deref().map(std::ptr::from_ref);
+        let plots = harness.state().plots.as_ref().map(|p| p.timelines.as_ptr());
+        let generation = harness.state().analysis_generation;
+
+        open_detail(&mut harness, Check::PcrJitter, true);
+        assert!(harness.query_by_role(Role::Window).is_none());
+        assert!(is_selected(&tab(&harness, Screen::Overview)));
+        assert!(back_button(&harness).is_focused());
+        harness.get_by_role_and_label(Role::Heading, "PCR jitter estimate");
+        assert!(
+            harness
+                .query_by_role_and_label(Role::Table, "Transport health")
+                .is_none()
+        );
+
+        // Tab moves on to the next control, Shift+Tab back to Back.
+        harness.key_press(egui::Key::Tab);
+        harness.run();
+        assert!(!back_button(&harness).is_focused());
+        harness.key_press_modifiers(egui::Modifiers::SHIFT, egui::Key::Tab);
+        harness.run();
+        assert!(back_button(&harness).is_focused());
+
+        harness.key_press(egui::Key::Enter);
+        harness.run();
+        assert_eq!(harness.state().overview.page(), OverviewPage::Summary);
+        assert!(info_button(&harness, Check::PcrJitter).is_focused());
         let state = harness.state();
         assert_eq!(state.screen, Screen::Overview);
-        assert_eq!(state.program, 0);
         assert_eq!(state.analysis_generation, generation);
-        assert!(state.analysis.is_some());
-    };
+        assert_eq!(state.analysis.as_deref().map(std::ptr::from_ref), report);
+        assert_eq!(state.plots.as_ref().map(|p| p.timelines.as_ptr()), plots);
+    }
+}
 
-    // Mouse, then the window's close button.
-    info_button(&harness, Metric::PcrJitter).click();
-    harness.run();
-    assert_eq!(harness.state().overview.help, Some(Metric::PcrJitter));
-    harness.get_by_role_and_label(Role::Window, "PCR jitter");
-    unchanged(&harness);
+/// Back restores the program and the summary's scroll position, whatever the
+/// detail page was scrolled to; the next detail page starts at its top. The
+/// Overview tile also returns to the summary, and a new analysis shows it.
+#[test]
+fn back_restores_the_program_and_scroll_position() {
+    let mut app = analyzed_app();
+    app.program = 1;
+    let mut harness = harness_sized(app, egui::vec2(480.0, 600.0));
     harness
-        .get_by_role_and_label(Role::Button, "Close window")
+        .get_by_role_and_label(Role::Link, "PCR jitter estimate")
+        .scroll_to_me();
+    harness.run();
+    let offset = harness.state().overview.summary_offset();
+    assert!(offset > 0.0, "the summary did not scroll");
+    let reference = bounds(&harness.get_by_label("Elementary streams"));
+
+    // The unavailable-analysis link opens the same page as the table.
+    harness
+        .get_by_role_and_label(Role::Link, "PCR jitter estimate")
         .click();
     harness.run();
-    assert_eq!(harness.state().overview.help, None);
-    assert!(
-        harness
-            .query_by_role_and_label(Role::Window, "PCR jitter")
-            .is_none()
+    assert_eq!(
+        harness.state().overview.page(),
+        OverviewPage::CheckDetail(Check::PcrJitter)
     );
+    let title = bounds(&harness.get_by_role_and_label(Role::Heading, "PCR jitter estimate"));
+    assert!(content_area(egui::vec2(480.0, 600.0)).contains_rect(title));
+    harness
+        .get_by_role_and_label(Role::Heading, "Limitations")
+        .scroll_to_me();
+    harness.run();
+    assert_eq!(harness.state().program, 1);
 
-    // Keyboard, then Escape.
-    info_button(&harness, Metric::MaxPcrInterval).focus();
+    back_button(&harness).focus();
     harness.run();
     harness.key_press(egui::Key::Enter);
     harness.run();
-    assert_eq!(harness.state().overview.help, Some(Metric::MaxPcrInterval));
-    harness.key_press(egui::Key::Escape);
-    harness.run();
-    assert_eq!(harness.state().overview.help, None);
-    unchanged(&harness);
-
-    // A click outside the window.
-    info_button(&harness, Metric::ContinuityCounter).click();
-    harness.run();
+    assert_eq!(harness.state().overview.page(), OverviewPage::Summary);
+    assert_eq!(harness.state().program, 1);
+    assert_eq!(harness.state().overview.summary_offset(), offset);
     assert_eq!(
-        harness.state().overview.help,
-        Some(Metric::ContinuityCounter)
+        bounds(&harness.get_by_label("Elementary streams")),
+        reference
     );
-    harness.get_by_label("Elementary streams").click();
-    harness.run();
-    assert_eq!(harness.state().overview.help, None);
-    unchanged(&harness);
 
-    // Its link opens the detailed view.
-    info_button(&harness, Metric::PcrJitter).click();
+    // Another page starts at its top, not where the last one was left.
+    open_detail(&mut harness, Check::ContinuityCounter, false);
+    // Scrolled up to the table to open it.
+    let offset = harness.state().overview.summary_offset();
+    let title = bounds(&harness.get_by_role_and_label(Role::Heading, "Continuity counter"));
+    assert!(content_area(egui::vec2(480.0, 600.0)).contains_rect(title));
+
+    // The Overview tile, selected all along, also goes back.
+    tab(&harness, Screen::Overview).click();
     harness.run();
-    harness
-        .get_by_role_and_label(Role::Button, "Open Bitrate")
-        .scroll_to_me();
+    assert_eq!(harness.state().overview.page(), OverviewPage::Summary);
+    assert_eq!(harness.state().overview.summary_offset(), offset);
+    assert!(info_button(&harness, Check::ContinuityCounter).is_focused());
+
+    // A new analysis shows its summary from the top.
+    open_detail(&mut harness, Check::ContinuityCounter, false);
+    harness.state_mut().analysis_generation += 1;
     harness.run();
-    harness
-        .get_by_role_and_label(Role::Button, "Open Bitrate")
-        .click();
-    harness.run();
-    assert_eq!(harness.state().screen, Screen::Bitrate);
-    assert_eq!(harness.state().overview.help, None);
+    assert_eq!(harness.state().overview.page(), OverviewPage::Summary);
 }
 
-/// Wide, medium and narrow windows, and one narrower than a card's
-/// preferred width: the cards wrap to more rows in their order, and every
-/// title and information button is inside the window without overlapping.
+/// Every check's page: the current result, verdicts as a table with the
+/// current status selected, the explanation as headings and prose outside
+/// any table, and navigation.
 #[test]
-fn cards_reflow_in_order_and_stay_visible() {
-    for (size, columns) in [
-        (egui::vec2(1280.0, 800.0), 5),
-        (egui::vec2(860.0, 800.0), 3),
-        (egui::vec2(480.0, 900.0), 1),
-        (egui::vec2(300.0, 900.0), 1),
-    ] {
+fn every_check_has_a_detail_page() {
+    for size in [WIDE, NARROW] {
         let mut harness = harness_sized(app_with_report(all_findings_report()), size);
-        let titles: Vec<egui::Rect> = Metric::ALL
-            .iter()
-            .map(|m| bounds(&card_title(&harness, *m)))
-            .collect();
-        let first_row = titles
-            .iter()
-            .filter(|r| (r.top() - titles[0].top()).abs() < 1.0)
-            .count();
-        assert_eq!(first_row, columns, "{size:?}");
-        for pair in titles.windows(2) {
-            let same_row = (pair[1].top() - pair[0].top()).abs() < 1.0;
-            assert!(
-                pair[1].top() > pair[0].bottom() || (same_row && pair[1].left() > pair[0].right()),
-                "{size:?}: cards out of order"
-            );
-        }
-        let window = egui::Rect::from_min_size(egui::pos2(96.0, 0.0), size - egui::vec2(96.0, 0.0));
-        for metric in Metric::ALL {
-            card_title(&harness, metric).scroll_to_me();
+        for check in Check::ALL {
+            open_detail(&mut harness, check, false);
+            let help = check.help();
+            let row = crate::views::overview::row(
+                harness.state().analysis.as_ref().unwrap(),
+                &harness.state().analysis.as_ref().unwrap().programs[0],
+                check,
+            )
+            .unwrap();
+            harness.get_by_role_and_label(Role::Heading, help.title);
+            harness.get_by_label(&format!(
+                "Status: {}",
+                crate::views::overview::status_label(&row.status)
+            ));
+            for heading in [
+                "Current result",
+                "Verdicts",
+                "What it measures",
+                "Applies to",
+                "What the value means",
+                "When it is skipped",
+                "Limitations",
+                "Details",
+            ] {
+                let node = harness.get_by_role_and_label(Role::Heading, heading);
+                assert!(!in_table(&node), "{check:?} {heading}");
+            }
+            for (label, value) in &row.facts {
+                // The top bar also has a "Limit" label.
+                assert!(
+                    harness
+                        .query_all_by_role_and_label(Role::Label, label)
+                        .count()
+                        >= 1,
+                    "{check:?} {label}"
+                );
+                assert!(
+                    harness.query_all_by_label(value).count() >= 1,
+                    "{check:?} {label}"
+                );
+            }
+            for text in [
+                help.measures,
+                help.applies_to,
+                help.value,
+                help.skipped,
+                help.limitations,
+            ] {
+                let node = harness.get_by_label(text);
+                assert!(!in_table(&node), "{check:?}: prose inside a table");
+            }
+            let verdicts = harness.get_by_role_and_label(Role::Table, "Verdicts");
+            let rows: Vec<_> = verdicts
+                .query_all_by_role(Role::Row)
+                .filter(|r| r.accesskit_node().label().is_some())
+                .collect();
+            assert_eq!(rows.len(), help.statuses.len(), "{check:?}");
+            for (node, (status, meaning)) in rows.iter().zip(help.statuses) {
+                let label = format!(
+                    "{}: {meaning}",
+                    crate::views::overview::status_label(status)
+                );
+                assert_eq!(
+                    node.accesskit_node().label().as_deref(),
+                    Some(label.as_str())
+                );
+                assert_eq!(
+                    node.accesskit_node().is_selected(),
+                    Some(*status == row.status),
+                    "{check:?} {status}"
+                );
+                assert_eq!(cell_widths(node).len(), 2);
+            }
+            let (screen, _) = help.navigation.unwrap();
+            let open = format!("Open {}", screen.title());
+            harness
+                .get_by_role_and_label(Role::Button, &open)
+                .scroll_to_me();
             harness.run();
-            let title = bounds(&card_title(&harness, metric));
-            let button = bounds(&info_button(&harness, metric));
-            assert!(
-                window.contains_rect(title),
-                "{size:?} {metric:?} title {title:?}"
+            harness.get_by_role_and_label(Role::Button, &open).click();
+            harness.run();
+            assert_eq!(harness.state().screen, screen);
+            // Overview comes back on the same page.
+            tab(&harness, Screen::Overview).click();
+            harness.run();
+            assert_eq!(
+                harness.state().overview.page(),
+                OverviewPage::CheckDetail(check)
             );
-            assert!(
-                window.contains_rect(button),
-                "{size:?} {metric:?} button {button:?}"
-            );
-            assert!(!title.intersects(button), "{size:?} {metric:?} overlaps");
+            back_button(&harness).click();
+            harness.run();
+            assert_eq!(harness.state().overview.page(), OverviewPage::Summary);
         }
     }
 }
 
+/// Findings link to the same page, which lists the check's findings with the
+/// packet and Timeline actions their data supports, and none it does not.
 #[test]
-fn findings_account_for_every_card_that_is_not_ok() {
-    // Every card of the all-findings sample reports a problem.
-    let mut harness = harness(app_with_report(all_findings_report()));
+fn findings_open_the_detail_page_with_their_actions() {
+    let mut app = app_with_report(all_findings_report());
+    // A CLI that cannot page packets: Packets shows its empty state instead
+    // of running a CLI.
+    app.cli = Ok(Cli {
+        packet_outputs: false,
+        ..checked_cli()
+    });
+    let mut harness = harness(app);
     harness.get_by_label("Findings (5)");
-    assert!(harness.query_by_label("None.").is_none());
-    assert_eq!(
+    let link = |harness: &mut Harness<'_, App>, name: &str| {
         harness
-            .query_all_by_role_and_label(Role::Link, "Continuity counter")
-            .count(),
-        1
-    );
-    let link = |harness: &Harness<'_, App>| {
-        harness
-            .get_by_role_and_label(Role::Link, "PCR jitter (estimate)")
+            .get_by_role_and_label(Role::Link, name)
             .scroll_to_me();
+        harness.run();
+        harness.get_by_role_and_label(Role::Link, name).click();
+        harness.run();
     };
-    link(&harness);
-    harness.run();
+
+    link(&mut harness, "Continuity counter");
+    assert_eq!(
+        harness.state().overview.page(),
+        OverviewPage::CheckDetail(Check::ContinuityCounter)
+    );
+    harness.get_by_role_and_label(Role::Heading, "Findings (1)");
+    harness.get_by_label("PID 0x0101: continuity_counter 6 (expected 5)");
     harness
-        .get_by_role_and_label(Role::Link, "PCR jitter (estimate)")
+        .get_by_role_and_label(Role::Button, "Show 0x0000125C on timeline")
         .click();
     harness.run();
-    assert_eq!(harness.state().overview.help, Some(Metric::PcrJitter));
+    assert_eq!(harness.state().screen, Screen::Timeline);
+    assert_eq!(
+        harness.state().timeline.selected_for_test(),
+        Some(("Event", 4700))
+    );
+    // Overview keeps its page while another screen is shown.
+    tab(&harness, Screen::Overview).click();
+    harness.run();
+    assert_eq!(
+        harness.state().overview.page(),
+        OverviewPage::CheckDetail(Check::ContinuityCounter)
+    );
+    harness
+        .get_by_role_and_label(Role::Button, "Open packet at 0x0000125C")
+        .click();
+    harness.run();
+    assert_eq!(harness.state().screen, Screen::Packets);
+    assert_eq!(
+        harness
+            .state()
+            .packet_pages
+            .as_ref()
+            .unwrap()
+            .selected_for_test(),
+        Some(4700)
+    );
+
+    // PCR jitter: the packet of the worst estimate, but no Timeline event.
+    tab(&harness, Screen::Overview).click();
+    harness.run();
+    tab(&harness, Screen::Overview).click();
+    harness.run();
+    link(&mut harness, "PCR jitter estimate");
+    harness.get_by_role_and_label(Role::Button, "Open packet at 0x00002A98");
+    assert!(harness.query_by_label_contains("on timeline").is_none());
+
+    // Summary-only findings have no offset to open.
+    for check in [
+        Check::MaxPcrInterval,
+        Check::PcrPtsDtsGap,
+        Check::TimestampAnomalies,
+    ] {
+        back_button(&harness).click();
+        harness.run();
+        link(&mut harness, check.title());
+        harness.get_by_role_and_label(Role::Heading, "Findings (1)");
+        assert!(
+            harness.query_by_label_contains("Open packet").is_none(),
+            "{check:?}"
+        );
+        assert!(harness.query_by_label_contains("on timeline").is_none());
+    }
+}
+
+#[test]
+fn findings_account_for_every_check_that_is_not_ok() {
+    // Every check of the all-findings sample reports a problem.
+    let harness = harness(app_with_report(all_findings_report()));
+    harness.get_by_label("Findings (5)");
+    assert!(harness.query_by_label("None.").is_none());
+    for check in Check::ALL {
+        assert_eq!(
+            harness
+                .query_all_by_role_and_label(Role::Link, check.title())
+                .count(),
+            1,
+            "{check:?}"
+        );
+    }
 
     // The two-program sample is VBR: PCR jitter is not assessable, which is
     // unavailable analysis with the CLI's reason, not a finding.
     let harness = self::harness(analyzed_app());
     harness.get_by_label("Findings (0)");
     harness.get_by_label("Unavailable analysis (1)");
-    // The badge of the card and of the unavailable analysis.
+    // The badge of the table row and of the unavailable analysis.
     assert_eq!(harness.query_all_by_label("NOT ASSESSABLE").count(), 2);
-    harness.get_by_role_and_label(Role::Link, "PCR jitter");
+    harness.get_by_role_and_label(Role::Link, "PCR jitter estimate");
     harness.get_by_label_contains("Delivery variable: the estimated jitter reaches 55.082ms");
-    assert!(
-        harness
-            .query_by_role_and_label(Role::Link, "PCR jitter (estimate)")
-            .is_none()
-    );
 
-    // Every card OK: no finding.
+    // Every check OK: no finding.
     let mut clean: serde_json::Value = serde_json::from_str(include_str!(
         "../../tests/fixtures/analysis_two_programs_188.json"
     ))
@@ -525,13 +877,76 @@ fn findings_account_for_every_card_that_is_not_ok() {
             .is_none()
     );
 
-    // A skipped card is unavailable analysis, not a finding.
+    // A skipped check is unavailable analysis, not a finding.
     clean["programs"][0]["pcr_jitter"]["status"] = "skipped".into();
     clean["programs"][0]["pcr_jitter"]["reason"] = "need at least 3 PCR samples".into();
     let harness = self::harness(app_with_report(serde_json::from_value(clean).unwrap()));
     harness.get_by_label("Findings (0)");
     harness.get_by_label("Unavailable analysis (1)");
-    harness.get_by_role_and_label(Role::Link, "PCR jitter");
+    harness.get_by_role_and_label(Role::Link, "PCR jitter estimate");
+}
+
+/// A status this GUI does not know is shown verbatim in the table, as a
+/// finding and on the detail page, which says so; no verdict is selected.
+#[test]
+fn unknown_status_stays_visible() {
+    for size in [WIDE, NARROW] {
+        let report = edited_report(|d| {
+            d["programs"][0]["pcr_jitter"]["status"] = "indeterminate".into();
+        });
+        let mut harness = harness_sized(app_with_report(report), size);
+        table_row(&harness, Check::PcrJitter)
+            .query_by_label("INDETERMINATE")
+            .expect("the table shows the status");
+        harness.get_by_label("Findings (5)");
+        open_detail(&mut harness, Check::PcrJitter, false);
+        harness.get_by_label("Status: INDETERMINATE");
+        harness.get_by_label_contains(
+            "The CLI reported the status \"indeterminate\", which this GUI does not describe.",
+        );
+        let verdicts = harness.get_by_role_and_label(Role::Table, "Verdicts");
+        assert!(
+            verdicts
+                .query_all_by_role(Role::Row)
+                .all(|row| row.accesskit_node().is_selected() != Some(true))
+        );
+    }
+}
+
+/// PCR jitter that the CLI did not grade: its status in the table, the
+/// delivery evidence and reason on its page, and no finding.
+#[test]
+fn not_assessable_jitter_has_its_evidence_on_the_detail_page() {
+    for size in [WIDE, NARROW] {
+        let mut harness = harness_sized(analyzed_app(), size);
+        table_row(&harness, Check::PcrJitter)
+            .query_by_label("NOT ASSESSABLE")
+            .expect("the table shows the status");
+        open_detail(&mut harness, Check::PcrJitter, true);
+        harness.get_by_label("Status: NOT ASSESSABLE");
+        assert!(harness.query_by_label_contains("Findings (").is_none());
+        for (label, value) in [
+            ("Value", "55.08 ms"),
+            ("Worst offset", "0x000223D8"),
+            ("Delivery", "variable"),
+            ("Delivery evidence", "1 × 1 s window at 767.9 kbit/s"),
+        ] {
+            harness.get_by_role_and_label(Role::Label, label);
+            harness.get_by_role_and_label(Role::Label, value);
+        }
+        harness.get_by_label_contains("the estimated jitter reaches 55.082ms");
+        harness.get_by_label(
+            "delivery rate is variable, so the byte-position estimate does not measure PCR accuracy",
+        );
+        let selected: Vec<_> = harness
+            .get_by_role_and_label(Role::Table, "Verdicts")
+            .query_all_by_role(Role::Row)
+            .filter(|row| row.accesskit_node().is_selected() == Some(true))
+            .map(|row| row.accesskit_node().label().unwrap())
+            .collect();
+        assert_eq!(selected.len(), 1);
+        assert!(selected[0].starts_with("NOT ASSESSABLE: "));
+    }
 }
 
 /// The fixture is what the CLI writes for the sample, so the Overview tests

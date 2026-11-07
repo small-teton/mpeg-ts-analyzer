@@ -1,5 +1,6 @@
 pub mod bitrate;
-pub mod metric_help;
+pub mod check_detail;
+pub mod check_help;
 pub mod overview;
 pub mod packet_pages;
 pub mod packets;
@@ -47,15 +48,27 @@ impl Screen {
     }
 }
 
-pub fn badge(ui: &mut egui::Ui, text: &str, verdict: Verdict) {
+/// A colored status badge, exactly as large as its text, so it never
+/// stretches with the row or cell around it. Announced as a label with its
+/// text.
+pub fn badge(ui: &mut egui::Ui, text: &str, verdict: Verdict) -> egui::Response {
     let (foreground, background) = verdict.colors();
-    egui::Frame::new()
-        .fill(background)
-        .corner_radius(2)
-        .inner_margin(egui::Margin::symmetric(6, 1))
-        .show(ui, |ui| {
-            ui.label(egui::RichText::new(text).color(foreground).strong().small());
-        });
+    let galley = egui::WidgetText::from(egui::RichText::new(text).strong().small()).into_galley(
+        ui,
+        Some(egui::TextWrapMode::Extend),
+        f32::INFINITY,
+        egui::TextStyle::Small,
+    );
+    let margin = egui::vec2(6.0, 1.0);
+    let (rect, response) =
+        ui.allocate_exact_size(galley.size() + 2.0 * margin, egui::Sense::hover());
+    if ui.is_rect_visible(rect) {
+        let painter = ui.painter();
+        painter.rect_filled(rect, 2, background);
+        painter.galley(rect.min + margin, galley, foreground);
+    }
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, text));
+    response
 }
 
 /// Program choice over the given labels. Returns true when it changed.

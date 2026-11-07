@@ -15,6 +15,7 @@ pub const FOLDER_OPEN: &str = "\u{e256}";
 pub const INFO: &str = "\u{e2ce}";
 pub const ARROW_SQUARE_OUT: &str = "\u{e5de}";
 pub const ARROW_COUNTER_CLOCKWISE: &str = "\u{e038}";
+pub const ARROW_LEFT: &str = "\u{e058}";
 pub const CARET_LEFT: &str = "\u{e138}";
 pub const CARET_RIGHT: &str = "\u{e13a}";
 pub const PLAY: &str = "\u{e3d0}";

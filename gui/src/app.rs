@@ -9,8 +9,9 @@ use crate::range_bar::{self, AnalysisRange, Load};
 use crate::report::{AnalysisReport, ProgressEvent};
 use crate::settings::Settings;
 use crate::update::{InstallKind, Updates};
+use crate::views::overview::{self, OverviewAction};
 use crate::views::packet_pages::PacketPages;
-use crate::views::{Screen, bitrate, overview, timeline::TimelineView};
+use crate::views::{Screen, bitrate, timeline::TimelineView};
 
 /// Range selected when a file is opened: small enough to analyze quickly.
 const INITIAL_LIMIT: u64 = 64 * 1024 * 1024;
@@ -476,6 +477,10 @@ impl App {
         ui.spacing_mut().item_spacing.y = 6.0;
         for screen in Screen::ANALYSIS {
             if navigation_tile(ui, screen, self.screen == screen).clicked() {
+                // Overview again while it is shown: back to its summary.
+                if screen == Screen::Overview && self.screen == Screen::Overview {
+                    self.overview.show_summary();
+                }
                 self.screen = screen;
             }
         }
@@ -606,11 +611,35 @@ impl App {
             .exact_size(96.0)
             .show(ui, |ui| self.navigation(ui));
         egui::CentralPanel::default().show(ui, |ui| {
+            let mut open_packet = None;
             let navigate = match (&self.analysis, &self.plots) {
                 (Some(report), Some(plots)) => match self.screen {
-                    Screen::Overview => {
-                        overview::show_report(ui, report, &mut self.program, &mut self.overview)
-                    }
+                    Screen::Overview => match overview::show_report(
+                        ui,
+                        report,
+                        &mut self.program,
+                        &mut self.overview,
+                        &plots.timelines,
+                        self.analysis_generation,
+                    ) {
+                        Some(OverviewAction::Open(screen)) => Some(screen),
+                        Some(OverviewAction::OpenPacket(offset)) => {
+                            open_packet = Some(offset);
+                            Some(Screen::Packets)
+                        }
+                        Some(OverviewAction::ShowOnTimeline(offset)) => {
+                            let shown = plots.timelines.get(self.program).is_some_and(|data| {
+                                self.timeline.show_event(
+                                    self.analysis_generation,
+                                    self.program,
+                                    data,
+                                    offset,
+                                )
+                            });
+                            shown.then_some(Screen::Timeline)
+                        }
+                        None => None,
+                    },
                     Screen::Timeline => self.timeline.show_report(
                         ui,
                         report,
@@ -661,21 +690,15 @@ impl App {
             if let Some(screen) = navigate {
                 self.screen = screen;
             }
-            if let (Some(offset), Some(pages)) =
-                (self.timeline.take_open_request(), &mut self.packet_pages)
-            {
+            if let (Some(offset), Some(pages)) = (
+                open_packet.or(self.timeline.take_open_request()),
+                &mut self.packet_pages,
+            ) {
                 pages.go_to(offset);
             }
         });
 
         let ctx = ui.ctx().clone();
-        if self.screen == Screen::Overview && self.plots.is_some() {
-            if let Some(screen) = self.overview.help_window(&ctx) {
-                self.screen = screen;
-            }
-        } else {
-            self.overview.help = None;
-        }
         let status = crate::settings::CliStatus {
             source: self.cli_location.0,
             path: &self.cli_location.1,
