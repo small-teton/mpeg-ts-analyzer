@@ -168,9 +168,11 @@ func TestReferencedPIDWithoutTimeBase(t *testing.T) {
 }
 
 func TestReferencedSeverity(t *testing.T) {
-	if !(severity(PIDStatusAbsent) > severity(PIDStatusSilent) && severity(PIDStatusSilent) > severity(PIDStatusInsufficientData) &&
-		severity(PIDStatusInsufficientData) > severity(PIDStatusOK)) {
-		t.Error("severity order")
+	order := []PIDStatus{PIDStatusAbsent, PIDStatusSilent, PIDStatusInsufficientData, PIDStatusOK}
+	for i := 1; i < len(order); i++ {
+		if severity(order[i-1]) <= severity(order[i]) {
+			t.Errorf("severity of %s not above %s", order[i-1], order[i])
+		}
 	}
 	// Silent without absent.
 	s := newStream()
