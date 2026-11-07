@@ -553,7 +553,10 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
             let mut facts = Vec::new();
             facts.extend(value.clone().map(|v| ("Value", v)));
             facts.push(("Limit", format!("{:.0} ms", repetition.limit_ms)));
-            facts.push(("Applies to", ALL_STREAMS.to_owned()));
+            facts.push((
+                "Applies to",
+                "every video and audio stream of the analyzed programs".to_owned(),
+            ));
             facts.push(("Intervals", counts.interval_count.to_string()));
             facts.push(("PTS", counts.pts_count.to_string()));
             facts.push(("Exceeded", counts.exceeded_count.to_string()));

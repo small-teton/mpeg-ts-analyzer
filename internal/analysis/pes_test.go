@@ -233,14 +233,15 @@ func TestPTSRepetitionTimeline(t *testing.T) {
 	// A new segment ends the interval: no interval spans a discontinuity.
 	c.ObservePES(pts(video.PID, 0, at(0)))
 	c.ObservePES(pts(video.PID, 188, ClockTime{Valid: true, Ticks: 0, Segment: 1}))
-	// A PCR wraparound inside a segment is measured.
+	// A PCR wraparound inside a segment is measured: the parser unwraps the
+	// time within the segment.
 	c.ObservePES(pts(video.PID, 376, ClockTime{Valid: true, Ticks: PCRWrapTicks - 20*ms, Segment: 2}))
-	c.ObservePES(pts(video.PID, 564, ClockTime{Valid: true, Ticks: 20 * ms, Segment: 2}))
+	c.ObservePES(pts(video.PID, 564, ClockTime{Valid: true, Ticks: PCRWrapTicks + 20*ms, Segment: 2}))
 	// A PTS that cannot be placed ends the interval; an unplaced PES without
 	// PTS is ignored.
 	c.ObservePES(untimed(video.PID, 752, ClockTime{}))
 	c.ObservePES(pts(video.PID, 940, ClockTime{}))
-	c.ObservePES(pts(video.PID, 1128, ClockTime{Valid: true, Ticks: 5000 * ms, Segment: 2}))
+	c.ObservePES(pts(video.PID, 1128, ClockTime{Valid: true, Ticks: PCRWrapTicks + 5000*ms, Segment: 2}))
 	// The audio PID never gets a place on the timeline.
 	c.ObservePES(pts(audio.PID, 0, ClockTime{}))
 	got := c.Result()
@@ -312,5 +313,17 @@ func TestPTSRepetitionNoPTSAboveLimit(t *testing.T) {
 	want := PTSRepetitionResult{Status: PESNG, HasMax: true, MaxTicks: 750 * ms, MaxFrom: 0, MaxTo: 188, Exceeded: 1, FirstExceeded: 188}
 	if r := c.Result().Repetition; r != want {
 		t.Errorf("Result = %+v, want %+v", r, want)
+	}
+}
+
+func TestPTSRepetitionFullPCRPeriod(t *testing.T) {
+	// A whole PCR period (about 26.5 hours) without a PTS is not taken for
+	// the 100 ms remainder modulo the wrap.
+	c := NewPESCheck()
+	c.ObserveProgramLayout(1, pesLayout(video))
+	c.ObservePES(pts(video.PID, 0, at(0)))
+	c.ObservePES(pts(video.PID, 188, ClockTime{Valid: true, Ticks: at(0).Ticks + PCRWrapTicks + 100*ms}))
+	if r := c.Result().Repetition; r.Status != PESNG || r.MaxTicks != PCRWrapTicks+100*ms {
+		t.Errorf("Result = %+v, want ng with the full interval", r)
 	}
 }

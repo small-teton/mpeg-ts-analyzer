@@ -92,15 +92,20 @@ func TestPesParseSplitHeader(t *testing.T) {
 }
 
 func TestArrivalAt(t *testing.T) {
-	prev := pcrAnchor{valid: true, pcr: 1000, pos: 0, segment: 1}
+	prev := pcrAnchor{valid: true, pcr: 1000, unwrapped: 1000, pos: 0, segment: 1}
 	next := nextPcrAnchor(prev, 2000, 100, true)
 	if got := arrivalAt(prev, next, 25); got != (analysis.ClockTime{Valid: true, Ticks: 1250, Segment: 1}) {
 		t.Errorf("interpolated = %+v", got)
 	}
-	// Across the PCR wrap.
-	high := pcrAnchor{valid: true, pcr: pcrWrapTicks - 100, pos: 0}
-	if got := arrivalAt(high, nextPcrAnchor(high, 100, 100, true), 75); got != (analysis.ClockTime{Valid: true, Ticks: 50}) {
+	// Across the PCR wrap the time keeps counting, also over several wraps.
+	high := pcrAnchor{valid: true, pcr: pcrWrapTicks - 100, unwrapped: pcrWrapTicks - 100, pos: 0}
+	wrapped := nextPcrAnchor(high, 100, 100, true)
+	if got := arrivalAt(high, wrapped, 75); got != (analysis.ClockTime{Valid: true, Ticks: pcrWrapTicks + 50}) {
 		t.Errorf("wrapped = %+v", got)
+	}
+	again := nextPcrAnchor(nextPcrAnchor(wrapped, pcrWrapTicks-100, 200, true), 100, 300, true)
+	if again.unwrapped != 2*pcrWrapTicks+100 {
+		t.Errorf("twice wrapped = %d", again.unwrapped)
 	}
 	for name, n := range map[string]pcrAnchor{
 		"no next PCR":   {},

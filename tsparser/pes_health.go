@@ -17,20 +17,25 @@ import (
 // the status of each PID.
 
 // pcrAnchor is one PCR of a program: its 27 MHz value, the offset of its
-// packet and the PCR segment it belongs to.
+// packet and the PCR segment it belongs to. unwrapped is the PCR value
+// counted on from the first PCR of the segment across every wraparound, so
+// times of one segment can be subtracted however many wraps lie between them.
 type pcrAnchor struct {
-	valid   bool
-	pcr     uint64
-	pos     int64
-	segment int
+	valid     bool
+	pcr       uint64
+	unwrapped uint64
+	pos       int64
+	segment   int
 }
 
 // nextPcrAnchor returns the anchor of a PCR at pos that follows prev. measured
 // tells whether the PCR interval from prev was measured; otherwise the PCR
 // starts a new segment.
 func nextPcrAnchor(prev pcrAnchor, pcr uint64, pos int64, measured bool) pcrAnchor {
-	next := pcrAnchor{valid: true, pcr: pcr, pos: pos, segment: prev.segment}
-	if !measured {
+	next := pcrAnchor{valid: true, pcr: pcr, unwrapped: pcr, pos: pos, segment: prev.segment}
+	if measured {
+		next.unwrapped = prev.unwrapped + (pcr+pcrWrapTicks-prev.pcr)%pcrWrapTicks
+	} else {
 		next.segment++
 	}
 	return next
@@ -42,15 +47,15 @@ func nextPcrAnchor(prev pcrAnchor, pcr uint64, pos int64, measured bool) pcrAnch
 // the time its last byte of program_clock_reference_base arrives; the
 // difference to the packet start is negligible here). The time is unknown
 // unless both PCRs are known and belong to the same segment, which makes them
-// consecutive PCRs whose interval was measured; it is never extrapolated. A
-// PCR wraparound between them is unwrapped.
+// consecutive PCRs whose interval was measured; it is never extrapolated. The
+// time is unwrapped within the segment (see pcrAnchor).
 func arrivalAt(prev, next pcrAnchor, pos int64) analysis.ClockTime {
 	if !prev.valid || !next.valid || next.segment != prev.segment || next.pos <= prev.pos {
 		return analysis.ClockTime{}
 	}
-	span := (next.pcr + pcrWrapTicks - prev.pcr) % pcrWrapTicks
+	span := next.unwrapped - prev.unwrapped
 	elapsed := uint64(float64(span) * float64(pos-prev.pos) / float64(next.pos-prev.pos))
-	return analysis.ClockTime{Valid: true, Ticks: (prev.pcr + elapsed) % pcrWrapTicks, Segment: prev.segment}
+	return analysis.ClockTime{Valid: true, Ticks: prev.unwrapped + elapsed, Segment: prev.segment}
 }
 
 // maxPendingPES bounds the observations a program holds until its next PCR.

@@ -31,8 +31,8 @@ import "slices"
 // reordering.
 //
 //   - Time base: 27 MHz PCR ticks. Two times are compared only within one PCR
-//     segment; their difference is taken modulo 2^33*300, so a PCR wraparound
-//     inside a segment is measured.
+//     segment; the parser unwraps the PCR within a segment, so wraparounds
+//     inside a segment are measured, however many lie between two times.
 //   - Discontinuity: every PCR step that PCRCheck does not measure as an
 //     interval (declared, pcr_pid_change, backward, forward_jump) starts a new
 //     segment and no interval spans it.
@@ -146,7 +146,10 @@ type ClockTime struct {
 	// Valid is false when the time is unknown: the PES packet does not lie
 	// between two PCRs of one segment, or the program has no PCR.
 	Valid bool
-	// Ticks is the 27 MHz PCR value, from 0 to 2^33*300-1.
+	// Ticks is the 27 MHz PCR value, unwrapped within the segment: it keeps
+	// counting past 2^33*300 at each wraparound, so the difference of two
+	// times of one segment is their interval however many wraps lie between
+	// them.
 	Ticks uint64
 	// Segment numbers the PCR segments of the program. Times of different
 	// segments are not comparable.
@@ -315,7 +318,7 @@ func (c *PESCheck) ObservePES(o PES) {
 		st.open, st.openHasPTS, st.openSegment = true, o.HasPTS, o.Arrival.Segment
 		st.openStart, st.openFrom = at, o.Offset
 	case o.HasPTS:
-		st.record(interval{measured: st.openHasPTS, ticks: (at + PCRWrapTicks - st.openStart) % PCRWrapTicks, from: st.openFrom, to: o.Offset})
+		st.record(interval{measured: st.openHasPTS, ticks: at - st.openStart, from: st.openFrom, to: o.Offset})
 		st.openHasPTS, st.openStart, st.openFrom = true, at, o.Offset
 	}
 	st.last, st.lastAt = at, o.Offset
@@ -365,7 +368,7 @@ func (st *pesStream) pending() (interval, bool) {
 	if !st.open || st.lastAt == st.openFrom {
 		return interval{}, false
 	}
-	return interval{ticks: (st.last + PCRWrapTicks - st.openStart) % PCRWrapTicks, from: st.openFrom, to: st.lastAt}, true
+	return interval{ticks: st.last - st.openStart, from: st.openFrom, to: st.lastAt}, true
 }
 
 // endInterval closes the interval in progress at a break.
