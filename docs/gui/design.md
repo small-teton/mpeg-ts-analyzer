@@ -149,11 +149,12 @@ check (`CheckDetail`).
 - **Transport health table**: one non-collapsible table with the columns
   Check, Value, Status and Help, grouped by category. The order is fixed:
   Timing (Max PCR interval, PCR jitter estimate), PES / Timestamps
-  (PCR → PTS/DTS gap, PTS/DTS anomalies), Integrity (Continuity counter).
+  (PCR → PTS/DTS gap, PTS/DTS anomalies), Integrity (Continuity counter,
+  TS synchronization).
   Structure and Multiplexing join as their checks land (#157). A check is
   listed when the CLI reported it. There is no scope column or badge: the
-  selected program is shown above, and exceptions (Continuity counter covers
-  the whole multiplex) are on the detail page. Status is the CLI's status
+  selected program is shown above, and exceptions (Continuity counter and TS
+  synchronization cover the whole multiplex) are on the detail page. Status is the CLI's status
   verbatim as a badge sized to its text (at least 48 points wide); a status
   the GUI does not describe is shown in the neutral color with a tooltip
   saying so. Help holds the focusable
@@ -203,8 +204,8 @@ check (`CheckDetail`).
 - **Findings** are one normalized list built from the report
   (`overview::findings`): a finding for each failed compliance check, each
   PTS/DTS anomaly group, each continuity event (one finding for the check if
-  the CLI reported errors without events), PCR jitter and each analyzer
-  warning. Any status other than `ok`, `skipped` and `not_assessable`,
+  the CLI reported errors without events), PCR jitter, TS synchronization
+  (one finding at the first loss offset) and each analyzer warning. Any status other than `ok`, `skipped` and `not_assessable`,
   including one the GUI does not know, is a finding with the CLI's status as
   its badge, so an `NG` or `WARNING` row can never sit next to an empty list.
   Each finding names its scope (program or whole multiplex); its check link
@@ -328,8 +329,8 @@ Language, packets per page and cached pages are laid out but not applied yet.
 - Status badges: white Inter SemiBold 14 px text on a solid fill, 10 × 3
   points of padding, at least 48 points wide, 4-point radius. Fills by
   class, the same in light and dark: success (`ok`, `complete`) `#2E7D32`,
-  failure (`ng`, `errors`, `failed`) `#C62828`, warning (`warning`,
-  `anomalies`) `#9A6700`, neutral (`not_assessable`, `skipped`, unknown)
+  failure (`ng`, `errors`, `failed`, `lost`) `#C62828`, warning (`warning`,
+  `anomalies`, `recovered`) `#9A6700`, neutral (`not_assessable`, `skipped`, unknown)
   `#59636E`; each is at least 4.5:1 against white.
 - Tables (Transport health, Verdicts) use Material 3-style tonal surfaces
   with values fixed per appearance (light / dark): header row `#E5E7EA` /

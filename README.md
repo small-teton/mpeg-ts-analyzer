@@ -22,6 +22,8 @@ bits.
   jumps, or DTS later than PTS.
 - **Continuity counters** of every PID, and the **PAT/PMT layout** of the range,
   including tables split into sections and version changes.
+- **TS synchronization**: packets without their sync byte, with byte offsets,
+  and bounded realignment so that later results are still reported.
 
 Results are text for people, or JSON with a published schema for CI and other
 programs. See [CLI usage][docs-cli-usage].

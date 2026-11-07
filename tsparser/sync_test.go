@@ -460,3 +460,28 @@ func TestSyncStatusStrings(t *testing.T) {
 		t.Error("hasAlignment needs three sync bytes")
 	}
 }
+
+// A packet that cannot be parsed still ends the scan of a program and makes
+// the analysis look for the next PAT, in both output modes.
+func TestScanParseErrorRetriesPatDiscovery(t *testing.T) {
+	bad := nullTestPacket()
+	bad[3] = 0x00 // adaptation_field_control 0
+	head := int64(len(syncTestStream(nil, 0)))
+	path := filepath.Join(t.TempDir(), "bad.ts")
+	if err := os.WriteFile(path, syncTestStream(bad, 5), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	report := summary(t, path, options.Options{})
+	message := "PES parse error: failed to parse TS packet in BufferPes: invalid adaptation_field_control: 0 (reserved); retrying PAT discovery"
+	if report.Status != "incomplete" || len(report.Warnings) != 1 || report.Warnings[0] != (ReportWarning{head, message}) {
+		t.Errorf("summary %s", toJSON(t, report))
+	}
+	out := captureStdout(t, func() {
+		if err := ParseTsFile(path, options.Options{}); err != nil {
+			t.Error(err)
+		}
+	})
+	if !strings.Contains(out, hex32(head)+" PES parse error: failed to parse TS packet in BufferPes: invalid adaptation_field_control: 0 (reserved), retrying PAT discovery...\n") {
+		t.Errorf("text output:\n%s", out)
+	}
+}

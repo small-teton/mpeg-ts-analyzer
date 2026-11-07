@@ -12,7 +12,8 @@ Packages for macOS, Linux and Windows are described in
 [![The four GUI views: Overview and Timeline on the top row, Bitrate and Packets on the bottom row](../images/gui-tabs.png)](../images/gui-tabs.png)
 
 - **Overview** brings the detected program layout, stream properties, the
-  transport-health checks (timing, PES timestamps, continuity), and
+  transport-health checks (timing, PES timestamps, continuity, TS
+  synchronization), and
   per-stream bitrate into one screen, with a full-page explanation of every
   check.
 - **Timeline** plots the PCR interval and the PCR → PTS/DTS gap of every
@@ -26,7 +27,8 @@ Packages for macOS, Linux and Windows are described in
 
 Overview shows a **Transport health** table for the selected program. Each
 row is one check with the value and the verdict the CLI reported (`OK`, `NG`,
-`WARNING`, `ANOMALIES`, `ERRORS`, `NOT ASSESSABLE` or `SKIPPED`), grouped
+`WARNING`, `ANOMALIES`, `ERRORS`, `RECOVERED`, `LOST`, `NOT ASSESSABLE` or
+`SKIPPED`), grouped
 under categories that are always expanded:
 
 | Category | Check | Applies to | Verdicts |
@@ -36,6 +38,7 @@ under categories that are always expanded:
 | PES / Timestamps | PCR → PTS/DTS gap | selected program | `OK` up to 1000 ms, `NG` above |
 | PES / Timestamps | PTS/DTS anomalies | selected program, per PID | `OK` or `ANOMALIES` |
 | Integrity | Continuity counter | whole multiplex | `OK` or `ERRORS` |
+| Integrity | TS synchronization | whole multiplex | `OK`; `RECOVERED` when packets lost their sync byte and the analysis realigned; `LOST` when it could not realign and stopped there |
 
 The table always lists the checks in this order. The verdict is shown exactly
 as the CLI reported it; a status this GUI does not know is still shown, with a
@@ -50,7 +53,10 @@ and opened with Enter or Space. The page shows:
 - the **current result** — only what the CLI reported for this check, such as
   the value, the limit, the program or PCR PID, the number of observations,
   the first or worst offset, and the reason a check was skipped or not
-  assessed; for PCR jitter also the delivery assessment and its evidence;
+  assessed; for PCR jitter also the delivery assessment and its evidence; for
+  TS synchronization the losses, realignments, skipped bytes, the first loss
+  and the largest skipped span with their offsets, and a partial packet at
+  the end of the input;
 - the check's **findings**, each with **Open packet** when it has an offset
   and **Show on timeline** when Timeline marks it (a continuity error on a PID
   of the program);
@@ -77,10 +83,22 @@ assessment and its evidence, for example `2 × 1 s windows, max deviation
 0.00 % of 75.2 kbit/s`. Even a graded estimate is not a direct hardware or
 TR 101 290 measurement.
 
+TS synchronization covers every packet from the start of the analysis. When a
+packet does not start with the sync byte, the CLI skips ahead to the next
+offset where five consecutive packets do and continues there, so later checks
+still report results. The skipped bytes are not analyzed, and their packets
+usually also show as continuity errors. `LOST` means no new alignment was
+found within 1 MiB or before the end of the range, so the analysis stopped
+early. Packets pages through the range at the alignment of its start, so
+packets after a realignment can appear there as invalid. The sample
+`sample_data/sample_188byte_sync_loss.ts` shows a `RECOVERED` result.
+
 **Findings** lists everything that needs attention, and its count includes
 every check that is not `OK`: each failed check, each PTS/DTS anomaly kind per
-PID, each continuity error (with its offset), PCR jitter, and the analyzer's
-warnings. Each row shows the verdict, the check, the reason and whether it
+PID, each continuity error (with its offset), PCR jitter, a loss of TS
+synchronization (at the offset of the first loss, with the number of losses
+and skipped bytes, and the CLI's reason when the analysis stopped), and the
+analyzer's warnings. Each row shows the verdict, the check, the reason and whether it
 concerns the selected program or the whole multiplex; selecting the check
 opens its page. A check counts once through its own events, not again for its
 total. A check the CLI skipped, and a PCR jitter estimate the CLI found

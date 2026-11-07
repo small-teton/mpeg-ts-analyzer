@@ -13,8 +13,9 @@ const (
 	// resyncSyncBytes is the number of consecutive sync bytes, one packet
 	// apart, that establish a new alignment after a loss of synchronization:
 	// the packet at the candidate offset and the four after it. Five is the
-	// acquisition criterion ETSI TR 101 290 gives for TS_sync_loss (indicator
-	// 1.1). A single 0x47 in a payload is never enough.
+	// reacquisition count that monitors of the ETSI TR 101 290 TS_sync_loss
+	// indicator (1.1) commonly use; here it is a fixed policy, not a
+	// conformance claim. A single 0x47 in a payload is never enough.
 	resyncSyncBytes = 5
 	// maxResyncScanBytes bounds the search after one loss: a new alignment
 	// must start within this many bytes of the lost packet boundary, or the

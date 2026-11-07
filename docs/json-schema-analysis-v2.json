@@ -43,6 +43,10 @@
       "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger",
       "description": "Offset where the scan ended."
     },
+    "sync": {
+      "$ref": "json-schema-v2.json#/$defs/sync",
+      "description": "TS synchronization of the scan for the whole multiplex."
+    },
     "continuity_counter": {
       "$ref": "json-schema-v2.json#/$defs/continuity",
       "description": "Continuity-counter summary for the whole multiplex."

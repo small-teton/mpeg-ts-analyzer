@@ -164,6 +164,8 @@ PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x03 (11172 audio
 0x0001903c PMT of program 1 on PID 0x1000 version 0 -> 1: PCR_PID 0x0100 -> 0x0200, added 0x0200 (stream_type 0x02), removed 0x0100 (stream_type 0x02), stream_type of 0x0101 0x03 -> 0x04
 0x00033e94 PAT version 0 -> 1: program 1 PMT PID 0x1000 -> 0x1100
 -----------------------------
+TS Sync: no sync loss detected
+-----------------------------
 Compliance Check Results:
 Max PCR interval: 80.000000ms [OK, limit: <= 100.000000ms]
 PCR-PTS/DTS max gap: 726.666667ms [OK, limit: <= 1000.000000ms]

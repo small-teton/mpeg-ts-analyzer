@@ -44,3 +44,29 @@ Tests check that the committed files equal the generator output and pin the
 verdicts for both packet sizes; the GUI's Overview tests use the CLI's analysis
 of the 188-byte file (`gui/tests/fixtures/analysis_all_findings_188.json`),
 which `make gui-test` compares with the output of the CLI built from the tree.
+
+## Diagnostic sample with TS synchronization loss
+
+`sample_data/sample_188byte_sync_loss.ts` and its 192-byte M2TS twin
+`sample_data/sample_192byte_sync_loss.ts` (39 KiB each) are also
+**intentionally invalid**. A clean 2-second stream is damaged in four places:
+a corrupted sync byte, one inserted byte, one deleted byte and a 1000-byte
+block of garbage with false sync bytes; it ends with a 100-byte partial packet.
+The analyzer reports four losses, each recovered, with their byte offsets and
+the skipped bytes, and continues the analysis after each
+([TS synchronization](../cli/usage.md#ts-synchronization-always-on)).
+
+```bash
+go run ./tools/generate_sync_loss -output sample_data/sample_188byte_sync_loss.ts
+go run ./tools/generate_sync_loss -m2ts -output sample_data/sample_192byte_sync_loss.ts
+./mpeg-ts-analyzer sample_data/sample_188byte_sync_loss.ts
+make gui-run GUI_ARGS='sample_data/sample_188byte_sync_loss.ts'
+```
+
+The generator, the position of each defect, the expected results and the
+TSDuck cross-check are described in
+[`tools/generate_sync_loss`](https://github.com/small-teton/mpeg-ts-analyzer/tree/master/tools/generate_sync_loss).
+Tests check that the committed files equal the generator output and pin the
+results for both packet sizes; the GUI's tests use the CLI's analysis of the
+188-byte file (`gui/tests/fixtures/analysis_sync_loss_188.json`), which `make
+gui-test` compares with the output of the CLI built from the tree.
