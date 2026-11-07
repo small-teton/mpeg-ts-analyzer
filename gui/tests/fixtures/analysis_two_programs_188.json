@@ -308,6 +308,143 @@
       }
     ]
   },
+  "multiplexing": {
+    "packet_gaps": {
+      "time_basis": "pcr_interpolated_file_position",
+      "pids": [
+        {
+          "pid": "0x0000",
+          "references": [],
+          "packet_count": 22,
+          "status": "info",
+          "max_gap_packets": 99,
+          "max_gap_start_offset_bytes": 6204,
+          "max_gap_end_offset_bytes": 25004,
+          "max_gap_ms": 0,
+          "max_gap_exact": false
+        },
+        {
+          "pid": "0x0011",
+          "references": [],
+          "packet_count": 4,
+          "status": "info",
+          "max_gap_packets": 380,
+          "max_gap_start_offset_bytes": 0,
+          "max_gap_end_offset_bytes": 71628,
+          "max_gap_ms": 384,
+          "max_gap_exact": false
+        },
+        {
+          "pid": "0x0100",
+          "references": [
+            {
+              "program_number": 1,
+              "role": "pcr"
+            },
+            {
+              "program_number": 1,
+              "role": "elementary_stream",
+              "stream_type": "0x02"
+            }
+          ],
+          "packet_count": 355,
+          "status": "info",
+          "max_gap_packets": 55,
+          "max_gap_start_offset_bytes": 146640,
+          "max_gap_end_offset_bytes": 157168,
+          "max_gap_ms": 43.495,
+          "max_gap_exact": true
+        },
+        {
+          "pid": "0x0101",
+          "references": [
+            {
+              "program_number": 1,
+              "role": "elementary_stream",
+              "stream_type": "0x03"
+            }
+          ],
+          "packet_count": 90,
+          "status": "info",
+          "max_gap_packets": 173,
+          "max_gap_start_offset_bytes": 52076,
+          "max_gap_end_offset_bytes": 84788,
+          "max_gap_ms": 357.445,
+          "max_gap_exact": true
+        },
+        {
+          "pid": "0x0102",
+          "references": [
+            {
+              "program_number": 2,
+              "role": "pcr"
+            },
+            {
+              "program_number": 2,
+              "role": "elementary_stream",
+              "stream_type": "0x02"
+            }
+          ],
+          "packet_count": 474,
+          "status": "info",
+          "max_gap_packets": 44,
+          "max_gap_start_offset_bytes": 58844,
+          "max_gap_end_offset_bytes": 67304,
+          "max_gap_ms": 54.913,
+          "max_gap_exact": true
+        },
+        {
+          "pid": "0x0103",
+          "references": [
+            {
+              "program_number": 2,
+              "role": "elementary_stream",
+              "stream_type": "0x03"
+            }
+          ],
+          "packet_count": 90,
+          "status": "info",
+          "max_gap_packets": 173,
+          "max_gap_start_offset_bytes": 55084,
+          "max_gap_end_offset_bytes": 87796,
+          "max_gap_ms": 359.139,
+          "max_gap_exact": true
+        },
+        {
+          "pid": "0x1000",
+          "references": [
+            {
+              "program_number": 1,
+              "role": "pmt"
+            }
+          ],
+          "packet_count": 22,
+          "status": "info",
+          "max_gap_packets": 99,
+          "max_gap_start_offset_bytes": 6392,
+          "max_gap_end_offset_bytes": 25192,
+          "max_gap_ms": 0,
+          "max_gap_exact": false
+        },
+        {
+          "pid": "0x1001",
+          "references": [
+            {
+              "program_number": 2,
+              "role": "pmt"
+            }
+          ],
+          "packet_count": 22,
+          "status": "info",
+          "max_gap_packets": 99,
+          "max_gap_start_offset_bytes": 6580,
+          "max_gap_end_offset_bytes": 25380,
+          "max_gap_ms": 0,
+          "max_gap_exact": false
+        }
+      ]
+    }
+  },
   "psi_health": {
     "status": "ok",
     "repetition_limit_ms": 500,

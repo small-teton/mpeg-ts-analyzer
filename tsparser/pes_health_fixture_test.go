@@ -165,8 +165,9 @@ func TestPESHealthText(t *testing.T) {
 		"  Program 1 PID 0x0104 (video) : INSUFFICIENT DATA (no PES packet started)",
 		"",
 	}, "\n")
-	if !strings.HasSuffix(out, want) {
-		t.Errorf("text summary:\n%s\nwant suffix:\n%s", out, want)
+	// Only the report-only packet gaps follow.
+	if !strings.Contains(out, want+"-----------------------------\nMax packet gaps") {
+		t.Errorf("text summary:\n%s\nwant:\n%s", out, want)
 	}
 	if strings.Contains(out, "Timestamp Anomaly") {
 		t.Errorf("unexpected timestamp anomaly:\n%s", out)

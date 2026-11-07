@@ -33,6 +33,7 @@ type AnalysisReport struct {
 	PIDReferences         *ReportPIDReferences      `json:"pid_references,omitempty"`
 	PESHeaders            *ReportPESHeaders         `json:"pes_headers,omitempty"`
 	PTSRepetition         *ReportPTSRepetition      `json:"pts_repetition,omitempty"`
+	Multiplexing          *ReportMultiplexing       `json:"multiplexing,omitempty"`
 	TimestampAnomalies    *ReportTimestampAnomalies `json:"timestamp_anomalies,omitempty"`
 	PCRJitter             *ReportPCRJitter          `json:"pcr_jitter,omitempty"`
 	Bitrate               *ReportBitrate            `json:"bitrate,omitempty"`

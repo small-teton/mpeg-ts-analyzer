@@ -196,6 +196,18 @@ PAT/PMT health: OK (repetition limit 500 ms, ETSI TR 101 290 1.3.a/1.5.a; time b
 -----------------------------
 Referenced PIDs: 8 references, silence limit 5000 ms [OK]
 Unreferenced PIDs: none [OK]
+-----------------------------
+PES Headers: 220 checked on 3 PIDs, no errors
+PTS Repetition (limit 700ms): max interval 66.666667ms over 208 intervals [OK]
+-----------------------------
+Max packet gaps (report only): 7 PIDs, time basis pcr_interpolated_file_position
+  PID 0x0000 : 43 packets, max gap 44 packets, 150.222 ms from 0x0001e27c to 0x00020388
+  PID 0x0011 : 10 packets, max gap 173 packets, at least 471.111 ms from 0x00016e74 to 0x0001ee3c
+  PID 0x0100 (program 1 PCR, program 1 ES stream_type 0x02) : 70 packets, max gap 15 packets, 42.667 ms from 0x00006034 to 0x00006bf4
+  PID 0x0101 (program 1 ES stream_type 0x03, program 1 ES stream_type 0x04) : 1359 packets, max gap 10 packets, 25.778 ms from 0x000069c0 to 0x000071d4
+  PID 0x0200 (program 1 PCR, program 1 ES stream_type 0x02) : 132 packets, max gap 16 packets, 43.871 ms from 0x0002e094 to 0x0002ed10
+  PID 0x1000 (program 1 PMT) : 29 packets, max gap 44 packets, 148.444 ms from 0x0001e338 to 0x00020444
+  PID 0x1100 (program 1 PMT) : 14 packets, max gap 43 packets, 147.922 ms from 0x00033f50 to 0x00035fa0
 ```
 
 The [PAT/PMT health](usage.md#pat-and-pmt-health-always-on) summary counts the
