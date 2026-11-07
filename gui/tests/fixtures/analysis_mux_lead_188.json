@@ -610,7 +610,7 @@
           "status": "ng",
           "value_ms": 1500,
           "limit_ms": 1000,
-          "observations": 188
+          "observations": 189
         }
       },
       "timestamp_anomalies": {
@@ -1589,7 +1589,7 @@
             "offset_bytes": 4700,
             "elapsed_ms": 360,
             "pts_ms": 0,
-            "pcr_gap_ms": -95442217.68888889
+            "pcr_gap_ms": 1500
           },
           {
             "pid": "0x0100",
@@ -1619,7 +1619,7 @@
             "offset_bytes": 5452,
             "elapsed_ms": 440,
             "pts_ms": 80,
-            "pcr_gap_ms": -95442217.68888889
+            "pcr_gap_ms": 1500
           },
           {
             "pid": "0x0100",
@@ -1642,7 +1642,7 @@
             "offset_bytes": 6204,
             "elapsed_ms": 520,
             "pts_ms": 160,
-            "pcr_gap_ms": -95442217.68888889
+            "pcr_gap_ms": 1500
           },
           {
             "pid": "0x0100",
@@ -1672,7 +1672,7 @@
             "offset_bytes": 6956,
             "elapsed_ms": 600,
             "pts_ms": 240,
-            "pcr_gap_ms": -95442217.68888889
+            "pcr_gap_ms": 1500
           },
           {
             "pid": "0x0100",
@@ -1695,7 +1695,7 @@
             "offset_bytes": 7708,
             "elapsed_ms": 680,
             "pts_ms": 320,
-            "pcr_gap_ms": -95442217.68888889
+            "pcr_gap_ms": 1500
           },
           {
             "pid": "0x0100",
@@ -1718,7 +1718,7 @@
             "offset_bytes": 8460,
             "elapsed_ms": 760,
             "pts_ms": 400,
-            "pcr_gap_ms": -95442217.68888889
+            "pcr_gap_ms": 1500
           },
           {
             "pid": "0x0100",
@@ -1741,7 +1741,7 @@
             "offset_bytes": 9212,
             "elapsed_ms": 840,
             "pts_ms": 480,
-            "pcr_gap_ms": -95442217.68888889
+            "pcr_gap_ms": 1500
           },
           {
             "pid": "0x0100",
@@ -1771,7 +1771,7 @@
             "offset_bytes": 9964,
             "elapsed_ms": 920,
             "pts_ms": 560,
-            "pcr_gap_ms": -95442217.68888889
+            "pcr_gap_ms": 1500
           },
           {
             "pid": "0x0100",
@@ -1794,7 +1794,7 @@
             "offset_bytes": 10716,
             "elapsed_ms": 1000,
             "pts_ms": 640,
-            "pcr_gap_ms": -95442217.68888889
+            "pcr_gap_ms": 1500
           },
           {
             "pid": "0x0100",
@@ -1833,7 +1833,7 @@
             "offset_bytes": 12220,
             "elapsed_ms": 1160,
             "pts_ms": 800,
-            "pcr_gap_ms": -95442217.68888889
+            "pcr_gap_ms": 1500
           },
           {
             "pid": "0x0100",
@@ -1841,7 +1841,7 @@
             "elapsed_ms": 1200,
             "pts_ms": 66,
             "dts_ms": 26,
-            "pcr_gap_ms": -95443011.68888889
+            "pcr_gap_ms": 706
           },
           {
             "pid": "0x0102",
@@ -1854,14 +1854,14 @@
             "elapsed_ms": 1240,
             "pts_ms": 108,
             "dts_ms": 68,
-            "pcr_gap_ms": -95443009.68888889
+            "pcr_gap_ms": 708
           },
           {
             "pid": "0x0101",
             "offset_bytes": 12972,
             "elapsed_ms": 1240,
             "pts_ms": 880,
-            "pcr_gap_ms": -95442217.68888889
+            "pcr_gap_ms": 1500
           },
           {
             "pid": "0x0100",
@@ -1869,7 +1869,7 @@
             "elapsed_ms": 1280,
             "pts_ms": 140,
             "dts_ms": 100,
-            "pcr_gap_ms": -95443017.68888889
+            "pcr_gap_ms": 700
           },
           {
             "pid": "0x0100",
@@ -1877,14 +1877,14 @@
             "elapsed_ms": 1320,
             "pts_ms": 182,
             "dts_ms": 142,
-            "pcr_gap_ms": -95443015.68888889
+            "pcr_gap_ms": 702
           },
           {
             "pid": "0x0101",
             "offset_bytes": 13724,
             "elapsed_ms": 1320,
             "pts_ms": 960,
-            "pcr_gap_ms": -95442217.68888889
+            "pcr_gap_ms": 1500
           },
           {
             "pid": "0x0100",
@@ -1892,14 +1892,14 @@
             "elapsed_ms": 1360,
             "pts_ms": 224,
             "dts_ms": 184,
-            "pcr_gap_ms": -95443013.68888889
+            "pcr_gap_ms": 704
           },
           {
             "pid": "0x0102",
             "offset_bytes": 14100,
             "elapsed_ms": 1360,
             "pts_ms": 150,
-            "pcr_gap_ms": -95443067.68888889
+            "pcr_gap_ms": 650
           },
           {
             "pid": "0x0100",
@@ -1907,14 +1907,14 @@
             "elapsed_ms": 1400,
             "pts_ms": 266,
             "dts_ms": 226,
-            "pcr_gap_ms": -95443011.68888889
+            "pcr_gap_ms": 706
           },
           {
             "pid": "0x0101",
             "offset_bytes": 14476,
             "elapsed_ms": 1400,
             "pts_ms": 1040,
-            "pcr_gap_ms": -95442217.68888889
+            "pcr_gap_ms": 1500
           },
           {
             "pid": "0x0100",
@@ -1922,7 +1922,7 @@
             "elapsed_ms": 1440,
             "pts_ms": 308,
             "dts_ms": 268,
-            "pcr_gap_ms": -95443009.68888889
+            "pcr_gap_ms": 708
           },
           {
             "pid": "0x0100",
@@ -1930,14 +1930,14 @@
             "elapsed_ms": 1480,
             "pts_ms": 340,
             "dts_ms": 300,
-            "pcr_gap_ms": -95443017.68888889
+            "pcr_gap_ms": 700
           },
           {
             "pid": "0x0101",
             "offset_bytes": 15228,
             "elapsed_ms": 1480,
             "pts_ms": 1120,
-            "pcr_gap_ms": -95442217.68888889
+            "pcr_gap_ms": 1500
           },
           {
             "pid": "0x0100",
@@ -1945,7 +1945,7 @@
             "elapsed_ms": 1520,
             "pts_ms": 382,
             "dts_ms": 342,
-            "pcr_gap_ms": -95443015.68888889
+            "pcr_gap_ms": 702
           },
           {
             "pid": "0x0100",
@@ -1953,14 +1953,14 @@
             "elapsed_ms": 1560,
             "pts_ms": 424,
             "dts_ms": 384,
-            "pcr_gap_ms": -95443013.68888889
+            "pcr_gap_ms": 704
           },
           {
             "pid": "0x0101",
             "offset_bytes": 15980,
             "elapsed_ms": 1560,
             "pts_ms": 1200,
-            "pcr_gap_ms": -95442217.68888889
+            "pcr_gap_ms": 1500
           },
           {
             "pid": "0x0100",
@@ -1968,7 +1968,7 @@
             "elapsed_ms": 1600,
             "pts_ms": 466,
             "dts_ms": 426,
-            "pcr_gap_ms": -95443011.68888889
+            "pcr_gap_ms": 706
           },
           {
             "pid": "0x0100",
@@ -1976,14 +1976,14 @@
             "elapsed_ms": 1640,
             "pts_ms": 508,
             "dts_ms": 468,
-            "pcr_gap_ms": -95443009.68888889
+            "pcr_gap_ms": 708
           },
           {
             "pid": "0x0101",
             "offset_bytes": 16732,
             "elapsed_ms": 1640,
             "pts_ms": 1280,
-            "pcr_gap_ms": -95442217.68888889
+            "pcr_gap_ms": 1500
           },
           {
             "pid": "0x0100",
@@ -1991,14 +1991,14 @@
             "elapsed_ms": 1680,
             "pts_ms": 540,
             "dts_ms": 500,
-            "pcr_gap_ms": -95443017.68888889
+            "pcr_gap_ms": 700
           },
           {
             "pid": "0x0102",
             "offset_bytes": 17108,
             "elapsed_ms": 1680,
             "pts_ms": 470,
-            "pcr_gap_ms": -95443067.68888889
+            "pcr_gap_ms": 650
           },
           {
             "pid": "0x0100",
@@ -2006,14 +2006,14 @@
             "elapsed_ms": 1720,
             "pts_ms": 582,
             "dts_ms": 542,
-            "pcr_gap_ms": -95443015.68888889
+            "pcr_gap_ms": 702
           },
           {
             "pid": "0x0101",
             "offset_bytes": 17484,
             "elapsed_ms": 1720,
             "pts_ms": 1360,
-            "pcr_gap_ms": -95442217.68888889
+            "pcr_gap_ms": 1500
           },
           {
             "pid": "0x0100",
@@ -2021,7 +2021,7 @@
             "elapsed_ms": 1760,
             "pts_ms": 624,
             "dts_ms": 584,
-            "pcr_gap_ms": -95443013.68888889
+            "pcr_gap_ms": 704
           },
           {
             "pid": "0x0100",
@@ -2029,21 +2029,22 @@
             "elapsed_ms": 1800,
             "pts_ms": 666,
             "dts_ms": 626,
-            "pcr_gap_ms": -95443011.68888889
+            "pcr_gap_ms": 706
           },
           {
             "pid": "0x0101",
             "offset_bytes": 18236,
             "elapsed_ms": 1800,
             "pts_ms": 1440,
-            "pcr_gap_ms": -95442217.68888889
+            "pcr_gap_ms": 1500
           },
           {
             "pid": "0x0100",
             "offset_bytes": 18424,
             "elapsed_ms": 1840,
             "pts_ms": 708,
-            "dts_ms": 668
+            "dts_ms": 668,
+            "pcr_gap_ms": 708
           },
           {
             "pid": "0x0100",

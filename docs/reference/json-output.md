@@ -1136,7 +1136,7 @@ the first starts a new timing segment. All results use the same steps:
 | `compliance.pcr_discontinuities` | Count of each step kind other than `continuous`, with the first PCR packet's `first_offset_bytes` and `first_jump_ms` (the value difference; for a wraparound the interval across the wrap). `ng` when `undeclared_count` (`backward` + `forward_jump`) is above 0 (ISO/IEC 13818-1, 2.4.3.5; ETSI TR 101 290 2.3b). `jump_limit_ms` (1000) separates a late PCR from a `forward_jump`. | Selected program, following `PCR_PID` changes | Every PCR after the first is classified; `pcr_count` counts all PCRs. | `skipped` with fewer than two PCRs |
 | `pcr_jitter` | Byte-position estimate in ns, and the delivery assessment ([PCR jitter](#pcr-jitter)); not a TR 101 290 2.4 measurement | Selected program | Interpolated only between three PCRs of one segment; delivery windows do not span a boundary; `estimate.discontinuities` lists each boundary with its `kind`, `jump_ms` and the segments it separates | `skipped` with fewer than 3 PCRs, no segment of 3 PCRs, or more than 30 % of the PCRs starting a segment |
 | `bitrate` | Bytes over PCR time of the comparable steps, per PID, in bit/s; `segment_count` counts timing segments | Selected program's PIDs; null packets separately | Bytes before the first PCR and across a boundary are dropped and the clock does not advance across it | `skipped` without two PCRs in one segment |
-| `compliance.max_pcr_pts_dts_gap` | DTS (or PTS) minus the PCR interpolated by byte position between the PCRs before and after the PES packet, in ms. Limit 1000 ms, inclusive. | Every elementary stream of the selected program | A PES packet is compared only when both PCRs belong to the same segment and the second is larger: no gap across a boundary or a wraparound, and none after the last PCR | `skipped` with no bracketed PTS/DTS |
+| `compliance.max_pcr_pts_dts_gap` | DTS (or PTS) minus the PCR interpolated by byte position between the PCRs before and after the PES packet, in ms, read modulo the 2^33 period as the signed difference nearest to zero (the lead of [Multiplexing: mux lead](#multiplexing-mux-lead)). Limit 1000 ms, inclusive. | Every elementary stream of the selected program | A PES packet is compared only when both PCRs belong to the same segment: no gap across a boundary, and none after the last PCR. A `wraparound` step stays in the segment, so a bracket across it is interpolated | `skipped` with no bracketed PTS/DTS |
 | `series.pcr` (`--output analysis`) | Each PCR with `pcr_ms`, `elapsed_ms` and `interval_ms` | Each program | `interval_ms` only on comparable steps; `discontinuity: true` on the first PCR of each new segment, where `elapsed_ms` does not advance | Empty without PCRs |
 
 Results are aggregates bounded by the number of step kinds; only the existing
@@ -1703,11 +1703,14 @@ or AC-3 carried as private data 0x06, which only a descriptor identifies).
   when any audio PID was compared.
 
 Relationship to the other timestamp checks: the lead is the computation of
-the PCR-PTS/DTS gap (`compliance.max_pcr_pts_dts_gap`) on the same PES packets
-with the same PCR bracket and interpolation. The gap check keeps the largest
-lead of the program (without the modulo reading, and skipping a bracket that
-spans a PCR wraparound) and judges it against 1000 ms; the mux lead reports the
-distribution per PID without judging it. One PES packet therefore produces at
+the PCR-PTS/DTS gap (`compliance.max_pcr_pts_dts_gap`, and `pcr_gap_ms` of the
+`--output analysis` PES series) on the same PES packets with the same PCR
+bracket, interpolation and modulo reading. The gap check keeps the largest
+lead of the program and judges it against 1000 ms; the mux lead reports the
+distribution per PID without judging it. The gap check measures a PES packet
+when it ends, so a PES packet that ends before the PCR after its start (a
+short audio PES packet, for example) is a mux lead sample but not a gap
+observation. One PES packet therefore produces at
 most one verdict (the gap check), and `timestamp_anomalies`, which compares
 consecutive PTS/DTS values rather than leads, is independent of both.
 
@@ -1924,7 +1927,9 @@ documents, and `compliance.pcr_discontinuities` and the `kind` of each
 `pid_references`, `pes_headers`, `pts_repetition` and `multiplexing`
 (`packet_gaps`, then `mux_lead`) to both documents (additive changes). Aligning
 the PCR steps also changed some values within 2.0 for streams with these steps
-(none of the bundled samples except the new PCR-discontinuities sample):
+(none of the bundled samples except the new PCR-discontinuities sample), and
+making the PCR-PTS/DTS gap wraparound-aware changed it for streams that cross
+a wraparound (of the bundled samples, only the mux lead sample):
 
 | Stream with | Before | Now |
 | --- | --- | --- |
@@ -1933,6 +1938,8 @@ the PCR steps also changed some values within 2.0 for streams with these steps
 | Two equal consecutive PCRs | A segment boundary for jitter, bitrate and series | A 0 ms interval |
 | `discontinuity_indicator` on a packet of the `PCR_PID` without a PCR | Ignored | The next PCR is `declared` |
 | A PES packet whose PCR bracket spans a declared or undeclared discontinuity | Interpolated across the two time bases | No PCR-PTS/DTS gap |
+| A PES packet whose PTS/DTS has wrapped and whose PCR has not, or the reverse | A PCR-PTS/DTS gap (`compliance.max_pcr_pts_dts_gap`, `series` `pcr_gap_ms`) off by about ±26.5 hours (2^33 at 90 kHz); a PCR that wrapped first could fail the check | The signed difference nearest to zero, the same lead as `mux_lead` |
+| A PES packet whose PCR bracket spans a PCR wraparound | No PCR-PTS/DTS gap (not an observation) | Interpolated across the wrap |
 
 With `--fail-on-error` an undeclared forward jump still exits 2 (now through
 `PCR discontinuities`); an undeclared backward step, which previously passed,

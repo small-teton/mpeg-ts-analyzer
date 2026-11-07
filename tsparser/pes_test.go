@@ -14,8 +14,9 @@ func TestNewPes(t *testing.T) {
 }
 
 func TestPesInitialize(t *testing.T) {
+	prev := pcrAnchor{valid: true, pcr: 3, unwrapped: 3, pos: 4}
 	p1 := NewPes()
-	p1.Initialize(1, 2, 3, 4, true)
+	p1.Initialize(1, 2, prev)
 
 	if p1.pid != 1 {
 		t.Errorf("actual: 1, But got %d", p1.pid)
@@ -23,14 +24,8 @@ func TestPesInitialize(t *testing.T) {
 	if p1.pos != 2 {
 		t.Errorf("actual: 2, But got %d", p1.pos)
 	}
-	if p1.prevPcr != 3 {
-		t.Errorf("actual: 3, But got %d", p1.prevPcr)
-	}
-	if p1.prevPcrPos != 4 {
-		t.Errorf("actual: 4, But got %d", p1.prevPcrPos)
-	}
-	if !p1.hasPrevPcr || p1.hasNextPcr {
-		t.Errorf("hasPrevPcr = %v, hasNextPcr = %v", p1.hasPrevPcr, p1.hasNextPcr)
+	if p1.prevAnchor != prev || p1.nextAnchor.valid {
+		t.Errorf("prevAnchor = %+v, nextAnchor = %+v", p1.prevAnchor, p1.nextAnchor)
 	}
 
 	data := []byte{
@@ -43,7 +38,8 @@ func TestPesInitialize(t *testing.T) {
 	if err := p2.Parse(); err != nil {
 		t.Errorf("Parse error: %s", err)
 	}
-	p2.Initialize(1, 2, 3, 4, true)
+	p2.nextAnchor = pcrAnchor{valid: true}
+	p2.Initialize(1, 2, prev)
 
 	if !reflect.DeepEqual(p1, p2) {
 		t.Errorf("Failed Initialize. Different in p1 and p2")
@@ -382,18 +378,14 @@ func TestPesDumpTimestamp(t *testing.T) {
 	if err := pes.Parse(); err != nil {
 		t.Fatalf("Parse error: %s", err)
 	}
-	// Should not panic; prevPcrPos==nextPcrPos so no delay calculation
+	// Should not panic; no PCR reference so no delay calculation
 	pes.DumpTimestamp()
 
-	// Test with PCR interpolation (nextPcrPos != prevPcrPos)
+	// Test with PCR interpolation
 	pes2 := NewPes()
 	pes2.Append(data)
-	pes2.prevPcr = 1000
-	pes2.hasPrevPcr = true
-	pes2.nextPcr = 2000
-	pes2.hasNextPcr = true
-	pes2.prevPcrPos = 0
-	pes2.nextPcrPos = 100
+	pes2.prevAnchor = pcrAnchor{valid: true, pcr: 1000, unwrapped: 1000, pos: 0}
+	pes2.nextAnchor = pcrAnchor{valid: true, pcr: 2000, unwrapped: 2000, pos: 100}
 	pes2.pos = 50
 	if err := pes2.Parse(); err != nil {
 		t.Fatalf("Parse error: %s", err)
@@ -411,12 +403,8 @@ func TestPesDumpTimestampPtsDtsWithPcr(t *testing.T) {
 	// With PCR interpolation
 	pes := NewPes()
 	pes.Append(data)
-	pes.prevPcr = 1000
-	pes.hasPrevPcr = true
-	pes.nextPcr = 2000
-	pes.hasNextPcr = true
-	pes.prevPcrPos = 0
-	pes.nextPcrPos = 100
+	pes.prevAnchor = pcrAnchor{valid: true, pcr: 1000, unwrapped: 1000, pos: 0}
+	pes.nextAnchor = pcrAnchor{valid: true, pcr: 2000, unwrapped: 2000, pos: 100}
 	pes.pos = 50
 	if err := pes.Parse(); err != nil {
 		t.Fatalf("Parse error: %s", err)
@@ -424,7 +412,7 @@ func TestPesDumpTimestampPtsDtsWithPcr(t *testing.T) {
 	// ptsDtsFlags=3 so DTS delay path is exercised
 	pes.DumpTimestamp()
 
-	// Without PCR interpolation (prevPcrPos == nextPcrPos)
+	// Without a PCR reference
 	pes2 := NewPes()
 	pes2.Append(data)
 	if err := pes2.Parse(); err != nil {
@@ -434,9 +422,9 @@ func TestPesDumpTimestampPtsDtsWithPcr(t *testing.T) {
 }
 
 // TestPesDumpTimestampNoFollowingPcr guards the fix for a spurious PCR-PTS gap:
-// when a PES (e.g. the final one before EOF) has no following PCR, nextPcr stays
-// zero. The delay must fall back to the most recent PCR rather than interpolate
-// against the unset (zero) nextPcr, which used to yield a wildly wrong value.
+// when a PES (e.g. the final one before EOF) has no following PCR, the delay
+// must fall back to the most recent PCR rather than interpolate against an
+// unknown PCR, which used to yield a wildly wrong value.
 func TestPesDumpTimestampNoFollowingPcr(t *testing.T) {
 	// PTS=90000 (1000ms). prevPcr=24300000 (900ms), no following PCR.
 	data := []byte{
@@ -445,12 +433,8 @@ func TestPesDumpTimestampNoFollowingPcr(t *testing.T) {
 	}
 	pes := NewPes()
 	pes.Append(data)
-	pes.prevPcr = 24300000
-	pes.hasPrevPcr = true
-	pes.prevPcrPos = 500
-	pes.nextPcr = 0 // no following PCR captured
-	pes.nextPcrPos = 0
-	pes.pos = 600
+	pes.prevAnchor = pcrAnchor{valid: true, pcr: 24300000, unwrapped: 24300000, pos: 500}
+	pes.pos = 600 // no following PCR captured
 	if err := pes.Parse(); err != nil {
 		t.Fatalf("Parse error: %s", err)
 	}
@@ -475,7 +459,7 @@ func TestPesDumpTimestampNoPtsDts(t *testing.T) {
 }
 
 func TestPesTimestampDelay(t *testing.T) {
-	pes := &Pes{ptsDtsFlags: 2, pts: 90_000, prevPcr: 24_300_000, hasPrevPcr: true}
+	pes := &Pes{ptsDtsFlags: 2, pts: 90_000, prevAnchor: pcrAnchor{valid: true, pcr: 24_300_000, unwrapped: 24_300_000}}
 	if got, ok := pes.TimestampDelay(); !ok || math.Abs(got-100) > 1e-6 {
 		t.Errorf("PTS delay = %f, %v; want 100ms, true", got, ok)
 	}
@@ -489,22 +473,75 @@ func TestPesTimestampDelay(t *testing.T) {
 		t.Error("PES without PTS/DTS must not produce a delay")
 	}
 	pes.ptsDtsFlags = 2
-	pes.hasPrevPcr = false
+	pes.prevAnchor.valid = false
 	if _, ok := pes.TimestampDelay(); ok {
 		t.Error("PES without a PCR reference must not produce a delay")
 	}
 	if _, ok := pes.BracketedTimestampDelay(); ok {
 		t.Error("PES without bracketing PCR observations must not produce a compliance delay")
 	}
-	pes.prevPcr = 24_300_000
-	pes.hasPrevPcr = true
-	pes.nextPcr = 27_000_000
-	pes.hasNextPcr = true
-	pes.prevPcrPos = 0
-	pes.nextPcrPos = 100
+	pes.prevAnchor = pcrAnchor{valid: true, pcr: 24_300_000, unwrapped: 24_300_000, pos: 0}
+	pes.nextAnchor = pcrAnchor{valid: true, pcr: 27_000_000, unwrapped: 27_000_000, pos: 100}
 	pes.pos = 50
 	if got, ok := pes.BracketedTimestampDelay(); !ok || math.Abs(got-50) > 1e-6 {
 		t.Errorf("bracketed delay = %f, %v; want 50ms, true", got, ok)
+	}
+	if got, ok := pes.TimestampDelay(); !ok || math.Abs(got-50) > 1e-6 {
+		t.Errorf("delay with a following PCR = %f, %v; want the bracketed 50ms, true", got, ok)
+	}
+	// The PCR after the start of the PES packet starts a new timing segment
+	// (a discontinuity or a PCR_PID change): no delay, not even against the
+	// previous PCR alone.
+	pes.nextAnchor.segment = 1
+	if _, ok := pes.TimestampDelay(); ok {
+		t.Error("PES whose PCRs lie in different segments must not produce a delay")
+	}
+	if pes.hasPcrReference() {
+		t.Error("PES whose PCRs lie in different segments has no PCR reference")
+	}
+}
+
+// TestPesTimestampDelayWraparound covers the delay across the 2^33 periods of
+// the PTS/DTS and the PCR, in both orders of the wraps, bracketed across a PCR
+// wraparound and against the previous PCR alone.
+func TestPesTimestampDelayWraparound(t *testing.T) {
+	const wrap90 = uint64(1) << 33
+	const ms = 27_000 // 27 MHz ticks
+	// The PCR before the PES packet is 30 ms before the wrap, the PCR after
+	// it 10 ms after the wrap (unwrapped within the segment), and the PES
+	// packet lies halfway between them: 10 ms before the wrap.
+	prev := pcrAnchor{valid: true, pcr: pcrWrapTicks - 30*ms, unwrapped: pcrWrapTicks - 30*ms, pos: 0}
+	next := pcrAnchor{valid: true, pcr: 10 * ms, unwrapped: pcrWrapTicks + 10*ms, pos: 1000}
+	for _, tc := range []struct {
+		name       string
+		next       pcrAnchor
+		stamp      uint64
+		wantMs     float64
+		bracketed  bool
+		wantPrevMs float64
+	}{
+		{"PTS wrapped, PCR not, across the PCR wrap", next, 690 * 90, 700, true, 0},
+		{"neither wrapped, across the PCR wrap", next, wrap90 - 5*90, 5, true, 0},
+		{"PCR wrapped first, negative lead, across the PCR wrap", next, wrap90 - 15*90, -5, true, 0},
+		{"PTS wrapped, PCR not, previous PCR only", pcrAnchor{}, 690 * 90, 720, false, 720},
+		{"PCR wrapped first, previous PCR only", pcrAnchor{}, wrap90 - 40*90, -10, false, -10},
+	} {
+		pes := &Pes{ptsDtsFlags: 2, pts: tc.stamp, pos: 500, prevAnchor: prev, nextAnchor: tc.next}
+		got, ok := pes.BracketedTimestampDelay()
+		if ok != tc.bracketed || tc.bracketed && math.Abs(got-tc.wantMs) > 1e-6 {
+			t.Errorf("%s: bracketed delay = %f, %v; want %f, %v", tc.name, got, ok, tc.wantMs, tc.bracketed)
+		}
+		if got, ok := pes.TimestampDelay(); !ok || math.Abs(got-tc.wantMs) > 1e-6 {
+			t.Errorf("%s: delay = %f, %v; want %f, true", tc.name, got, ok, tc.wantMs)
+		}
+	}
+	// After the PCR wrap, a PTS that has not wrapped yet (negative lead) is a
+	// small negative delay, not a delay of about +26.5 hours.
+	after := pcrAnchor{valid: true, pcr: 10 * ms, unwrapped: pcrWrapTicks + 10*ms, pos: 1000}
+	later := pcrAnchor{valid: true, pcr: 50 * ms, unwrapped: pcrWrapTicks + 50*ms, pos: 2000}
+	pes := &Pes{ptsDtsFlags: 3, pts: 30 * 90, dts: wrap90 - 20*90, pos: 1500, prevAnchor: after, nextAnchor: later}
+	if got, ok := pes.BracketedTimestampDelay(); !ok || math.Abs(got+50) > 1e-6 {
+		t.Errorf("PCR wrapped before DTS: delay = %f, %v; want -50ms, true", got, ok)
 	}
 }
 
@@ -584,7 +621,7 @@ func TestPesAppendRetainsAtMostTheHeader(t *testing.T) {
 		payload[i] = byte(i)
 	}
 	pes := NewPes()
-	pes.Initialize(0x100, 0, 0, 0, false)
+	pes.Initialize(0x100, 0, pcrAnchor{})
 	const chunks = 10
 	for range chunks {
 		pes.Append(payload)
@@ -600,7 +637,7 @@ func TestPesAppendRetainsAtMostTheHeader(t *testing.T) {
 			t.Fatalf("buf[%d] = 0x%02x, want 0x%02x", i, got, want)
 		}
 	}
-	pes.Initialize(0x100, 0, 0, 0, false)
+	pes.Initialize(0x100, 0, pcrAnchor{})
 	if len(pes.buf) != 0 || pes.received != 0 {
 		t.Errorf("after Initialize len(buf) = %d, received = %d", len(pes.buf), pes.received)
 	}

@@ -50,7 +50,12 @@ The transport error excludes the audio PES of packet 61 (59 audio PES packets
 1 is 800 ms (audio PID 0x0101, lead 1500 ms at packet 9, against video lead
 700 ms at packet 10), with 728 ms for the AAC PID (−20 ms at packet 51 against
 708 ms at packet 68). The PCR-PTS/DTS gap check is `ng` at 1500 ms, the
-largest of the same leads; `--fail-on-error` names only that check, and the
+largest of the same leads, over 189 observations, the same PES packets as the
+mux lead samples (before
+[#193](https://github.com/small-teton/mpeg-ts-analyzer/issues/193) it skipped
+the video PES packet of packet 98, whose PCRs straddle the wrap, and
+`--dump-timestamp` showed the PES packets whose PTS/DTS had wrapped before the
+PCR about 2^33 / 90 kHz off); `--fail-on-error` names only that check, and the
 mux lead adds no verdict. The timestamp anomaly report lists the wraps, the
 10 s jump and the −20 ms AAC PTS that goes backward.
 

@@ -333,9 +333,7 @@ type programAnalyzer struct {
 	start         int64 // offset of the first packet analyzed for this program
 	pcrPid        uint16
 	pesMap        map[uint16]*Pes
-	lastPcr       uint64
-	lastPcrPos    int64
-	hasLastPcr    bool
+	lastPcr       uint64 // the last PCR, for --dump-timestamp
 	maxDelay      float64
 	pcr           analysis.PCRCheck
 	pcrPtsSamples int
@@ -471,8 +469,7 @@ func (a *programAnalyzer) observe(tsPacket *TsPacket, pos int64, duplicate bool)
 			pes = NewPes()
 			a.pesMap[pid] = pes
 		}
-		pes.Initialize(pid, pos, a.lastPcr, a.lastPcrPos, a.hasLastPcr)
-		pes.prevAnchor = a.clock
+		pes.Initialize(pid, pos, a.clock)
 		pes.Append(tsPacket.Payload()) // read until pointer_field
 	} else {
 		pes.Append(tsPacket.Payload())
@@ -504,27 +501,13 @@ func (a *programAnalyzer) observePcr(tsPacket *TsPacket, pos int64) {
 	if a.collectJitter {
 		a.pcrJitter.add(sample)
 	}
-	for _, activePes := range a.pesMap {
-		if activePes == nil || activePes.hasNextPcr {
-			continue
-		}
-		if step.Boundary() {
-			// The PES started in the previous time base: no PCR-PTS/DTS gap
-			// spans the discontinuity.
-			activePes.hasPrevPcr = false
-		}
-		// Complete the PCR bracket for every active PES, including short
-		// PES packets which have no continuation packet after this PCR.
-		if !activePes.hasPrevPcr || pcr > activePes.prevPcr {
-			activePes.nextPcr = pcr
-			activePes.nextPcrPos = pos
-			activePes.hasNextPcr = true
-		}
-	}
 	// A PCR that the PCR check does not measure against the previous one
-	// starts a new segment of the timeline that places PES packets.
+	// starts a new segment of the timeline that places PES packets: no
+	// PCR-PTS/DTS gap spans it. A wraparound step continues the segment.
 	a.clock = nextPcrAnchor(a.clock, pcr, pos, step.Comparable())
 	a.pes.release(a.clock)
+	// Complete the PCR bracket of every active PES, including short PES
+	// packets which have no continuation packet after this PCR.
 	for _, activePes := range a.pesMap {
 		if activePes != nil && !activePes.nextAnchor.valid {
 			activePes.nextAnchor = a.clock
@@ -534,8 +517,6 @@ func (a *programAnalyzer) observePcr(tsPacket *TsPacket, pos int64) {
 		a.series.addPcr(pos, pcr, step)
 	}
 	a.lastPcr = pcr
-	a.lastPcrPos = pos
-	a.hasLastPcr = true
 }
 
 // completePes parses a buffered PES, checks its header and records its
@@ -622,12 +603,9 @@ func (a *programAnalyzer) setLayout(pmtPid, pcrPid uint16, programInfos []Progra
 	a.programInfos = programInfos
 	if pcrPid != a.pcrPid {
 		a.pcrPid, a.pcrDiscontinuityPending, a.pcrPidChanged = pcrPid, false, true
-		a.lastPcr, a.hasLastPcr = 0, false
+		a.lastPcr = 0
 		a.clock = pcrAnchor{segment: a.clock.segment}
 		for _, pes := range a.pesMap {
-			if pes != nil && !pes.hasNextPcr {
-				pes.hasPrevPcr = false
-			}
 			if pes != nil && !pes.nextAnchor.valid {
 				pes.prevAnchor = pcrAnchor{}
 			}

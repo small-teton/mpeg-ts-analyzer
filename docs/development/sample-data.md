@@ -232,3 +232,23 @@ go run ./tools/generate_mux_lead -m2ts -output sample_data/sample_192byte_mux_le
 
 The layout, the expected results and the TSDuck cross-check are described in
 [`tools/generate_mux_lead`](https://github.com/small-teton/mpeg-ts-analyzer/tree/master/tools/generate_mux_lead).
+
+## PCR-to-PTS/DTS gap wraparound sample
+
+`sample_data/sample_188byte_pts_gap_wraparound.ts` and its 192-byte M2TS twin
+`sample_data/sample_192byte_pts_gap_wraparound.ts` (37 and 38 KiB) cross the
+33-bit wraparounds in both orders: a video DTS (lead 700 ms) and an audio PTS
+(lead 30 ms) that wrap before the PCR, and an AAC PTS (lead −150 ms) that wraps
+after it, with PES packets whose bracketing PCRs span the PCR wrap. Every
+PCR-to-PTS/DTS gap stays its stream's lead, and the gap check is `ok` at
+700 ms; before the gap was made wraparound-aware it failed at about
++95443568 ms.
+
+```bash
+go run ./tools/generate_pts_gap_wraparound -output sample_data/sample_188byte_pts_gap_wraparound.ts
+go run ./tools/generate_pts_gap_wraparound -m2ts -output sample_data/sample_192byte_pts_gap_wraparound.ts
+./mpeg-ts-analyzer sample_data/sample_188byte_pts_gap_wraparound.ts --dump-timestamp
+```
+
+The layout, the expected results and the TSDuck cross-check are described in
+[`tools/generate_pts_gap_wraparound`](https://github.com/small-teton/mpeg-ts-analyzer/tree/master/tools/generate_pts_gap_wraparound).

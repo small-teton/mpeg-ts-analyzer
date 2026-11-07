@@ -118,6 +118,27 @@ descriptor_tag range decides which one applies):
 
 ## Dump timestamp
 
+`--dump-timestamp` prints every PCR of the program (with its interval to the
+previous PCR when it is not smaller, so not at a wraparound), and every PTS or
+DTS when its PES packet ends, with its
+`delay`: the PCR-to-PTS/DTS lead of the PES packet (its DTS, or its PTS when it
+has no DTS, minus the PCR at its first byte, interpolated by byte position
+between the PCRs before and after it). It is the value the PCR-PTS/DTS gap
+check judges and the [mux lead](usage.md#mux-lead-always-on-report-only)
+reports for the same PES packet: one computation, read modulo the 2^33 period
+of the PTS/DTS and the PCR as the signed difference nearest to zero, so a
+PTS/DTS that wraps before the PCR, or a PCR that wraps before the PTS/DTS,
+gives the same delay as without a wrap, and a PES packet whose PCRs straddle a
+PCR wraparound is interpolated across it.
+
+- A PES packet that ends before the PCR after its start has arrived (a short
+  audio PES packet, or the last one before the end of the file) shows its
+  delay against the previous PCR alone. The gap check does not count it,
+  because the previous PCR overstates the delay at a later byte position.
+- No delay is printed for a PES packet before the first PCR, or whose PCRs lie
+  in different timing segments (a declared or undeclared discontinuity, or a
+  `PCR_PID` change; see [PCR steps](usage.md#pcr-steps)).
+
 ```
 $ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts --dump-timestamp
 Input file:  sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
@@ -128,22 +149,26 @@ PMT : Program Info : elementary_PID     : 0x100, stream_type : 0x02 (13818-2 vid
 PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x03 (11172 audio)
 0x000034e0 PCR: 0x018344a0[00940.000000ms]
 0x000034e0 DTS: 0x00024090[01640.000000ms] (pid:0x100) (delay:700.000000ms)
-0x0000359c PTS: 0x00023a3a[01621.977778ms] (pid:0x101) (delay:668.922222ms)
+0x0000359c PTS: 0x00023a3a[01621.977778ms] (pid:0x101) (delay:681.977778ms)
 0x00004970 PCR: 0x01a43a20[01020.000000ms] (Interval:00080.000000ms)
-0x00003f28 DTS: 0x00024ea0[01680.000000ms] (pid:0x100) (delay:557.222222ms)
+0x00003f28 DTS: 0x00024ea0[01680.000000ms] (pid:0x100) (delay:700.000000ms)
 0x00004970 DTS: 0x00025cb0[01720.000000ms] (pid:0x100) (delay:700.000000ms)
-0x00003fe4 PTS: 0x00024b1a[01669.977778ms] (pid:0x101) (delay:534.144444ms)
+0x00003fe4 PTS: 0x00024b1a[01669.977778ms] (pid:0x101) (delay:687.120635ms)
 0x000055ec PCR: 0x01c52fa0[01100.000000ms] (Interval:00080.000000ms)
-0x00004ba4 DTS: 0x00026ac0[01760.000000ms] (pid:0x100) (delay:709.400000ms)
-0x00004c60 PTS: 0x00025bfa[01717.977778ms] (pid:0x101) (delay:657.177778ms)
+0x00004ba4 DTS: 0x00026ac0[01760.000000ms] (pid:0x100) (delay:725.882353ms)
+0x00004c60 PTS: 0x00025bfa[01717.977778ms] (pid:0x101) (delay:679.154248ms)
+0x000055ec DTS: 0x000278d0[01800.000000ms] (pid:0x100) (delay:700.000000ms)
+0x000056a8 PTS: 0x00026cda[01765.977778ms] (pid:0x101) (delay:665.977778ms)
 
 (snip)
 
 0x0004a66c PCR: 0x091bd920[05660.000000ms] (Interval:00080.000000ms)
-0x00049c24 DTS: 0x0008ade0[06320.000000ms] (pid:0x100) (delay:729.563591ms)
-0x00049ce0 PTS: 0x00089f1a[06277.977778ms] (pid:0x101) (delay:684.062566ms)
-0x0004a728 PTS: 0x0008affa[06325.977778ms] (pid:0x101) (delay:662.486106ms)
-0x0004b0b4 PTS: 0x0008c0da[06373.977778ms] (pid:0x101) (delay:665.094372ms)
+0x00049c24 DTS: 0x0008ade0[06320.000000ms] (pid:0x100) (delay:725.882353ms)
+0x00049ce0 PTS: 0x00089f1a[06277.977778ms] (pid:0x101) (delay:679.154248ms)
+0x0004a728 PTS: 0x0008affa[06325.977778ms] (pid:0x101) (delay:665.977778ms)
+0x0004b0b4 PTS: 0x0008c0da[06373.977778ms] (pid:0x101) (delay:713.977778ms)
+0x0004a66c DTS: 0x0008bbf0[06360.000000ms] (pid:0x100) (delay:700.000000ms)
+0x0004bbb8 PTS: 0x0008d1ba[06421.977778ms] (pid:0x101) (delay:761.977778ms)
 -----------------------------
 TS Sync: no sync loss detected
 -----------------------------
@@ -151,6 +176,27 @@ Compliance Check Results:
 Max PCR interval: 80.000000ms [OK, limit: <= 100.000000ms]
 PCR discontinuities: 0 undeclared in 60 PCRs [OK]
 PCR-PTS/DTS max gap: 726.666667ms [OK, limit: <= 1000.000000ms]
+```
+
+Across a wraparound, in the intentionally unusual
+`sample_data/sample_188byte_pts_gap_wraparound.ts` (video DTS lead 700 ms,
+audio PTS lead 30 ms, AAC PTS lead -150 ms; the PCR wraps between the PCRs at
+0x000047f8 and 0x00004ae8, the video DTS earlier, the AAC PTS later), every
+delay stays the lead of its stream:
+
+```
+0x000047f8 PCR: 0x257ffef8540[95443677.688889ms] (Interval:00080.000000ms)
+0x00004508 DTS: 0x0000cbe8[00580.000000ms] (pid:0x100) (delay:700.000000ms)
+0x000045c4 PTS: 0x1ffffe764[95443647.688889ms] (pid:0x101) (delay:30.000000ms)
+0x0000473c PTS: 0x1ffffb62c[95443507.688889ms] (pid:0x102) (delay:-150.000000ms)
+0x00004ae8 PCR: 0x00107ac0[00040.000000ms]
+0x000047f8 DTS: 0x0000e808[00660.000000ms] (pid:0x100) (delay:700.000000ms)
+0x000048b4 PTS: 0x00000384[00010.000000ms] (pid:0x101) (delay:30.000000ms)
+0x00004a2c PTS: 0x1ffffd24c[95443587.688889ms] (pid:0x102) (delay:-150.000000ms)
+0x00004dd8 PCR: 0x00317040[00120.000000ms] (Interval:00080.000000ms)
+0x00004ae8 DTS: 0x00010428[00740.000000ms] (pid:0x100) (delay:700.000000ms)
+0x00004ba4 PTS: 0x00001fa4[00090.000000ms] (pid:0x101) (delay:30.000000ms)
+0x00004d1c PTS: 0x1ffffee6c[95443667.688889ms] (pid:0x102) (delay:-150.000000ms)
 ```
 
 ## Dump PCR jitter
