@@ -56,6 +56,10 @@
       "$ref": "#/$defs/affectedPackets",
       "description": "Packets with a non-zero transport_scrambling_control, over every packet of the range. Present whenever the analysis ran (status complete)."
     },
+    "pid_references": {
+      "$ref": "#/$defs/pidReferences",
+      "description": "Referenced, missing and unreferenced PIDs of the PSI layouts, over every packet of the range. Present whenever the analysis ran (status complete)."
+    },
     "timestamp_anomalies": {
       "$ref": "#/$defs/timestampAnomalies"
     },
@@ -459,6 +463,195 @@
         "first_offset_bytes": {
           "$ref": "#/$defs/nonNegativeInteger",
           "description": "Byte offset of the PID's first affected packet (for M2TS, of its TP_extra_header)."
+        }
+      }
+    },
+    "pidReferences": {
+      "type": "object",
+      "required": [
+        "time_basis",
+        "silence_limit_ms",
+        "unreferenced_grace_ms",
+        "referenced",
+        "unreferenced"
+      ],
+      "properties": {
+        "time_basis": {
+          "$ref": "#/$defs/status",
+          "description": "Time model of the durations. Current value: pcr_interpolated_file_position (packet positions interpolated between the PCRs of the reference program; durations are lower bounds outside the PCR-covered range and across PCR discontinuities)."
+        },
+        "silence_limit_ms": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "A judged referenced PID with no packet for longer than this is silent (or absent without any packet)."
+        },
+        "unreferenced_grace_ms": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "How long a PID may carry packets before a layout references it, or after a layout stopped referencing it."
+        },
+        "referenced": {
+          "type": "object",
+          "required": [
+            "status",
+            "pids"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/$defs/status",
+              "description": "The most severe row status. Current values: ok, absent, silent, insufficient_data."
+            },
+            "pids": {
+              "type": "array",
+              "description": "One row per program, role, PID and (for elementary streams) stream_type ever referenced, ordered by program_number, role (pmt, pcr, elementary_stream), PID and stream_type.",
+              "items": {
+                "$ref": "#/$defs/referencedPID"
+              }
+            }
+          }
+        },
+        "unreferenced": {
+          "type": "object",
+          "required": [
+            "status",
+            "pids"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/$defs/status",
+              "description": "Current values: ok, unreferenced, insufficient_data, skipped."
+            },
+            "reason": {
+              "$ref": "#/$defs/reasonCode",
+              "description": "Why the result is insufficient_data or skipped. Current values: no_pcr_time_base, unreferenced_within_grace, program_layouts_unknown."
+            },
+            "pids": {
+              "type": "array",
+              "description": "PIDs that carried unreferenced packets, in numeric order.",
+              "items": {
+                "$ref": "#/$defs/unreferencedPID"
+              }
+            }
+          }
+        }
+      }
+    },
+    "referencedPID": {
+      "type": "object",
+      "required": [
+        "program_number",
+        "role",
+        "pid",
+        "status",
+        "silence_judged",
+        "packet_count",
+        "referenced_packet_count",
+        "referenced_from_offset_bytes",
+        "referenced_until_offset_bytes"
+      ],
+      "properties": {
+        "program_number": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "role": {
+          "$ref": "#/$defs/status",
+          "description": "What the layout references the PID as. Current values: pmt, pcr, elementary_stream."
+        },
+        "pid": {
+          "$ref": "#/$defs/pid"
+        },
+        "stream_type": {
+          "$ref": "#/$defs/streamType",
+          "description": "stream_type of an elementary_stream row; a stream retyped by a PMT change has one row per type. Absent for the other roles."
+        },
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: ok, absent, silent, insufficient_data."
+        },
+        "reason": {
+          "$ref": "#/$defs/reasonCode",
+          "description": "Why the row is insufficient_data. Current values: no_pcr_time_base, reference_shorter_than_limit, intermittent_stream_type."
+        },
+        "silence_judged": {
+          "type": "boolean",
+          "description": "Whether absence and silence are judged for the role: PMT, PCR and video or audio elementary streams."
+        },
+        "packet_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Packets of the PID in the whole range, without packets with transport_error_indicator set."
+        },
+        "first_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "First of those packets; absent when packet_count is 0."
+        },
+        "last_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Last of those packets; absent when packet_count is 0."
+        },
+        "referenced_packet_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Packets of the PID while this row was referenced."
+        },
+        "referenced_from_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Offset of the packet from which the row was first referenced."
+        },
+        "referenced_until_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Offset where its last reference ended: the packet from which a layout no longer referenced it, or the end of the scan."
+        },
+        "max_silence_ms": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Longest time without a packet of the PID while referenced, including from a reference start to the first packet and from the last packet to the reference end; absent without a PCR time base."
+        },
+        "max_silence_exact": {
+          "type": "boolean",
+          "description": "Whether max_silence_ms was interpolated within one PCR timing segment; false means it is a lower bound."
+        },
+        "max_silence_start_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Offset of the packet, or of the reference start, before the longest silence."
+        },
+        "max_silence_end_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Offset of the packet, or of the reference end, that ended the longest silence."
+        }
+      }
+    },
+    "unreferencedPID": {
+      "type": "object",
+      "required": [
+        "pid",
+        "status",
+        "packet_count",
+        "first_offset_bytes",
+        "last_offset_bytes",
+        "longest_run_ms"
+      ],
+      "properties": {
+        "pid": {
+          "$ref": "#/$defs/pid"
+        },
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: unreferenced (a run lasted longer than the grace period), insufficient_data (a run was cut by the end of the range, or by a layout that is not fully known, before the grace period could elapse)."
+        },
+        "packet_count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Packets of the runs with this status."
+        },
+        "first_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "last_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "longest_run_ms": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Longest of those runs: from its first packet to its end (a reference, or the end of the range), or to its last packet for a PID an earlier layout referenced."
         }
       }
     },
