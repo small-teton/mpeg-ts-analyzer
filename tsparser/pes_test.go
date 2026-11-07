@@ -573,3 +573,60 @@ func TestPesDumpHeader(t *testing.T) {
 	// Should not panic
 	pes.DumpHeader()
 }
+
+func TestPesAppendRetainsAtMostTheHeader(t *testing.T) {
+	// A PES longer than the largest possible header keeps only its first
+	// maxPesHeaderSize bytes but counts every byte it received.
+	payload := make([]byte, tsPayloadSize-tsHeaderSize)
+	for i := range payload {
+		payload[i] = byte(i)
+	}
+	pes := NewPes()
+	pes.Initialize(0x100, 0, 0, 0, false)
+	const chunks = 10
+	for range chunks {
+		pes.Append(payload)
+	}
+	if len(pes.buf) != maxPesHeaderSize || cap(pes.buf) != maxPesHeaderSize {
+		t.Errorf("len/cap(buf) = %d/%d, want %d", len(pes.buf), cap(pes.buf), maxPesHeaderSize)
+	}
+	if want := int64(chunks * len(payload)); pes.received != want {
+		t.Errorf("received = %d, want %d", pes.received, want)
+	}
+	for i, got := range pes.buf {
+		if want := payload[i%len(payload)]; got != want {
+			t.Fatalf("buf[%d] = 0x%02x, want 0x%02x", i, got, want)
+		}
+	}
+	pes.Initialize(0x100, 0, 0, 0, false)
+	if len(pes.buf) != 0 || pes.received != 0 {
+		t.Errorf("after Initialize len(buf) = %d, received = %d", len(pes.buf), pes.received)
+	}
+}
+
+func TestPesParseSpecialStreamIdBeyondRetainedBytes(t *testing.T) {
+	// pes_packet_length of a stream without an optional header is checked
+	// against the bytes received, not only the bytes retained.
+	const length = 1000
+	header := []byte{0x00, 0x00, 0x01, 0xBF, byte(length >> 8), byte(length & 0xFF)}
+	for _, tt := range []struct {
+		name     string
+		body     int
+		wantFail bool
+	}{
+		{name: "complete", body: length},
+		{name: "one byte short", body: length - 1, wantFail: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			pes := NewPes()
+			pes.Append(header)
+			pes.Append(make([]byte, tt.body))
+			if len(pes.buf) != maxPesHeaderSize {
+				t.Fatalf("len(buf) = %d, want %d", len(pes.buf), maxPesHeaderSize)
+			}
+			if err := pes.Parse(); (err != nil) != tt.wantFail {
+				t.Errorf("Parse() error = %v, want failure %v", err, tt.wantFail)
+			}
+		})
+	}
+}
