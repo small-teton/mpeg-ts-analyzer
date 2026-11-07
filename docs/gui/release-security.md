@@ -94,10 +94,12 @@ half; no secret is available and nothing is published.
 - It covers the package bytes. A package altered on its way from GitHub, or
   uploaded by someone without the private key, is rejected.
 - The manifest itself is not signed; its version and URLs are trusted because
-  they come from this repository's releases over HTTPS. Someone who can edit
-  the releases could point a newer version number at an older, genuinely
-  signed package (a downgrade to an earlier official build), but not at code
-  the release workflow did not sign.
+  they come from this repository's releases over HTTPS, and the GUI only
+  requests GitHub (see [Updates](design.md#updates)).
+- The signed trusted comment names the signed file, whose name contains the
+  version and platform, and the GUI requires it to be exactly the package it
+  expects. A genuinely signed package of another version or platform, offered
+  under a newer version number, is therefore rejected as well.
 - The GUI never offers a version lower than or equal to the running one.
 
 ## Packaging tools fetched at build time

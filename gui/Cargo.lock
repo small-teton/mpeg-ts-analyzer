@@ -2281,6 +2281,7 @@ dependencies = [
  "egui_kittest",
  "egui_plot",
  "image",
+ "minisign-verify",
  "rfd",
  "serde",
  "serde_json",

@@ -18,13 +18,15 @@ serde_json = "1.0.154"
 # verifies the minisign signature and installs; its reqwest (rustls with the
 # OS's root certificates) is also used for the release lookups.
 cargo-packager-updater = "0.2.3"
+# The GUI downloads and verifies the package itself (redirects restricted to
+# GitHub); the versions cargo-packager-updater uses.
+minisign-verify = "0.2.5"
+base64 = "0.22.1"
 # Only for the screenshots feature; the same version as egui_kittest uses.
 image = { version = "0.25.10", default-features = false, features = ["png"], optional = true }
 
 [dev-dependencies]
 egui_kittest = "0.37.0"
-# Decodes gui/updater.pub in a test; the version cargo-packager-updater uses.
-base64 = "0.22"
 
 # Rendering the README screenshots (make gui-screenshots) needs a GPU renderer
 # and image output, which the semantic UI tests do not; they stay out of

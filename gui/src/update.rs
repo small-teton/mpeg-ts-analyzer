@@ -1,10 +1,12 @@
 //! In-app update from GitHub Releases (docs/gui/design.md, "Updates").
 //!
 //! The newest published `gui-vX.Y.Z` release is found through the Releases
-//! API; its `_manifest.json` names the bundled CLI and its `_update.json` is
-//! handed to `cargo-packager-updater`, which downloads the package for this
-//! platform, verifies its signature against [`PUBLIC_KEY`] and installs it.
-//! Every URL is checked with [`validate_url`] before it is requested.
+//! API; its `_manifest.json` names the bundled CLI and its `_update.json` the
+//! package for this platform and its signature. The GUI downloads the package
+//! itself and verifies the signature against [`PUBLIC_KEY`], including the
+//! file name the signature was made for; `cargo-packager-updater` only
+//! installs the verified bytes. Every request uses [`client`], whose URLs are
+//! checked with [`validate_url`] and whose redirects stay on GitHub.
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, channel};
@@ -15,7 +17,7 @@ use cargo_packager_updater::reqwest::{header, redirect};
 use cargo_packager_updater::semver::Version;
 use cargo_packager_updater::url::Url;
 use cargo_packager_updater::{
-    Config, Update, UpdaterBuilder, WindowsConfig, WindowsUpdateInstallMode,
+    Config, RemoteRelease, Update, UpdateFormat, WindowsConfig, WindowsUpdateInstallMode,
 };
 use eframe::egui;
 use serde::Deserialize;
@@ -227,6 +229,13 @@ fn detect_from(
                     "macOS is running the app from a temporary location (App Translocation). Move it to Applications, open it from there, and update again."
                         .to_owned(),
                 )
+            } else if !mac_path_is_safe(&app) {
+                // cargo-packager-updater falls back to an administrator shell
+                // command with the path in quotes when it cannot move the app.
+                InstallKind::NotifyOnly(
+                    "The app's location contains characters the updater cannot handle safely (quotes, backslashes or line breaks). Move it to Applications and update again."
+                        .to_owned(),
+                )
             } else {
                 InstallKind::MacApp(app)
             }
@@ -271,6 +280,16 @@ fn mac_app_bundle(exe: &Path) -> Option<PathBuf> {
         .then(|| app.to_path_buf())
 }
 
+/// Whether `path` can go into the updater's quoted `osascript` shell command
+/// unchanged: valid UTF-8 without quotes, backslashes or control characters.
+fn mac_path_is_safe(path: &Path) -> bool {
+    path.to_str().is_some_and(|path| {
+        !path
+            .chars()
+            .any(|c| matches!(c, '\'' | '"' | '\\' | '`' | '$') || c.is_control())
+    })
+}
+
 fn directory_writable(dir: &Path) -> bool {
     let probe = dir.join(format!(
         ".mpeg-ts-analyzer-gui-write-test-{}",
@@ -289,8 +308,11 @@ pub(crate) struct Available {
     pub version: Version,
     pub bundled_cli_version: String,
     pub release_url: String,
-    /// The verified-on-download update, when this installation can install it.
+    /// The update to download, verify and install, when this installation
+    /// can install it.
     update: Option<Box<Update>>,
+    /// The package's file name, which its signature must name.
+    package_name: String,
     /// Why the update cannot be installed from the GUI, when it cannot.
     pub notify_only: Option<String>,
 }
@@ -334,6 +356,7 @@ fn check(current: &Version, kind: &InstallKind) -> Result<Option<Available>, Str
         bundled_cli_version: manifest.bundled_cli_version,
         release_url,
         update: None,
+        package_name: String::new(),
         notify_only: None,
     };
     let Some(update_url) = asset("update.json") else {
@@ -348,42 +371,131 @@ fn check(current: &Version, kind: &InstallKind) -> Result<Option<Available>, Str
         return Ok(Some(available));
     }
 
-    let endpoint = validate_url(&update_url)?;
-    let mut builder = UpdaterBuilder::new(
-        current.clone(),
-        Config {
-            endpoints: vec![endpoint],
+    let (target, suffix, extract_path) = match kind {
+        InstallKind::MacApp(app) => ("macos", "macos_arm64.app.tar.gz", app.clone()),
+        InstallKind::AppImage(path) => ("linux", "linux_x86_64.AppImage", path.clone()),
+        InstallKind::Nsis => (
+            "windows",
+            "windows_x86_64_setup.exe",
+            std::env::current_exe()
+                .ok()
+                .and_then(|exe| exe.parent().map(Path::to_path_buf))
+                .unwrap_or_default(),
+        ),
+        InstallKind::NotifyOnly(_) => unreachable!("handled above"),
+    };
+    let package_name = format!("mpeg-ts-analyzer-gui_{version}_{suffix}");
+    let remote: RemoteRelease = get_json(&client, &update_url)?;
+    if remote.version != version {
+        return Err(format!(
+            "the update manifest of {} announces version {}",
+            release.tag_name, remote.version
+        ));
+    }
+    let platform = cargo_packager_updater::target()
+        .ok_or_else(|| "this platform has no updates".to_owned())?;
+    let fail = |e: cargo_packager_updater::Error| {
+        format!(
+            "the update of {} has no package for {platform}: {e}",
+            release.tag_name
+        )
+    };
+    let download_url = remote.download_url(&platform).map_err(fail)?.clone();
+    let signature = remote.signature(&platform).map_err(fail)?.clone();
+    let format = remote.format(&platform).map_err(fail)?;
+    validate_url(download_url.as_str())?;
+    if download_url.path_segments().and_then(Iterator::last) != Some(package_name.as_str()) {
+        return Err(format!("unexpected update package {download_url}"));
+    }
+    let format_matches = matches!(
+        (kind, format),
+        (InstallKind::MacApp(_), UpdateFormat::App)
+            | (InstallKind::AppImage(_), UpdateFormat::AppImage)
+            | (InstallKind::Nsis, UpdateFormat::Nsis)
+    );
+    if !format_matches {
+        return Err(format!("unexpected update format {format}"));
+    }
+    let update = Update {
+        config: Config {
+            endpoints: Vec::new(),
             pubkey: PUBLIC_KEY.trim().to_owned(),
             windows: Some(WindowsConfig {
                 installer_args: None,
                 install_mode: Some(WindowsUpdateInstallMode::Passive),
             }),
         },
-    )
-    .timeout(TIMEOUT)
-    .header(header::USER_AGENT, user_agent())
-    .map_err(|e| e.to_string())?;
-    match kind {
-        InstallKind::MacApp(app) => {
-            builder = builder.executable_path(app.join("Contents/MacOS/mpeg-ts-analyzer-gui"))
-        }
-        InstallKind::AppImage(path) => builder = builder.executable_path(path),
-        _ => {}
-    }
-    let update = builder
-        .build()
-        .and_then(|updater| updater.check())
-        .map_err(|e| format!("cannot read the update of {}: {e}", release.tag_name))?
-        .ok_or_else(|| format!("the update of {} is not newer", release.tag_name))?;
-    if update.version.trim_start_matches('v') != version.to_string() {
-        return Err(format!(
-            "the update of {} announces version {}",
-            release.tag_name, update.version
-        ));
-    }
-    validate_url(update.download_url.as_str())?;
+        body: remote.notes.clone(),
+        current_version: current.to_string(),
+        version: version.to_string(),
+        date: remote.pub_date,
+        target: target.to_owned(),
+        extract_path,
+        download_url,
+        signature,
+        timeout: Some(TIMEOUT),
+        headers: header::HeaderMap::new(),
+        format,
+    };
+    available.package_name = package_name;
     available.update = Some(Box::new(update));
     Ok(Some(available))
+}
+
+/// Downloads the package of `update` and verifies it; the bytes are returned
+/// only when the signature is valid and names `package_name`.
+fn download_verified(update: &Update, package_name: &str) -> Result<Vec<u8>, String> {
+    let url = validate_url(update.download_url.as_str())?;
+    let response = client()?
+        .get(url.clone())
+        .send()
+        .map_err(|e| format!("cannot download {url}: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!("{url} answered {}", response.status()));
+    }
+    let bytes = response
+        .bytes()
+        .map_err(|e| format!("cannot download {url}: {e}"))?;
+    verify_signature(&bytes, &update.signature, PUBLIC_KEY, package_name)?;
+    Ok(bytes.to_vec())
+}
+
+/// Verifies a cargo-packager signature (Base64 of the minisign text) of
+/// `bytes` against `public_key` (the same encoding). The signed trusted
+/// comment must name `package_name`, which contains the version: a genuine
+/// package of another version or platform is rejected too.
+fn verify_signature(
+    bytes: &[u8],
+    signature: &str,
+    public_key: &str,
+    package_name: &str,
+) -> Result<(), String> {
+    use base64::Engine;
+    let decode = |text: &str, what: &str| {
+        base64::engine::general_purpose::STANDARD
+            .decode(text.trim())
+            .ok()
+            .and_then(|bytes| String::from_utf8(bytes).ok())
+            .ok_or_else(|| format!("the {what} is not valid"))
+    };
+    let public_key = minisign_verify::PublicKey::decode(&decode(public_key, "public key")?)
+        .map_err(|e| format!("the public key is not valid: {e}"))?;
+    let signature = minisign_verify::Signature::decode(&decode(signature, "signature")?)
+        .map_err(|e| format!("the signature is not valid: {e}"))?;
+    public_key
+        .verify(bytes, &signature, false)
+        .map_err(|e| format!("the signature does not match: {e}"))?;
+    let signed_name = signature
+        .trusted_comment()
+        .split('\t')
+        .find_map(|field| field.strip_prefix("file:"));
+    if signed_name != Some(package_name) {
+        return Err(format!(
+            "the signature is for {}, not {package_name}",
+            signed_name.unwrap_or("an unnamed file")
+        ));
+    }
+    Ok(())
 }
 
 enum Message {
@@ -503,16 +615,20 @@ impl Updates {
             self.phase = Phase::Available(available);
             return;
         };
+        let package_name = available.package_name.clone();
         let (sender, receiver) = channel();
         let windows = matches!(self.kind, InstallKind::Nsis);
         let ctx = ctx.clone();
         std::thread::spawn(move || {
+            let downloaded = download_verified(&update, &package_name);
             let message = if windows {
-                // Installing on Windows exits the process; only download and
-                // verify here.
-                Message::Downloaded(update.download().map_err(|e| e.to_string()))
+                // Installing on Windows exits the process; it happens in
+                // `on_exit`, after the settings were saved.
+                Message::Downloaded(downloaded)
             } else {
-                Message::Installed(update.download_and_install().map_err(|e| e.to_string()))
+                Message::Installed(
+                    downloaded.and_then(|bytes| update.install(bytes).map_err(|e| e.to_string())),
+                )
             };
             let _ = sender.send(message);
             ctx.request_repaint();
@@ -796,6 +912,68 @@ mod tests {
     }
 
     #[test]
+    fn refuses_mac_paths_the_admin_fallback_cannot_quote() {
+        for app in [
+            "/Users/me/it's/mpeg-ts-analyzer.app",
+            "/Users/me/a\"b/mpeg-ts-analyzer.app",
+            "/Users/me/a\\b/mpeg-ts-analyzer.app",
+            "/Users/me/a$(id)/mpeg-ts-analyzer.app",
+            "/Users/me/a`id`/mpeg-ts-analyzer.app",
+            "/Users/me/a\nb/mpeg-ts-analyzer.app",
+        ] {
+            let exe = format!("{app}/Contents/MacOS/mpeg-ts-analyzer-gui");
+            assert!(
+                matches!(
+                    detect_from(Os::Mac, Path::new(&exe), None, None, |_| true),
+                    InstallKind::NotifyOnly(reason) if reason.contains("cannot handle safely")
+                ),
+                "{app}"
+            );
+        }
+        assert!(matches!(
+            detect_from(
+                Os::Mac,
+                Path::new(
+                    "/Users/me/My Apps (2)/mpeg-ts-analyzer.app/Contents/MacOS/mpeg-ts-analyzer-gui"
+                ),
+                None,
+                None,
+                |_| true
+            ),
+            InstallKind::MacApp(_)
+        ));
+    }
+
+    const FIXTURE_NAME: &str = "mpeg-ts-analyzer-gui_9.9.9_macos_arm64.app.tar.gz";
+    const FIXTURE: &[u8] = include_bytes!("../tests/fixtures/update/package.bin");
+    const FIXTURE_SIG: &str = include_str!("../tests/fixtures/update/package.bin.sig");
+    const FIXTURE_KEY: &str = include_str!("../tests/fixtures/update/test_key.pub");
+
+    #[test]
+    fn accepts_a_valid_signature_for_the_expected_file() {
+        verify_signature(FIXTURE, FIXTURE_SIG, FIXTURE_KEY, FIXTURE_NAME).unwrap();
+    }
+
+    #[test]
+    fn rejects_altered_packages_other_keys_and_other_files() {
+        let mut altered = FIXTURE.to_vec();
+        altered[0] ^= 1;
+        let err = verify_signature(&altered, FIXTURE_SIG, FIXTURE_KEY, FIXTURE_NAME).unwrap_err();
+        assert!(err.contains("does not match"), "{err}");
+
+        // The release key did not make the fixture's signature.
+        let err = verify_signature(FIXTURE, FIXTURE_SIG, PUBLIC_KEY, FIXTURE_NAME).unwrap_err();
+        assert!(err.contains("does not match"), "{err}");
+
+        // A genuine signature of an older package offered as a newer one.
+        let newer = "mpeg-ts-analyzer-gui_10.0.0_macos_arm64.app.tar.gz";
+        let err = verify_signature(FIXTURE, FIXTURE_SIG, FIXTURE_KEY, newer).unwrap_err();
+        assert!(err.contains("not mpeg-ts-analyzer-gui_10.0.0"), "{err}");
+
+        assert!(verify_signature(FIXTURE, "not base64!", FIXTURE_KEY, FIXTURE_NAME).is_err());
+    }
+
+    #[test]
     fn detects_linux_installations() {
         let appimage = PathBuf::from("/home/me/Apps/mpeg-ts-analyzer.AppImage");
         let exe = Path::new("/tmp/.mount_abc/usr/bin/mpeg-ts-analyzer-gui");
@@ -869,6 +1047,7 @@ mod tests {
             bundled_cli_version: "9.8.7".to_owned(),
             release_url: format!("https://github.com/{OWNER_REPO}/releases/tag/gui-v9.9.9"),
             update: None,
+            package_name: String::new(),
             notify_only: notify_only.map(str::to_owned),
         })
     }

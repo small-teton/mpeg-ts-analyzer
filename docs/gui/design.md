@@ -363,11 +363,14 @@ GUI releases are never marked "latest", so `releases/latest` cannot be used.
    Both asset names must contain the selected version, and the version in the
    update manifest must equal it; otherwise the check fails.
 
-`cargo-packager-updater` accepts any URL in the (unsigned) update manifest, so
-the GUI validates every URL before using it or handing it to the library: only
-`https` URLs to `api.github.com`, to this repository's release downloads on
-`github.com`, and to GitHub's release-download hosts that those redirect to
-are accepted. No other host is contacted. Nothing about the user or the
+The GUI makes every request itself, with one HTTP client: the release list,
+both manifests and the package. `cargo-packager-updater` would fetch with its
+own client, which follows redirects anywhere, so the GUI uses the library only
+for its manifest type and for installing bytes it has already verified. Every
+URL must be `https` to `api.github.com/repos/<this repository>/…` or to
+`github.com/<this repository>/releases/download/…`, and redirects are followed
+only to `github.com`, `api.github.com` and `*.githubusercontent.com` over
+HTTPS. No other host is contacted. Nothing about the user or the
 machine is sent beyond what an HTTP request carries (the GUI's `User-Agent`
 names the GUI and its version).
 
@@ -388,8 +391,12 @@ before the in-app update existed) is offered as a release page only.
 
 ### Installing
 
-`cargo-packager-updater` downloads the package, verifies its signature against
-the public key compiled into the GUI, and installs it:
+The update manifest must announce the selected version and, for this
+platform, the expected format and the package named
+`mpeg-ts-analyzer-gui_<version>_<platform suffix>`. The GUI downloads that
+package and verifies its signature against the public key compiled into the
+GUI; the signed trusted comment must name exactly that file. Only then does
+`cargo-packager-updater` install the bytes:
 
 | Installation | How it is detected | Update |
 |---|---|---|
@@ -406,13 +413,11 @@ the public key compiled into the GUI, and installs it:
   library exits the process right after starting it.
 - An installed macOS app is not write-tested beforehand: if the user cannot
   move the bundle, the library asks for an administrator password through
-  `osascript`; cancelling leaves the old app in place.
+  `osascript`; cancelling leaves the old app in place. That fallback puts the
+  bundle path into a quoted shell command, so an app whose path contains
+  quotes, backslashes, `` ` ``, `$` or control characters is notify-only.
 - A signature that does not verify, or a download that fails, aborts the
   update and leaves the installation unchanged; the window shows the error.
-- The GUI's own requests (the release list and the release manifest) follow
-  redirects only to `github.com`, `api.github.com` and
-  `*.githubusercontent.com` over HTTPS. The update manifest and package are
-  fetched by the library from URLs the GUI validated first.
 
 ### Not covered
 
