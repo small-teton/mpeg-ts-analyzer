@@ -1,4 +1,5 @@
 pub mod bitrate;
+pub mod metric_help;
 pub mod overview;
 pub mod packet_pages;
 pub mod packets;
@@ -63,6 +64,7 @@ pub fn program_selector_labels(ui: &mut egui::Ui, labels: &[String], selected: &
     *selected = (*selected).min(labels.len().saturating_sub(1));
     let title = ui.label("Program");
     egui::ComboBox::from_id_salt(ui.scope_id().with("program"))
+        .truncate()
         .selected_text(labels.get(*selected).map_or("none", String::as_str))
         .show_ui(ui, |ui| {
             for (index, label) in labels.iter().enumerate() {

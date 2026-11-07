@@ -142,8 +142,36 @@ not affected by it.
 Stream section first (program tree with PIDs and PCR PID; the PAT changes and
 the program's PMT changes in the range, with the PIDs they add, remove or
 retype and PMT PID moves; file information), then compliance
-check cards, the elementary stream table, and warnings with links to the
-packet.
+check cards, the elementary stream table, and findings.
+
+- **Cards**: Max PCR interval, PCR → PTS/DTS gap, PTS/DTS anomalies,
+  Continuity counter and PCR jitter, each with the CLI's status as a badge,
+  the value and a short note (PCR jitter: `max |estimated jitter|`).
+- **Explanations**: a focusable information button next to each card title
+  (accessible name and tooltip `About <card>`) opens a window titled with the
+  card: what it measures, scope, value, every status with its threshold,
+  when it is skipped, limitations and a link to Timeline or Bitrate. Escape,
+  the close button or a click outside closes it; it keeps no other state. The
+  texts live in one table, `gui/src/views/metric_help.rs`, and state the
+  CLI's thresholds (100 ms, 1000 ms, ±500 ns, ±25 µs) and, for PCR jitter, the
+  byte-position model and its constant-rate assumption.
+- **Layout**: the cards form a row-major grid. The column count is how many
+  220-point cards with 8-point spacing fit in the visible width (at least one);
+  cards in a row share the width equally, and below one card width the single
+  card takes the available width and its text wraps. The title wraps beside
+  the badge and button instead of overlapping them. The stream section stacks
+  the program and the file information below 760 points, and the elementary
+  stream table scrolls horizontally on its own, so nothing widens the page.
+- **Findings** are one normalized list built from the report
+  (`overview::findings`): a finding for each failed compliance check, each
+  PTS/DTS anomaly group, each continuity event (one finding for the card if
+  the CLI reported errors without events), PCR jitter (labeled as an
+  estimate) and each analyzer warning. Any status other than `ok` and
+  `skipped`, including one the GUI does not know, is a finding with the CLI's
+  status as its badge, so an `NG` or `WARNING` card can never sit next to an
+  empty list. Each finding names its scope (program or whole multiplex); its
+  metric link opens the card's explanation. `skipped` cards are listed under
+  "Unavailable analysis" with the CLI's reason.
 
 ### Timeline
 
@@ -450,6 +478,10 @@ GUI; the signed trusted comment must name exactly that file. Only then does
 | In-app update with `cargo-packager-updater` (#150) | Avoids the macOS "Open Anyway" detour after the first install; already part of the packaging toolchain; verifies a minisign signature and handles `.app`, NSIS and AppImage | Own downloader and installer; Sparkle (macOS only); only linking to the release page |
 | Find updates through the Releases API and a manifest asset of each release | No extra hosting; works with GUI releases that are not "latest" | A fixed-URL manifest on GitHub Pages (the docs workflow owns the Pages deployment) |
 | Startup update check on by default, with a setting | Users learn about releases without action; one unauthenticated request | Manual check only |
+| Explain each Overview card in a window opened by a focusable information button, from one table of texts | Works with keyboard and touch; long enough for limitations; one source for cards, findings and tests | Longer text on the cards; hover-only tooltips |
+| Overview cards in a responsive row-major grid | A narrow window must not hide a verdict | One wrapping row with fixed widths; a horizontal scroller |
+| One Findings list counting every non-OK card, events and warnings; skipped checks listed separately | The count must agree with the cards; an event counts once | The former Warnings list of parser events only |
+| The GUI shows the CLI's statuses as they are, including PCR jitter `ng` from the byte-position estimate, and only labels it an estimate | The CLI is the source of truth; whether a file-based estimate deserves a verdict is a CLI/JSON contract decision (#152) | Downgrading or hiding `ng` in the GUI |
 | Modal progress dialog during analysis | Results of every analysis screen are being replaced; one clear place to wait and cancel | Per-screen overlays while other screens stay usable |
 
 ## Open questions
