@@ -72,7 +72,7 @@ pub(super) fn analyzed_app() -> App {
 
 /// An app showing `report`, with the Packets screen loaded as in
 /// [`analyzed_app`].
-fn app_with_report(report: AnalysisReport) -> App {
+pub(super) fn app_with_report(report: AnalysisReport) -> App {
     let mut app = app(Ok(checked_cli()));
     app.input = Some(PathBuf::from(&report.input.path));
     app.file_size = report.input.file_size_bytes;
@@ -217,6 +217,9 @@ fn opens_and_closes_settings_and_about() {
     harness.run();
     assert!(harness.state().settings_open);
     harness.get_by_role_and_label(Role::Window, "Settings");
+    // Language is not offered as a choice that would do nothing.
+    harness.get_by_label("Other languages are not available yet.");
+    assert!(harness.query_by_role(Role::ComboBox).is_none());
     harness
         .get_by_role_and_label(Role::Button, "Close window")
         .click();
@@ -996,7 +999,7 @@ fn findings_open_the_detail_page_with_their_actions() {
         ..checked_cli()
     });
     let mut harness = harness(app);
-    harness.get_by_label("Findings (5)");
+    harness.get_by_label("Findings (7)");
     let link = |harness: &mut Harness<'_, App>, name: &str| {
         harness
             .get_by_role_and_label(Role::Link, name)
@@ -1053,6 +1056,21 @@ fn findings_open_the_detail_page_with_their_actions() {
     harness.get_by_role_and_label(Role::Button, "Open packet at 0x00002A98");
     assert!(harness.query_by_label_contains("on timeline").is_none());
 
+    // Transport errors and scrambled packets: the first affected packet of
+    // each PID, which Timeline does not mark.
+    for (check, offset) in [
+        (Check::TransportErrors, "0x00000524"),
+        (Check::ScrambledPackets, "0x00000814"),
+    ] {
+        back_button(&harness).click();
+        harness.run();
+        link(&mut harness, check.title());
+        harness.get_by_role_and_label(Role::Heading, "Findings (1)");
+        harness.get_by_label("PID 0x1fff (null): 1 packet, 0 excluded from analysis");
+        harness.get_by_role_and_label(Role::Button, &format!("Open packet at {offset}"));
+        assert!(harness.query_by_label_contains("on timeline").is_none());
+    }
+
     // Summary-only findings have no offset to open.
     for check in [
         Check::MaxPcrInterval,
@@ -1081,7 +1099,7 @@ fn findings_account_for_every_check_that_is_not_ok() {
     .unwrap();
     let report = edited_report(|document| document["sync"] = sync_loss["sync"].clone());
     let harness = harness(app_with_report(report));
-    harness.get_by_label("Findings (6)");
+    harness.get_by_label("Findings (8)");
     assert!(harness.query_by_label("None.").is_none());
     for check in Check::ALL {
         assert_eq!(
@@ -1141,7 +1159,7 @@ fn unknown_status_stays_visible() {
         table_row(&harness, Check::PcrJitter)
             .query_by_label("INDETERMINATE")
             .expect("the table shows the status");
-        harness.get_by_label("Findings (5)");
+        harness.get_by_label("Findings (7)");
         open_detail(&mut harness, Check::PcrJitter, false);
         harness.get_by_label("Status: INDETERMINATE");
         harness.get_by_label_contains(
@@ -1183,8 +1201,8 @@ fn status_knowledge_is_per_check() {
     });
     let mut harness = harness_sized(app_with_report(report), WIDE);
     harness.run();
-    // Still five findings (the fixture's), and nothing unavailable.
-    harness.get_by_label("Findings (5)");
+    // Still seven findings (the fixture's), and nothing unavailable.
+    harness.get_by_label("Findings (7)");
     assert!(
         harness
             .query_by_label_contains("Unavailable analysis")

@@ -51,6 +51,12 @@ func (r *psiSectionReader) push(tsPacket *TsPacket, pos int64) ([]psiSectionData
 	if len(payload) == 0 {
 		return nil, nil
 	}
+	if tsPacket.scrambled() {
+		// PAT and PMT sections are never scrambled; a scrambled payload cannot
+		// be read as a section, and the section in progress misses its bytes.
+		r.collecting, r.buf = false, nil
+		return nil, []string{"transport_scrambling_control set; scrambled payload ignored and any partial section discarded"}
+	}
 	cc := tsPacket.ContinuityCounter()
 	expected := (r.lastCC + 1) & 0xF
 	duplicate := cc == r.lastCC

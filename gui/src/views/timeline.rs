@@ -259,12 +259,12 @@ impl TimelineView {
             psi_markers(plot, markers);
             if show_pcr {
                 plot.line(
-                    Line::new(format!("PCR {pcr_label}"), data.pcr_drawn.clone())
+                    Line::new(format!("PCR {pcr_label}"), data.pcr_drawn.as_slice())
                         .color(theme::PCR_COLOR),
                 );
                 if !data.pcr_over_limit.is_empty() {
                     plot.points(
-                        Points::new("over limit", data.pcr_over_limit.clone())
+                        Points::new("over limit", data.pcr_over_limit.as_slice())
                             .color(theme::LIMIT_COLOR)
                             .radius(5.0)
                             .filled(true),
@@ -276,7 +276,7 @@ impl TimelineView {
         if let Some(pick) = pick(
             &pcr_plot,
             show_pcr
-                .then_some(data.pcr_interval.iter())
+                .then_some(data.pcr_interval.iter().copied())
                 .into_iter()
                 .flatten(),
         ) {
@@ -322,7 +322,7 @@ impl TimelineView {
                 // Stretches share the name, so the legend shows the PID once.
                 for stretch in &gap.drawn {
                     plot.line(
-                        Line::new(gap.label.clone(), stretch.clone()).color(series_color(index)),
+                        Line::new(gap.label.clone(), stretch.as_slice()).color(series_color(index)),
                     );
                 }
             }
@@ -358,15 +358,6 @@ impl TimelineView {
                 ui.strong("Events");
                 ui.weak(format!("{} in this program", data.events.len()));
             });
-            let event_points: Vec<Point> = data
-                .events
-                .iter()
-                .map(|e| Point {
-                    seconds: e.seconds,
-                    value: 0.0,
-                    offset_bytes: e.offset_bytes,
-                })
-                .collect();
             let events_plot = Plot::new("events")
                 .height(60.0)
                 .default_x_bounds(data.time_range.0, data.time_range.1)
@@ -381,21 +372,20 @@ impl TimelineView {
             let events_plot = events_plot.show(ui, |plot| {
                 psi_markers(plot, markers);
                 plot.points(
-                    Points::new(
-                        "event",
-                        event_points
-                            .iter()
-                            .map(|p| [p.seconds, 0.0])
-                            .collect::<Vec<_>>(),
-                    )
-                    .shape(MarkerShape::Diamond)
-                    .color(crate::theme::EVENT_COLOR)
-                    .radius(6.0)
-                    .filled(true),
+                    Points::new("event", data.event_drawn.as_slice())
+                        .shape(MarkerShape::Diamond)
+                        .color(crate::theme::EVENT_COLOR)
+                        .radius(6.0)
+                        .filled(true),
                 );
                 highlight(plot, selection.as_ref(), "Event");
             });
-            if let Some(pick) = pick(&events_plot, event_points.iter())
+            let event_points = data.events.iter().map(|e| Point {
+                seconds: e.seconds,
+                value: 0.0,
+                offset_bytes: e.offset_bytes,
+            });
+            if let Some(pick) = pick(&events_plot, event_points)
                 && let Some(event) = data
                     .events
                     .iter()
@@ -567,14 +557,14 @@ fn psi_markers(plot: &mut egui_plot::PlotUi, markers: &[Marker]) {
 }
 
 /// A time plot linked to the other Timeline plots: zoom and pan act on time only.
-fn timeline_plot(
+fn timeline_plot<'a>(
     id: &str,
     height: f32,
     linked: egui::Vec2b,
     top: f64,
     time_range: (f64, f64),
     reset: bool,
-) -> Plot<'static> {
+) -> Plot<'a> {
     let plot = Plot::new(id.to_owned())
         .height(height)
         .default_x_bounds(time_range.0, time_range.1)
@@ -618,16 +608,16 @@ fn distance<R>(plot: &egui_plot::PlotResponse<R>, point: &Point) -> f32 {
 }
 
 /// The point clicked on a plot, if a click landed close enough to one.
-fn pick<'a, R>(
+fn pick<R>(
     plot: &egui_plot::PlotResponse<R>,
-    points: impl Iterator<Item = &'a Point>,
+    points: impl Iterator<Item = Point>,
 ) -> Option<Point> {
     if !(plot.response.clicked() || plot.response.secondary_clicked()) {
         return None;
     }
     nearest(points, |p| distance(plot, p))
         .filter(|(_, d)| *d <= PICK_DISTANCE)
-        .map(|(p, _)| *p)
+        .map(|(p, _)| p)
 }
 
 fn verdict_against(value: f64, limit: f64) -> Verdict {

@@ -91,6 +91,14 @@ pub struct AnalysisReport {
     pub sync: Option<Sync>,
     pub continuity_counter: Option<Continuity>,
     pub continuity_events: Vec<ContinuityEvent>,
+    /// Packets with transport_error_indicator set; absent from a CLI without
+    /// the check and when no program was analyzed.
+    #[serde(default)]
+    pub transport_errors: Option<AffectedPackets>,
+    /// Packets with a non-zero transport_scrambling_control; absent as
+    /// `transport_errors` is.
+    #[serde(default)]
+    pub scrambled_packets: Option<AffectedPackets>,
     pub programs: Vec<Program>,
     pub warnings: Vec<Warning>,
     /// Absent before CLI schema 1.x gained it, and when no program was analyzed.
@@ -246,6 +254,25 @@ pub struct ContinuityPid {
     pub pid: String,
     pub label: String,
     pub error_count: u64,
+}
+
+/// The CLI's `transport_errors` or `scrambled_packets` result.
+#[derive(Debug, Deserialize)]
+pub struct AffectedPackets {
+    pub status: String,
+    pub packet_count: u64,
+    pub excluded_packet_count: u64,
+    pub first_offset_bytes: Option<u64>,
+    pub pids: Vec<AffectedPid>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AffectedPid {
+    pub pid: String,
+    pub label: String,
+    pub packet_count: u64,
+    pub excluded_packet_count: u64,
+    pub first_offset_bytes: u64,
 }
 
 #[derive(Debug, Deserialize)]

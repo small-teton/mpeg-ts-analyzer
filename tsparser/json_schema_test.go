@@ -266,6 +266,8 @@ func summarySchemaCases() []schemaCase {
 			name: "complete without optional sections", schema: summarySchemaFile, path: fixedPath(sample188Path),
 			want: map[string]any{
 				"/status": "complete", "/reason": absent{}, "/error": absent{}, "/selected_program_number": 1,
+				"/transport_errors/status": "ok", "/transport_errors/first_offset_bytes": absent{}, "/transport_errors/pids": []any{},
+				"/scrambled_packets/status": "ok", "/scrambled_packets/packet_count": 0,
 				"/pcr_jitter": absent{}, "/bitrate": absent{}, "/psi_transitions": absent{},
 				"/warnings": []any{}, "/input/offset_bytes": 0, "/input/limit_bytes": absent{},
 				"/continuity_counter/total_error_count": 0, "/continuity_counter/pids": []any{},
@@ -310,6 +312,14 @@ func summarySchemaCases() []schemaCase {
 				"/pcr_jitter/delivery/average_rate_bps": absent{},
 				"/bitrate/status":                       "skipped", "/bitrate/reason": present{}, "/bitrate/duration_seconds": 0,
 				"/bitrate/pids": []any{}, "/bitrate/null_pid": absent{}, "/bitrate/program_average_bps": 0,
+			},
+		},
+		{
+			name: "complete with transport errors and scrambled packets", schema: summarySchemaFile, path: fixedPath(transportErrorsFixtures[0].path),
+			want: map[string]any{
+				"/status": "complete", "/transport_errors/status": "data_excluded", "/transport_errors/first_offset_bytes": 0,
+				"/transport_errors/pids/4/label": "null", "/transport_errors/pids/4/excluded_packet_count": 0,
+				"/scrambled_packets/status": "data_excluded", "/scrambled_packets/pids/3/pid": "0x0200",
 			},
 		},
 		{
@@ -363,7 +373,7 @@ func summarySchemaCases() []schemaCase {
 			},
 			want: map[string]any{
 				"/status": "incomplete", "/reason": "end_of_input_before_complete_analysis", "/error": absent{},
-				"/programs": []any{}, "/compliance": absent{},
+				"/programs": []any{}, "/compliance": absent{}, "/transport_errors": absent{}, "/scrambled_packets": absent{},
 			},
 		},
 		{
@@ -433,6 +443,7 @@ func analysisSchemaCases() []schemaCase {
 			name: "complete with every finding", schema: analysisSchemaFile, path: fixedPath(allFindingsFixtures[1].path), opts: analysis,
 			want: map[string]any{
 				"/status": "complete", "/programs/0/pcr_jitter/status": "ng", "/programs/0/pcr_jitter/delivery/assessment": "constant",
+				"/transport_errors/status": "affected", "/scrambled_packets/pids/0/pid": "0x1fff",
 				"/continuity_events/0/expected_cc": 5, "/programs/0/series/timestamp_events/0": present{},
 			},
 		},
@@ -447,6 +458,13 @@ func analysisSchemaCases() []schemaCase {
 			name: "incomplete after an unrecovered sync loss", schema: analysisSchemaFile, opts: analysis,
 			path: synthetic(func() []byte { return syncTestStream(make([]byte, 50), 3) }),
 			want: map[string]any{"/status": "incomplete", "/reason": "sync_lost", "/sync/status": "lost", "/programs/0/series": present{}},
+		},
+		{
+			name: "complete with transport errors and scrambled packets in M2TS", schema: analysisSchemaFile, path: fixedPath(transportErrorsFixtures[1].path), opts: analysis,
+			want: map[string]any{
+				"/status": "complete", "/transport_errors/status": "data_excluded", "/transport_errors/packet_count": 6,
+				"/scrambled_packets/excluded_packet_count": 5, "/scrambled_packets/first_offset_bytes": 7 * 192,
+			},
 		},
 		{
 			name: "complete with PSI transitions", schema: analysisSchemaFile, path: fixedPath(psiVersionChange188Path), opts: analysis,
@@ -476,7 +494,7 @@ func analysisSchemaCases() []schemaCase {
 			}),
 			want: map[string]any{
 				"/status": "incomplete", "/reason": "no_program_analyzed", "/analysis_start_offset_bytes": absent{},
-				"/continuity_counter": absent{},
+				"/continuity_counter": absent{}, "/transport_errors": absent{}, "/scrambled_packets": absent{},
 			},
 		},
 		{

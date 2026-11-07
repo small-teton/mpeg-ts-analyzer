@@ -85,6 +85,7 @@ type psiTracker struct {
 	packetSize  int
 	quiet       bool
 	continuity  *continuityCounterSummary
+	trust       *transportTrustSummary // names PIDs of applied layouts, when set
 	patVersion  uint8
 	patTable    *patTable
 	patPrograms []Program
@@ -184,6 +185,24 @@ func (t *psiTracker) observe(tsPacket *TsPacket, pos int64, continuity *continui
 			t.applyPmt(p, pos, sections, continuity)
 		}
 	}
+}
+
+// readsPid reports whether the tracker reads the payload of pid at offset pos:
+// the PAT, or the PMT PID of an analyzed program that is still in the PAT. A
+// nil tracker reads nothing.
+func (t *psiTracker) readsPid(pid uint16, pos int64) bool {
+	if t == nil {
+		return false
+	}
+	if pid == patPidValue {
+		return true
+	}
+	for _, p := range t.programs {
+		if !p.removed && pid == p.pmtPid && pos >= p.analyzer.start {
+			return true
+		}
+	}
+	return false
 }
 
 // collectTables returns the tables the packet completes. A continuity_counter
@@ -348,6 +367,9 @@ func (t *psiTracker) setLayout(p *trackedProgram, pmtPid uint16, table *pmtTable
 	}
 	p.pmtPid, p.table = pmtPid, table
 	t.continuity.addProgramLabels(pmtPid, table.pcrPid, table.programInfos)
+	if t.trust != nil {
+		t.trust.addProgramLabels(pmtPid, table.pcrPid, table.programInfos)
+	}
 	p.analyzer.setLayout(pmtPid, table.pcrPid, table.programInfos)
 }
 

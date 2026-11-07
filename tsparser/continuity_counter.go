@@ -108,11 +108,16 @@ func newEmptyContinuitySummary() *continuityCounterSummary {
 
 // addProgramLabels names the PIDs of one program in the summary.
 func (s *continuityCounterSummary) addProgramLabels(pmtPid, pcrPid uint16, programInfos []ProgramInfo) {
+	s.check.ObserveLayout(programLayout(pmtPid, pcrPid, programInfos))
+}
+
+// programLayout is the observation of one program layout.
+func programLayout(pmtPid, pcrPid uint16, programInfos []ProgramInfo) analysis.ProgramLayout {
 	streams := make([]analysis.ElementaryStream, len(programInfos))
 	for i, info := range programInfos {
 		streams[i] = analysis.ElementaryStream{PID: info.elementaryPid, StreamType: info.streamType}
 	}
-	s.check.ObserveLayout(analysis.ProgramLayout{PMTPID: pmtPid, PCRPID: pcrPid, Streams: streams})
+	return analysis.ProgramLayout{PMTPID: pmtPid, PCRPID: pcrPid, Streams: streams}
 }
 
 // Add counts one continuity error.

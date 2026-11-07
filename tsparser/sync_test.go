@@ -448,7 +448,7 @@ func TestScanParseErrorAfterResync(t *testing.T) {
 
 	reader := bytes.NewReader(data)
 	var pos int64
-	_, err := scanPrograms(reader, &pos, nil, newEmptyContinuitySummary(), nil, options.Options{}, 188, 0, true)
+	_, err := scanPrograms(reader, &pos, nil, newEmptyContinuitySummary(), newTransportTrustSummary(), nil, options.Options{}, 188, 0, true)
 	if err == nil || !strings.Contains(err.Error(), "failed to parse TS packet") || pos != badPos {
 		t.Errorf("err = %v at %d", err, pos)
 	}
@@ -457,7 +457,7 @@ func TestScanParseErrorAfterResync(t *testing.T) {
 	}
 
 	pos = 0
-	_, err = scanPrograms(seekFailingReader{bytes.NewReader(data)}, &pos, nil, newEmptyContinuitySummary(), nil, options.Options{}, 188, 0, true)
+	_, err = scanPrograms(seekFailingReader{bytes.NewReader(data)}, &pos, nil, newEmptyContinuitySummary(), newTransportTrustSummary(), nil, options.Options{}, 188, 0, true)
 	if err == nil || !strings.Contains(err.Error(), "file seek error") {
 		t.Errorf("seek failure: err = %v", err)
 	}

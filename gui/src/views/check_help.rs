@@ -43,6 +43,8 @@ pub enum Check {
     PcrPtsDtsGap,
     TimestampAnomalies,
     ContinuityCounter,
+    TransportErrors,
+    ScrambledPackets,
     Synchronization,
 }
 
@@ -107,7 +109,7 @@ pub struct CheckHelp {
 
 /// The explanations in table order: grouped by [`Category`], in
 /// [`Category::ALL`] order.
-pub const HELP: [CheckHelp; 6] = [
+pub const HELP: [CheckHelp; 8] = [
     CheckHelp {
         check: Check::MaxPcrInterval,
         category: Category::Timing,
@@ -230,6 +232,55 @@ pub const HELP: [CheckHelp; 6] = [
         )),
     },
     CheckHelp {
+        check: Check::TransportErrors,
+        category: Category::Integrity,
+        title: "Transport errors",
+        summary: "Packets marked as damaged (transport_error_indicator) on any PID.",
+        measures: "How many packets have transport_error_indicator set. A demodulator or other upstream device sets this bit when a packet has at least one bit error it could not correct. Such a packet cannot be trusted, so the analysis does not use it: its PSI section, its PES payload and its PCR are left out. A PES packet in progress on the PID ends at the damaged packet and is read from the packets before it.",
+        applies_to: "The whole multiplex: every packet of the range, including the packets read while the first PAT and PMT were acquired and null packets. The PID is the one in the damaged packet's own header, which the error may have changed.",
+        value: "The number of packets with transport_error_indicator set. Current result gives how many of them carried data the analysis would have read (excluded), the first offset, and each PID with its count and first offset.",
+        statuses: &[
+            ("ok", "No packet has transport_error_indicator set."),
+            (
+                "affected",
+                "Damaged packets were found, but none on a PID whose data the analysis reads (for example null packets or other programs). The other results are complete.",
+            ),
+            (
+                "data_excluded",
+                "At least one damaged packet was on the PAT, a PMT, the PCR PID or an elementary stream of an analyzed program. Its data was left out, so the other results are based on less data than the stream carried.",
+            ),
+        ],
+        skipped: "This check is never skipped while a program is analyzed. When a PAT or PMT arrives only in damaged packets, it is never acquired: the analysis is incomplete and no check is reported.",
+        limitations: "A damaged packet still counts for the continuity counter check with the counter in its header, and for the bitrate. A damaged packet whose header cannot be parsed at all interrupts the analysis as any malformed packet does, and the analysis restarts at the next PAT. Errors corrected upstream, or not flagged by the device, are invisible in the file.",
+        navigation: Some((
+            Screen::Packets,
+            "Packets marks each packet with transport_error_indicator set as a transport error.",
+        )),
+    },
+    CheckHelp {
+        check: Check::ScrambledPackets,
+        category: Category::Integrity,
+        title: "Scrambled packets",
+        summary: "Packets whose payload is scrambled (transport_scrambling_control).",
+        measures: "How many packets have a non-zero transport_scrambling_control, which marks a payload encrypted by conditional access. A scrambled payload cannot be read without decryption, so its PSI section or PES payload is left out; a PES packet in progress on the PID ends at it. The header and adaptation field are never scrambled, so a PCR in a scrambled packet is still used.",
+        applies_to: "The whole multiplex: every packet of the range, including the packets read while the first PAT and PMT were acquired and null packets.",
+        value: "The number of scrambled packets. Current result gives how many of them carried a payload the analysis would have read (excluded), the first offset, and each PID with its count and first offset.",
+        statuses: &[
+            ("ok", "No packet is scrambled."),
+            (
+                "affected",
+                "Scrambled packets were found, but none carried a payload the analysis reads (for example other programs, unreferenced PIDs or packets without payload). The other results are complete.",
+            ),
+            (
+                "data_excluded",
+                "At least one scrambled payload was on the PAT, a PMT or an elementary stream of an analyzed program. It was left out, so PES timestamps and PSI tracking are based on less data than the stream carried.",
+            ),
+        ],
+        skipped: "This check is never skipped while a program is analyzed. A PAT or PMT that arrives only scrambled is never acquired: the analysis is incomplete and no check is reported.",
+        limitations: "Scrambling is not an error in itself; an encrypted service is normal in a broadcast capture. The analyzer does not decrypt, and it does not tell even-key from odd-key packets. PAT and PMT are never scrambled in a valid stream, and neither are null packets.",
+        navigation: Some((Screen::Packets, "Packets marks each scrambled packet.")),
+    },
+    CheckHelp {
         check: Check::Synchronization,
         category: Category::Integrity,
         title: "TS synchronization",
@@ -304,6 +355,8 @@ mod tests {
                 Check::PcrPtsDtsGap,
                 Check::TimestampAnomalies,
                 Check::ContinuityCounter,
+                Check::TransportErrors,
+                Check::ScrambledPackets,
                 Check::Synchronization,
             ]
         );

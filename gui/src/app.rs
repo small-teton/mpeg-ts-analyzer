@@ -315,10 +315,11 @@ impl App {
             JobUpdate::Finished(Ok(report)) => {
                 self.analyzed = Some((running.offset, running.limit));
                 self.program = self.program.min(report.programs.len().saturating_sub(1));
-                self.packet_pages = self
-                    .input
-                    .clone()
-                    .map(|input| PacketPages::new(input, &report, running.offset, running.limit));
+                // Packets takes the paging in Settings now and keeps it for this analysis.
+                let paging = self.settings.paging();
+                self.packet_pages = self.input.clone().map(|input| {
+                    PacketPages::new(input, &report, running.offset, running.limit, paging)
+                });
                 self.analysis = Some(report);
                 self.plots = None;
                 self.analysis_generation += 1;
@@ -833,6 +834,8 @@ fn navigation_tile(ui: &mut egui::Ui, screen: Screen, selected: bool) -> egui::R
     response
 }
 
+#[cfg(test)]
+mod plot_alloc_tests;
 #[cfg(all(test, feature = "screenshots"))]
 mod screenshots;
 #[cfg(test)]

@@ -66,14 +66,19 @@ observations it needs through focused methods.
 | Whether a continuity counter error occurred | `tsparser`, reported as `analysis.ContinuityError` |
 | How errors are counted per PID, how each PID is labeled, the check's status | `analysis` (`ContinuityCheck`) |
 | The `continuity_counter` JSON object, the text summary, exit codes | `tsparser` report code and `cmd` |
+| Whether a packet with `transport_error_indicator` set or a scrambled payload may feed PSI, PES or PCR analysis, and whether its data was excluded | `tsparser` (`TsPacket.payloadUntrusted`, `transportTrustSummary.observe`), reported as `analysis.TransportError` / `analysis.Scrambled` |
+| How affected packets are counted per PID, labeled, and the `ok` / `affected` / `data_excluded` status | `analysis` (`TransportTrustCheck`) |
 
 The continuity counter summary is the first check that uses this boundary from
 end to end. It was chosen because it is an existing, always-on transport check
 whose output is already an aggregate with a status: moving its aggregation
-proves the observation path without changing any public output. The planned
+proves the observation path without changing any public output. The
 transport-error and scrambling check
-([#61](https://github.com/small-teton/mpeg-ts-analyzer/issues/61)) adds public
-output of its own and follows the same pattern.
+([#61](https://github.com/small-teton/mpeg-ts-analyzer/issues/61)) is the first
+new check built on it: the scan decides which packets it does not trust and
+whether their data was excluded, and `TransportTrustCheck` aggregates the
+resulting `TransportError` and `Scrambled` observations into the
+`transport_errors` and `scrambled_packets` results.
 
 Other aggregate evaluators (PCR interval, PCR jitter, PCR-PTS/DTS gap,
 timestamp anomalies, bitrate) are still in `tsparser`. They move to `analysis`

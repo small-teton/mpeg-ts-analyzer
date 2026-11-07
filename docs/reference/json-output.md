@@ -135,6 +135,18 @@ $ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_
     "total_error_count": 0,
     "pids": []
   },
+  "transport_errors": {
+    "status": "ok",
+    "packet_count": 0,
+    "excluded_packet_count": 0,
+    "pids": []
+  },
+  "scrambled_packets": {
+    "status": "ok",
+    "packet_count": 0,
+    "excluded_packet_count": 0,
+    "pids": []
+  },
   "timestamp_anomalies": {
     "status": "ok",
     "items": []
@@ -165,6 +177,7 @@ Status and top-level reason values are:
 | `pcr_jitter.delivery.assessment` | `constant`, `variable`, `unknown` |
 | `bitrate.status` | `ok`, `skipped` |
 | `continuity_counter.status` | `ok`, `errors` |
+| `transport_errors.status`, `scrambled_packets.status` | `ok`, `affected`, `data_excluded` |
 | `timestamp_anomalies.status` | `ok`, `anomalies` |
 
 Top-level and per-program `reason` values are stable codes intended for machine
@@ -209,6 +222,134 @@ rejected with `--format json` instead of mixing human text into stdout. Schema
 `2.x` may gain fields and enum values. Consumers must treat unknown enum values
 as unrecognized. Existing fields are not removed or retyped, and existing enum
 meanings do not change; those incompatible changes increment `schema_version`.
+
+## Transport errors and scrambled packets
+
+Every complete analysis (summary and `--output analysis`) has
+`transport_errors` (packets with `transport_error_indicator` set) and
+`scrambled_packets` (packets with a non-zero `transport_scrambling_control`),
+both for the whole multiplex. They count every packet of the range from its
+first packet, including the packets read while the first PAT and PMT were
+acquired and the null PID; they are absent when no analysis ran (`incomplete`,
+`failed`, `programs_listed`). For
+`sample_data/sample_188byte_transport_errors.ts`:
+
+```json
+{
+  "transport_errors": {
+    "status": "data_excluded",
+    "packet_count": 6,
+    "excluded_packet_count": 5,
+    "first_offset_bytes": 0,
+    "pids": [
+      {
+        "pid": "0x0000",
+        "label": "PAT",
+        "packet_count": 1,
+        "excluded_packet_count": 1,
+        "first_offset_bytes": 7332
+      },
+      {
+        "pid": "0x0100",
+        "label": "video",
+        "packet_count": 2,
+        "excluded_packet_count": 2,
+        "first_offset_bytes": 5640
+      },
+      {
+        "pid": "0x0101",
+        "label": "audio",
+        "packet_count": 1,
+        "excluded_packet_count": 1,
+        "first_offset_bytes": 4700
+      },
+      {
+        "pid": "0x1000",
+        "label": "PMT",
+        "packet_count": 1,
+        "excluded_packet_count": 1,
+        "first_offset_bytes": 8084
+      },
+      {
+        "pid": "0x1fff",
+        "label": "null",
+        "packet_count": 1,
+        "excluded_packet_count": 0,
+        "first_offset_bytes": 0
+      }
+    ]
+  },
+  "scrambled_packets": {
+    "status": "data_excluded",
+    "packet_count": 6,
+    "excluded_packet_count": 5,
+    "first_offset_bytes": 1316,
+    "pids": [
+      {
+        "pid": "0x0000",
+        "label": "PAT",
+        "packet_count": 1,
+        "excluded_packet_count": 1,
+        "first_offset_bytes": 11092
+      },
+      {
+        "pid": "0x0100",
+        "label": "video",
+        "packet_count": 2,
+        "excluded_packet_count": 2,
+        "first_offset_bytes": 9400
+      },
+      {
+        "pid": "0x0101",
+        "label": "audio",
+        "packet_count": 1,
+        "excluded_packet_count": 1,
+        "first_offset_bytes": 8460
+      },
+      {
+        "pid": "0x0200",
+        "label": "unknown",
+        "packet_count": 1,
+        "excluded_packet_count": 0,
+        "first_offset_bytes": 1316
+      },
+      {
+        "pid": "0x1000",
+        "label": "PMT",
+        "packet_count": 1,
+        "excluded_packet_count": 1,
+        "first_offset_bytes": 11844
+      }
+    ]
+  }
+}
+```
+
+- `status`: `ok` when no packet has the condition; `affected` when packets
+  have it but none carried data the analysis reads, so the other results are
+  complete; `data_excluded` when data of at least one affected packet was left
+  out of the analysis, so the other results are based on less data than the
+  stream carried.
+- `packet_count` and `excluded_packet_count` are numbers of packets.
+  `first_offset_bytes` is the byte offset of the first affected packet (for
+  M2TS, of its `TP_extra_header`); it is absent when `packet_count` is 0.
+- `pids` lists each affected PID once, in numeric order, with its own counts
+  and first offset; it is empty when nothing is affected. `label` is the PID's
+  role in the applied layouts (`PAT`, `PMT`, `PCR`, `video`, `audio`,
+  `stream_type 0xNN`), `null` for `0x1fff`, or `unknown`.
+- An affected packet is excluded when it is on a PID whose data the analysis
+  reads at that point: the PAT, the PMT or an elementary stream of an analyzed
+  program, or, for a transport error only, its `PCR_PID` (a PCR in a packet
+  with a transport error is not used; the clear adaptation field of a
+  scrambled packet is). Null packets, unreferenced PIDs, scrambled packets
+  without payload and packets read during the PAT/PMT acquisition are never
+  excluded. A packet with both conditions counts in both objects.
+
+The payload of an affected packet is never parsed as PSI or PES, so it
+contributes no PSI transition, PES header, PTS/DTS, timestamp anomaly or
+PCR-PTS/DTS gap; the PAT/PMT warnings it causes are listed in `warnings`. See
+[Transport errors and scrambled packets](../cli/usage.md#transport-errors-and-scrambled-packets-always-on)
+for the complete policy. Neither object takes part in `--fail-on-error`.
 
 ## PCR jitter
 
@@ -415,6 +556,8 @@ which 1.x let end the scan and restart the PAT search, is now skipped and
 counted in `sync`.
 
 Everything else, including the `series.pcr_jitter` points, is unchanged.
+Within 2.0, `transport_errors` and `scrambled_packets` were added to both
+documents (an additive change).
 `--capabilities` reports the schema version of each output, so a caller can
 tell the two apart before running an analysis.
 
@@ -448,6 +591,8 @@ Abridged output for the two-program sample:
   "sync": { "status": "ok", "required_sync_bytes": 5, "max_resync_scan_bytes": 1048576, "loss_count": 0, "resync_count": 0, "skipped_bytes": 0, "trailing_partial_packet_bytes": 0 },
   "continuity_counter": { "status": "ok", "total_error_count": 0, "pids": [] },
   "continuity_events": [],
+  "transport_errors": { "status": "ok", "packet_count": 0, "excluded_packet_count": 0, "pids": [] },
+  "scrambled_packets": { "status": "ok", "packet_count": 0, "excluded_packet_count": 0, "pids": [] },
   "programs": [
     {
       "program_number": 1,
@@ -498,6 +643,9 @@ Abridged output for the two-program sample:
   rather than per program. So is TS synchronization (`sync`); after an
   unrecovered loss the document has `status: "incomplete"`, `reason:
   "sync_lost"`, and `analysis_end_offset_bytes` is the lost boundary.
+- `transport_errors` and `scrambled_packets` are reported once for the whole
+  multiplex, from the first packet of the range, as in the summary
+  ([Transport errors and scrambled packets](#transport-errors-and-scrambled-packets)).
 - Bitrate and PCR jitter are always collected in this mode. `series.pcr_jitter`
   is the `byte_position` estimate of each observation; see
   [PCR jitter](#pcr-jitter).

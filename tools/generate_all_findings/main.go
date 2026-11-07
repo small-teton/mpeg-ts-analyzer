@@ -18,7 +18,7 @@
 // filler. PCR and PTS values follow the slot clock (10 s + slot × 20 ms), so
 // byte position is an exact time proxy.
 //
-// Five deliberate defects, each of which can be left out with -omit:
+// Seven deliberate defects, each of which can be left out with -omit:
 //
 //   - pcr-interval: the video packets in slots 22, 24 and 26 carry no PCR, so
 //     the PCRs in slots 20 and 28 are 160 ms apart (limit 100 ms).
@@ -31,6 +31,11 @@
 //     cascade.
 //   - pcr-jitter: the PCR in slot 58 is 100 µs (2700 ticks of 27 MHz) late
 //     relative to its byte position (DVB tolerance ±25 µs).
+//   - tei: the null packet in slot 7 has transport_error_indicator set.
+//   - scrambled: the null packet in slot 11 has transport_scrambling_control
+//     2 (even key), which ISO/IEC 13818-1 does not allow on the null PID.
+//     Both are on the null PID, whose payload the analysis never reads, so
+//     they leave every other result unchanged.
 //
 // With -m2ts, each packet gets a 4-byte TP_extra_header whose
 // arrival_time_stamp advances by one 20 ms slot per packet, matching the
@@ -68,9 +73,11 @@ const (
 	defectPtsBackward = "pts-backward"
 	defectCcGap       = "cc-gap"
 	defectPcrJitter   = "pcr-jitter"
+	defectTei         = "tei"
+	defectScrambled   = "scrambled"
 )
 
-var defects = []string{defectPcrInterval, defectPcrPtsGap, defectPtsBackward, defectCcGap, defectPcrJitter}
+var defects = []string{defectPcrInterval, defectPcrPtsGap, defectPtsBackward, defectCcGap, defectPcrJitter, defectTei, defectScrambled}
 
 func crc32MPEG(data []byte) uint32 {
 	crc := uint32(0xFFFFFFFF)
@@ -229,6 +236,12 @@ func generate(omit map[string]bool) []byte {
 			audioCC++
 		default:
 			p = nullPacket()
+			if with(defectTei) && slot == 7 {
+				p[1] |= 0x80 // transport_error_indicator
+			}
+			if with(defectScrambled) && slot == 11 {
+				p[3] |= 0x80 // transport_scrambling_control 2
+			}
 		}
 		out = append(out, p...)
 	}

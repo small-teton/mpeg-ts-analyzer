@@ -25,6 +25,18 @@
     "pids": []
   },
   "continuity_events": [],
+  "transport_errors": {
+    "status": "ok",
+    "packet_count": 0,
+    "excluded_packet_count": 0,
+    "pids": []
+  },
+  "scrambled_packets": {
+    "status": "ok",
+    "packet_count": 0,
+    "excluded_packet_count": 0,
+    "pids": []
+  },
   "programs": [
     {
       "program_number": 1,

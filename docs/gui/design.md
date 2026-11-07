@@ -157,11 +157,12 @@ check (`CheckDetail`).
   Check, Value, Status and Help, grouped by category. The order is fixed:
   Timing (Max PCR interval, PCR jitter estimate), PES / Timestamps
   (PCR → PTS/DTS gap, PTS/DTS anomalies), Integrity (Continuity counter,
-  TS synchronization).
+  Transport errors, Scrambled packets, TS synchronization).
   Structure and Multiplexing join as their checks land (#157). A check is
   listed when the CLI reported it. There is no scope column or badge: the
-  selected program is shown above, and exceptions (Continuity counter and TS
-  synchronization cover the whole multiplex) are on the detail page. Status is the CLI's status
+  selected program is shown above, and exceptions (Continuity counter,
+  Transport errors, Scrambled packets and TS synchronization cover the whole
+  multiplex) are on the detail page. Status is the CLI's status
   verbatim as a badge sized to its text (at least 48 points wide); a status
   the GUI does not describe is shown in the neutral color with a tooltip
   saying so. Help holds the focusable
@@ -176,7 +177,7 @@ check (`CheckDetail`).
 - **Check model**: `gui/src/views/check_help.rs` holds one entry per check —
   category, title, a one-line summary, what it measures, what it applies to,
   what the value means, every status with its condition, when it is skipped,
-  limitations and the Timeline or Bitrate link — and its order is the table
+  limitations and the Timeline, Bitrate or Packets link — and its order is the table
   order. `overview::row` turns the report into a check's value, status and
   current result (only fields the CLI provided). A new check is one
   `check_help` entry and one `row` arm. The texts state the CLI's thresholds
@@ -190,7 +191,7 @@ check (`CheckDetail`).
   table: status badge and condition per status; the current status is
   highlighted and its row marked selected), then What it measures, Applies
   to, What the value means, When it is skipped, Limitations and Details with
-  `Open Timeline` / `Open Bitrate`, each a heading over a wrapped paragraph. A
+  `Open Timeline` / `Open Bitrate` / `Open Packets`, each a heading over a wrapped paragraph. A
   finding with an offset has `Open packet`; one that Timeline marks as an
   event (a continuity error on a PID of the program) also has
   `Show on timeline`, which selects that event. Summary-only findings get no
@@ -211,8 +212,10 @@ check (`CheckDetail`).
 - **Findings** are one normalized list built from the report
   (`overview::findings`): a finding for each failed compliance check, each
   PTS/DTS anomaly group, each continuity event (one finding for the check if
-  the CLI reported errors without events), PCR jitter, TS synchronization
-  (one finding at the first loss offset) and each analyzer warning. Any status other than `ok`, `skipped` and `not_assessable`,
+  the CLI reported errors without events), PCR jitter, each PID of
+  `transport_errors` and `scrambled_packets` (at its first offset), TS
+  synchronization (one finding at the first loss offset) and each analyzer
+  warning. Any status other than `ok`, `skipped` and `not_assessable`,
   including one the GUI does not know, is a finding with the CLI's status as
   its badge, so an `NG` or `WARNING` row can never sit next to an empty list.
   Each finding names its scope (program or whole multiplex); its check link
@@ -248,6 +251,9 @@ Per program, per PID:
   carry only a byte offset, sit at the time of the last PCR before them.
 - Series longer than 4000 points are drawn decimated, keeping each bucket's
   minimum and maximum so spikes stay visible; picking uses every point.
+- The drawn series of every program are derived once when an analysis is
+  accepted, in the point type egui_plot borrows; frames lend them to the
+  plots instead of copying every point vector each frame.
 
 ### Bitrate
 
@@ -265,9 +271,10 @@ shares of the program average.
 
 ### Packets
 
-The range is listed packet by packet, **100 packets per page** (Settings). Each
-page is fetched from the CLI on demand; only a few pages are cached. Per-packet
-data is large, so the whole range is never held in memory.
+The range is listed packet by packet, **100 packets per page** by default
+(Settings). Each page is fetched from the CLI on demand; only a few pages are
+cached (5 by default, the page shown included). Per-packet data is large, so
+the whole range is never held in memory.
 
 - Pager: First / previous / `Page n / N` / next / Last, the packet span of the
   page, and the PID filter at the right end.
@@ -311,26 +318,32 @@ data is large, so the whole range is never held in memory.
   layout, Type comes from the tables the analysis started with.
 - Implementation: the first request reads page 1 from the range start and
   learns the first packet boundary; page *n* is then read from
-  `first + (n - 1) × 100 × packet size`, with `--packet-size` from the analysis,
-  so paging visits every packet of the range once. The current page and the 4
-  most recently viewed are kept; a page that is still loading when it drops
-  out is cancelled, so paging quickly leaves only the last request running.
+  `first + (n - 1) × packets per page × packet size`, with `--packet-size` from
+  the analysis, so paging visits every packet of the range once. The current
+  page and the most recently viewed ones are kept, as many as Cached pages in
+  all; a page that is still loading when it drops out is cancelled, so paging
+  quickly leaves only the last request running.
+- Packets per page and Cached pages are read from Settings, clamped to their
+  ranges, when an analysis finishes and its Packets view is created; that view
+  keeps them until the next analysis. Changing them never re-pages or empties
+  the view on screen.
 
 ## Settings
 
 | Setting | Default | Notes |
 |---|---|---|
-| Language | System default | UI is English only for now |
+| Language | English | Not a choice: the UI is English only, and the window says other languages are not available yet |
 | Confirm ranges above | 1024 MiB | Start asks for confirmation above this Limit |
-| Packets per page | 100 | |
-| Cached pages | 5 | Packet pages kept in memory |
+| Packets per page | 100 | 10 to 10,000; applies from the next analysis ([Packets](#packets)) |
+| Cached pages | 5 | Packet pages kept in memory, the one shown included; 1 to 50; applies from the next analysis |
 | CLI path | empty | See [CLI discovery order](#cli-discovery-order) |
 | Check for updates at startup | On | See [Updates](#updates) |
 | Skipped update version | none | Set by Skip this version in the update window; not shown in the Settings window. Restore defaults clears it |
 
 Settings are saved with eframe's `persistence` feature when the GUI exits and
-loaded at startup; fields missing from an older save take their defaults.
-Language, packets per page and cached pages are laid out but not applied yet.
+loaded at startup; fields missing from an older save take their defaults, and
+the `language` value that earlier versions saved is ignored. Values out of
+range in a saved file are clamped when they are used.
 
 ## Look and feel
 

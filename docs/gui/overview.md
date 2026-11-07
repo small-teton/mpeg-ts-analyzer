@@ -12,8 +12,8 @@ Packages for macOS, Linux and Windows are described in
 [![The four GUI views: Overview and Timeline on the top row, Bitrate and Packets on the bottom row](../images/gui-tabs.png)](../images/gui-tabs.png)
 
 - **Overview** brings the detected program layout, stream properties, the
-  transport-health checks (timing, PES timestamps, continuity, TS
-  synchronization), and
+  transport-health checks (timing, PES timestamps, continuity, transport
+  errors and scrambling, TS synchronization), and
   per-stream bitrate into one screen, with a full-page explanation of every
   check.
 - **Timeline** plots the PCR interval and the PCR → PTS/DTS gap of every
@@ -27,8 +27,8 @@ Packages for macOS, Linux and Windows are described in
 
 Overview shows a **Transport health** table for the selected program. Each
 row is one check with the value and the verdict the CLI reported (`OK`, `NG`,
-`WARNING`, `ANOMALIES`, `ERRORS`, `RECOVERED`, `LOST`, `NOT ASSESSABLE` or
-`SKIPPED`), grouped
+`WARNING`, `ANOMALIES`, `ERRORS`, `AFFECTED`, `DATA EXCLUDED`, `RECOVERED`,
+`LOST`, `NOT ASSESSABLE` or `SKIPPED`), grouped
 under categories that are always expanded:
 
 | Category | Check | Applies to | Verdicts |
@@ -38,6 +38,8 @@ under categories that are always expanded:
 | PES / Timestamps | PCR → PTS/DTS gap | selected program | `OK` up to 1000 ms, `NG` above |
 | PES / Timestamps | PTS/DTS anomalies | selected program, per PID | `OK` or `ANOMALIES` |
 | Integrity | Continuity counter | whole multiplex | `OK` or `ERRORS` |
+| Integrity | Transport errors | whole multiplex, every packet of the range | `OK` without `transport_error_indicator`; `AFFECTED` when no marked packet carried data the analysis reads; `DATA EXCLUDED` when one did and its data was left out |
+| Integrity | Scrambled packets | whole multiplex, every packet of the range | `OK` without scrambled packets; `AFFECTED` or `DATA EXCLUDED` as for transport errors |
 | Integrity | TS synchronization | whole multiplex | `OK`; `RECOVERED` when packets lost their sync byte and the analysis realigned; `LOST` when it could not realign and stopped there |
 
 The table always lists the checks in this order. The verdict is shown exactly
@@ -58,13 +60,15 @@ and opened with Enter or Space. The page shows:
   and the largest skipped span with their offsets, and a partial packet at
   the end of the input;
 - the check's **findings**, each with **Open packet** when it has an offset
+  (for transport errors and scrambled packets, the first affected packet of
+  each PID)
   and **Show on timeline** when Timeline marks it (a continuity error on a PID
   of the program);
 - the **verdicts**: every status the check can report and the condition behind
   it, with the current one highlighted;
 - what the check measures, what it applies to, what the value means, when it
   is skipped and its limitations;
-- a button that opens Timeline or Bitrate with the details.
+- a button that opens Timeline, Bitrate or Packets with the details.
 
 **Back to Overview** (or the Overview tile) returns to the table at the same
 scroll position, with the same program selected. Opening or leaving a page
@@ -95,7 +99,8 @@ packets after a realignment can appear there as invalid. The sample
 
 **Findings** lists everything that needs attention, and its count includes
 every check that is not `OK`: each failed check, each PTS/DTS anomaly kind per
-PID, each continuity error (with its offset), PCR jitter, a loss of TS
+PID, each continuity error (with its offset), PCR jitter, each PID with
+transport errors or scrambled packets (with its first offset), a loss of TS
 synchronization (at the offset of the first loss, with the number of losses
 and skipped bytes, and the CLI's reason when the analysis stopped), and the
 analyzer's warnings. Each row shows the verdict, the check, the reason and whether it

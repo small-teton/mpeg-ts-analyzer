@@ -195,11 +195,11 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 		patDetected = true
 		patPrograms := pat.Programs()
 		programStart := pos
+		// The first packet of the range, aligned with the packet that started
+		// the PAT search.
+		leadStart := options.Offset + (readStart+patOffset-options.Offset)%int64(packetSize)
 
 		if report != nil && report.analysis != nil {
-			// The first packet of the range, aligned with the packet that
-			// started the PAT search.
-			leadStart := options.Offset + (readStart+patOffset-options.Offset)%int64(packetSize)
 			return analyzeAllPrograms(reader, pat, leadStart, programStart, options, packetSize, endOffset, report)
 		}
 		if _, err = reader.Seek(pos, 0); err != nil {
@@ -270,6 +270,12 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 		programs := pmt.ProgramInfos()
 		pcrPid := pmt.PcrPid()
 
+		// Affected packets are counted over the whole range, including the
+		// packets read while acquiring the PAT and PMT.
+		trust := newTransportTrustSummary()
+		if err = observeLead(reader, leadStart, pos, options, packetSize, trust.observeLead); err != nil {
+			return err
+		}
 		if _, err = reader.Seek(pos, 0); err != nil {
 			return fmt.Errorf("file seek error: %w", err)
 		}
@@ -283,7 +289,7 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 		}
 
 		var analysis *pesAnalysis
-		tables := &trackedTables{pat: pat, programNumber: selectedProgram, pmt: pmt}
+		tables := &trackedTables{pat: pat, programNumber: selectedProgram, pmt: pmt, trust: trust}
 		analysis, err = bufferPes(reader, &pos, pmtPid, pcrPid, programs, tables, options, packetSize, endOffset, report != nil)
 		if report != nil && analysis != nil {
 			report.Programs = []ReportProgram{reportProgram(selectedProgram, pmtPid, pmt.Pmt)}
@@ -291,6 +297,7 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 			report.SelectedProgramNumber = &selectedProgram
 			report.Compliance = reportCompliance(analysis.compliance)
 			report.ContinuityCounter = reportContinuity(analysis.continuity)
+			report.TransportErrors, report.ScrambledPackets = reportTransportTrust(analysis.trust)
 			report.TimestampAnomalies = reportAnomalies(analysis.anomalies)
 			if analysis.jitter != nil {
 				report.PCRJitter = reportJitter(analysis.jitter)

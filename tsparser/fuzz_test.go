@@ -256,7 +256,7 @@ func FuzzPsiTracking(f *testing.F) {
 		tracker.addProgram(1, 0x1000, pmt, analyzer)
 		tracker.layout = newPsiLayoutRecorder()
 		var pos int64
-		if _, err := scanPrograms(bytes.NewReader(data), &pos, []*programAnalyzer{analyzer}, continuity, tracker, opts, tsPayloadSize, 0, true); err != nil {
+		if _, err := scanPrograms(bytes.NewReader(data), &pos, []*programAnalyzer{analyzer}, continuity, newTransportTrustSummary(), tracker, opts, tsPayloadSize, 0, true); err != nil {
 			return
 		}
 		analyzer.finish()
@@ -370,7 +370,7 @@ func FuzzSyncRecovery(f *testing.F) {
 		}
 		for _, packetSize := range []int{tsPayloadSize, tsPayloadSize + tpExtraHeaderSize} {
 			var pos int64
-			scan, err := scanPrograms(bytes.NewReader(data), &pos, nil, newEmptyContinuitySummary(), nil, options.Options{}, packetSize, 0, true)
+			scan, err := scanPrograms(bytes.NewReader(data), &pos, nil, newEmptyContinuitySummary(), newTransportTrustSummary(), nil, options.Options{}, packetSize, 0, true)
 			if err != nil {
 				continue
 			}
