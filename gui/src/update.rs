@@ -191,6 +191,7 @@ impl InstallKind {
             &exe,
             std::env::var_os("APPIMAGE").map(PathBuf::from),
             std::env::var_os("LOCALAPPDATA").map(PathBuf::from),
+            &std::env::temp_dir(),
             directory_writable,
         )
     }
@@ -212,6 +213,7 @@ fn detect_from(
     exe: &Path,
     appimage: Option<PathBuf>,
     local_app_data: Option<PathBuf>,
+    temp_dir: &Path,
     writable: impl Fn(&Path) -> bool,
 ) -> InstallKind {
     match os {
@@ -229,11 +231,12 @@ fn detect_from(
                     "macOS is running the app from a temporary location (App Translocation). Move it to Applications, open it from there, and update again."
                         .to_owned(),
                 )
-            } else if !mac_path_is_safe(&app) {
-                // cargo-packager-updater falls back to an administrator shell
-                // command with the path in quotes when it cannot move the app.
+            } else if !mac_path_is_safe(&app) || !mac_path_is_safe(temp_dir) {
+                // When it cannot move the app, cargo-packager-updater falls
+                // back to an administrator shell command that quotes the app
+                // path and a new directory under the temporary folder.
                 InstallKind::NotifyOnly(
-                    "The app's location contains characters the updater cannot handle safely (quotes, backslashes or line breaks). Move it to Applications and update again."
+                    "The app's location or the temporary folder (TMPDIR) contains characters the updater cannot handle safely (quotes, backslashes, $, ` or line breaks). Move the app to Applications and update again."
                         .to_owned(),
                 )
             } else {
@@ -814,6 +817,9 @@ fn install_note(kind: &InstallKind) -> &'static str {
 mod tests {
     use super::*;
 
+    /// A temporary folder like macOS's default `TMPDIR`.
+    const TEST_TMP: &str = "/private/var/folders/xy/abc123/T";
+
     fn release(tag: &str) -> Release {
         Release {
             tag_name: tag.to_owned(),
@@ -892,7 +898,16 @@ mod tests {
 
     #[test]
     fn detects_macos_installations() {
-        let kind = |exe: &str| detect_from(Os::Mac, Path::new(exe), None, None, |_| true);
+        let kind = |exe: &str| {
+            detect_from(
+                Os::Mac,
+                Path::new(exe),
+                None,
+                None,
+                Path::new(TEST_TMP),
+                |_| true,
+            )
+        };
         assert_eq!(
             kind("/Applications/mpeg-ts-analyzer.app/Contents/MacOS/mpeg-ts-analyzer-gui"),
             InstallKind::MacApp(PathBuf::from("/Applications/mpeg-ts-analyzer.app"))
@@ -924,7 +939,7 @@ mod tests {
             let exe = format!("{app}/Contents/MacOS/mpeg-ts-analyzer-gui");
             assert!(
                 matches!(
-                    detect_from(Os::Mac, Path::new(&exe), None, None, |_| true),
+                    detect_from(Os::Mac, Path::new(&exe), None, None, Path::new(TEST_TMP), |_| true),
                     InstallKind::NotifyOnly(reason) if reason.contains("cannot handle safely")
                 ),
                 "{app}"
@@ -938,10 +953,23 @@ mod tests {
                 ),
                 None,
                 None,
+                Path::new(TEST_TMP),
                 |_| true
             ),
             InstallKind::MacApp(_)
         ));
+
+        // The fallback also quotes a directory under the temporary folder.
+        let installed = "/Applications/mpeg-ts-analyzer.app/Contents/MacOS/mpeg-ts-analyzer-gui";
+        for tmp in ["/tmp/it's", "/tmp/a$(id)", "/tmp/a\nb"] {
+            assert!(
+                matches!(
+                    detect_from(Os::Mac, Path::new(installed), None, None, Path::new(tmp), |_| true),
+                    InstallKind::NotifyOnly(reason) if reason.contains("TMPDIR")
+                ),
+                "{tmp}"
+            );
+        }
     }
 
     const FIXTURE_NAME: &str = "mpeg-ts-analyzer-gui_9.9.9_macos_arm64.app.tar.gz";
@@ -978,15 +1006,22 @@ mod tests {
         let appimage = PathBuf::from("/home/me/Apps/mpeg-ts-analyzer.AppImage");
         let exe = Path::new("/tmp/.mount_abc/usr/bin/mpeg-ts-analyzer-gui");
         assert_eq!(
-            detect_from(Os::Linux, exe, Some(appimage.clone()), None, |_| true),
+            detect_from(
+                Os::Linux,
+                exe,
+                Some(appimage.clone()),
+                None,
+                Path::new(TEST_TMP),
+                |_| true
+            ),
             InstallKind::AppImage(appimage.clone())
         );
         assert!(matches!(
-            detect_from(Os::Linux, exe, Some(appimage), None, |_| false),
+            detect_from(Os::Linux, exe, Some(appimage), None, Path::new(TEST_TMP), |_| false),
             InstallKind::NotifyOnly(reason) if reason.contains("not writable")
         ));
         assert!(matches!(
-            detect_from(Os::Linux, Path::new("/usr/bin/mpeg-ts-analyzer-gui"), None, None, |_| true),
+            detect_from(Os::Linux, Path::new("/usr/bin/mpeg-ts-analyzer-gui"), None, None, Path::new(TEST_TMP), |_| true),
             InstallKind::NotifyOnly(reason) if reason.contains("package manager")
         ));
     }
@@ -999,17 +1034,31 @@ mod tests {
         let exe = install.join("mpeg-ts-analyzer-gui.exe");
         // Without the NSIS uninstaller it is a copy, not an installation.
         assert!(matches!(
-            detect_from(Os::Windows, &exe, None, Some(base.clone()), |_| true),
+            detect_from(Os::Windows, &exe, None, Some(base.clone()), Path::new(TEST_TMP), |_| true),
             InstallKind::NotifyOnly(reason) if reason.contains("portable")
         ));
         std::fs::write(install.join("uninstall.exe"), b"").unwrap();
         assert_eq!(
-            detect_from(Os::Windows, &exe, None, Some(base.clone()), |_| true),
+            detect_from(
+                Os::Windows,
+                &exe,
+                None,
+                Some(base.clone()),
+                Path::new(TEST_TMP),
+                |_| true
+            ),
             InstallKind::Nsis
         );
         let elsewhere = Path::new("C:/Tools/mpeg-ts-analyzer/mpeg-ts-analyzer-gui.exe");
         assert!(matches!(
-            detect_from(Os::Windows, elsewhere, None, Some(base.clone()), |_| true),
+            detect_from(
+                Os::Windows,
+                elsewhere,
+                None,
+                Some(base.clone()),
+                Path::new(TEST_TMP),
+                |_| true
+            ),
             InstallKind::NotifyOnly(_)
         ));
         std::fs::remove_dir_all(&base).unwrap();

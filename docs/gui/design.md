@@ -414,8 +414,9 @@ GUI; the signed trusted comment must name exactly that file. Only then does
 - An installed macOS app is not write-tested beforehand: if the user cannot
   move the bundle, the library asks for an administrator password through
   `osascript`; cancelling leaves the old app in place. That fallback puts the
-  bundle path into a quoted shell command, so an app whose path contains
-  quotes, backslashes, `` ` ``, `$` or control characters is notify-only.
+  bundle path and a new directory under the temporary folder (`TMPDIR`) into
+  a quoted shell command, so when either path contains quotes, backslashes,
+  `` ` ``, `$` or control characters the installation is notify-only.
 - A signature that does not verify, or a download that fails, aborts the
   update and leaves the installation unchanged; the window shows the error.
 
