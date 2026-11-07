@@ -60,17 +60,25 @@ func isPacketSize(size int) bool {
 }
 
 // trailerAligned reports whether data has, from i on, strictSyncBytes sync
-// bytes 204 bytes apart, and whether i does not also start a 188-byte or
-// 192-byte alignment: there the 204-byte stride would only be a coincidence of
-// payload bytes in a stream of another packet size.
+// bytes 204 bytes apart, and whether i does not also start an equally strong
+// 188-byte or 192-byte alignment (strictSyncBytes sync bytes 188 or 192 bytes
+// apart): there the 204-byte stride would only be a coincidence of payload
+// bytes in a stream of another packet size. A weaker competing match is not
+// enough to reject 204 bytes, since the trailer and payload bytes of a
+// 204-byte stream may be 0x47. The caller guarantees that data holds
+// i+(strictSyncBytes-1)*204, which also covers the shorter strides.
 func trailerAligned(data []byte, i int) bool {
-	for k := range strictSyncBytes {
-		if data[i+k*trailerPacketSize] != syncByteValue {
-			return false
-		}
+	if !syncsFrom(data, i, trailerPacketSize) {
+		return false
 	}
-	for _, other := range []int{tsPayloadSize, m2tsPacketSize} {
-		if data[i+other] == syncByteValue && data[i+2*other] == syncByteValue {
+	return !syncsFrom(data, i, tsPayloadSize) && !syncsFrom(data, i, m2tsPacketSize)
+}
+
+// syncsFrom reports whether data has strictSyncBytes sync bytes stride bytes
+// apart from i on.
+func syncsFrom(data []byte, i, stride int) bool {
+	for k := range strictSyncBytes {
+		if data[i+k*stride] != syncByteValue {
 			return false
 		}
 	}

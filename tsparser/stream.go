@@ -424,8 +424,8 @@ func maxInt64(a, b int64) int64 {
 
 // detectPacketSize detects whether the stream uses 188-byte, 192-byte (M2TS)
 // or 204-byte packets. A 204-byte alignment needs strictSyncBytes sync bytes
-// 204 bytes apart that do not also start a 188-byte or 192-byte alignment
-// (see trailerAligned); otherwise three sync bytes one packet apart select 188
+// 204 bytes apart that do not also start strictSyncBytes sync bytes 188 or
+// 192 bytes apart (see trailerAligned); otherwise three sync bytes one packet apart select 188
 // bytes, then 192 bytes, as before 204-byte support. Without any alignment
 // the result is 188.
 func detectPacketSize(data []byte) int {

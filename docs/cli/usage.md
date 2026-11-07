@@ -45,9 +45,11 @@ of a physical packet, so consecutive packets are 188, 192 or 204 bytes apart.
 Detection takes 188 bytes when three sync bytes (`0x47`) are 188 bytes apart
 and 192 bytes when they are 192 bytes apart (the sync byte after the
 4-byte header), as before 204-byte support. 204 bytes needs a stricter match:
-five sync bytes 204 bytes apart, at a position where a 188-byte or 192-byte
-alignment does not also start, so payload bytes of a 188-byte or 192-byte
-stream are not taken for 204-byte packets. Bitrates count 188 bytes per packet
+five sync bytes 204 bytes apart, at a position that does not also start five
+sync bytes 188 or 192 bytes apart, so payload bytes of a 188-byte or 192-byte
+stream are not taken for 204-byte packets. A weaker coincidence, such as a
+`0x47` trailer or payload byte 188 bytes after a sync byte, does not reject
+204 bytes. Bitrates count 188 bytes per packet
 for every packet size (see [Dump bitrate](dumps.md#dump-bitrate)).
 
 **Note:** The accuracy of the output is not guaranteed.

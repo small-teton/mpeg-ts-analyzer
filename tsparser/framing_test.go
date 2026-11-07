@@ -89,6 +89,16 @@ func TestDetectPacketSize204(t *testing.T) {
 	if got := detectPacketSize(falseSyncs); got != trailerPacketSize {
 		t.Errorf("204-byte stream with false trailer sync bytes detected as %d", got)
 	}
+	// Regression (PR #195 review): five 204-byte packets, the only 204-byte
+	// candidate, whose first trailer byte and byte 172 of the second packet
+	// are 0x47. Those are legal trailer and payload values; two sync bytes
+	// 188 bytes apart are weaker evidence than five, so the stream stays a
+	// 204-byte one.
+	five := bytes.Clone(stream204[:5*trailerPacketSize])
+	five[tsPayloadSize], five[trailerPacketSize+172] = syncByteValue, syncByteValue
+	if got := detectPacketSize(five); got != trailerPacketSize {
+		t.Errorf("204-byte packets with 0x47 188 and 376 bytes after a sync byte detected as %d", got)
+	}
 
 	// 0x47 bytes 204 bytes apart from a real sync byte, in the payload of
 	// the following null packets.
