@@ -27,8 +27,12 @@ BB=$(go tool cover -func=out/bitbuffer.out | grep total | awk '{print $NF}' | tr
 go test -coverprofile=out/tsparser.out -covermode=set ./tsparser/... > /dev/null 2>&1 || { echo "FAILED: tsparser test"; exit 1; }
 TS=$(go tool cover -func=out/tsparser.out | grep total | awk '{print $NF}' | tr -d '%')
 
+go test -coverprofile=out/analysis.out -covermode=set ./internal/analysis/... > /dev/null 2>&1 || { echo "FAILED: analysis test"; exit 1; }
+AN=$(go tool cover -func=out/analysis.out | grep total | awk '{print $NF}' | tr -d '%')
+
 echo "  bitbuffer: ${BB}%"
 echo "  tsparser:  ${TS}%"
+echo "  analysis:  ${AN}%"
 
 if [ "$BB" != "100.0" ]; then
     echo "FAILED: bitbuffer coverage is ${BB}%, expected 100.0%"
@@ -37,6 +41,11 @@ fi
 
 if [ "$TS" != "100.0" ]; then
     echo "FAILED: tsparser coverage is ${TS}%, expected 100.0%"
+    exit 1
+fi
+
+if [ "$AN" != "100.0" ]; then
+    echo "FAILED: analysis coverage is ${AN}%, expected 100.0%"
     exit 1
 fi
 

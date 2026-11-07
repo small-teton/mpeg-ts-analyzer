@@ -124,9 +124,10 @@ make clean      # remove build/coverage artifacts
 The version string is managed in the [`VERSION`](https://github.com/small-teton/mpeg-ts-analyzer/blob/master/VERSION) file and injected
 at build time.
 
-Coverage is measured for `bitbuffer` and `tsparser` packages only. The CLI entry
-point (`cmd`, `main.go`) is excluded from coverage targets. Both packages should
-maintain 100% coverage.
+Coverage is measured for the `bitbuffer`, `tsparser` and `internal/analysis`
+packages only. The CLI entry point (`cmd`, `main.go`) is excluded from coverage
+targets. Each of the three packages must maintain 100% coverage through its own
+tests. [Architecture](architecture.md) describes what belongs in each package.
 
 A pre-push hook (`make setup` to enable) runs the build, test, coverage, and
 README demo checks before every push. Push is rejected if coverage drops below

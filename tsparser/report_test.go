@@ -35,7 +35,11 @@ func TestReportConversions(t *testing.T) {
 		t.Fatalf("skipped check: %+v", got)
 	}
 
-	summary := &continuityCounterSummary{counts: map[uint16]int{0x20: 2, 0x10: 1}, labels: map[uint16]string{0x10: "video"}}
+	summary := newEmptyContinuitySummary()
+	summary.addProgramLabels(0x1000, 0x10, []ProgramInfo{{streamType: 0x02, elementaryPid: 0x10}})
+	for _, pid := range []uint16{0x20, 0x10, 0x20} {
+		summary.Add(continuityEvent{PID: pid})
+	}
 	continuity := reportContinuity(summary)
 	if continuity.Status != "errors" || continuity.TotalErrorCount != 3 || continuity.PIDs[0].PID != "0x0010" || continuity.PIDs[1].Label != "unknown" {
 		t.Fatalf("continuity: %+v", continuity)
