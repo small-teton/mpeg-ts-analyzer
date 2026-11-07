@@ -56,7 +56,9 @@ switching programs or screens never runs the CLI again.
   bitrate and PCR jitter are per program; continuity-counter results,
   transport errors and scrambled packets (`transport_errors`,
   `scrambled_packets`) and warnings are per range, as the CLI checks them
-  across the multiplex. Bitrate and jitter are collected without the `--dump-*` flags.
+  across the multiplex. PES header and PTS repetition results (`pes_headers`,
+  `pts_repetition`) are reported once per range and list every elementary
+  stream by `program_number` and PID. Bitrate and jitter are collected without the `--dump-*` flags.
 - **PSI layout**: each PAT/PMT section seen (offset, version), the interval each
   layout applies to, the PIDs that change, and every PID observed in the range.
   The GUI keeps this to label packets and to mark changes on the plots (#93,

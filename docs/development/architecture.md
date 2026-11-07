@@ -66,6 +66,8 @@ observations it needs through focused methods.
 | The `continuity_counter` JSON object, the text summary, exit codes | `tsparser` report code and `cmd` |
 | Whether a packet with `transport_error_indicator` set or a scrambled payload may feed PSI, PES or PCR analysis, and whether its data was excluded | `tsparser` (`TsPacket.payloadUntrusted`, `transportTrustSummary.observe`), reported as `analysis.TransportError` / `analysis.Scrambled` |
 | How affected packets are counted per PID, labeled, and the `ok` / `affected` / `data_excluded` status | `analysis` (`TransportTrustCheck`) |
+| Whether a PES header is valid and which problem it has, its PTS/DTS, and the PES packet's time on the PCR timeline (interpolated between the PCRs around it) | `tsparser` (`Pes.Parse`, `pesFeed`, `arrivalAt`), reported as `analysis.PES` and `analysis.PESBreak` |
+| How header problems are counted per PID, which streams the 700 ms PTS repetition limit applies to, how intervals, breaks and lower bounds are measured, and the statuses and reasons | `analysis` (`PESCheck`) |
 
 The continuity counter summary is the first check that uses this boundary from
 end to end. It was chosen because it is an existing, always-on transport check
@@ -77,6 +79,13 @@ new check built on it: the scan decides which packets it does not trust and
 whether their data was excluded, and `TransportTrustCheck` aggregates the
 resulting `TransportError` and `Scrambled` observations into the
 `transport_errors` and `scrambled_packets` results.
+
+The PES header and PTS repetition check
+([#164](https://github.com/small-teton/mpeg-ts-analyzer/issues/164)) follows
+the same split. Its `analysis.PES` observation carries one PES packet's header
+outcome, PTS/DTS and PCR-timeline time without any payload, so later
+timestamp checks (such as a multiplex lead between PCR and PTS/DTS) can
+consume the same observation.
 
 Other aggregate evaluators (PCR interval, PCR jitter, PCR-PTS/DTS gap,
 timestamp anomalies, bitrate) are still in `tsparser`. They move to `analysis`

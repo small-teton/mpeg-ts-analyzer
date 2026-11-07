@@ -30,18 +30,20 @@ jitter analysis can establish constant delivery. The defects, by packet index:
 | Check | Defect | Expected analysis |
 |---|---|---|
 | Max PCR interval | packets 22, 24 and 26 carry no PCR | `ng`, 160 ms (limit 100 ms), 54 intervals |
-| PCR → PTS/DTS gap | every audio PTS is 1200 ms ahead of its PCR time | `ng`, 1200 ms (limit 1000 ms), 82 timestamps |
+| PCR → PTS/DTS gap | every audio PTS is 1200 ms ahead of its PCR time | `ng`, 1200 ms (limit 1000 ms), 72 timestamps (the malformed header and the nine PES packets without PTS give none) |
 | PTS/DTS anomalies | video PTS in packet 46 is 40 ms before the previous one | `anomalies`: PID 0x0100 `backward` ×1 |
 | Continuity counter | audio packet 25 skips counter 5 (carries 6), then continues | `errors`: 1 on PID 0x0101 (expected 5, actual 6) |
 | PCR jitter | the PCR in packet 58 is 100 µs late | delivery `constant` (2 windows at 75,200 b/s, deviation 0.00 %), `ng`: max +100 µs at packet 58, −50 µs at packets 56 and 60 |
 | Transport errors | null packet 7 has `transport_error_indicator` set | `affected`: 1 packet on PID 0x1fff (null), 0 excluded |
 | Scrambled packets | null packet 11 has `transport_scrambling_control` 2 | `affected`: 1 packet on PID 0x1fff (null), 0 excluded |
+| PES headers | the last PTS `marker_bit` of the video PES in packet 106 is 0 | `errors`: 1 `bad_marker_bits` on PID 0x0100, 87 headers checked |
+| PTS repetition | the audio PES packets 65 to 97 carry no PTS | `ng`: 800 ms from packet 61 to 101 on PID 0x0101 (limit 700 ms) |
 
 Both new defects are on the null PID, whose payload the analysis never reads,
 so they change no other result.
 
 `-omit` leaves defects out (`pcr-interval`, `pcr-pts-gap`, `pts-backward`,
-`cc-gap`, `pcr-jitter`, `tei`, `scrambled`, or `all`); `tsparser` tests use it to show that each
+`cc-gap`, `pcr-jitter`, `tei`, `scrambled`, `pes-header`, `pts-repetition`, or `all`); `tsparser` tests use it to show that each
 defect turns only its own check non-OK, and that the stream without defects is
 OK everywhere, with constant delivery and zero estimated jitter. They also
 check that the committed files equal the generator output and pin the results
@@ -53,7 +55,9 @@ advances by one slot (540,000 ticks of 27 MHz), the intended constant delivery.
 TSDuck 3.45 agrees for both files:
 
 - `tsanalyze`: 120 packets, 75,200 b/s from PCRs; PID 0x0100 58 packets with
-  55 PCRs and 58 PTS; PID 0x0101 29 packets, 1 discontinuity; PAT 8, PMT 7,
+  55 PCRs and 57 PTS (it also rejects the PTS with a bad marker bit in
+  packet 106); PID 0x0101 29 packets with 20 PTS (none in packets 65 to 97),
+  1 discontinuity; PAT 8, PMT 7,
   null 17 (tsanalyze leaves the packet with a transport error out of the PID
   statistics), 1 of them scrambled; 1 packet with a transport error.
   `tsdump --headers-only` shows `Error: 1` on packet 7 and `Scrambling: 2` on
@@ -63,7 +67,8 @@ TSDuck 3.45 agrees for both files:
   video PTS of packet 46 (984,600) is below that of packet 44 (988,200);
   audio PTS minus the slot clock is 1200 ms. Grouping its PCRs into 1-second
   windows gives 75,200 b/s in both windows, as the analyzer's delivery
-  assessment does.
+  assessment does. Its audio PTS go from packet 61 to 101 (800 ms of PCR
+  time), as the analyzer's PTS repetition reports.
 - `pcrverify` at 75,200 b/s (and with the M2TS arrival timestamps, `-i`):
   `52 PCR OK, 2 with jitter > 27 (1 micro-seconds)`, ±2,700 PCR units
   (100 µs). TSDuck compares consecutive PCRs, so the late PCR shows on the

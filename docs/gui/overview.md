@@ -28,7 +28,7 @@ Packages for macOS, Linux and Windows are described in
 Overview shows a **Transport health** table for the selected program. Each
 row is one check with the value and the verdict the CLI reported (`OK`, `NG`,
 `WARNING`, `ANOMALIES`, `ERRORS`, `AFFECTED`, `DATA EXCLUDED`,
-`NOT ASSESSABLE` or `SKIPPED`), grouped
+`NOT ASSESSABLE`, `INSUFFICIENT DATA` or `SKIPPED`), grouped
 under categories that are always expanded:
 
 | Category | Check | Applies to | Verdicts |
@@ -37,6 +37,8 @@ under categories that are always expanded:
 | Timing | PCR jitter estimate | selected program (its PCR PID) | `OK` within ±500 ns, `WARNING` within ±25 µs, `NG` beyond, when delivery is constant; otherwise `NOT ASSESSABLE` |
 | PES / Timestamps | PCR → PTS/DTS gap | selected program | `OK` up to 1000 ms, `NG` above |
 | PES / Timestamps | PTS/DTS anomalies | selected program, per PID | `OK` or `ANOMALIES` |
+| PES / Timestamps | PES headers | every elementary stream of the analyzed programs, per PID | `OK` when every checked header is valid, `ERRORS` when one is truncated or has a bad start code, flags, lengths or PTS/DTS marker bits, `INSUFFICIENT DATA` when none could be checked |
+| PES / Timestamps | PTS repetition | every video and audio stream of the analyzed programs, per PID | `OK` up to 700 ms between PES packets carrying a PTS, `NG` above (ISO/IEC 13818-1 2.7.4, TR 101 290 PTS_error), `INSUFFICIENT DATA` when nothing could be measured, `SKIPPED` without a video or audio stream |
 | Integrity | Continuity counter | whole multiplex | `OK` or `ERRORS` |
 | Integrity | Transport errors | whole multiplex, every packet of the range | `OK` without `transport_error_indicator`; `AFFECTED` when no marked packet carried data the analysis reads; `DATA EXCLUDED` when one did and its data was left out |
 | Integrity | Scrambled packets | whole multiplex, every packet of the range | `OK` without scrambled packets; `AFFECTED` or `DATA EXCLUDED` as for transport errors |
@@ -57,7 +59,8 @@ and opened with Enter or Space. The page shows:
   assessed; for PCR jitter also the delivery assessment and its evidence;
 - the check's **findings**, each with **Open packet** when it has an offset
   (for transport errors and scrambled packets, the first affected packet of
-  each PID)
+  each PID; for PES headers, the first malformed header of each PID; for PTS
+  repetition, the end of the first interval over 700 ms on each PID)
   and **Show on timeline** when Timeline marks it (a continuity error on a PID
   of the program);
 - the **verdicts**: every status the check can report and the condition behind
@@ -86,12 +89,14 @@ TR 101 290 measurement.
 **Findings** lists everything that needs attention, and its count includes
 every check that is not `OK`: each failed check, each PTS/DTS anomaly kind per
 PID, each continuity error (with its offset), PCR jitter, each PID with
-transport errors or scrambled packets (with its first offset), and the
-analyzer's warnings. Each row shows the verdict, the check, the reason and whether it
+transport errors or scrambled packets (with its first offset), each PID with
+malformed PES headers or a PTS interval over the limit (in its program, with
+the offset), and the analyzer's warnings. Each row shows the verdict, the check, the reason and whether it
 concerns the selected program or the whole multiplex; selecting the check
 opens its page. A check counts once through its own events, not again for its
-total. A check the CLI skipped, and a PCR jitter estimate the CLI found
-`not_assessable`, are listed under **Unavailable analysis** instead, with the
+total. A check the CLI skipped or reported as `insufficient_data`, and a PCR
+jitter estimate the CLI found `not_assessable`, are listed under
+**Unavailable analysis** instead, with the
 CLI's reason; they are not findings. The GUI shows the CLI's verdicts as they
 are and never changes them.
 

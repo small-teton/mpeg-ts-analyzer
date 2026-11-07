@@ -7,6 +7,7 @@ The command-line analyzer parses TS packets and checks whether the stream confor
 - **Max PCR interval** should be no greater than 100 ms (ISO/IEC 13818-1, Section 2.7.2); intervals are not measured across a PCR that carries `discontinuity_indicator`, and a PCR wraparound is measured as a normal interval (see [Timing compliance verdicts](#timing-compliance-verdicts-and---fail-on-error))
 - **PCR-PTS/DTS max gap** (decode delay) should be no greater than 1000 ms; DTS is used when both timestamps are present, otherwise PTS is used
 - **PTS/DTS anomalies** — timestamps going backward, 33-bit wraparound, large forward jumps (splicing/ad insertion), or DTS later than PTS — are detected and reported (always on; silent when the stream is healthy)
+- **PTS repetition**: on each video and audio stream, PES packets carrying a PTS should be no more than 700 ms apart (ISO/IEC 13818-1, Section 2.7.4; ETSI TR 101 290 PTS_error), measured on the PCR timeline (see [PES headers and PTS repetition](#pes-headers-and-pts-repetition-always-on))
 
 In addition, it can dump various MPEG-2 TS internal structures for stream investigation:
 
@@ -20,6 +21,7 @@ In addition, it can dump various MPEG-2 TS internal structures for stream invest
 - PCR jitter analysis (per-interval deviation from the expected PCR, estimated from byte positions and judged only when the stream shows constant delivery)
 - `continuity_counter` validation with an always-on per-PID error summary
 - Transport errors (`transport_error_indicator`) and scrambled packets (`transport_scrambling_control`), counted per PID with an always-on summary; their payload (and the PCR of a packet with a transport error) is kept out of the analysis
+- PES header health per elementary stream (truncated headers, bad start codes, bad flags, inconsistent lengths, bad PTS/DTS marker bits), with an always-on summary; timestamps of a malformed header are not used
 
 Both 188-byte TS packets and 192-byte M2TS packets (BDAV format with TP_extra_header) are supported. The packet size is auto-detected from the stream.
 
@@ -109,6 +111,9 @@ Continuity Counter: no errors detected
 -----------------------------
 Transport Error Indicator: no packets with transport_error_indicator set
 Transport Scrambling: no scrambled packets
+-----------------------------
+PES Headers: 220 checked on 2 PIDs, no errors
+PTS Repetition (limit 700ms): max interval 66.666667ms over 214 intervals [OK]
 ```
 
 ## Timing compliance verdicts and `--fail-on-error`
@@ -328,6 +333,88 @@ whose header cannot be parsed at all (for example a reserved
 packet does (it restarts at the next PAT), whether or not it has a transport
 error.
 
+## PES headers and PTS repetition (always on)
+
+Two always-on checks look at the PES packets of every elementary stream of the
+analyzed program. A healthy stream gets one line for each:
+
+```
+-----------------------------
+PES Headers: 220 checked on 2 PIDs, no errors
+PTS Repetition (limit 700ms): max interval 66.666667ms over 214 intervals [OK]
+```
+
+When a check finds a problem, it prints its totals and a status, then one
+line per affected PID (output of `sample_data/sample_188byte_pes_health.ts`,
+see [Sample data](../development/sample-data.md)):
+
+```
+-----------------------------
+PES Headers: 8 errors in 161 checked on 5 PIDs, first at 0x000013d4 [ERRORS]
+  Program 1 PID 0x0101 (audio) : 1 error in 49 checked, first at 0x00002ccc [ERRORS]
+    bad_marker_bits: 1, first at 0x00002ccc
+  Program 1 PID 0x0102 (stream_type 0x06) : 7 errors in 15 checked, first at 0x000013d4 [ERRORS]
+    truncated: 1, first at 0x000019b4
+    bad_start_code: 1, first at 0x000013d4
+    bad_flags: 2, first at 0x00003134
+    inconsistent_length: 2, first at 0x000042d4
+    bad_marker_bits: 1, first at 0x00005474
+  Program 1 PID 0x0104 (video) : INSUFFICIENT DATA (no PES packet started)
+PTS Repetition (limit 700ms): max interval 1080.000000ms from 0x000047f8 to 0x00006fa0, 1 exceeded, first ending at 0x00006fa0 [NG]
+  Program 1 PID 0x0100 (video) : max interval 1080.000000ms from 0x000047f8 to 0x00006fa0, 1 exceeded, first ending at 0x00006fa0 [NG]
+  Program 1 PID 0x0103 (audio) : INSUFFICIENT DATA (fewer than two comparable PTS)
+  Program 1 PID 0x0104 (video) : INSUFFICIENT DATA (no PES packet started)
+```
+
+**PES headers** are checked against ISO/IEC 13818-1 (2.4.3.6, 2.4.3.7) from the
+header bytes only; the analyzer retains at most the 264-byte maximum header of
+each PES packet and never reads the elementary-stream payload. A header split
+over several TS packets is assembled first. The problems are:
+
+| Problem | The header |
+| --- | --- |
+| `truncated` | ends before its fixed bytes or its `PES_header_data_length` bytes, because the next PES packet of the PID started |
+| `bad_start_code` | does not start with `packet_start_code_prefix` 0x000001 and a PES `stream_id` (0xBC to 0xFF) |
+| `bad_flags` | has an optional header that does not start with `'10'`, or `PTS_DTS_flags` `'01'` (forbidden) |
+| `inconsistent_length` | has a `PES_header_data_length` too small for the fields its flags announce, or a non-zero `PES_packet_length` too small for the header |
+| `bad_marker_bits` | has a PTS or DTS with a wrong 4-bit prefix or a `marker_bit` of 0 |
+
+A failed header gives no PTS/DTS to any other check: no timestamp anomaly,
+PCR-PTS/DTS gap or PTS repetition interval comes from it, so one malformed
+header is one finding. A PES packet whose header is still incomplete when its
+payload stops being trusted (a transport error or scrambling), when the PMT
+changes or when the range ends is counted as *unchecked*, not as an error. A
+`PES_packet_length` of 0 (unbounded) is accepted for every stream.
+`INSUFFICIENT DATA` means no header could be checked on the PID.
+
+**PTS repetition** measures, on each video and audio stream (stream types
+labeled `video` or `audio`), how long the multiplex goes without a PES packet
+carrying a PTS. ISO/IEC 13818-1 (2.7.4) requires a PTS at least every 0.7 s on
+video and audio streams; ETSI TR 101 290 monitors it as PTS_error (2.5). Other
+streams are skipped.
+
+- The time of a PES packet is the program's PCR at its first packet,
+  interpolated by byte position between the PCRs before and after it. The
+  interval is how long the transport carried no PTS, not a difference of PTS
+  values, so B-frame reordering and splices do not affect it.
+- No interval spans a PCR discontinuity, a malformed or incomplete header,
+  untrusted payload, a continuity error or a PMT change of the PID, since a
+  PTS may have been lost there. PES packets before the first PCR or after the
+  last one are not placed.
+- PES packets without a PTS for longer than 700 ms count as an exceeded
+  interval even before the first PTS or at the end of the range.
+- `INSUFFICIENT DATA` gives the reason: no PES packet, payload not used, only
+  malformed headers, no PES packet between two PCRs, no PTS, or fewer than two
+  comparable PTS. TR 101 290 exempts still pictures, which the analyzer cannot
+  recognize without reading the elementary stream.
+
+The timestamp anomaly report does not report a forward jump across PES packets
+without a timestamp (or a malformed header, untrusted payload or a continuity
+error); PTS repetition and the other checks report that cause. Neither check
+takes part in `--fail-on-error`. See
+[JSON output](../reference/json-output.md#pes-headers-and-pts-repetition) for
+the complete rules.
+
 ## Timestamp anomaly report (always on)
 
 PTS/DTS anomalies are checked on every run, with no flag. Nothing is printed for
@@ -348,6 +435,9 @@ Reading the output:
   same problem on the same PID are collapsed with `(and N more)`.
 - Checks run on the decode timeline (DTS when present, otherwise PTS), so a
   B-frame stream — whose PTS legitimately reorders — is not falsely flagged.
+- Only valid PES headers are checked. A forward jump is not reported across
+  PES packets without a timestamp, a malformed or incomplete header, untrusted
+  payload or a continuity error.
 
 ## Large files
 
