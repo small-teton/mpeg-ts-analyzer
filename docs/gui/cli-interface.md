@@ -56,10 +56,12 @@ switching programs or screens never runs the CLI again.
 - **Per program vs. per multiplex**: PCR, PTS/DTS, timestamp anomalies,
   bitrate and PCR jitter are per program; continuity-counter results,
   transport errors and scrambled packets (`transport_errors`,
-  `scrambled_packets`), TS synchronization (`sync`), referenced and
-  unreferenced PIDs (`pid_references`), the report-only packet gaps of every
-  PID (`multiplexing.packet_gaps`, each PID naming the programs that
-  reference it) and warnings are per range, as the CLI checks them
+  `scrambled_packets`), TS synchronization (`sync`), PAT/PMT health
+  (`psi_health`, which lists the PMT of every announced program; the GUI shows
+  the selected program's), referenced and unreferenced PIDs
+  (`pid_references`), the report-only packet gaps of every PID
+  (`multiplexing.packet_gaps`, each PID naming the programs that reference
+  it) and warnings are per range, as the CLI checks them
   across the multiplex. Bitrate and jitter are collected without the `--dump-*` flags.
 - **PSI layout**: each PAT/PMT section seen (offset, version), the interval each
   layout applies to, the PIDs that change, and every PID observed in the range.

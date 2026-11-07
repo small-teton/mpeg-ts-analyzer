@@ -8,8 +8,8 @@ use crate::plot_data::Timeline;
 use crate::psi;
 use crate::range_bar;
 use crate::report::{
-    AffectedPackets, AnalysisReport, PacketGapPid, Program, ReferencedPid, UnreferencedPid,
-    stream_type_name,
+    AffectedPackets, AnalysisReport, PacketGapPid, Program, PsiHealth, PsiTableHealth,
+    ReferencedPid, UnreferencedPid, stream_type_name,
 };
 
 /// What Overview shows: the summary, or the full-page explanation of one
@@ -514,6 +514,67 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
                 reason: None,
             })
         }
+        Check::PatHealth | Check::PmtHealth => {
+            let health = report.psi_health.as_ref()?;
+            let table = psi_table(health, program, check)?;
+            let repetition = &table.repetition;
+            let value = match (repetition.max_interval_ms, table.instance_count) {
+                (Some(ms), _) => format!("{ms:.1} ms"),
+                (None, 0) => "not found".to_owned(),
+                (None, _) => "—".to_owned(),
+            };
+            let mut facts = vec![("Tables", table.instance_count.to_string())];
+            if let Some(ms) = repetition.max_interval_ms {
+                facts.push(("Longest interval", format!("{ms:.1} ms")));
+            }
+            if let Some(end) = repetition.max_interval_end_offset_bytes {
+                facts.push(("Longest interval ends", format!("0x{end:08X}")));
+            }
+            facts.push(("Limit", format!("{:.0} ms", health.repetition_limit_ms)));
+            facts.push(("Complete intervals", repetition.interval_count.to_string()));
+            facts.push(("Late intervals", repetition.late_interval_count.to_string()));
+            facts.push(("Version changes", table.version_change_count.to_string()));
+            let problems = psi_problems(table);
+            if !problems.is_empty() {
+                facts.push(("Problems", problems.join(", ")));
+            }
+            if let Some(first) = table.first_problem_offset_bytes {
+                facts.push(("First problem", format!("0x{first:08X}")));
+            }
+            if !table.reasons.is_empty() {
+                facts.push(("Reasons", table.reasons.join(", ")));
+            }
+            facts.push(("PID", table.pid.clone()));
+            if check == Check::PmtHealth {
+                facts.push(number);
+            } else {
+                facts.push(("Applies to", "the whole multiplex".to_owned()));
+            }
+            let base = &health.time_base;
+            facts.push((
+                "Time base",
+                match (&base.pcr_pid, base.status.as_str()) {
+                    (Some(pid), "pcr") => format!(
+                        "PCR PID {pid} of program {}, {} segment(s)",
+                        base.program_number, base.segment_count
+                    ),
+                    (None, "pcr") => format!(
+                        "PCR of program {}, {} segment(s)",
+                        base.program_number, base.segment_count
+                    ),
+                    _ => format!("none ({})", base.status),
+                },
+            ));
+            let reason = repetition.reason.as_deref().map(repetition_reason);
+            facts.extend(reason.clone().map(|r| ("Reason", r)));
+            Some(Row {
+                check,
+                status: table.status.clone(),
+                value,
+                facts,
+                reason,
+            })
+        }
         Check::Synchronization => {
             let sync = report.sync.as_ref()?;
             let at = |offset: u64| format!("0x{offset:08X}");
@@ -781,6 +842,47 @@ fn gap_text(p: &PacketGapPid, program: u16) -> String {
         None => text += &format!(": {}", p.status.replace('_', " ")),
     }
     text
+}
+
+/// The PAT, or the selected program's PMT, of the CLI's `psi_health`.
+fn psi_table<'a>(
+    health: &'a PsiHealth,
+    program: &Program,
+    check: Check,
+) -> Option<&'a PsiTableHealth> {
+    match check {
+        Check::PatHealth => health.table(None),
+        _ => health.table(Some(program.program_number)),
+    }
+}
+
+/// The non-zero problem counts of a PAT or PMT, in words.
+fn psi_problems(table: &PsiTableHealth) -> Vec<String> {
+    [
+        (table.crc_error_count, "CRC error"),
+        (table.malformed_section_count, "malformed section"),
+        (table.incomplete_count, "incomplete table"),
+        (table.wrong_table_id_count, "wrong table_id"),
+        (table.unusable_packet_count, "unusable packet"),
+    ]
+    .into_iter()
+    .filter(|(count, _)| *count > 0)
+    .map(|(count, what)| match count {
+        1 => format!("1 {what}"),
+        count => format!("{count} {what}s"),
+    })
+    .collect()
+}
+
+/// Why the CLI could not show a table repeating.
+fn repetition_reason(reason: &str) -> String {
+    match reason {
+        "no_complete_interval" => {
+            "No complete interval: the table was not seen twice within one PCR segment".to_owned()
+        }
+        "no_pcr_time_base" => "No PCR time base: no two PCRs in one segment".to_owned(),
+        other => other.replace('_', " "),
+    }
 }
 
 /// "1 packet" or "N packets".
@@ -1272,8 +1374,9 @@ pub(crate) struct Finding {
 
 /// Whether a check status means its analysis is unavailable rather than a
 /// result: `skipped`, a PCR jitter estimate the CLI did not grade
-/// (`not_assessable`, because delivery is not constant), or PID references
-/// the CLI could not judge (`insufficient_data`).
+/// (`not_assessable`, because delivery is not constant), a PAT/PMT whose
+/// repetition the range does not show, or PID references the CLI could not
+/// judge (`insufficient_data`).
 /// Only a status this check describes counts: an unknown `not_assessable` on
 /// another check stays a finding, shown as the CLI reported it.
 pub(crate) fn is_unavailable(check: Check, status: &str) -> bool {
@@ -1456,6 +1559,36 @@ pub(crate) fn findings(
                         Some(pid.first_offset_bytes),
                     ));
                 }
+            }
+            Check::PatHealth | Check::PmtHealth => {
+                let health = report.psi_health.as_ref();
+                let table = health.and_then(|health| psi_table(health, program, check));
+                let limit = health.map_or(0.0, |h| h.repetition_limit_ms);
+                let (scope, table_name) = match check {
+                    Check::PatHealth => (Scope::Multiplex, "PAT".to_owned()),
+                    _ => (in_program, "PMT".to_owned()),
+                };
+                let reason = table.map_or(String::new(), |table| {
+                    let mut parts = Vec::new();
+                    let rep = &table.repetition;
+                    if let Some(ms) = rep.max_interval_ms
+                        && rep.late_interval_count > 0
+                    {
+                        let what = if table.instance_count == 0 {
+                            format!("no {table_name} found")
+                        } else {
+                            format!("{} late interval(s)", rep.late_interval_count)
+                        };
+                        parts.push(format!("{what}, longest {ms:.1} ms (limit {limit:.0} ms)"));
+                    }
+                    parts.extend(psi_problems(table));
+                    format!("PID {}: {}", table.pid, parts.join(", "))
+                });
+                let offset = table.and_then(|t| {
+                    t.first_problem_offset_bytes
+                        .or(t.repetition.first_late_end_offset_bytes)
+                });
+                findings.push(finding(reason, scope, offset));
             }
             Check::Synchronization => {
                 let sync = report.sync.as_ref();
@@ -1646,24 +1779,35 @@ mod tests {
                     Scope::Multiplex,
                     Some(11 * 188)
                 ),
+                ("ng", "PAT health", Scope::Multiplex, Some(79 * 188)),
+                ("ng", "PMT health", Scope::Program(1), Some(83 * 188)),
             ]
         );
-        assert_eq!(findings[0].reason, "160.0 ms, limit 100 ms");
         assert_eq!(
-            findings[1].reason,
+            findings[7].reason,
+            "PID 0x0000: 1 late interval(s), longest 800.0 ms (limit 500 ms)"
+        );
+        assert_eq!(
+            findings[8].reason,
+            "PID 0x1000: 1 late interval(s), longest 800.0 ms (limit 500 ms)"
+        );
+        let rest = &findings[..7];
+        assert_eq!(rest[0].reason, "160.0 ms, limit 100 ms");
+        assert_eq!(
+            rest[1].reason,
             "max |estimated jitter| 100.0 µs beyond ±25 µs; estimated from byte position, delivery constant: 2 × 1 s windows, max deviation 0.00 % of 75.2 kbit/s"
         );
-        assert_eq!(findings[2].reason, "1200.0 ms, limit 1000 ms");
+        assert_eq!(rest[2].reason, "1200.0 ms, limit 1000 ms");
         assert!(
-            findings[3]
+            rest[3]
                 .reason
                 .starts_with("PID 0x0100 · backward · 1× · PTS went backward")
         );
         assert_eq!(
-            findings[4].reason,
+            rest[4].reason,
             "PID 0x0101: continuity_counter 6 (expected 5)"
         );
-        for finding in &findings[5..] {
+        for finding in &rest[5..] {
             assert_eq!(
                 finding.reason,
                 "PID 0x1fff (null): 1 packet, 0 excluded from analysis"
@@ -1697,6 +1841,137 @@ mod tests {
             assert!(is_finding(row.check, &row.status), "{:?}", row.check);
             assert!(findings.iter().any(|f| f.check == Some(row.check)));
         }
+    }
+
+    /// The PAT row covers the multiplex and the PMT row the selected
+    /// program's PMT; a PAT/PMT without enough evidence is unavailable
+    /// analysis with the CLI's reason, a failed one a finding at its first
+    /// problem.
+    #[test]
+    fn pat_and_pmt_health_rows() {
+        let report = report(include_str!(
+            "../../tests/fixtures/analysis_two_programs_188.json"
+        ));
+        let pmt = row(&report, &report.programs[1], Check::PmtHealth).unwrap();
+        assert_eq!(
+            (pmt.status.as_str(), pmt.value.as_str()),
+            ("ok", "139.1 ms")
+        );
+        let fact = |row: &Row, name: &str| {
+            row.facts
+                .iter()
+                .find(|(label, _)| *label == name)
+                .map(|(_, value)| value.clone())
+        };
+        assert_eq!(fact(&pmt, "PID").as_deref(), Some("0x1001"));
+        assert_eq!(fact(&pmt, "Program").as_deref(), Some("2"));
+        assert_eq!(fact(&pmt, "Tables").as_deref(), Some("22"));
+        assert_eq!(fact(&pmt, "Limit").as_deref(), Some("500 ms"));
+        assert_eq!(
+            fact(&pmt, "Time base").as_deref(),
+            Some("PCR PID 0x0100 of program 1, 1 segment(s)")
+        );
+        assert_eq!(fact(&pmt, "Problems"), None);
+        let pat = row(&report, &report.programs[1], Check::PatHealth).unwrap();
+        assert_eq!(
+            fact(&pat, "Applies to").as_deref(),
+            Some("the whole multiplex")
+        );
+
+        let mut document: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/analysis_two_programs_188.json"
+        ))
+        .unwrap();
+        // A CLI that does not name the PCR_PID of a measured time base.
+        document["psi_health"]["time_base"]
+            .as_object_mut()
+            .unwrap()
+            .remove("pcr_pid");
+        let tables = &mut document["psi_health"]["tables"];
+        tables[0]["status"] = "insufficient_data".into();
+        tables[0]["repetition"] = serde_json::json!({
+            "status": "skipped", "reason": "no_pcr_time_base", "interval_count": 0, "late_interval_count": 0
+        });
+        tables[2]["status"] = "ng".into();
+        tables[2]["reasons"] = serde_json::json!(["missing", "crc_error"]);
+        tables[2]["instance_count"] = 0.into();
+        tables[2]["crc_error_count"] = 2.into();
+        tables[2]["first_problem_offset_bytes"] = 1316.into();
+        tables[2]["repetition"] = serde_json::json!({
+            "status": "late", "interval_count": 0, "max_interval_ms": 900.0,
+            "max_interval_end_offset_bytes": 9400, "late_interval_count": 1, "first_late_end_offset_bytes": 9400
+        });
+        let report = super::tests::report(&document.to_string());
+        let program = &report.programs[1];
+        let pat = row(&report, program, Check::PatHealth).unwrap();
+        assert_eq!(
+            fact(&pat, "Time base").as_deref(),
+            Some("PCR of program 1, 1 segment(s)")
+        );
+        assert_eq!(pat.value, "—");
+        assert_eq!(
+            pat.reason.as_deref(),
+            Some("No PCR time base: no two PCRs in one segment")
+        );
+        let (findings, unavailable) = findings(&report, program);
+        assert!(
+            unavailable
+                .iter()
+                .any(|u| u.check == Check::PatHealth && u.status == "insufficient_data")
+        );
+        let pmt = findings
+            .iter()
+            .find(|f| f.check == Some(Check::PmtHealth))
+            .unwrap();
+        assert_eq!(
+            (pmt.scope, pmt.offset, pmt.reason.as_str()),
+            (
+                Scope::Program(2),
+                Some(1316),
+                "PID 0x1001: no PMT found, longest 900.0 ms (limit 500 ms), 2 CRC errors"
+            )
+        );
+        let row = row(&report, program, Check::PmtHealth).unwrap();
+        assert_eq!(row.value, "900.0 ms");
+        assert_eq!(fact(&row, "Problems").as_deref(), Some("2 CRC errors"));
+        assert_eq!(fact(&row, "Reasons").as_deref(), Some("missing, crc_error"));
+        assert_eq!(
+            psi_problems(&crate::report::PsiTableHealth {
+                table: "pmt".into(),
+                program_number: Some(1),
+                pid: "0x1000".into(),
+                status: "ng".into(),
+                reasons: vec![],
+                instance_count: 0,
+                version_change_count: 0,
+                crc_error_count: 0,
+                malformed_section_count: 1,
+                incomplete_count: 2,
+                wrong_table_id_count: 1,
+                unusable_packet_count: 3,
+                first_problem_offset_bytes: None,
+                repetition: crate::report::PsiRepetition {
+                    status: "skipped".into(),
+                    reason: Some("other_reason".into()),
+                    interval_count: 0,
+                    max_interval_ms: None,
+                    max_interval_end_offset_bytes: None,
+                    late_interval_count: 0,
+                    first_late_end_offset_bytes: None,
+                },
+            }),
+            [
+                "1 malformed section",
+                "2 incomplete tables",
+                "1 wrong table_id",
+                "3 unusable packets"
+            ]
+        );
+        assert_eq!(
+            repetition_reason("no_complete_interval"),
+            "No complete interval: the table was not seen twice within one PCR segment"
+        );
+        assert_eq!(repetition_reason("other_reason"), "other reason");
     }
 
     /// The PCR-discontinuities sample: one finding per undeclared kind at its
@@ -1785,6 +2060,8 @@ mod tests {
                 ("errors", "Continuity counter", Scope::Multiplex),
                 ("affected", "Transport errors", Scope::Multiplex),
                 ("affected", "Scrambled packets", Scope::Multiplex),
+                ("ng", "PAT health", Scope::Multiplex),
+                ("ng", "PMT health", Scope::Program(1)),
                 ("warning", "Analyzer warning", Scope::Multiplex),
             ]
         );
@@ -1890,9 +2167,28 @@ mod tests {
                 Check::TransportErrors,
                 Check::ScrambledPackets,
                 Check::Synchronization,
+                Check::PatHealth,
+                Check::PmtHealth,
                 Check::ReferencedPids,
                 Check::UnreferencedPids,
                 Check::PacketGaps,
+            ]
+        );
+        // A healthy PAT: no problem, reason or first problem.
+        let pat: Vec<&str> = rows[7].facts.iter().map(|(label, _)| *label).collect();
+        assert_eq!(
+            pat,
+            [
+                "Tables",
+                "Longest interval",
+                "Longest interval ends",
+                "Limit",
+                "Complete intervals",
+                "Late intervals",
+                "Version changes",
+                "PID",
+                "Applies to",
+                "Time base"
             ]
         );
         let labels: Vec<&str> = rows[0].facts.iter().map(|(label, _)| *label).collect();
@@ -1924,26 +2220,26 @@ mod tests {
         );
         assert_eq!(rows[6].value, "0");
         // Healthy PID references: counts, limits and scope only.
-        let referenced: Vec<&str> = rows[7].facts.iter().map(|(label, _)| *label).collect();
+        let referenced: Vec<&str> = rows[9].facts.iter().map(|(label, _)| *label).collect();
         assert_eq!(
             referenced,
             ["References", "Silence limit", "Time basis", "Applies to"]
         );
         assert_eq!(
-            (rows[7].status.as_str(), rows[7].value.as_str()),
+            (rows[9].status.as_str(), rows[9].value.as_str()),
             ("ok", "0 of 8")
         );
-        let unreferenced: Vec<&str> = rows[8].facts.iter().map(|(label, _)| *label).collect();
+        let unreferenced: Vec<&str> = rows[10].facts.iter().map(|(label, _)| *label).collect();
         assert_eq!(unreferenced, ["Grace period", "Applies to"]);
-        assert_eq!(rows[8].value, "0");
+        assert_eq!(rows[10].value, "0");
         // Packet gaps of program 1 only: its PMT, PCR/video and audio PIDs;
         // the largest stream gap is the audio's.
         assert_eq!(
-            (rows[9].status.as_str(), rows[9].value.as_str()),
+            (rows[11].status.as_str(), rows[11].value.as_str()),
             ("info", "357.4 ms")
         );
         assert_eq!(
-            rows[9].facts,
+            rows[11].facts,
             [
                 ("PIDs", "3".to_owned()),
                 (

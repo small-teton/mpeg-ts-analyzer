@@ -69,7 +69,7 @@ psi_output="$("$binary" "$sample" --dump-psi | sed "s|$sample|sample.ts|" | sed 
 
 timestamp_full="$("$binary" "$sample" --dump-timestamp | sed "s|$sample|sample.ts|")"
 timestamp_samples="$(printf '%s\n' "$timestamp_full" | awk '/^0x/ { print; count++; if (count == 9) exit }')"
-timestamp_summary="$(printf '%s\n' "$timestamp_full" | sed '/^Max packet gaps/,$d' | sed '$d' | tail -n 12)"
+timestamp_summary="$(printf '%s\n' "$timestamp_full" | sed '/^Max packet gaps/,$d' | sed '$d' | tail -n 16)"
 timestamp_output="${timestamp_samples}
 ...
 ${timestamp_summary}"

@@ -71,6 +71,8 @@ observations it needs through focused methods.
 | Whether a packet of the `PCR_PID` carries a trusted PCR, and whether `discontinuity_indicator` declares a new time base for it (on the PCR packet, or on an earlier packet of the PID without a PCR) | `tsparser` (`programAnalyzer.observe`), reported as `analysis.PCR` |
 | How each PCR relates to the previous one (`continuous`, `wraparound`, `declared`, `pcr_pid_change`, `backward`, `forward_jump`), the maximum PCR interval and the PCR discontinuity status | `analysis` (`PCRClock`, `PCRCheck`) |
 | Where the PCR jitter estimate, the bitrate time base, the time series and the PCR-PTS/DTS bracket split into timing segments | `tsparser`, following the `analysis.PCRStep` of each PCR |
+| Whether a PAT or PMT section is usable, when a table is complete, which programs the applied PAT announces, and which PCRs give the time base | `tsparser` (`psiHealthCollector`, with the same `psiSectionReader`, `psiAssembler` and trust policy as the analysis), reported as `analysis.PSIInstance`, `PSIProblem`, `PSIAnnounced`, `PSIWithdrawn`, and the reference program's `analysis.PCR` values, classified by the same `PCRClock` as `PCRCheck` |
+| How packet times are interpolated from PCRs, which intervals are complete or open, the 500 ms limit and the `ok` / `ng` / `insufficient_data` status per table | `analysis` (`PSIHealthCheck`) |
 | Which packets show a PID's presence (not one with `transport_error_indicator`), which PCRs give the time basis, and which PSI layout applies from which packet | `tsparser` (`pidReferenceSummary`, `referenceLayout`), reported as `analysis.Packet`, `analysis.TimedPCR` (the reference program's PCR with its `PCRStep`) and `analysis.ReferenceLayout` |
 | The time of a packet between two PCRs, per-PID packet counts and gaps, silences while referenced, unreferenced runs and their grace period, the referenced and unreferenced statuses, the report-only packet-gap statuses | `analysis` (`PacketGaps`, `PIDReferenceCheck`) |
 
@@ -83,7 +85,11 @@ transport-error and scrambling check
 new check built on it: the scan decides which packets it does not trust and
 whether their data was excluded, and `TransportTrustCheck` aggregates the
 resulting `TransportError` and `Scrambled` observations into the
-`transport_errors` and `scrambled_packets` results.
+`transport_errors` and `scrambled_packets` results. The PAT/PMT health check
+([#161](https://github.com/small-teton/mpeg-ts-analyzer/issues/161)) follows
+the same split: the scan reports complete tables, unusable sections and PCRs,
+and `PSIHealthCheck` turns them into timed intervals and the `psi_health`
+result.
 
 The PCR interval and PCR discontinuity checks
 ([#163](https://github.com/small-teton/mpeg-ts-analyzer/issues/163)) moved to

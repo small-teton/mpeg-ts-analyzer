@@ -170,13 +170,14 @@ check (`CheckDetail`).
   Timing (Max PCR interval, PCR discontinuities, PCR jitter estimate), PES / Timestamps
   (PCR → PTS/DTS gap, PTS/DTS anomalies), Integrity (Continuity counter,
   Transport errors, Scrambled packets, TS synchronization), Structure
-  (Referenced PIDs, Unreferenced PIDs), Multiplexing (Packet gaps). A check
-  is listed when the CLI reported it. There is no scope
-  column or badge: the selected program is shown above, and exceptions
-  (Continuity counter, Transport errors, Scrambled packets, TS
-  synchronization, Referenced PIDs and Unreferenced PIDs cover the whole
-  multiplex; Packet gaps shows the PIDs the selected program references,
-  from the CLI's list of every PID) are on the detail page. Status is the CLI's status
+  (PAT health, PMT health, Referenced PIDs, Unreferenced PIDs). Within
+  Structure the tables come before the PIDs they announce, as in #157;
+  Multiplexing (Packet gaps). A check is listed when the CLI reported it. There is no scope column or badge: the selected program is
+  shown above, and exceptions (Continuity counter, Transport errors,
+  Scrambled packets, TS synchronization, PAT health, Referenced PIDs and
+  Unreferenced PIDs cover the whole multiplex; PMT health is the selected
+  program's PMT from `psi_health`; Packet gaps shows the PIDs the selected
+  program references, from the CLI's list of every PID) are on the detail page. Status is the CLI's status
   verbatim as a badge sized to its text (at least 48 points wide); a status
   the GUI does not describe is shown in the neutral color with a tooltip
   saying so. Help holds the focusable
@@ -204,8 +205,10 @@ check (`CheckDetail`).
   order. `overview::row` turns the report into a check's value, status and
   current result (only fields the CLI provided). A new check is one
   `check_help` entry and one `row` arm. The texts state the CLI's thresholds
-  (100 ms, 1000 ms, ±500 ns, ±25 µs), the PCR step kinds and the 1000 ms jump
-  limit of PCR discontinuities, and, for PCR jitter, the byte-position
+  (100 ms, 1000 ms, ±500 ns, ±25 µs, and 500 ms for PAT/PMT repetition with
+  its ETSI TR 101 290 source and the absence of an ISO/IEC 13818-1 limit), the
+  PCR step kinds and the 1000 ms jump limit of PCR discontinuities, and, for
+  PCR jitter, the byte-position
   model, the delivery assessment (1-second window rates within ±1 %, no
   estimate beyond 1 ms) and `not_assessable`.
 - **Detail page**: opened by the information button or a findings link, inside
@@ -241,21 +244,24 @@ check (`CheckDetail`).
   PTS/DTS anomaly group, each continuity event (one finding for the check if
   the CLI reported errors without events), PCR jitter, each PID of
   `transport_errors` and `scrambled_packets` (at its first offset), TS
-  synchronization (one finding at the first loss offset), each reference of
-  `pid_references.referenced` with a finding status such as `absent` or
-  `silent` (with its own status, at the packet before its longest silence),
-  each PID of `pid_references.unreferenced` that is `unreferenced` (at its
-  first unreferenced packet) and each analyzer warning. Any status other than
-  `ok`, `skipped`, `not_assessable`, `info` of a report-only check and, for
-  the PID-reference and packet-gap checks, `insufficient_data`,
+  synchronization (one finding at the first loss offset), a failed PAT or PMT
+  (at its first problem, or else at the end of its first late interval), each
+  reference of `pid_references.referenced` with a finding status such as
+  `absent` or `silent` (with its own status, at the packet before its longest
+  silence), each PID of `pid_references.unreferenced` that is `unreferenced`
+  (at its first unreferenced packet) and each analyzer warning. Any status
+  other than `ok`, `skipped`, `not_assessable`, `info` of a report-only check
+  and, for the PAT/PMT, PID-reference and packet-gap checks,
+  `insufficient_data`,
   including one the GUI does not know, is a finding with the CLI's status as
   its badge, so an `NG` or `WARNING` row can never sit next to an empty list.
   Each finding names its scope (program or whole multiplex); its check link
   opens the check's page. `skipped` checks, a PCR jitter estimate that is
-  `not_assessable`, and PID references or unreferenced PIDs the CLI could not
-  judge (`insufficient_data`, whether the whole check or only some PIDs) are
-  listed under "Unavailable analysis" with their status as the badge and the
-  CLI's reason (for PIDs: which PIDs and why); they are not findings.
+  `not_assessable`, a PAT or PMT whose repetition the range does not show,
+  and PID references or unreferenced PIDs the CLI could not judge
+  (`insufficient_data`, whether the whole check or only some PIDs) are listed
+  under "Unavailable analysis" with their status as the badge and the CLI's
+  reason (for PIDs: which PIDs and why); they are not findings.
 
 ### Timeline
 

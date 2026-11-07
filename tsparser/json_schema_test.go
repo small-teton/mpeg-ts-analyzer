@@ -268,6 +268,9 @@ func summarySchemaCases() []schemaCase {
 				"/status": "complete", "/reason": absent{}, "/error": absent{}, "/selected_program_number": 1,
 				"/transport_errors/status": "ok", "/transport_errors/first_offset_bytes": absent{}, "/transport_errors/pids": []any{},
 				"/scrambled_packets/status": "ok", "/scrambled_packets/packet_count": 0,
+				"/psi_health/status": "ok", "/psi_health/time_base/status": "pcr", "/psi_health/tables/0/table": "pat",
+				"/psi_health/tables/1/program_number": 1, "/psi_health/tables/0/program_number": absent{},
+				"/psi_health/tables/0/first_problem_offset_bytes": absent{}, "/psi_health/tables/1/withdrawn_offset_bytes": absent{},
 				"/pid_references/referenced/status": "ok", "/pid_references/unreferenced/status": "ok", "/pid_references/unreferenced/reason": absent{},
 				"/pid_references/referenced/pids/0/stream_type": absent{}, "/pid_references/referenced/pids/2/stream_type": "0x02",
 				"/pcr_jitter": absent{}, "/bitrate": absent{}, "/psi_transitions": absent{},
@@ -325,6 +328,16 @@ func summarySchemaCases() []schemaCase {
 				"/status": "complete", "/transport_errors/status": "data_excluded", "/transport_errors/first_offset_bytes": 0,
 				"/transport_errors/pids/4/label": "null", "/transport_errors/pids/4/excluded_packet_count": 0,
 				"/scrambled_packets/status": "data_excluded", "/scrambled_packets/pids/3/pid": "0x0200",
+			},
+		},
+		{
+			name: "complete with PAT/PMT health findings", schema: summarySchemaFile, path: fixedPath(psiHealthFixtures[0].path),
+			opts: options.Options{Program: 1},
+			want: map[string]any{
+				"/status": "complete", "/psi_health/status": "ng", "/psi_health/repetition_limit_ms": 500,
+				"/psi_health/tables/0/reasons": []any{"late", "wrong_table_id"}, "/psi_health/tables/0/repetition/status": "late",
+				"/psi_health/tables/0/repetition/first_late_end_offset_bytes": 99 * 188,
+				"/psi_health/tables/2/reasons":                                []any{"missing", "incomplete"}, "/psi_health/tables/2/first_instance_offset_bytes": absent{},
 			},
 		},
 		{
@@ -416,7 +429,8 @@ func summarySchemaCases() []schemaCase {
 			},
 			want: map[string]any{
 				"/status": "incomplete", "/reason": "end_of_input_before_complete_analysis", "/error": absent{},
-				"/programs": []any{}, "/compliance": absent{}, "/transport_errors": absent{}, "/scrambled_packets": absent{}, "/pid_references": absent{}, "/multiplexing": absent{},
+				"/programs": []any{}, "/compliance": absent{}, "/transport_errors": absent{}, "/scrambled_packets": absent{}, "/pid_references": absent{},
+				"/psi_health": absent{}, "/multiplexing": absent{},
 			},
 		},
 		{
@@ -510,6 +524,25 @@ func analysisSchemaCases() []schemaCase {
 			},
 		},
 		{
+			name: "complete with PAT/PMT health findings in M2TS", schema: analysisSchemaFile, path: fixedPath(psiHealthFixtures[1].path), opts: analysis,
+			want: map[string]any{
+				"/status": "complete", "/psi_health/status": "ng", "/psi_health/tables/1/crc_error_count": 1,
+				"/psi_health/tables/1/version_change_count": 1, "/psi_health/tables/2/announced_offset_bytes": 192,
+				"/psi_health/tables/2/repetition/max_interval_ms": 2840,
+			},
+		},
+		{
+			name: "complete without a PCR time base", schema: analysisSchemaFile, opts: analysis,
+			path: synthetic(func() []byte {
+				return syntheticStream([]syntheticProgram{{number: 1, pmtPid: 0x1000, pcrPid: 0x1FFF, videoPid: 0x100, withPmt: true}}, nil, -1)
+			}),
+			want: map[string]any{
+				"/status": "complete", "/psi_health/status": "insufficient_data", "/psi_health/time_base/status": "none",
+				"/psi_health/time_base/pcr_pid": absent{}, "/psi_health/tables/0/repetition/status": "skipped",
+				"/psi_health/tables/0/repetition/reason": "no_pcr_time_base", "/psi_health/tables/0/repetition/max_interval_ms": absent{},
+			},
+		},
+		{
 			name: "complete with PID reference findings in M2TS", schema: analysisSchemaFile, path: fixedPath(pidReferencesFixtures[1].path), opts: analysis,
 			want: map[string]any{
 				"/status": "complete", "/pid_references/referenced/pids/5/status": "absent",
@@ -559,7 +592,8 @@ func analysisSchemaCases() []schemaCase {
 			}),
 			want: map[string]any{
 				"/status": "incomplete", "/reason": "no_program_analyzed", "/analysis_start_offset_bytes": absent{},
-				"/continuity_counter": absent{}, "/transport_errors": absent{}, "/scrambled_packets": absent{}, "/pid_references": absent{}, "/multiplexing": absent{},
+				"/continuity_counter": absent{}, "/transport_errors": absent{}, "/scrambled_packets": absent{}, "/pid_references": absent{},
+				"/psi_health": absent{}, "/multiplexing": absent{},
 			},
 		},
 		{
@@ -736,6 +770,9 @@ func TestJSONSchemaValidationRejectsMismatches(t *testing.T) {
 		{schema: summarySchemaFile, pointer: "/pcr_jitter/delivery", rename: "deliveries", want: "missing property 'delivery'"},
 		{schema: analysisSchemaFile, pointer: "/programs/0/pcr_jitter/delivery/assessment", value: 1, want: "/programs/0/pcr_jitter/delivery/assessment"},
 		{schema: analysisSchemaFile, pointer: "/output", value: "summary", want: "/output"},
+		{schema: summarySchemaFile, pointer: "/psi_health/tables/0/instance_count", value: -1, want: "/psi_health/tables/0/instance_count"},
+		{schema: summarySchemaFile, pointer: "/psi_health/tables/1/repetition", rename: "repetitions", want: "missing property 'repetition'"},
+		{schema: analysisSchemaFile, pointer: "/psi_health/tables/0/pid", value: 0, want: "/psi_health/tables/0/pid"},
 		{schema: packetsSchemaFile, pointer: "/packets/1/offset_bytes", value: "188", want: "/packets/1/offset_bytes"},
 		{schema: packetsSchemaFile, pointer: "/total_packets", rename: "packet_total", want: "missing property 'total_packets'"},
 	} {

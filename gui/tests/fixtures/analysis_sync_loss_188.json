@@ -61,6 +61,62 @@
     "excluded_packet_count": 0,
     "pids": []
   },
+  "psi_health": {
+    "status": "ok",
+    "repetition_limit_ms": 500,
+    "time_base": {
+      "status": "pcr",
+      "program_number": 1,
+      "pcr_pid": "0x0100",
+      "segment_count": 1
+    },
+    "tables": [
+      {
+        "table": "pat",
+        "pid": "0x0000",
+        "status": "ok",
+        "reasons": [],
+        "instance_count": 6,
+        "first_instance_offset_bytes": 0,
+        "version_change_count": 0,
+        "crc_error_count": 0,
+        "malformed_section_count": 0,
+        "incomplete_count": 0,
+        "wrong_table_id_count": 0,
+        "unusable_packet_count": 0,
+        "repetition": {
+          "status": "ok",
+          "interval_count": 3,
+          "max_interval_ms": 500,
+          "max_interval_end_offset_bytes": 14101,
+          "late_interval_count": 0
+        }
+      },
+      {
+        "table": "pmt",
+        "program_number": 1,
+        "pid": "0x1000",
+        "status": "ok",
+        "reasons": [],
+        "announced_offset_bytes": 0,
+        "instance_count": 6,
+        "first_instance_offset_bytes": 376,
+        "version_change_count": 0,
+        "crc_error_count": 0,
+        "malformed_section_count": 0,
+        "incomplete_count": 0,
+        "wrong_table_id_count": 0,
+        "unusable_packet_count": 0,
+        "repetition": {
+          "status": "ok",
+          "interval_count": 3,
+          "max_interval_ms": 500,
+          "max_interval_end_offset_bytes": 14477,
+          "late_interval_count": 0
+        }
+      }
+    ]
+  },
   "pid_references": {
     "time_basis": "pcr_interpolated_file_position",
     "silence_limit_ms": 5000,

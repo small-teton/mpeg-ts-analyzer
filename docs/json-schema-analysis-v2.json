@@ -65,6 +65,10 @@
       "$ref": "json-schema-v2.json#/$defs/affectedPackets",
       "description": "Packets with a non-zero transport_scrambling_control, for the whole multiplex, from the first packet of the range. Absent when no program was analyzed."
     },
+    "psi_health": {
+      "$ref": "json-schema-v2.json#/$defs/psiHealth",
+      "description": "Availability and repetition of the PAT and of the PMT of every announced program, from the first packet of the range. Absent when no program was analyzed."
+    },
     "pid_references": {
       "$ref": "json-schema-v2.json#/$defs/pidReferences",
       "description": "Referenced, missing and unreferenced PIDs for the whole multiplex, from the first packet of the range. Absent when no program was analyzed."

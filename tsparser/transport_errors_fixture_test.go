@@ -202,8 +202,9 @@ func TestTransportErrorsText(t *testing.T) {
 		"-----------------------------",
 		"",
 	}, "\n")
-	if !strings.Contains(out, want) {
-		t.Errorf("text summary:\n%s\nwant suffix:\n%s", out, want)
+	// The PAT/PMT health summary follows.
+	if !strings.Contains(out, want+"PAT/PMT health: ") {
+		t.Errorf("text summary:\n%s\nwant:\n%s", out, want)
 	}
 
 	out = captureStdout(t, func() {
