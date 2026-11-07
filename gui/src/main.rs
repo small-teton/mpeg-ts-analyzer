@@ -10,6 +10,7 @@ mod range_bar;
 mod report;
 mod settings;
 mod theme;
+mod update;
 mod views;
 
 use eframe::egui;
