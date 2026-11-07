@@ -48,9 +48,9 @@ impl Screen {
     }
 }
 
-/// A colored status badge, exactly as large as its text, so it never
-/// stretches with the row or cell around it. Announced as a label with its
-/// text.
+/// A colored status badge, sized to its text plus padding with a 48-point
+/// minimum width, so it never stretches with the row or cell around it.
+/// Announced as a label with its text.
 pub fn badge(ui: &mut egui::Ui, text: &str, verdict: Verdict) -> egui::Response {
     let (foreground, background) = verdict.colors();
     let galley = egui::WidgetText::from(crate::theme::badge_text(text)).into_galley(
