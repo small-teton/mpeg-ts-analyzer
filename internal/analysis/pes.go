@@ -234,12 +234,12 @@ type pesStream struct {
 
 	// The interval in progress, from the last PTS (or from the first PES
 	// without a PTS) to the last PES observed since.
-	open             bool
-	openHasPTS       bool
-	openSegment      int
-	openFrom, openAt int64
-	openStart, last  uint64
-	lastAt           int64
+	open            bool
+	openHasPTS      bool
+	openSegment     int
+	openFrom        int64
+	openStart, last uint64
+	lastAt          int64
 }
 
 type problemCount struct {
