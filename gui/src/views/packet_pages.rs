@@ -307,15 +307,7 @@ impl PacketPages {
             self.pages
                 .insert(self.page, start(cli, args, parse_page, repaint.clone()));
         }
-        self.recent.retain(|&p| p != self.page);
-        self.recent.push_back(self.page);
-        while self.recent.len() > CACHED_PAGES + 1 {
-            // Dropping a page still loading kills its CLI run, so only the
-            // last requested page keeps running when paging quickly.
-            if let Some(old) = self.recent.pop_front() {
-                self.pages.remove(&old);
-            }
-        }
+        self.keep_recent_pages();
         for page in self.pages.values_mut() {
             page.poll();
         }
@@ -333,6 +325,19 @@ impl PacketPages {
                     ]);
                     self.detail = Some((offset, start(cli, args, parse_detail, repaint)));
                 }
+            }
+        }
+    }
+
+    /// Keeps the current page and the most recently viewed ones. Dropping a
+    /// page still loading cancels its CLI run without waiting for it, so only
+    /// the last requested page keeps running when paging quickly.
+    fn keep_recent_pages(&mut self) {
+        self.recent.retain(|&p| p != self.page);
+        self.recent.push_back(self.page);
+        while self.recent.len() > CACHED_PAGES + 1 {
+            if let Some(old) = self.recent.pop_front() {
+                self.pages.remove(&old);
             }
         }
     }
@@ -1109,6 +1114,40 @@ mod tests {
             );
             assert_eq!(pid.value.to_lowercase(), decoded);
         }
+    }
+
+    /// A page that drops out of the cache while its CLI run is still going
+    /// is cancelled without waiting, even when the CLI closed its output.
+    #[test]
+    fn evicting_a_loading_page_stops_its_cli() {
+        let marker = std::env::temp_dir()
+            .join(format!("mtsa-gui-test-evict-{}", std::process::id()))
+            .join("closed");
+        std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+        let request =
+            Request::spawn(cli::closes_output_and_hangs(&marker), parse_page, || {}).unwrap();
+        let child = request.child();
+        cli::wait_for_closed_output(&marker);
+        let mut pages = PacketPages::new_for_test(PathBuf::from("x"));
+        pages.pages.insert(0, Fetch::Loading(request));
+        for page in 1..=CACHED_PAGES as u64 {
+            pages.pages.insert(page, Fetch::Failed(String::new()));
+        }
+        pages.recent = (0..=CACHED_PAGES as u64).collect();
+        pages.page = CACHED_PAGES as u64 + 1;
+        let pages = std::sync::Arc::new(std::sync::Mutex::new(pages));
+        let paging = std::sync::Arc::clone(&pages);
+        assert!(
+            cli::returns_promptly(move || paging.lock().unwrap().keep_recent_pages()),
+            "evicting a loading page waited for its CLI"
+        );
+        let pages = pages.lock().unwrap();
+        assert!(!pages.pages.contains_key(&0), "page 0 is still cached");
+        assert_eq!(pages.recent.len(), CACHED_PAGES + 1);
+        assert!(
+            cli::wait_until_exited(&child),
+            "the evicted page's CLI kept running"
+        );
     }
 
     /// A range of three packets, read as a full page: only those three stay,

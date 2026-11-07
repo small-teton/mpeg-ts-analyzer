@@ -94,32 +94,52 @@ GitHub.
 
 ## Why mpeg-ts-analyzer?
 
-mpeg-ts-analyzer is purpose-built for one job: **checking transport-layer timing compliance** — the Max PCR interval and the PCR-PTS/DTS (decode-timeline) gap — and reporting a direct pass/fail answer.
+mpeg-ts-analyzer combines transport-stream checks with detailed inspection. It
+reports timing, continuity and PSI/PES findings, plots timing and bitrate, and
+lets you follow a finding down to the exact packet, field, byte and bit.
+
+Its main strength is not continuous monitoring or exhaustive validation of an
+entire long-running service. Instead, you can select a bounded range around the
+behavior you want to understand and examine it from a high-level verdict down
+to its binary representation. This makes the tool particularly useful for
+validating muxer output, investigating a suspicious section of a stream, and
+learning how MPEG-2 TS structures are encoded.
 
 ### Compared to other tools
 
-- **ffprobe / FFmpeg** work at the elementary-stream (codec) level. They expose PTS/DTS but **not the PCR**, which lives in the transport layer (adaptation field). PCR interval and PCR-PTS/DTS gap checks are therefore out of reach — ffprobe simply never surfaces the PCR.
-- **TSDuck** is an excellent, comprehensive TS toolkit and it *can* obtain these values (e.g. `tsp -P pcrextract` dumps PCR/PTS/DTS to CSV). However, it hands you the raw timestamps — you still have to script the interval/gap computation and make the pass/fail decision yourself. TSDuck gives you the parts; it does not directly give you the answer.
+- **ffprobe / FFmpeg** are a natural choice for codecs, elementary streams and
+  playback-oriented metadata. They do not provide the same packet-field-to-bit
+  inspection workflow for the MPEG-2 TS transport layer.
+- **TSDuck** is an excellent, comprehensive TS toolkit for broad stream
+  analysis, processing, monitoring and deep conformance work. Use it when you
+  need that breadth, especially across a complete or live service.
 
 mpeg-ts-analyzer instead gives you:
 
-- **Spec-level field dump** — Every field in TS headers, adaptation fields, PSI tables, and PES headers is printed exactly as defined in ISO/IEC 13818-1, making it easy to cross-reference with the specification.
-- **Compliance checks out of the box** — Max PCR interval (≤ 100 ms) and PCR-PTS/DTS gap (≤ 1000 ms) are validated automatically and reported as a direct result. No CSV, no scripting.
+- **A focused range** — Use a byte offset and limit to isolate the section
+  you want to verify instead of starting with the entire stream.
+- **Checks and context together** — See transport findings alongside timing,
+  bitrate, PSI/PES and packet data rather than receiving only a verdict.
+- **Spec-level inspection** — Decode TS headers, adaptation fields, PSI tables
+  and PES headers, then map a selected field to its exact bytes and bits.
 
 ### Which tool should I use?
 
-- **Transport-layer timing compliance** (Max PCR interval / PCR-PTS/DTS gap), or a lightweight pass/fail check you can drop into CI → **mpeg-ts-analyzer**. This is what it is built for.
-- **Broad, general analysis of a stream** — full PSI/SI tables (NIT/SDT/EIT/…), bitrate breakdown, service names, scrambling state, network information, deep TR 101 290 conformance monitoring → **[TSDuck](https://tsduck.io/)** is the far more capable tool, and we recommend it for that use case.
-
-mpeg-ts-analyzer deliberately stays small and focused on the compliance check rather than duplicating what TSDuck already does well.
+- To verify or learn from a specific range, correlate transport checks with the
+  timeline, or inspect a field down to its bits → **mpeg-ts-analyzer**.
+- For continuous or whole-service monitoring, stream processing, complete
+  PSI/SI coverage, or deep TR 101 290 conformance work →
+  **[TSDuck](https://tsduck.io/)**.
+- For codec and elementary-stream inspection → **ffprobe / FFmpeg**.
 
 ### Background
 
 mpeg-ts-analyzer started in 2016 as a small tool for checking timestamp gaps,
 written partly to learn Go. To learn MPEG-2 TS itself, it also printed every
 header field in detail — the origin of today's spec-level dumps. It has since
-grown into a timing-compliance checker with machine-readable output and a
-desktop GUI.
+grown to include transport checks, machine-readable output and a desktop GUI,
+while keeping that original emphasis on understanding a selected part of a
+stream in detail.
 
 **Note:** The accuracy of the output is not guaranteed.
 

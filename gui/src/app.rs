@@ -97,10 +97,16 @@ impl App {
             .unwrap_or_default();
         let mut app = Self::with_launch(settings, Some(cc.egui_ctx.clone()), launch);
         // Only here, not in the constructors tests use: they stay offline.
-        if app.settings.check_updates_at_startup {
-            app.updates.check(&cc.egui_ctx, false);
-        }
+        app.startup_update_check(&cc.egui_ctx);
         app
+    }
+
+    /// The startup check, when the setting is on: it opens the update window
+    /// once for a newer version that was not skipped.
+    fn startup_update_check(&mut self, ctx: &egui::Context) {
+        if self.settings.check_updates_at_startup {
+            self.updates.check(ctx, false);
+        }
     }
 
     fn with_settings(settings: Settings, ctx: Option<egui::Context>) -> Self {
@@ -492,6 +498,9 @@ impl App {
             if icon_button(ui, icons::GEAR, "Settings").clicked() {
                 self.settings_open = true;
             }
+            if update_button(ui, self.updates.available_version()).clicked() {
+                self.updates.open(ui.ctx());
+            }
         });
     }
 
@@ -543,7 +552,7 @@ impl App {
                 check_updates = ui.button("Check for Updates…").clicked();
             });
         if check_updates {
-            self.updates.check(ctx, true);
+            self.updates.open(ctx);
         }
     }
 }
@@ -575,7 +584,8 @@ impl App {
         }
 
         self.poll_cli_check();
-        self.updates.poll(ui.ctx());
+        self.updates
+            .poll(ui.ctx(), self.settings.skipped_update_version.as_deref());
         if self.pending_start && self.cli_check.is_none() {
             self.pending_start = false;
             if self.cli.is_ok() && self.file_problem.is_none() {
@@ -601,9 +611,6 @@ impl App {
                     Ok(cli) => ui.weak(format!("CLI {} · {}", cli.version, cli.path.display())),
                     Err(err) => ui.colored_label(ui.visuals().warn_fg_color, err),
                 };
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    self.updates.status_button(ui);
-                });
             });
         });
         egui::Panel::left("navigation")
@@ -711,7 +718,11 @@ impl App {
             self.begin_cli_check(Some(ctx.clone()));
         }
         self.about_window(&ctx);
-        self.updates.window(&ctx, self.running.is_some());
+        self.updates.window(
+            &ctx,
+            self.running.is_some(),
+            &mut self.settings.skipped_update_version,
+        );
         self.confirm_start_dialog(&ctx);
         self.analysis_dialog(&ctx);
         self.error_dialog(&ctx);
@@ -747,6 +758,30 @@ fn icon_button(ui: &mut egui::Ui, glyph: &str, name: &str) -> egui::Response {
     let button = egui::Button::new(icons::text(glyph).size(20.0)).frame(false);
     let response = ui.add(button).on_hover_text(name);
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, name));
+    response
+}
+
+/// The rail's update button: "Check for Updates", or, once a check has found
+/// an update, its version with a badge dot on the icon.
+fn update_button(
+    ui: &mut egui::Ui,
+    available: Option<&cargo_packager_updater::semver::Version>,
+) -> egui::Response {
+    let name = match available {
+        Some(version) => format!("Update available: {version}"),
+        None => "Check for Updates".to_owned(),
+    };
+    let response = icon_button(ui, icons::ARROW_CIRCLE_UP, &name);
+    if available.is_some() && ui.is_rect_visible(response.rect) {
+        let center = response.rect.right_top() + egui::vec2(-3.0, 3.0);
+        let painter = ui.painter();
+        painter.circle(
+            center,
+            4.5,
+            crate::theme::START_COLOR,
+            egui::Stroke::new(1.5, ui.visuals().panel_fill),
+        );
+    }
     response
 }
 
