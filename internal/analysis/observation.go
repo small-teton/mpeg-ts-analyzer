@@ -56,3 +56,60 @@ type Scrambled struct {
 	Offset   int64
 	Excluded bool
 }
+
+// Packet is one packet the parser counts for PID presence and packet gaps: a
+// packet of any PID without transport_error_indicator (the PID of a packet
+// with a transport error may itself be corrupted, so such a packet is not
+// observed; it still occupies its index). Index is the packet's position in
+// the range, counted from the first packet of the range, so the difference of
+// two indices minus one is the number of packets between them. Offset is the
+// byte offset of the packet.
+type Packet struct {
+	PID    uint16
+	Index  int64
+	Offset int64
+}
+
+// PCR is one program_clock_reference of the reference program that the
+// parser uses for timing (not one from a packet with a transport error), in
+// 27 MHz ticks. Index is the index of the packet carrying it, as in Packet.
+// Discontinuity is set when the packet's discontinuity_indicator is set or
+// the parser starts a new timing segment for another reason (a PCR_PID
+// change).
+type PCR struct {
+	Index         int64
+	Offset        int64
+	PCR           uint64
+	Discontinuity bool
+}
+
+// ReferenceLayout is the PSI layout that applies from the packet at Index
+// (byte offset Offset) on: every program of the applicable PAT and, for the
+// programs whose PMT the analysis follows, the PIDs that PMT references. The
+// parser reports one when the scan starts and whenever the layout changes: a
+// PAT or PMT change is applied, the analysis of a program starts (after its
+// PMT was acquired) or stops (the program was removed from the PAT).
+// Programs and its slices belong to the caller.
+type ReferenceLayout struct {
+	Index  int64
+	Offset int64
+	// NetworkPID is the network_PID of the PAT's program_number 0 entry, or 0
+	// when the PAT has none.
+	NetworkPID uint16
+	Programs   []ReferencedProgram
+}
+
+// ReferencedProgram is one program of a ReferenceLayout. When Known is false
+// the analysis does not follow its PMT (it was not selected, not found, or
+// the program was added by a later PAT), so only its PMT PID is known.
+type ReferencedProgram struct {
+	Number uint16
+	PMTPID uint16
+	Known  bool
+	// PCRPID is the PMT's PCR_PID; 0x1FFF means the program has no PCR.
+	PCRPID  uint16
+	Streams []ElementaryStream
+	// CAPIDs are the CA_PIDs of the CA_descriptors (tag 0x09) in the PMT,
+	// at program or elementary-stream level.
+	CAPIDs []uint16
+}
