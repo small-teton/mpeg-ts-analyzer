@@ -491,8 +491,8 @@ func (c *PESCheck) Result() PESResult {
 		headers = append(headers, p.Headers)
 		repetition = append(repetition, p.Repetition)
 	}
-	r.Headers = totalHeaders(headers)
-	r.Repetition = totalRepetition(repetition)
+	r.Headers = sumHeaders(headers)
+	r.Repetition = sumRepetition(repetition)
 	return r
 }
 
@@ -570,11 +570,11 @@ func (st *pesStream) repetitionResult() PTSRepetitionResult {
 	return r
 }
 
-// totalHeaders adds up the header results of every PID: PESErrors when a
+// sumHeaders adds up the header results of every PID: PESErrors when a
 // PID had errors, PESOK when any header was checked, otherwise
 // PESInsufficientData with the reason of the first PID (PESReasonNoPES when
 // there is none).
-func totalHeaders(pids []PESHeaderResult) PESHeaderResult {
+func sumHeaders(pids []PESHeaderResult) PESHeaderResult {
 	t := PESHeaderResult{Status: PESInsufficientData, Reason: PESReasonNoPES, Problems: []PESProblemCount{}}
 	var counts [pesHeaderProblems]problemCount
 	for i, p := range pids {
@@ -609,11 +609,11 @@ func totalHeaders(pids []PESHeaderResult) PESHeaderResult {
 	return t
 }
 
-// totalRepetition combines the PIDs: PESNG when any PID is NG, else PESOK
+// sumRepetition combines the PIDs: PESNG when any PID is NG, else PESOK
 // when any is OK, else PESInsufficientData when any PID applies (with the
 // reason of the first such PID), else PESSkipped with
 // PESReasonNoVideoOrAudio. The maximum is the largest of all PIDs.
-func totalRepetition(pids []PTSRepetitionResult) PTSRepetitionResult {
+func sumRepetition(pids []PTSRepetitionResult) PTSRepetitionResult {
 	t := PTSRepetitionResult{Status: PESSkipped, Reason: PESReasonNoVideoOrAudio}
 	ok, insufficient := false, PESReason("")
 	for _, p := range pids {
