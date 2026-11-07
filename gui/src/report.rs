@@ -356,11 +356,17 @@ impl Delivery {
     /// The assessment and its window evidence in one line, such as
     /// `delivery constant: 2 × 1 s windows, max deviation 0.00 % of 75.2 kbit/s`.
     pub fn summary(&self) -> String {
+        format!("delivery {}: {}", self.assessment, self.evidence())
+    }
+
+    /// The window evidence alone, such as
+    /// `2 × 1 s windows, max deviation 0.00 % of 75.2 kbit/s`.
+    pub fn evidence(&self) -> String {
         let windows = match self.window_count {
             1 => format!("1 × {} s window", self.window_seconds),
             n => format!("{n} × {} s windows", self.window_seconds),
         };
-        let evidence = match (self.max_deviation_percent, self.average_rate_bps) {
+        match (self.max_deviation_percent, self.average_rate_bps) {
             (Some(deviation), Some(rate)) => {
                 format!(
                     "{windows}, max deviation {deviation:.2} % of {}",
@@ -369,8 +375,7 @@ impl Delivery {
             }
             (None, Some(rate)) => format!("{windows} at {}", rate_text(rate)),
             _ => format!("no {} s window", self.window_seconds),
-        };
-        format!("delivery {}: {evidence}", self.assessment)
+        }
     }
 }
 

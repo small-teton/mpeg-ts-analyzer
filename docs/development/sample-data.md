@@ -23,7 +23,7 @@ ffmpeg -f lavfi -i "color=c=red:s=320x240:d=2,format=yuv420p" \
 `sample_data/sample_188byte_all_findings.ts` and its 192-byte M2TS twin
 `sample_data/sample_192byte_all_findings.ts` (23 KiB each) are **intentionally
 invalid**. They are not examples of a good stream: each carries deliberate
-defects so that every Overview compliance card reports a problem in one
+defects so that every Overview transport-health check reports a problem in one
 analysis — a 160 ms PCR interval, a 1200 ms PCR → PTS/DTS gap, a backward PTS,
 one continuity-counter gap and a PCR that is 100 µs late. The stream is
 delivered at a constant 75.2 kbit/s for 2.4 s, long enough for two 1-second
