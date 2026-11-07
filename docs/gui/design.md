@@ -267,9 +267,10 @@ shares of the program average.
 
 ### Packets
 
-The range is listed packet by packet, **100 packets per page** (Settings). Each
-page is fetched from the CLI on demand; only a few pages are cached. Per-packet
-data is large, so the whole range is never held in memory.
+The range is listed packet by packet, **100 packets per page** by default
+(Settings). Each page is fetched from the CLI on demand; only a few pages are
+cached (5 by default, the page shown included). Per-packet data is large, so
+the whole range is never held in memory.
 
 - Pager: First / previous / `Page n / N` / next / Last, the packet span of the
   page, and the PID filter at the right end.
@@ -313,26 +314,32 @@ data is large, so the whole range is never held in memory.
   layout, Type comes from the tables the analysis started with.
 - Implementation: the first request reads page 1 from the range start and
   learns the first packet boundary; page *n* is then read from
-  `first + (n - 1) × 100 × packet size`, with `--packet-size` from the analysis,
-  so paging visits every packet of the range once. The current page and the 4
-  most recently viewed are kept; a page that is still loading when it drops
-  out is cancelled, so paging quickly leaves only the last request running.
+  `first + (n - 1) × packets per page × packet size`, with `--packet-size` from
+  the analysis, so paging visits every packet of the range once. The current
+  page and the most recently viewed ones are kept, as many as Cached pages in
+  all; a page that is still loading when it drops out is cancelled, so paging
+  quickly leaves only the last request running.
+- Packets per page and Cached pages are read from Settings, clamped to their
+  ranges, when an analysis finishes and its Packets view is created; that view
+  keeps them until the next analysis. Changing them never re-pages or empties
+  the view on screen.
 
 ## Settings
 
 | Setting | Default | Notes |
 |---|---|---|
-| Language | System default | UI is English only for now |
+| Language | English | Not a choice: the UI is English only, and the window says other languages are not available yet |
 | Confirm ranges above | 1024 MiB | Start asks for confirmation above this Limit |
-| Packets per page | 100 | |
-| Cached pages | 5 | Packet pages kept in memory |
+| Packets per page | 100 | 10 to 10,000; applies from the next analysis ([Packets](#packets)) |
+| Cached pages | 5 | Packet pages kept in memory, the one shown included; 1 to 50; applies from the next analysis |
 | CLI path | empty | See [CLI discovery order](#cli-discovery-order) |
 | Check for updates at startup | On | See [Updates](#updates) |
 | Skipped update version | none | Set by Skip this version in the update window; not shown in the Settings window. Restore defaults clears it |
 
 Settings are saved with eframe's `persistence` feature when the GUI exits and
-loaded at startup; fields missing from an older save take their defaults.
-Language, packets per page and cached pages are laid out but not applied yet.
+loaded at startup; fields missing from an older save take their defaults, and
+the `language` value that earlier versions saved is ignored. Values out of
+range in a saved file are clamped when they are used.
 
 ## Look and feel
 

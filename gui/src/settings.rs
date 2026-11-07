@@ -2,40 +2,22 @@ use eframe::egui;
 use serde::{Deserialize, Serialize};
 
 use crate::cli::{Cli, Source};
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub enum Language {
-    System,
-    English,
-    Japanese,
-}
-
-impl Language {
-    const ALL: [Language; 3] = [Language::System, Language::English, Language::Japanese];
-
-    fn label(self) -> &'static str {
-        match self {
-            Language::System => "System default",
-            Language::English => "English",
-            // Shown in English until a Japanese font is bundled.
-            Language::Japanese => "Japanese",
-        }
-    }
-}
+use crate::views::packet_pages::Paging;
 
 /// Key of the settings in eframe's storage.
 pub const STORAGE_KEY: &str = "settings";
 
 /// User preferences, saved between runs. Missing fields (from an older
-/// version) take their defaults. Only the CLI path and the confirmation size
-/// are applied so far; the window lays out the other options.
+/// version) take their defaults, and fields no longer used (`language`,
+/// saved by versions that showed an inactive Language choice) are ignored.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
-    pub language: Language,
     /// Ranges (Limit) larger than this, in MiB, ask for confirmation before Start.
     pub confirm_range_mib: u64,
+    /// Packets per page in Packets; see [`Settings::paging`].
     pub packets_per_page: u64,
+    /// Packet pages kept in memory, the one shown included; see [`Settings::paging`].
     pub cached_pages: u32,
     pub cli_path: String,
     /// Look for a newer GUI release once at startup (docs/gui/design.md, "Updates").
@@ -48,7 +30,6 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            language: Language::System,
             confirm_range_mib: 1024,
             packets_per_page: 100,
             cached_pages: 5,
@@ -67,6 +48,12 @@ pub struct CliStatus<'a> {
 }
 
 impl Settings {
+    /// The packet paging for the next analysis, validated: an analysis keeps
+    /// the paging it started Packets with.
+    pub fn paging(&self) -> Paging {
+        Paging::new(self.packets_per_page, self.cached_pages)
+    }
+
     /// Returns true when the CLI should be looked up again (its path changed).
     pub fn show_window(&mut self, ctx: &egui::Context, open: &mut bool, cli: &CliStatus) -> bool {
         let mut recheck = false;
@@ -81,20 +68,12 @@ impl Settings {
                     .num_columns(2)
                     .spacing([16.0, 8.0])
                     .show(ui, |ui| {
-                        let label = ui.label("Language");
-                        egui::ComboBox::from_id_salt("settings_language")
-                            .selected_text(self.language.label())
-                            .show_ui(ui, |ui| {
-                                for language in Language::ALL {
-                                    ui.selectable_value(
-                                        &mut self.language,
-                                        language,
-                                        language.label(),
-                                    );
-                                }
-                            })
-                            .response
-                            .labelled_by(label.id);
+                        // Not a choice: the UI is English only (docs/gui/design.md, "Settings").
+                        ui.label("Language");
+                        ui.vertical(|ui| {
+                            ui.label("English");
+                            ui.weak("Other languages are not available yet.");
+                        });
                         ui.end_row();
 
                         ui.label("Updates");
@@ -126,15 +105,23 @@ impl Settings {
                     .spacing([16.0, 8.0])
                     .show(ui, |ui| {
                         let label = ui.label("Packets per page");
-                        ui.add(egui::DragValue::new(&mut self.packets_per_page).range(10..=10_000))
-                            .labelled_by(label.id);
+                        ui.add(
+                            egui::DragValue::new(&mut self.packets_per_page)
+                                .range(Paging::PAGE_SIZES),
+                        )
+                        .labelled_by(label.id);
                         ui.end_row();
 
                         let label = ui.label("Cached pages");
-                        ui.add(egui::DragValue::new(&mut self.cached_pages).range(1..=50))
-                            .labelled_by(label.id);
+                        ui.add(
+                            egui::DragValue::new(&mut self.cached_pages)
+                                .range(Paging::CACHED_PAGES),
+                        )
+                        .on_hover_text("Packet pages kept in memory, the one shown included")
+                        .labelled_by(label.id);
                         ui.end_row();
                     });
+                ui.weak("Applied to the next analysis; the current Packets view keeps its paging.");
 
                 section(ui, "Command-line tool");
                 egui::Grid::new("settings_cli")
@@ -215,7 +202,6 @@ mod tests {
     #[test]
     fn settings_survive_a_restart() {
         let saved = Settings {
-            language: Language::Japanese,
             confirm_range_mib: 256,
             packets_per_page: 50,
             cached_pages: 3,
@@ -242,5 +228,37 @@ mod tests {
             Settings::default().confirm_range_mib
         );
         assert_eq!(loaded.skipped_update_version, None);
+    }
+
+    /// Saves from versions with the Language choice still load.
+    #[test]
+    fn a_saved_language_is_ignored() {
+        let mut storage = MemoryStorage::default();
+        storage.0.insert(
+            STORAGE_KEY.to_owned(),
+            "(language: Japanese, packets_per_page: 50, cli_path: \"/x\")".to_owned(),
+        );
+        let loaded: Settings = eframe::get_value(&storage, STORAGE_KEY).unwrap();
+        assert_eq!(loaded.cli_path, "/x");
+        assert_eq!(loaded.packets_per_page, 50);
+    }
+
+    #[test]
+    fn paging_comes_from_the_settings_and_is_validated() {
+        let settings = Settings {
+            packets_per_page: 250,
+            cached_pages: 2,
+            ..Settings::default()
+        };
+        assert_eq!(settings.paging(), Paging::new(250, 2));
+        assert_eq!(Settings::default().paging(), Paging::default());
+        // Out of range in a hand-edited save: clamped, not used as is.
+        let settings = Settings {
+            packets_per_page: 0,
+            cached_pages: 1_000,
+            ..Settings::default()
+        };
+        let paging = settings.paging();
+        assert_eq!((paging.page_size(), paging.cached_pages()), (10, 50));
     }
 }
