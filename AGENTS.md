@@ -15,24 +15,31 @@
 
 ## Commit identity
 
-All human commits created by an AI agent in this repository must use exactly
-`Masahiko Matsuura <matsuuram.kcy@gmail.com>` for both author and committer.
-GitHub-generated merge commits and declared bot commits may retain their real
-platform identities; an agent must never create a local commit using a bot,
-test, machine-local, former-employer, or alternate personal identity.
+An AI agent creating a human commit must preserve the identity of the human
+operator it is acting for. Never replace that identity with the repository
+owner's identity, another contributor's identity, a bot, a test identity, or
+an identity inherited accidentally from another repository or machine.
 
-Immediately before committing, set and verify the repository-local identity:
+The intended identity must come from the repository-local Git configuration or
+from a private repository-local rule under `local/rules/`. Do not hard-code a
+person's name or email address in this tracked file. If the intended identity
+is missing, ambiguous, or conflicts with the repository-local configuration,
+stop and ask the operator before committing instead of guessing or changing it.
+
+Immediately before committing, inspect and verify the repository-local
+identity:
 
 ```sh
-git config --local user.name "Masahiko Matsuura"
-git config --local user.email "matsuuram.kcy@gmail.com"
+git config --local --get user.name
+git config --local --get user.email
 git var GIT_AUTHOR_IDENT
 git var GIT_COMMITTER_IDENT
 ```
 
-Both `git var` results must begin with the exact canonical identity. Do not use
-`git commit --author`, `GIT_AUTHOR_*`, or `GIT_COMMITTER_*` to override it.
-Immediately after committing, verify both recorded identities with:
+Both `git var` results must begin with the intended human identity. Do not use
+`git commit --author`, `GIT_AUTHOR_*`, or `GIT_COMMITTER_*` to bypass a missing
+or incorrect repository-local configuration. Immediately after committing,
+verify both recorded identities with:
 
 ```sh
 git show -s --format='author=%an <%ae>%ncommitter=%cn <%ce>' HEAD
@@ -45,10 +52,12 @@ upstream, or relative to `origin/master` when it has no upstream:
 git log --format='%H  author=%an <%ae>  committer=%cn <%ce>' '@{upstream}..HEAD'
 ```
 
-If any human identity differs, do not push. Correct unpublished commits,
-re-run the checks, and then run the required pre-push validation. Never rewrite
-published history for an identity repair without the repository owner's
-explicit approval and a rollback plan.
+If any human commit has an unintended identity, do not push. Correct unpublished
+commits, re-run the checks, and then run the required pre-push validation.
+GitHub-generated merge commits and explicitly declared bot commits may retain
+their real platform identities. Never rewrite published history for an identity
+repair without the affected contributors' explicit approval and a rollback
+plan.
 
 ## Validate analyzer output against reference tools
 
@@ -125,7 +134,34 @@ coverage target.
   schema version; breaking field, type, or enum-meaning changes require a
   schema-version increment.
 
-## Pull request workflow
+## Contribution workflow
+
+### Issue workflow
+
+- Before opening or substantially editing an issue, read the applicable form
+  under [`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE/) and inspect recent
+  related issues for established terminology and scope. When creating an issue
+  through a tool that bypasses GitHub's form UI, reproduce the applicable
+  template's sections and required information in the issue body.
+- Write issue titles and bodies in English. Keep implementation issues focused
+  and include the problem, proposed behavior, compatibility considerations,
+  acceptance criteria, dependencies, validation expectations, and explicit
+  non-goals as applicable. Never put confidential media, credentials, or a
+  suspected vulnerability in a public issue; use GitHub's private security
+  advisory flow for vulnerabilities.
+- Use GitHub's native parent/sub-issue relationship for hierarchy and labels
+  for search, Projects views, and automation. Apply `tracking` to a parent that
+  coordinates multiple implementation issues and normally contains no
+  implementation of its own.
+- Apply the relevant area label to both a tracking issue and each related
+  implementation issue. Apply `enhancement` to implementation issues, but
+  normally not to a pure tracking issue. Do not add a redundant `sub-issue`
+  label.
+- Use a milestone only when work is committed to a specific release; do not
+  use milestones merely to represent issue hierarchy. When a parent defines an
+  implementation order, keep its native sub-issue order and body synchronized.
+
+### Pull requests
 
 - `.github/CODEOWNERS` assigns the repository to `@small-teton`. Because a PR
   author cannot approve their own PR, owner-authored PRs rely on the current
@@ -138,9 +174,11 @@ coverage target.
   unrelated work. Use a concise imperative title. Write the pull request
   description and review replies in English.
 - Follow [`.github/pull_request_template.md`](.github/pull_request_template.md)
-  when composing the description. Keep its motivation, change, compatibility,
-  and validation sections meaningful; do not leave placeholder comments as a
-  substitute for documenting an applicable concern.
+  when composing or updating the description, including when a tool creates
+  the pull request without loading the template automatically. Preserve its
+  headings and checklist, keep the motivation, change, compatibility,
+  documentation, and validation sections meaningful, and do not leave
+  placeholder comments as a substitute for documenting an applicable concern.
 - Give the description enough context to review without reconstructing the
   change from the diff. Cover the motivation, concrete behavior and design,
   compatibility or migration impact, and the exact validation performed. For
