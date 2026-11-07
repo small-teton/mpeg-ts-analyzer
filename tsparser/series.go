@@ -1,5 +1,7 @@
 package tsparser
 
+import "github.com/small-teton/mpeg-ts-analyzer/v2/internal/analysis"
+
 // programSeries collects the time series of one program for the range
 // analysis output: every PCR with its interval, and every PES timestamp with
 // its PCR→PTS/DTS gap.
@@ -12,7 +14,6 @@ type programSeries struct {
 	pcr       []seriesPcr
 	pes       []seriesPes
 	elapsedMs float64
-	prev      *pcrSample
 	elapsedAt map[int64]float64 // PCR packet offset → elapsed time
 }
 
@@ -42,26 +43,21 @@ func newProgramSeries() *programSeries {
 	return &programSeries{elapsedAt: make(map[int64]float64)}
 }
 
-// addPcr records a PCR observation. intervalMs is valid when measured is true.
-func (s *programSeries) addPcr(pos int64, pcr uint64, discontinuity bool, intervalMs float64, measured bool) {
-	cur := pcrSample{pos: pos, pcr: pcr, discontinuity: discontinuity}
-	boundary := false
-	if s.prev != nil {
-		if isSegmentBoundary(*s.prev, cur) {
-			boundary = true
-		} else {
-			s.elapsedMs += float64(pcr-s.prev.pcr) / float64(pcrTicksPerMs)
-		}
+// addPcr records a PCR observation classified as step against the previous
+// PCR: a comparable step advances the elapsed time and carries the interval, a
+// discontinuity freezes the elapsed time.
+func (s *programSeries) addPcr(pos int64, pcr uint64, step analysis.PCRStep) {
+	if step.Comparable() {
+		s.elapsedMs += float64(step.Ticks) / float64(pcrTicksPerMs)
 	}
-	s.prev = &cur
 	s.elapsedAt[pos] = s.elapsedMs
 	s.pcr = append(s.pcr, seriesPcr{
 		pos:           pos,
 		elapsedMs:     s.elapsedMs,
 		pcrMs:         float64(pcr) / float64(pcrTicksPerMs),
-		intervalMs:    intervalMs,
-		hasInterval:   measured,
-		discontinuity: boundary,
+		intervalMs:    float64(step.Ticks) / float64(pcrTicksPerMs),
+		hasInterval:   step.Comparable(),
+		discontinuity: step.Boundary(),
 	})
 }
 

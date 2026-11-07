@@ -24,8 +24,8 @@ const (
 	// StatusInsufficientData means the check found no violation but the
 	// range did not hold enough evidence to call the result OK.
 	StatusInsufficientData
-	// StatusSkipped means the check could not be evaluated, for example
-	// without a time base.
+	// StatusSkipped means the check could not be evaluated: the input held
+	// too little data for it, for example no PCR time base.
 	StatusSkipped
 )
 

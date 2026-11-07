@@ -1,7 +1,8 @@
 # All-findings diagnostic fixture
 
 Write a short constant-rate stream in which every Overview transport-health check
-reports a problem, then check its defects with TSDuck. The stream is
+except PCR discontinuities (see `tools/generate_pcr_discontinuities`) reports a
+problem, then check its defects with TSDuck. The stream is
 **intentionally invalid**: use it to demonstrate and test verdicts, never as an
 example of a compliant stream.
 

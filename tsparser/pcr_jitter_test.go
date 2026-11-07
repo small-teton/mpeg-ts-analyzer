@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/small-teton/mpeg-ts-analyzer/v2/internal/analysis"
 	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 )
 
@@ -152,7 +153,7 @@ func TestPcrTickNs(t *testing.T) {
 	}
 }
 
-func TestIsSegmentBoundary(t *testing.T) {
+func TestPcrStepBoundaries(t *testing.T) {
 	base := pcrSample{pos: 1000, pcr: 1000}
 	cases := []struct {
 		name string
@@ -162,13 +163,38 @@ func TestIsSegmentBoundary(t *testing.T) {
 		{"normal", pcrSample{pos: 2000, pcr: 2000}, false},
 		{"flag", pcrSample{pos: 2000, pcr: 2000, discontinuity: true}, true},
 		{"backward", pcrSample{pos: 2000, pcr: 500}, true},
-		{"equal", pcrSample{pos: 2000, pcr: 1000}, true},
+		{"equal", pcrSample{pos: 2000, pcr: 1000}, false},
+		{"PID change", pcrSample{pos: 2000, pid: 0x101, pcr: 2000}, true},
 		{"huge forward jump", pcrSample{pos: 2000, pcr: 1000 + 40*pcrClockHz}, true},
 	}
 	for _, c := range cases {
-		if got := isSegmentBoundary(base, c.cur); got != c.want {
-			t.Errorf("%s: isSegmentBoundary = %v, want %v", c.name, got, c.want)
+		if got := pcrStep(base, c.cur).Boundary(); got != c.want {
+			t.Errorf("%s: boundary = %v, want %v", c.name, got, c.want)
 		}
+	}
+	// A wraparound stays in the segment.
+	if step := pcrStep(pcrSample{pcr: pcrWrapTicks - 10}, pcrSample{pcr: 30}); step.Boundary() || step.Ticks != 40 {
+		t.Errorf("wraparound: %+v", step)
+	}
+}
+
+// TestAnalyzePcrJitter_AcrossWraparound measures jitter across the 33-bit
+// wrap as within one segment, with the clock counted across it.
+func TestAnalyzePcrJitter_AcrossWraparound(t *testing.T) {
+	samples := []pcrSample{
+		{pos: 0, pcr: pcrWrapTicks - 2000}, {pos: 1000, pcr: pcrWrapTicks - 730}, // 270 ticks late
+		{pos: 2000, pcr: 0}, {pos: 3000, pcr: 1000},
+	}
+	res := analyzePcrJitter(samples)
+	if res.segments != 1 || len(res.discontinuities) != 0 || res.measured != 2 {
+		t.Fatalf("result = %+v", res)
+	}
+	if math.Abs(res.maxNs-10000) > 1e-6 || res.maxPos != 1000 {
+		t.Errorf("max = %f at %d, want 10000 at 1000", res.maxNs, res.maxPos)
+	}
+	if windows := deliveryWindows([]pcrSample{{pos: 0, pcr: pcrWrapTicks - pcrClockHz/2}, {pos: 188, pcr: pcrClockHz / 2}}, 188); len(windows) != 1 ||
+		windows[0].ticks != pcrClockHz {
+		t.Errorf("windows across the wrap = %+v", windows)
 	}
 }
 
@@ -230,7 +256,7 @@ func TestAnalyzePcrJitter_DiscontinuitySegments(t *testing.T) {
 		t.Fatalf("discontinuities = %d, want 1", len(res.discontinuities))
 	}
 	d := res.discontinuities[0]
-	if d.pos != 3000 || d.fromSeg != 1 || d.toSeg != 2 {
+	if d.pos != 3000 || d.kind != analysis.PCRStepDeclared || d.fromSeg != 1 || d.toSeg != 2 {
 		t.Errorf("unexpected discontinuity: %+v", d)
 	}
 	if d.jumpMs >= 0 {

@@ -397,3 +397,21 @@ func TestPsiHealthDiscardedSections(t *testing.T) {
 		t.Errorf("text: %s", out)
 	}
 }
+
+// The time base splits at the same PCR steps as every other PCR-based result:
+// on the PCR-discontinuities sample (a wraparound, two declared
+// discontinuities, a PCR_PID change, a backward step and a forward jump), the
+// segments equal those of the jitter estimate and the bitrate.
+func TestPsiHealthFollowsPcrSteps(t *testing.T) {
+	for _, fixture := range pcrDiscontinuitiesFixtures {
+		report, err := decodeRangeAnalysis(t, fixture.path, options.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := report.Programs[0]
+		if base := report.PSIHealth.TimeBase; base.Status != "pcr" || base.SegmentCount != 6 ||
+			base.SegmentCount != p.PCRJitter.Estimate.SegmentCount || base.SegmentCount != p.Bitrate.SegmentCount {
+			t.Errorf("%s: time base %s, jitter segments %d, bitrate segments %d", fixture.path, toJSON(t, base), p.PCRJitter.Estimate.SegmentCount, p.Bitrate.SegmentCount)
+		}
+	}
+}

@@ -248,10 +248,80 @@
       ],
       "properties": {
         "max_pcr_interval": {
-          "$ref": "#/$defs/check"
+          "$ref": "#/$defs/check",
+          "description": "Largest interval between consecutive comparable PCRs (continuous or wraparound steps) of the selected program, judged against 100 ms (ISO/IEC 13818-1, 2.7.2)."
+        },
+        "pcr_discontinuities": {
+          "$ref": "#/$defs/pcrDiscontinuityCheck",
+          "description": "Added within schema 2.0; absent from documents of an earlier 2.0 CLI."
         },
         "max_pcr_pts_dts_gap": {
           "$ref": "#/$defs/check"
+        }
+      }
+    },
+    "pcrDiscontinuityCheck": {
+      "type": "object",
+      "required": [
+        "status",
+        "pcr_count",
+        "undeclared_count",
+        "jump_limit_ms",
+        "items"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: ok, ng (at least one backward or forward_jump step without discontinuity_indicator), skipped (fewer than two PCRs)."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Human-readable skip explanation; not a stable matching interface."
+        },
+        "pcr_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "PCRs of the selected program in the range."
+        },
+        "undeclared_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Steps of kind backward or forward_jump."
+        },
+        "jump_limit_ms": {
+          "type": "number",
+          "description": "Largest forward step measured as an interval; a larger undeclared step is a forward_jump."
+        },
+        "items": {
+          "type": "array",
+          "description": "Each step kind other than continuous that occurred, in the order wraparound, declared, pcr_pid_change, backward, forward_jump.",
+          "items": {
+            "$ref": "#/$defs/pcrStep"
+          }
+        }
+      }
+    },
+    "pcrStep": {
+      "type": "object",
+      "required": [
+        "kind",
+        "count",
+        "first_offset_bytes",
+        "first_jump_ms"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: wraparound, declared, pcr_pid_change, backward, forward_jump."
+        },
+        "count": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "first_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Byte offset of the first PCR packet of this kind."
+        },
+        "first_jump_ms": {
+          "type": "number",
+          "description": "PCR value difference to the previous PCR at that packet; for a wraparound, the interval counted across the wrap."
         }
       }
     },
@@ -481,7 +551,7 @@
         },
         "segment_count": {
           "$ref": "#/$defs/nonNegativeInteger",
-          "description": "PCR segments: a discontinuity_indicator, a change of PCR_PID, a backward step or a step over 1 s starts a new one. No interval spans two segments."
+          "description": "PCR segments: every PCR step other than continuous and wraparound (declared, pcr_pid_change, backward, forward_jump), as for the other PCR-based results, starts a new one. No interval spans two segments."
         }
       }
     },
@@ -665,6 +735,10 @@
       "properties": {
         "offset_bytes": {
           "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: declared, pcr_pid_change, backward, forward_jump. Added within schema 2.0."
         },
         "jump_ms": {
           "type": "number"

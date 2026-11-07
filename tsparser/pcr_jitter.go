@@ -5,6 +5,8 @@ import (
 	"math"
 	"slices"
 	"strings"
+
+	"github.com/small-teton/mpeg-ts-analyzer/v2/internal/analysis"
 )
 
 // PCR jitter analysis.
@@ -43,18 +45,21 @@ import (
 // and cancels out, leaving only genuine PCR error. (We do not assume PCRs are
 // evenly spaced; the actual byte positions are used.)
 //
-// A PCR discontinuity (an intentional clock reset, signalled by
-// discontinuity_indicator, or an implausible jump) splits the samples into
-// segments. Jitter is measured within a segment only, and the discontinuities
-// are reported separately — including how many and how large — so a broken
-// stream is visible rather than silently inflating the jitter numbers. If the
-// stream is too discontinuous to estimate from, the analysis is skipped.
+// A PCR discontinuity splits the samples into timing segments: a declared
+// discontinuity, a PCR_PID change, an undeclared backward step or a forward
+// jump of more than 1000 ms, classified by analysis.PCRClock exactly as for the
+// maximum PCR interval and the bitrate time base. A 33-bit wraparound is not a
+// discontinuity; the samples are compared across it. Jitter is measured within
+// a segment only, and the discontinuities are reported separately — including
+// their kind, how many and how large — so a broken stream is visible rather
+// than silently inflating the jitter numbers. If the stream is too
+// discontinuous to estimate from, the analysis is skipped.
 const (
 	// pcrClockHz is the PCR system clock frequency (27 MHz); one PCR tick is
 	// 1/27_000_000 s.
-	pcrClockHz = 27_000_000
+	pcrClockHz = analysis.PCRClockHz
 	// pcrTicksPerMs is 27 MHz expressed per millisecond.
-	pcrTicksPerMs = pcrClockHz / 1000
+	pcrTicksPerMs = analysis.PCRTicksPerMs
 	// pcrAccuracyLimitNs is the PCR accuracy limit from ISO/IEC 13818-1: ±500 ns.
 	// Max |jitter| within this is a pass (OK).
 	pcrAccuracyLimitNs = 500.0
@@ -62,10 +67,6 @@ const (
 	// receivers to handle. Max |jitter| between the ISO limit and this is a
 	// warning; beyond it is a failure (NG).
 	pcrDvbLimitNs = 25_000.0
-	// pcrDiscontinuityJumpMs: a PCR-to-PCR gap larger than this is treated as a
-	// discontinuity rather than jitter. ISO/IEC 13818-1 caps the legal PCR
-	// interval at 100 ms, so a jump beyond 1000 ms cannot be a normal interval.
-	pcrDiscontinuityJumpMs = 1000.0
 	// pcrJitterGiveUpRatio: if more than this fraction of PCR samples start a new
 	// segment, the stream is too broken to estimate jitter from.
 	pcrJitterGiveUpRatio = 0.30
@@ -105,19 +106,30 @@ const (
 func pcrTickNs(ticks float64) float64 { return ticks * 1000.0 / 27.0 }
 
 // pcrSample is one PCR observation: the byte offset and PID of the
-// PCR-carrying packet and the PCR value in 27 MHz ticks. discontinuity is the
-// packet's adaptation_field discontinuity_indicator.
+// PCR-carrying packet and the PCR value in 27 MHz ticks. discontinuity is set
+// when the PCR is declared to start a new time base, and pidChanged when a
+// PMT version changed the PCR_PID since the previous PCR (see analysis.PCR).
 type pcrSample struct {
 	pos           int64
 	pid           uint16
 	pcr           uint64
 	discontinuity bool
+	pidChanged    bool
 }
 
-// pcrDiscontinuity records a segment boundary: where it happened and how far the
-// PCR jumped across it (positive = forward, negative = backward).
+// pcrStep classifies cur against the PCR before it, prev, with the policy
+// shared by every PCR-based result (analysis.PCRClock).
+func pcrStep(prev, cur pcrSample) analysis.PCRStep {
+	var clock analysis.PCRClock
+	clock.Observe(analysis.PCR{PID: prev.pid, Value: prev.pcr, DiscontinuityIndicator: prev.discontinuity})
+	return clock.Observe(analysis.PCR{PID: cur.pid, Value: cur.pcr, DiscontinuityIndicator: cur.discontinuity, PCRPIDChanged: cur.pidChanged})
+}
+
+// pcrDiscontinuity records a segment boundary: where it happened, its kind and
+// how far the PCR jumped across it (positive = forward, negative = backward).
 type pcrDiscontinuity struct {
 	pos     int64
+	kind    analysis.PCRStepKind
 	jumpMs  float64
 	fromSeg int
 	toSeg   int
@@ -156,39 +168,41 @@ type PcrJitter struct {
 // Add records one PCR observation of the packet at pos on pid. discontinuity is
 // the PCR packet's adaptation_field discontinuity_indicator.
 func (j *PcrJitter) Add(pos int64, pid uint16, pcr uint64, discontinuity bool) {
-	j.samples = append(j.samples, pcrSample{pos: pos, pid: pid, pcr: pcr, discontinuity: discontinuity})
+	j.add(pcrSample{pos: pos, pid: pid, pcr: pcr, discontinuity: discontinuity})
 }
 
-// isSegmentBoundary reports whether cur starts a new timing segment relative to
-// prev: an explicit discontinuity_indicator, a non-increasing PCR (backward or
-// equal, e.g. a 33-bit wrap or reset), or an implausibly large forward jump.
-func isSegmentBoundary(prev, cur pcrSample) bool {
-	if cur.discontinuity {
-		return true
-	}
-	deltaMs := float64(int64(cur.pcr)-int64(prev.pcr)) / float64(pcrTicksPerMs)
-	return deltaMs <= 0 || deltaMs > pcrDiscontinuityJumpMs
+// add records one PCR observation.
+func (j *PcrJitter) add(s pcrSample) { j.samples = append(j.samples, s) }
+
+// timedSample is a sample of a timing segment with its PCR counted from the
+// segment start across a wraparound, so values within a segment increase.
+type timedSample struct {
+	pcrSample
+	clock uint64
 }
 
 // analyzePcrJitter splits samples into segments at discontinuities and measures
 // per-interval jitter within each segment. It assumes len(samples) >= 1.
 func analyzePcrJitter(samples []pcrSample) pcrJitterResult {
 	// Split into segments, recording each boundary as a discontinuity.
-	var segs [][]pcrSample
+	var segs [][]timedSample
 	var discs []pcrDiscontinuity
-	cur := []pcrSample{samples[0]}
+	cur := []timedSample{{samples[0], samples[0].pcr}}
 	for i := 1; i < len(samples); i++ {
-		if isSegmentBoundary(samples[i-1], samples[i]) {
+		step := pcrStep(samples[i-1], samples[i])
+		if step.Boundary() {
 			segs = append(segs, cur)
 			discs = append(discs, pcrDiscontinuity{
 				pos:     samples[i].pos,
-				jumpMs:  float64(int64(samples[i].pcr)-int64(samples[i-1].pcr)) / float64(pcrTicksPerMs),
+				kind:    step.Kind,
+				jumpMs:  float64(step.JumpTicks) / float64(pcrTicksPerMs),
 				fromSeg: len(segs),
 				toSeg:   len(segs) + 1,
 			})
-			cur = nil
+			cur = []timedSample{{samples[i], samples[i].pcr}}
+			continue
 		}
-		cur = append(cur, samples[i])
+		cur = append(cur, timedSample{samples[i], cur[len(cur)-1].clock + step.Ticks})
 	}
 	segs = append(segs, cur)
 
@@ -204,9 +218,9 @@ func analyzePcrJitter(samples []pcrSample) pcrJitterResult {
 		// Interior samples only: each needs a neighbour on both sides.
 		for i := 1; i < len(seg)-1; i++ {
 			p0, p1, p2 := seg[i-1], seg[i], seg[i+1]
-			predicted := float64(p0.pcr) +
-				float64(int64(p2.pcr)-int64(p0.pcr))*float64(p1.pos-p0.pos)/float64(p2.pos-p0.pos)
-			jitterNs := pcrTickNs(float64(int64(p1.pcr)) - predicted)
+			predicted := float64(p0.clock) +
+				float64(int64(p2.clock)-int64(p0.clock))*float64(p1.pos-p0.pos)/float64(p2.pos-p0.pos)
+			jitterNs := pcrTickNs(float64(int64(p1.clock)) - predicted)
 			res.points = append(res.points, pcrJitterPoint{pos: p1.pos, ns: jitterNs})
 			if jitterNs > res.maxNs {
 				res.maxNs, res.maxPos = jitterNs, p1.pos
@@ -261,12 +275,13 @@ func deliveryWindows(samples []pcrSample, packetSize int) []deliveryWindow {
 	var windows []deliveryWindow
 	var cur deliveryWindow
 	for i := 1; i < len(samples); i++ {
-		if isSegmentBoundary(samples[i-1], samples[i]) {
+		step := pcrStep(samples[i-1], samples[i])
+		if step.Boundary() {
 			cur = deliveryWindow{}
 			continue
 		}
 		cur.bytes += (samples[i].pos - samples[i-1].pos) / int64(packetSize) * tsPayloadSize
-		cur.ticks += samples[i].pcr - samples[i-1].pcr
+		cur.ticks += step.Ticks
 		if cur.ticks >= deliveryWindowTicks {
 			windows = append(windows, cur)
 			cur = deliveryWindow{}
@@ -446,6 +461,6 @@ func pcrJitterVerdict(maxAbsNs float64) string {
 func printPcrDiscontinuities(discs []pcrDiscontinuity) {
 	fmt.Printf("  Discontinuities  : %d\n", len(discs))
 	for _, d := range discs {
-		fmt.Printf("    - 0x%08x : PCR jumped %+.3fms (segment %d -> %d)\n", d.pos, d.jumpMs, d.fromSeg, d.toSeg)
+		fmt.Printf("    - 0x%08x : %s, PCR jumped %+.3fms (segment %d -> %d)\n", d.pos, d.kind, d.jumpMs, d.fromSeg, d.toSeg)
 	}
 }

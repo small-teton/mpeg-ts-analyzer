@@ -30,8 +30,12 @@ import (
 //     A PMT is read from the packet after its announcement;
 //   - the PCRs of one reference PCR_PID, which give the time base: that of
 //     the selected program, or with --output analysis of the first analyzed
-//     program (in program_number order) that has a PCR_PID. A PCR of a packet
-//     with transport_error_indicator set is not used.
+//     program (in program_number order) that has a PCR_PID. They are the
+//     analysis.PCR values programAnalyzer gives PCRCheck (no PCR of a packet
+//     with transport_error_indicator; discontinuity_indicator on a packet
+//     without PCR declares the next one; a PCR_PID change marks it), from the
+//     first packet of the range, so the segments are those of every other
+//     PCR-based result.
 //
 // The collector keeps one section reader per PMT PID and one assembler per
 // announced program, so its state is bounded by the PIDs and programs of the
@@ -48,6 +52,13 @@ type psiHealthCollector struct {
 	ref       *programAnalyzer             // the reference program, once analyzed
 	end       int64                        // offset of the last packet seen
 	finished  bool
+	// lastPcrPid is the reference PCR_PID at the previous packet, so a change
+	// marks the next PCR as a pcr_pid_change; discontinuityPending is set by a
+	// packet of the PCR_PID with discontinuity_indicator and no PCR, which
+	// makes the next PCR declared, as programAnalyzer.observe does.
+	lastPcrPid           uint16
+	pcrPidChanged        bool
+	discontinuityPending bool
 }
 
 type healthProgram struct {
@@ -89,8 +100,18 @@ func (h *psiHealthCollector) referencePcrPid() uint16 {
 func (h *psiHealthCollector) observe(tsPacket *TsPacket, pos int64) {
 	h.end = pos
 	pid := tsPacket.Pid()
-	if pcrPid := h.referencePcrPid(); pcrPid != 0 && pid == pcrPid && tsPacket.HasAf() && tsPacket.adaptationField.PcrFlag() && !tsPacket.transportError() {
-		h.check.ObservePCR(analysis.PCRTime{PID: pid, PCR: tsPacket.Pcr(), Discontinuity: tsPacket.adaptationField.DiscontinuityIndicator(), Offset: pos})
+	pcrPid := h.referencePcrPid()
+	if pcrPid != h.lastPcrPid {
+		h.lastPcrPid, h.pcrPidChanged, h.discontinuityPending = pcrPid, true, false
+	}
+	if pcrPid != 0 && pid == pcrPid && tsPacket.HasAf() && !tsPacket.transportError() {
+		af := tsPacket.adaptationField
+		if !af.PcrFlag() {
+			h.discontinuityPending = h.discontinuityPending || af.DiscontinuityIndicator()
+		} else {
+			h.check.ObservePCR(analysis.PCR{PID: pid, Offset: pos, Value: tsPacket.Pcr(), DiscontinuityIndicator: af.DiscontinuityIndicator() || h.discontinuityPending, PCRPIDChanged: h.pcrPidChanged})
+			h.pcrPidChanged, h.discontinuityPending = false, false
+		}
 	}
 	if pid == patPidValue {
 		h.observePat(tsPacket, pos)

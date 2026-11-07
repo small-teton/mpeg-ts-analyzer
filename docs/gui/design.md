@@ -167,16 +167,16 @@ check (`CheckDetail`).
 
 - **Transport health table**: one non-collapsible table with the columns
   Check, Value, Status and Help, grouped by category. The order is fixed:
-  Structure (PAT health, PMT health), Timing (Max PCR interval, PCR jitter
-  estimate), PES / Timestamps (PCR → PTS/DTS gap, PTS/DTS anomalies),
-  Integrity (Continuity counter, Transport errors, Scrambled packets, TS
-  synchronization). Structure comes first, as in #157; Multiplexing joins
-  when its checks land. A check is listed when the CLI reported it. There is
-  no scope column or badge: the selected program is shown above, and
-  exceptions (PAT health, Continuity counter, Transport errors, Scrambled
-  packets and TS synchronization cover the whole multiplex; PMT health is the
-  selected program's PMT from `psi_health`) are on the detail page. Status is
-  the CLI's status
+  Structure (PAT health, PMT health), Timing (Max PCR interval, PCR
+  discontinuities, PCR jitter estimate), PES / Timestamps (PCR → PTS/DTS gap,
+  PTS/DTS anomalies), Integrity (Continuity counter, Transport errors,
+  Scrambled packets, TS synchronization). Structure comes first, as in #157;
+  Multiplexing joins when its checks land. A check is listed when the CLI
+  reported it. There is no scope column or badge: the selected program is
+  shown above, and exceptions (PAT health, Continuity counter, Transport
+  errors, Scrambled packets and TS synchronization cover the whole
+  multiplex; PMT health is the selected program's PMT from `psi_health`) are
+  on the detail page. Status is the CLI's status
   verbatim as a badge sized to its text (at least 48 points wide); a status
   the GUI does not describe is shown in the neutral color with a tooltip
   saying so. Help holds the focusable
@@ -196,7 +196,9 @@ check (`CheckDetail`).
   current result (only fields the CLI provided). A new check is one
   `check_help` entry and one `row` arm. The texts state the CLI's thresholds
   (100 ms, 1000 ms, ±500 ns, ±25 µs, and 500 ms for PAT/PMT repetition with
-  its ETSI TR 101 290 source and the absence of an ISO/IEC 13818-1 limit) and, for PCR jitter, the byte-position
+  its ETSI TR 101 290 source and the absence of an ISO/IEC 13818-1 limit), the
+  PCR step kinds and the 1000 ms jump limit of PCR discontinuities, and, for
+  PCR jitter, the byte-position
   model, the delivery assessment (1-second window rates within ±1 %, no
   estimate beyond 1 ms) and `not_assessable`.
 - **Detail page**: opened by the information button or a findings link, inside
@@ -225,7 +227,8 @@ check (`CheckDetail`).
   announced as `Status: <status>`; Back, the information buttons, the finding
   actions and the navigation buttons are named buttons reachable with Tab.
 - **Findings** are one normalized list built from the report
-  (`overview::findings`): a finding for each failed compliance check, each
+  (`overview::findings`): a finding for each failed compliance check (for PCR
+  discontinuities, one per undeclared kind at its first PCR), each
   PTS/DTS anomaly group, each continuity event (one finding for the check if
   the CLI reported errors without events), PCR jitter, each PID of
   `transport_errors` and `scrambled_packets` (at its first offset), TS

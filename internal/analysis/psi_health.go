@@ -30,11 +30,11 @@ import (
 // Time basis. A file has no packet-arrival times, so the time of a packet is
 // interpolated by byte position between the two PCRs around it on one
 // reference PCR_PID, as for the PCR-PTS/DTS gap. A table instance is the
-// packet that completes the table. Time is measured only inside a PCR
-// segment: a PCR with discontinuity_indicator set, a change of the reference
-// PCR_PID, a PCR smaller than the previous one (other than a 33-bit
-// wraparound) or a step of more than psiClockJumpTicks starts a new segment.
-// Without two PCRs in one segment there is no time base.
+// packet that completes the table. Each PCR is classified by PCRClock, the
+// same classification as every other PCR-based result: time is measured only
+// across comparable steps (continuous or wraparound), and every other step
+// (declared, pcr_pid_change, backward, forward_jump) starts a new PCR
+// segment. Without two PCRs in one segment there is no time base.
 //
 // Intervals. Within a segment, the interval between two consecutive instances
 // of a table is a complete interval. The time from the start of a segment (or
@@ -48,24 +48,19 @@ import (
 // table identity: the PAT on PID 0, or the PMT of one program_number on one
 // PID. A version change keeps the identity (the table must still be repeated
 // on the same PID); a PMT moved to another PID by a PAT change, or a program
-// removed and announced again, starts a new identity.
+// removed and announced again, starts a new identity. The counts and the
+// longest interval of a table cover all its identities, but evidence does not
+// carry over: an identity whose intervals were late, or that was followed
+// for longer than the limit without any instance, keeps the table late or
+// missing, and the table is OK only when its latest identity has a complete
+// interval of its own.
 //
 // State is a fixed-size record per table identity, bounded by the number of
 // program_numbers announced in the range (at most 65,535) plus the PAT, never
 // by the number of packets.
 
 // PSIRepetitionLimitTicks is the repetition limit in 27 MHz ticks: 500 ms.
-const PSIRepetitionLimitTicks = 500 * ticksPerMs
-
-const (
-	ticksPerMs = 27_000
-	// psiClockWrap is the PCR modulus, 2^33 * 300.
-	psiClockWrap = (uint64(1) << 33) * 300
-	// psiClockJumpTicks is the largest PCR step that is measured: a larger
-	// step, forward or backward, is an undeclared discontinuity (1 s, as for
-	// PCR jitter segments).
-	psiClockJumpTicks = 1000 * ticksPerMs
-)
+const PSIRepetitionLimitTicks = 500 * PCRTicksPerMs
 
 // PSITableKind is the kind of table.
 type PSITableKind int
@@ -149,22 +144,11 @@ type PSIProblem struct {
 	Offset int64
 }
 
-// PCRTime is one PCR of the reference PCR_PID, which the parser used: PCR is
-// the 27 MHz value, Offset the byte offset of its packet, Discontinuity its
-// discontinuity_indicator.
-type PCRTime struct {
-	PID           uint16
-	PCR           uint64
-	Discontinuity bool
-	Offset        int64
-}
-
 // psiClock is the PCR time base: the last PCR and the elapsed time of the
 // current segment.
 type psiClock struct {
+	steps    PCRClock
 	running  bool // a segment has started
-	pid      uint16
-	pcr      uint64
 	offset   int64
 	elapsed  uint64 // ticks since the first PCR of the segment
 	segments int
@@ -200,12 +184,15 @@ type psiTableState struct {
 	refInstance   bool
 	pending       psiPending
 
-	intervals int // complete intervals
+	intervals int // complete intervals of every identity
 	maxTicks  uint64
 	maxEnd    int64
 	hasMax    bool
 	late      int
-	firstLate int64
+	// The evidence of the current identity, and what earlier identities left.
+	identityInstances, identityIntervals, identityLate int
+	missingSeen, lateSeen                              bool
+	firstLate                                          int64
 }
 
 // PSIHealthCheck follows the PAT and the PMT of every announced program.
@@ -237,11 +224,27 @@ func (c *PSIHealthCheck) ObserveAnnounced(o PSIAnnounced) {
 	if t.active {
 		c.close(t)
 	}
+	t.fold()
 	t.pid, t.active, t.isWithdrawn = o.PID, true, false
 	t.awaitingStart, t.hasRef, t.pending = true, false, psiPending{}
 	if !t.hasAnnounced {
 		t.announced, t.hasAnnounced = o.Offset, true
 	}
+}
+
+// fold ends the current identity: its late or missing verdict is kept, and the
+// next identity starts without evidence.
+func (t *psiTableState) fold() {
+	missing, late := t.identityVerdict()
+	t.missingSeen, t.lateSeen = t.missingSeen || missing, t.lateSeen || late
+	t.identityInstances, t.identityIntervals, t.identityLate = 0, 0, 0
+}
+
+// identityVerdict reports whether the current identity was followed for
+// longer than the limit without any instance (missing) or had an interval
+// over the limit between or after instances (late).
+func (t *psiTableState) identityVerdict() (missing, late bool) {
+	return t.identityLate > 0 && t.identityInstances == 0, t.identityLate > 0 && t.identityInstances > 0
 }
 
 // ObserveWithdrawn stops following a PMT.
@@ -267,6 +270,7 @@ func (c *PSIHealthCheck) ObserveInstance(o PSIInstance) {
 		t.versionChanges++
 	}
 	t.instances++
+	t.identityInstances++
 	t.version = o.Version
 	if !c.clock.running {
 		return
@@ -294,14 +298,13 @@ func (c *PSIHealthCheck) ObserveProblem(o PSIProblem) {
 	t.anyProblem = true
 }
 
-// ObservePCR advances the time base.
-func (c *PSIHealthCheck) ObservePCR(o PCRTime) {
+// ObservePCR advances the time base with one PCR of the reference PCR_PID,
+// as the parser gives it to PCRCheck.
+func (c *PSIHealthCheck) ObservePCR(o PCR) {
 	clock := &c.clock
-	if clock.running && o.PID == clock.pid && !o.Discontinuity {
-		if delta, ok := pcrStep(clock.pcr, o.PCR); ok {
-			c.advance(o, delta)
-			return
-		}
+	if step := clock.steps.Observe(o); step.Comparable() {
+		c.advance(o.Offset, step.Ticks)
+		return
 	}
 	// A new segment: close every open interval at the end of the previous
 	// one, then start the next at this PCR.
@@ -312,7 +315,7 @@ func (c *PSIHealthCheck) ObservePCR(o PCRTime) {
 			}
 		}
 	}
-	*clock = psiClock{running: true, pid: o.PID, pcr: o.PCR, offset: o.Offset, segments: clock.segments + 1, measured: clock.measured}
+	clock.running, clock.offset, clock.elapsed, clock.segments = true, o.Offset, 0, clock.segments+1
 	for _, t := range c.tables {
 		if t.active {
 			t.awaitingStart = false
@@ -322,23 +325,12 @@ func (c *PSIHealthCheck) ObservePCR(o PCRTime) {
 	}
 }
 
-// pcrStep returns the ticks from prev to pcr, or false for a step that is not
-// measured: backward (other than a wraparound) or longer than
-// psiClockJumpTicks.
-func pcrStep(prev, pcr uint64) (uint64, bool) {
-	delta := pcr - prev
-	if pcr < prev {
-		delta = pcr + psiClockWrap - prev
-	}
-	return delta, delta <= psiClockJumpTicks
-}
-
 // advance times the instances since the previous PCR with the new PCR of the
 // same segment.
-func (c *PSIHealthCheck) advance(o PCRTime, delta uint64) {
+func (c *PSIHealthCheck) advance(offset int64, delta uint64) {
 	clock := &c.clock
 	prevElapsed, prevOffset := clock.elapsed, clock.offset
-	bytes := o.Offset - prevOffset
+	bytes := offset - prevOffset
 	at := func(offset int64) uint64 {
 		return prevElapsed + uint64(float64(delta)*float64(offset-prevOffset)/float64(bytes))
 	}
@@ -361,12 +353,13 @@ func (c *PSIHealthCheck) advance(o PCRTime, delta uint64) {
 		}
 		if p.count > 1 {
 			t.intervals += p.count - 2
+			t.identityIntervals += p.count - 2
 			t.record(uint64(float64(delta)*float64(p.maxGapBytes)/float64(bytes)), p.maxEnd, true)
 		}
 		t.hasRef, t.refTicks, t.refInstance = true, at(p.last), true
 		t.pending = psiPending{}
 	}
-	clock.pcr, clock.offset, clock.elapsed = o.PCR, o.Offset, prevElapsed+delta
+	clock.offset, clock.elapsed = offset, prevElapsed+delta
 	clock.measured = true
 }
 
@@ -375,6 +368,7 @@ func (c *PSIHealthCheck) advance(o PCRTime, delta uint64) {
 func (t *psiTableState) record(ticks uint64, end int64, complete bool) {
 	if complete {
 		t.intervals++
+		t.identityIntervals++
 	}
 	if !t.hasMax || ticks > t.maxTicks {
 		t.maxTicks, t.maxEnd, t.hasMax = ticks, end, true
@@ -384,6 +378,7 @@ func (t *psiTableState) record(ticks uint64, end int64, complete bool) {
 			t.firstLate = end
 		}
 		t.late++
+		t.identityLate++
 	}
 }
 
@@ -412,12 +407,13 @@ func (c *PSIHealthCheck) tail(t *psiTableState) (uint64, int64, bool) {
 
 // PSIRepetition is the repetition result of one table.
 type PSIRepetition struct {
-	// Status is StatusOK when at least one complete interval was measured and
-	// no interval exceeded the limit, StatusNG when one did,
-	// StatusInsufficientData when no interval exceeded the limit but no
-	// complete interval was measured, and StatusSkipped without a time base.
+	// Status is StatusOK when the latest identity has at least one complete
+	// interval and no interval of any identity exceeded the limit, StatusNG
+	// when one did, StatusInsufficientData when none did but the latest
+	// identity has no complete interval, and StatusSkipped without a time
+	// base.
 	Status Status
-	// Intervals is the number of complete intervals.
+	// Intervals is the number of complete intervals of every identity.
 	Intervals int
 	// MaxTicks is the longest interval, complete or open, in 27 MHz ticks;
 	// MaxEnd is the offset where it ends. Both are set when HasMax.
@@ -537,17 +533,17 @@ func (c *PSIHealthCheck) tableResult(table PSITable, t *psiTableState) PSITableR
 		r.Repetition.Status = StatusSkipped
 	case final.late > 0:
 		r.Repetition.Status = StatusNG
-	case final.intervals > 0:
+	case final.identityIntervals > 0:
 		r.Repetition.Status = StatusOK
 	default:
 		r.Repetition.Status = StatusInsufficientData
 	}
-	if final.late > 0 {
-		if t.instances == 0 {
-			r.Reasons = append(r.Reasons, PSIReasonMissing)
-		} else {
-			r.Reasons = append(r.Reasons, PSIReasonLate)
-		}
+	missing, late := final.identityVerdict()
+	if missing || final.missingSeen {
+		r.Reasons = append(r.Reasons, PSIReasonMissing)
+	}
+	if late || final.lateSeen {
+		r.Reasons = append(r.Reasons, PSIReasonLate)
 	}
 	for kind, reason := range []PSIReason{PSIReasonCRCError, PSIReasonMalformed, PSIReasonIncomplete, PSIReasonWrongTableID, PSIReasonUnusable} {
 		if t.problems[kind] > 0 {

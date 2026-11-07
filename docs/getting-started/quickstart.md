@@ -14,6 +14,7 @@ mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_
 -----------------------------
 Compliance Check Results:
 Max PCR interval: 80.000000ms [OK, limit: <= 100.000000ms]
+PCR discontinuities: 0 undeclared in 60 PCRs [OK]
 PCR-PTS/DTS max gap: 726.666667ms [OK, limit: <= 1000.000000ms]
 ```
 

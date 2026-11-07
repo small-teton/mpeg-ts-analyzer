@@ -11,8 +11,8 @@ const testPacket = 188
 
 func at(ms int64) int64 { return ms * testPacket }
 
-func pcrAt(ms int64) PCRTime {
-	return PCRTime{PID: 0x100, PCR: uint64(10_000+ms) * ticksPerMs, Offset: at(ms)}
+func pcrAt(ms int64) PCR {
+	return PCR{PID: 0x100, Value: uint64(10_000+ms) * PCRTicksPerMs, Offset: at(ms)}
 }
 
 // feed sends a PCR every 40 ms from 0 to endMs and an instance of each table
@@ -39,7 +39,7 @@ func table(r PSIHealthResult, t PSITable) PSITableResult {
 	return PSITableResult{}
 }
 
-func ms(ticks uint64) float64 { return float64(ticks) / ticksPerMs }
+func toMs(ticks uint64) float64 { return float64(ticks) / PCRTicksPerMs }
 
 func TestPSIHealthRepetition(t *testing.T) {
 	c := NewPSIHealthCheck()
@@ -63,19 +63,19 @@ func TestPSIHealthRepetition(t *testing.T) {
 	// Complete intervals: 200, 20, 170, 600, 400, 400; the open interval to
 	// the last PCR (2000) is 200.
 	if pat.Status != StatusNG || !slices.Equal(pat.Reasons, []PSIReason{PSIReasonLate}) || pat.Instances != 7 || pat.FirstInstance != at(10) ||
-		pat.Repetition.Status != StatusNG || pat.Repetition.Intervals != 6 || ms(pat.Repetition.MaxTicks) != 600 ||
+		pat.Repetition.Status != StatusNG || pat.Repetition.Intervals != 6 || toMs(pat.Repetition.MaxTicks) != 600 ||
 		pat.Repetition.MaxEnd != at(1000) || pat.Repetition.Late != 1 || pat.Repetition.FirstLate != at(1000) {
 		t.Errorf("PAT %+v", pat)
 	}
 	pmt := table(r, PMTTable(1))
 	if pmt.Status != StatusOK || len(pmt.Reasons) != 0 || pmt.Announced != at(1) || pmt.PID != 0x1000 ||
-		pmt.Repetition.Status != StatusOK || pmt.Repetition.Intervals != 9 || ms(pmt.Repetition.MaxTicks) != 200 {
+		pmt.Repetition.Status != StatusOK || pmt.Repetition.Intervals != 9 || toMs(pmt.Repetition.MaxTicks) != 200 {
 		t.Errorf("PMT 1 %+v", pmt)
 	}
 	// Never found while followed for 2000 ms: missing.
 	missing := table(r, PMTTable(2))
 	if missing.Status != StatusNG || !slices.Equal(missing.Reasons, []PSIReason{PSIReasonMissing}) || missing.Instances != 0 ||
-		ms(missing.Repetition.MaxTicks) != 2000 || missing.Repetition.MaxEnd != at(2000) || missing.Repetition.Intervals != 0 {
+		toMs(missing.Repetition.MaxTicks) != 2000 || missing.Repetition.MaxEnd != at(2000) || missing.Repetition.Intervals != 0 {
 		t.Errorf("PMT 2 %+v", missing)
 	}
 }
@@ -87,11 +87,11 @@ func TestPSIHealthShortRangeAndNoTimeBase(t *testing.T) {
 	r := c.Result()
 	pat := r.Tables[0]
 	if r.Status != StatusInsufficientData || pat.Status != StatusInsufficientData || pat.Repetition.Status != StatusInsufficientData ||
-		ms(pat.Repetition.MaxTicks) != 150 || pat.Repetition.Intervals != 0 {
+		toMs(pat.Repetition.MaxTicks) != 150 || pat.Repetition.Intervals != 0 {
 		t.Errorf("short range %+v", r)
 	}
 
-	// Instances before the first PCR, and a single PCR: no time base.
+	// Instances before the first PCR, and a single Value: no time base.
 	c = NewPSIHealthCheck()
 	c.ObserveInstance(PSIInstance{Table: PATTable, Offset: 0})
 	c.ObservePCR(pcrAt(10))
@@ -143,28 +143,28 @@ func TestPSIHealthSegments(t *testing.T) {
 	for _, step := range []struct {
 		ms       int64
 		instance bool
-		pcr      *PCRTime
+		pcr      *PCR
 	}{
-		{ms: 0, pcr: &PCRTime{PID: 0x100, PCR: 1000 * ticksPerMs, Offset: at(0)}},
+		{ms: 0, pcr: &PCR{PID: 0x100, Value: 1000 * PCRTicksPerMs, Offset: at(0)}},
 		{ms: 100, instance: true},
-		{ms: 300, pcr: &PCRTime{PID: 0x100, PCR: 1300 * ticksPerMs, Offset: at(300)}},
+		{ms: 300, pcr: &PCR{PID: 0x100, Value: 1300 * PCRTicksPerMs, Offset: at(300)}},
 		// Declared discontinuity: the PCR jumps; the open interval 100..300
 		// closes and a new segment starts.
-		{ms: 400, pcr: &PCRTime{PID: 0x100, PCR: 900_000 * ticksPerMs, Discontinuity: true, Offset: at(400)}},
+		{ms: 400, pcr: &PCR{PID: 0x100, Value: 900_000 * PCRTicksPerMs, DiscontinuityIndicator: true, Offset: at(400)}},
 		{ms: 450, instance: true},
 		// Undeclared backward step: another segment.
-		{ms: 500, pcr: &PCRTime{PID: 0x100, PCR: 800_000 * ticksPerMs, Offset: at(500)}},
+		{ms: 500, pcr: &PCR{PID: 0x100, Value: 800_000 * PCRTicksPerMs, Offset: at(500)}},
 		// A forward step over 1 s: another segment, in which a wraparound
 		// within 1 s is measured.
-		{ms: 600, pcr: &PCRTime{PID: 0x100, PCR: psiClockWrap - 50*ticksPerMs, Offset: at(600)}},
-		{ms: 700, pcr: &PCRTime{PID: 0x100, PCR: 50 * ticksPerMs, Offset: at(700)}},
+		{ms: 600, pcr: &PCR{PID: 0x100, Value: PCRWrapTicks - 50*PCRTicksPerMs, Offset: at(600)}},
+		{ms: 700, pcr: &PCR{PID: 0x100, Value: 50 * PCRTicksPerMs, Offset: at(700)}},
 		{ms: 750, instance: true},
 		// A forward step over 1 s: another segment.
-		{ms: 800, pcr: &PCRTime{PID: 0x100, PCR: 5000 * ticksPerMs, Offset: at(800)}},
+		{ms: 800, pcr: &PCR{PID: 0x100, Value: 5000 * PCRTicksPerMs, Offset: at(800)}},
 		// Another PCR_PID: another segment.
-		{ms: 900, pcr: &PCRTime{PID: 0x200, PCR: 5100 * ticksPerMs, Offset: at(900)}},
+		{ms: 900, pcr: &PCR{PID: 0x200, Value: 5100 * PCRTicksPerMs, Offset: at(900)}},
 		{ms: 950, instance: true},
-		{ms: 1500, pcr: &PCRTime{PID: 0x200, PCR: 5700 * ticksPerMs, Offset: at(1500)}},
+		{ms: 1500, pcr: &PCR{PID: 0x200, Value: 5700 * PCRTicksPerMs, Offset: at(1500)}},
 	} {
 		if step.pcr != nil {
 			c.ObservePCR(*step.pcr)
@@ -180,7 +180,7 @@ func TestPSIHealthSegments(t *testing.T) {
 	// instance at 750 comes after the last PCR, so the open interval
 	// 600..700 ends there; [800]; [900,1500] with the open intervals 0..50
 	// and 50..600, which is late.
-	if r.Segments != 6 || pat.Repetition.Intervals != 0 || pat.Repetition.Late != 1 || ms(pat.Repetition.MaxTicks) != 600-50 ||
+	if r.Segments != 6 || pat.Repetition.Intervals != 0 || pat.Repetition.Late != 1 || toMs(pat.Repetition.MaxTicks) != 600-50 ||
 		pat.Repetition.MaxEnd != at(1500) || pat.Repetition.FirstLate != at(1500) || pat.Status != StatusNG ||
 		!slices.Equal(pat.Reasons, []PSIReason{PSIReasonLate}) || pat.Repetition.Status != StatusNG {
 		t.Errorf("segments %+v", r)
@@ -192,7 +192,7 @@ func TestPSIHealthAnnouncements(t *testing.T) {
 	// Withdrawing a PMT that was never announced does nothing.
 	c.ObserveWithdrawn(PSIWithdrawn{Table: PMTTable(1), Offset: 0})
 	c.ObservePCR(pcrAt(0))
-	// Announced between two PCRs with an instance before the next PCR: the
+	// Announced between two PCRs with an instance before the next Value: the
 	// open interval starts at the next PCR, after the instance, so the
 	// instance only starts the first complete interval.
 	c.ObserveAnnounced(PSIAnnounced{Table: PMTTable(1), PID: 0x1000, Offset: at(5)})
@@ -214,13 +214,84 @@ func TestPSIHealthAnnouncements(t *testing.T) {
 	r := c.Result()
 	pmt := table(r, PMTTable(1))
 	// Intervals: 10..100 complete (90), 100..120 open, 160..170 open,
-	// 170..200 open.
+	// 170..200 open. The identity on 0x1001 has no complete interval of its
+	// own, so the repetition is not shown.
 	if pmt.Announced != at(5) || !pmt.IsWithdrawn || pmt.Withdrawn != at(210) || pmt.PID != 0x1001 || pmt.Instances != 3 ||
-		pmt.VersionChanges != 1 || pmt.Repetition.Intervals != 1 || ms(pmt.Repetition.MaxTicks) != 90 || pmt.Status != StatusOK {
+		pmt.VersionChanges != 1 || pmt.Repetition.Intervals != 1 || toMs(pmt.Repetition.MaxTicks) != 90 || pmt.Status != StatusInsufficientData {
 		t.Errorf("announcements %+v", pmt)
 	}
 	c.ObserveAnnounced(PSIAnnounced{Table: PMTTable(1), PID: 0x1001, Offset: at(230)})
 	if pmt = table(c.Result(), PMTTable(1)); pmt.Announced != at(5) || pmt.IsWithdrawn {
 		t.Errorf("announced again %+v", pmt)
+	}
+}
+
+// A moved or re-announced PMT starts without the evidence of its earlier
+// identity, and keeps the late or missing verdict of that identity.
+func TestPSIHealthIdentityEvidence(t *testing.T) {
+	pmt := PMTTable(1)
+	healthyOldIdentity := func() *PSIHealthCheck {
+		c := NewPSIHealthCheck()
+		c.ObserveAnnounced(PSIAnnounced{Table: pmt, PID: 0x1000, Offset: at(0)})
+		c.ObservePCR(pcrAt(0))
+		c.ObserveInstance(PSIInstance{Table: pmt, PID: 0x1000, Offset: at(100)})
+		c.ObservePCR(pcrAt(200))
+		c.ObserveInstance(PSIInstance{Table: pmt, PID: 0x1000, Offset: at(300)})
+		c.ObservePCR(pcrAt(400))
+		if got := table(c.Result(), pmt); got.Status != StatusOK {
+			t.Fatalf("old identity: %+v", got)
+		}
+		return c
+	}
+
+	// One instance on the new PID: no complete interval of its own.
+	c := healthyOldIdentity()
+	c.ObserveAnnounced(PSIAnnounced{Table: pmt, PID: 0x1001, Offset: at(450)})
+	c.ObservePCR(pcrAt(480))
+	c.ObserveInstance(PSIInstance{Table: pmt, PID: 0x1001, Offset: at(500)})
+	c.ObservePCR(pcrAt(600))
+	if got := table(c.Result(), pmt); got.Status != StatusInsufficientData || got.Repetition.Status != StatusInsufficientData ||
+		got.Instances != 3 || got.Repetition.Intervals != 1 {
+		t.Errorf("new identity reused old evidence: %+v", got)
+	}
+
+	// Nothing on the new PID for more than the limit: missing, although the
+	// table had instances before.
+	c = healthyOldIdentity()
+	c.ObserveAnnounced(PSIAnnounced{Table: pmt, PID: 0x1001, Offset: at(450)})
+	for ms := int64(480); ms <= 1200; ms += 40 {
+		c.ObservePCR(pcrAt(ms))
+	}
+	if got := table(c.Result(), pmt); got.Status != StatusNG || !slices.Equal(got.Reasons, []PSIReason{PSIReasonMissing}) {
+		t.Errorf("missing after the move: %+v", got)
+	}
+
+	// A late identity keeps the table late after a healthy re-announcement;
+	// a missing one keeps it missing.
+	c = NewPSIHealthCheck()
+	c.ObserveAnnounced(PSIAnnounced{Table: pmt, PID: 0x1000, Offset: at(0)})
+	c.ObservePCR(pcrAt(0))
+	c.ObserveInstance(PSIInstance{Table: pmt, PID: 0x1000, Offset: at(10)})
+	c.ObservePCR(pcrAt(600))
+	c.ObserveInstance(PSIInstance{Table: pmt, PID: 0x1000, Offset: at(700)})
+	c.ObservePCR(pcrAt(720))
+	c.ObserveWithdrawn(PSIWithdrawn{Table: pmt, Offset: at(730)})
+	c.ObserveAnnounced(PSIAnnounced{Table: pmt, PID: 0x1000, Offset: at(740)})
+	for ms := int64(760); ms <= 1000; ms += 40 {
+		c.ObservePCR(pcrAt(ms))
+		if ms%200 == 0 {
+			c.ObserveInstance(PSIInstance{Table: pmt, PID: 0x1000, Offset: at(ms + 1)})
+		}
+	}
+	if got := table(c.Result(), pmt); got.Status != StatusNG || !slices.Equal(got.Reasons, []PSIReason{PSIReasonLate}) || got.Repetition.Status != StatusNG {
+		t.Errorf("late identity: %+v", got)
+	}
+	c.ObserveAnnounced(PSIAnnounced{Table: pmt, PID: 0x1002, Offset: at(1010)})
+	for ms := int64(1040); ms <= 1800; ms += 40 {
+		c.ObservePCR(pcrAt(ms))
+	}
+	c.ObserveAnnounced(PSIAnnounced{Table: pmt, PID: 0x1003, Offset: at(1810)})
+	if got := table(c.Result(), pmt); !slices.Equal(got.Reasons, []PSIReason{PSIReasonMissing, PSIReasonLate}) {
+		t.Errorf("missing identity: %+v", got)
 	}
 }

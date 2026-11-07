@@ -400,6 +400,40 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
                 reason: result.reason.clone(),
             })
         }
+        Check::PcrDiscontinuities => {
+            let result = program.compliance.as_ref()?.pcr_discontinuities.as_ref()?;
+            let mut facts = vec![
+                ("Undeclared", result.undeclared_count.to_string()),
+                ("PCRs", result.pcr_count.to_string()),
+                number,
+            ];
+            if let Some(pid) = &program.pcr_pid {
+                facts.push(("PCR PID", pid.clone()));
+            }
+            facts.push(("Jump limit", format!("{:.0} ms", result.jump_limit_ms)));
+            for item in &result.items {
+                facts.push((
+                    pcr_step_label(&item.kind),
+                    format!(
+                        "{}×, first at 0x{:08X} ({:+.3} ms)",
+                        item.count, item.first_offset_bytes, item.first_jump_ms
+                    ),
+                ));
+            }
+            facts.extend(result.reason.clone().map(|r| ("Reason", r)));
+            let value = if result.status == "skipped" {
+                "—".to_owned()
+            } else {
+                result.undeclared_count.to_string()
+            };
+            Some(Row {
+                check,
+                status: result.status.clone(),
+                value,
+                facts,
+                reason: result.reason.clone(),
+            })
+        }
         Check::TimestampAnomalies => {
             let anomalies = program.timestamp_anomalies.as_ref()?;
             let count: u64 = anomalies.items.iter().map(|a| a.count).sum();
@@ -653,6 +687,18 @@ fn repetition_reason(reason: &str) -> String {
         }
         "no_pcr_time_base" => "No PCR time base: no two PCRs in one segment".to_owned(),
         other => other.replace('_', " "),
+    }
+}
+
+/// The label of a PCR step kind of the CLI; an unknown kind is shown as is.
+fn pcr_step_label(kind: &str) -> &'static str {
+    match kind {
+        "wraparound" => "Wraparound",
+        "declared" => "Declared",
+        "pcr_pid_change" => "PCR PID change",
+        "backward" => "Backward (undeclared)",
+        "forward_jump" => "Forward jump (undeclared)",
+        _ => "Other step",
     }
 }
 
@@ -1147,6 +1193,32 @@ pub(crate) fn findings(
                 });
                 findings.push(finding(reason, in_program, None));
             }
+            Check::PcrDiscontinuities => {
+                // One finding per undeclared kind, at its first PCR.
+                let items: Vec<_> = program
+                    .compliance
+                    .as_ref()
+                    .and_then(|c| c.pcr_discontinuities.as_ref())
+                    .map_or(&[][..], |d| &d.items[..])
+                    .iter()
+                    .filter(|item| matches!(item.kind.as_str(), "backward" | "forward_jump"))
+                    .collect();
+                if items.is_empty() {
+                    findings.push(finding(String::new(), in_program, None));
+                }
+                for item in items {
+                    findings.push(finding(
+                        format!(
+                            "{} without discontinuity_indicator · {}× · PCR jumped {:+.3} ms",
+                            item.kind.replace('_', " "),
+                            item.count,
+                            item.first_jump_ms
+                        ),
+                        in_program,
+                        Some(item.first_offset_bytes),
+                    ));
+                }
+            }
             Check::TimestampAnomalies => {
                 let items = program
                     .timestamp_anomalies
@@ -1394,11 +1466,17 @@ mod tests {
                 "PID 0x1fff (null): 1 packet, 0 excluded from analysis"
             );
         }
-        // Each row is non-OK and has its finding, except TS synchronization:
-        // the packets of this sample are aligned (see the sync-loss sample).
+        // Each row is non-OK and has its finding, except TS synchronization
+        // (the packets of this sample are aligned; see the sync-loss sample)
+        // and PCR discontinuities (its PCR clock is continuous; see the
+        // PCR-discontinuities sample).
         for row in rows(&report, &report.programs[0]) {
             if row.check == Check::Synchronization {
                 assert_eq!(row.status, "ok");
+                continue;
+            }
+            if row.check == Check::PcrDiscontinuities {
+                assert_eq!((row.status.as_str(), row.value.as_str()), ("ok", "0"));
                 continue;
             }
             assert!(is_finding(row.check, &row.status), "{:?}", row.check);
@@ -1526,6 +1604,60 @@ mod tests {
             "No complete interval: the table was not seen twice within one PCR segment"
         );
         assert_eq!(repetition_reason("other_reason"), "other reason");
+    }
+
+    /// The PCR-discontinuities sample: one finding per undeclared kind at its
+    /// first PCR; the legal kinds are listed in the row only.
+    #[test]
+    fn findings_of_the_pcr_discontinuities_sample() {
+        let report = report(include_str!(
+            "../../tests/fixtures/analysis_pcr_discontinuities_188.json"
+        ));
+        let program = &report.programs[0];
+        let (findings, _) = findings(&report, program);
+        let discontinuities: Vec<_> = findings
+            .iter()
+            .filter(|f| f.check == Some(Check::PcrDiscontinuities))
+            .map(|f| (f.status.as_str(), f.reason.as_str(), f.offset))
+            .collect();
+        assert_eq!(
+            discontinuities,
+            [
+                (
+                    "ng",
+                    "backward without discontinuity_indicator · 1× · PCR jumped -1960.000 ms",
+                    Some(140 * 188)
+                ),
+                (
+                    "ng",
+                    "forward jump without discontinuity_indicator · 1× · PCR jumped +4040.000 ms",
+                    Some(170 * 188)
+                ),
+            ]
+        );
+        let ng = row(&report, program, Check::PcrDiscontinuities).unwrap();
+        assert_eq!((ng.status.as_str(), ng.value.as_str()), ("ng", "2"));
+        let facts: Vec<(&str, &str)> = ng.facts.iter().map(|(l, v)| (*l, v.as_str())).collect();
+        for fact in [
+            ("Undeclared", "2"),
+            ("PCRs", "127"),
+            ("Wraparound", "1×, first at 0x000024B8 (+40.000 ms)"),
+            ("Declared", "2×, first at 0x00003AC0 (+5040.000 ms)"),
+            ("PCR PID change", "1×, first at 0x00009458 (+40.000 ms)"),
+        ] {
+            assert!(facts.contains(&fact), "{fact:?} in {facts:?}");
+        }
+        // An earlier 2.0 CLI without the check: no row.
+        let mut document: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/analysis_pcr_discontinuities_188.json"
+        ))
+        .unwrap();
+        document["programs"][0]["compliance"]
+            .as_object_mut()
+            .unwrap()
+            .remove("pcr_discontinuities");
+        let older: AnalysisReport = serde_json::from_value(document).unwrap();
+        assert!(row(&older, &older.programs[0], Check::PcrDiscontinuities).is_none());
     }
 
     /// Analyzer warnings, unknown statuses and skipped checks; a check without
