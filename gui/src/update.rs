@@ -1,0 +1,977 @@
+//! In-app update from GitHub Releases (docs/gui/design.md, "Updates").
+//!
+//! The newest published `gui-vX.Y.Z` release is found through the Releases
+//! API; its `_manifest.json` names the bundled CLI and its `_update.json` is
+//! handed to `cargo-packager-updater`, which downloads the package for this
+//! platform, verifies its signature against [`PUBLIC_KEY`] and installs it.
+//! Every URL is checked with [`validate_url`] before it is requested.
+
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::{Receiver, channel};
+use std::time::Duration;
+
+use cargo_packager_updater::reqwest::blocking::Client;
+use cargo_packager_updater::reqwest::{header, redirect};
+use cargo_packager_updater::semver::Version;
+use cargo_packager_updater::url::Url;
+use cargo_packager_updater::{
+    Config, Update, UpdaterBuilder, WindowsConfig, WindowsUpdateInstallMode,
+};
+use eframe::egui;
+use serde::Deserialize;
+
+/// The repository whose releases are checked.
+const OWNER_REPO: &str = "small-teton/mpeg-ts-analyzer";
+const RELEASES_API: &str =
+    "https://api.github.com/repos/small-teton/mpeg-ts-analyzer/releases?per_page=100";
+/// The public half of the update signing key (`gui/updater.pub`), in
+/// cargo-packager's Base64-wrapped minisign format.
+const PUBLIC_KEY: &str = include_str!("../updater.pub");
+const TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The version of this GUI.
+fn current_version() -> Version {
+    Version::parse(env!("CARGO_PKG_VERSION")).expect("CARGO_PKG_VERSION is semver")
+}
+
+fn user_agent() -> String {
+    format!("mpeg-ts-analyzer-gui/{}", env!("CARGO_PKG_VERSION"))
+}
+
+// ---------------------------------------------------------------------------
+// Finding a release
+
+#[derive(Clone, Debug, Deserialize)]
+struct Release {
+    tag_name: String,
+    #[serde(default)]
+    draft: bool,
+    #[serde(default)]
+    prerelease: bool,
+    html_url: String,
+    #[serde(default)]
+    assets: Vec<Asset>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct Asset {
+    name: String,
+    browser_download_url: String,
+}
+
+/// The newest published `gui-vX.Y.Z` release newer than `current`, with its
+/// version. Drafts, prereleases and other tags (the CLI's `vX.Y.Z`) are
+/// ignored; equal and lower versions are never returned.
+fn newest_release(releases: &[Release], current: &Version) -> Option<(Version, Release)> {
+    releases
+        .iter()
+        .filter(|r| !r.draft && !r.prerelease)
+        .filter_map(|r| Some((gui_tag_version(&r.tag_name)?, r)))
+        .filter(|(version, _)| version > current)
+        .max_by(|a, b| a.0.cmp(&b.0))
+        .map(|(version, release)| (version, release.clone()))
+}
+
+/// The version of a `gui-vX.Y.Z` tag; `None` for any other tag.
+fn gui_tag_version(tag: &str) -> Option<Version> {
+    let version = Version::parse(tag.strip_prefix("gui-v")?).ok()?;
+    (version.pre.is_empty() && version.build.is_empty()).then_some(version)
+}
+
+/// Accepts only HTTPS URLs to this repository on the GitHub API or to its
+/// release downloads on github.com (which redirect to GitHub's download
+/// hosts); nothing else is ever contacted.
+pub(crate) fn validate_url(url: &str) -> Result<Url, String> {
+    let parsed = Url::parse(url).map_err(|e| format!("invalid URL {url}: {e}"))?;
+    let allowed = parsed.scheme() == "https"
+        && parsed.username().is_empty()
+        && parsed.password().is_none()
+        && parsed.port().is_none()
+        && match parsed.host_str() {
+            Some("api.github.com") => parsed.path().starts_with(&format!("/repos/{OWNER_REPO}/")),
+            Some("github.com") => parsed
+                .path()
+                .starts_with(&format!("/{OWNER_REPO}/releases/download/")),
+            _ => false,
+        };
+    if allowed {
+        Ok(parsed)
+    } else {
+        Err(format!("refusing to download from {url}"))
+    }
+}
+
+/// Redirects are followed only to GitHub's own hosts over HTTPS.
+fn redirect_policy() -> redirect::Policy {
+    redirect::Policy::custom(|attempt| {
+        let url = attempt.url().clone();
+        let github = url.scheme() == "https"
+            && url.host_str().is_some_and(|host| {
+                host == "github.com"
+                    || host == "api.github.com"
+                    || host.ends_with(".githubusercontent.com")
+            });
+        if !github {
+            attempt.error(format!("refusing to follow a redirect to {url}"))
+        } else if attempt.previous().len() >= 5 {
+            attempt.error("too many redirects")
+        } else {
+            attempt.follow()
+        }
+    })
+}
+
+fn client() -> Result<Client, String> {
+    Client::builder()
+        .user_agent(user_agent())
+        .timeout(TIMEOUT)
+        .redirect(redirect_policy())
+        .build()
+        .map_err(|e| format!("cannot set up HTTPS: {e}"))
+}
+
+fn get_json<T: serde::de::DeserializeOwned>(client: &Client, url: &str) -> Result<T, String> {
+    let url = validate_url(url)?;
+    let response = client
+        .get(url.clone())
+        .header(header::ACCEPT, "application/json")
+        .send()
+        .map_err(|e| format!("cannot reach GitHub: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!("{url} answered {}", response.status()));
+    }
+    response
+        .json()
+        .map_err(|e| format!("unexpected response from {url}: {e}"))
+}
+
+/// The fields of a release's `_manifest.json` that the update window shows.
+#[derive(Debug, Deserialize)]
+struct ReleaseManifest {
+    gui_version: String,
+    bundled_cli_version: String,
+}
+
+// ---------------------------------------------------------------------------
+// How this installation can be updated
+
+/// How the running GUI was installed, which decides whether it can update
+/// itself.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum InstallKind {
+    /// A macOS app bundle, replaced in place.
+    MacApp(PathBuf),
+    /// The per-user NSIS installation on Windows; the new installer runs.
+    Nsis,
+    /// A Linux AppImage, replaced in place.
+    AppImage(PathBuf),
+    /// Only a link to the release page, for the given reason.
+    NotifyOnly(String),
+}
+
+impl InstallKind {
+    /// Detects the installation of the running GUI.
+    pub(crate) fn detect() -> Self {
+        let Ok(exe) = std::env::current_exe() else {
+            return InstallKind::NotifyOnly("The GUI's location is unknown.".to_owned());
+        };
+        let os = if cfg!(target_os = "macos") {
+            Os::Mac
+        } else if cfg!(windows) {
+            Os::Windows
+        } else if cfg!(target_os = "linux") {
+            Os::Linux
+        } else {
+            Os::Other
+        };
+        detect_from(
+            os,
+            &exe,
+            std::env::var_os("APPIMAGE").map(PathBuf::from),
+            std::env::var_os("LOCALAPPDATA").map(PathBuf::from),
+            directory_writable,
+        )
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Os {
+    Mac,
+    Windows,
+    Linux,
+    Other,
+}
+
+const NOT_PACKAGED: &str =
+    "This GUI was not installed from a release package, so it cannot update itself.";
+
+fn detect_from(
+    os: Os,
+    exe: &Path,
+    appimage: Option<PathBuf>,
+    local_app_data: Option<PathBuf>,
+    writable: impl Fn(&Path) -> bool,
+) -> InstallKind {
+    match os {
+        Os::Mac => {
+            let Some(app) = mac_app_bundle(exe) else {
+                return InstallKind::NotifyOnly(NOT_PACKAGED.to_owned());
+            };
+            if app.starts_with("/Volumes") {
+                InstallKind::NotifyOnly(
+                    "The app is running from the disk image. Copy it to Applications, open it from there, and update again."
+                        .to_owned(),
+                )
+            } else if app.components().any(|c| c.as_os_str() == "AppTranslocation") {
+                InstallKind::NotifyOnly(
+                    "macOS is running the app from a temporary location (App Translocation). Move it to Applications, open it from there, and update again."
+                        .to_owned(),
+                )
+            } else {
+                InstallKind::MacApp(app)
+            }
+        }
+        Os::Windows => {
+            let dir = exe.parent();
+            let installed = local_app_data
+                .map(|base| base.join("mpeg-ts-analyzer"))
+                .is_some_and(|install| dir == Some(install.as_path()))
+                && dir.is_some_and(|dir| dir.join("uninstall.exe").is_file());
+            if installed {
+                InstallKind::Nsis
+            } else {
+                InstallKind::NotifyOnly(
+                    "This is a portable copy. Download the new version from the release page."
+                        .to_owned(),
+                )
+            }
+        }
+        Os::Linux => match appimage {
+            Some(path) if path.parent().is_some_and(&writable) => InstallKind::AppImage(path),
+            Some(_) => InstallKind::NotifyOnly(
+                "The AppImage's folder is not writable, so it cannot be replaced.".to_owned(),
+            ),
+            None => InstallKind::NotifyOnly(
+                "This GUI was installed with a package manager. Install the new package from the release page."
+                    .to_owned(),
+            ),
+        },
+        Os::Other => InstallKind::NotifyOnly(NOT_PACKAGED.to_owned()),
+    }
+}
+
+/// The `.app` bundle containing `exe` (`<name>.app/Contents/MacOS/<exe>`).
+fn mac_app_bundle(exe: &Path) -> Option<PathBuf> {
+    let macos = exe.parent()?;
+    let contents = macos.parent()?;
+    let app = contents.parent()?;
+    (macos.file_name()? == "MacOS"
+        && contents.file_name()? == "Contents"
+        && app.extension()? == "app")
+        .then(|| app.to_path_buf())
+}
+
+fn directory_writable(dir: &Path) -> bool {
+    let probe = dir.join(format!(
+        ".mpeg-ts-analyzer-gui-write-test-{}",
+        std::process::id()
+    ));
+    let ok = std::fs::File::create(&probe).is_ok();
+    let _ = std::fs::remove_file(&probe);
+    ok
+}
+
+// ---------------------------------------------------------------------------
+// Checking and installing
+
+/// A newer release.
+pub(crate) struct Available {
+    pub version: Version,
+    pub bundled_cli_version: String,
+    pub release_url: String,
+    /// The verified-on-download update, when this installation can install it.
+    update: Option<Box<Update>>,
+    /// Why the update cannot be installed from the GUI, when it cannot.
+    pub notify_only: Option<String>,
+}
+
+/// Checks GitHub for a newer GUI release. Blocking; run it off the UI thread.
+fn check(current: &Version, kind: &InstallKind) -> Result<Option<Available>, String> {
+    let client = client()?;
+    let releases: Vec<Release> = get_json(&client, RELEASES_API)?;
+    let Some((version, release)) = newest_release(&releases, current) else {
+        return Ok(None);
+    };
+    let asset = |suffix: &str| {
+        let name = format!("mpeg-ts-analyzer-gui_{version}_{suffix}");
+        release
+            .assets
+            .iter()
+            .find(|asset| asset.name == name)
+            .map(|asset| asset.browser_download_url.clone())
+    };
+    // Only opened in the browser, never requested by the GUI.
+    let release_url = format!(
+        "https://github.com/{OWNER_REPO}/releases/tag/{}",
+        release.tag_name
+    );
+    if release.html_url != release_url {
+        return Err(format!("unexpected release page {}", release.html_url));
+    }
+
+    let manifest_url = asset("manifest.json")
+        .ok_or_else(|| format!("release {} has no manifest", release.tag_name))?;
+    let manifest: ReleaseManifest = get_json(&client, &manifest_url)?;
+    if manifest.gui_version != version.to_string() {
+        return Err(format!(
+            "the manifest of {} names GUI {}",
+            release.tag_name, manifest.gui_version
+        ));
+    }
+
+    let mut available = Available {
+        version: version.clone(),
+        bundled_cli_version: manifest.bundled_cli_version,
+        release_url,
+        update: None,
+        notify_only: None,
+    };
+    let Some(update_url) = asset("update.json") else {
+        available.notify_only = Some(
+            "This release cannot be installed from the GUI. Download it from the release page."
+                .to_owned(),
+        );
+        return Ok(Some(available));
+    };
+    if let InstallKind::NotifyOnly(reason) = kind {
+        available.notify_only = Some(reason.clone());
+        return Ok(Some(available));
+    }
+
+    let endpoint = validate_url(&update_url)?;
+    let mut builder = UpdaterBuilder::new(
+        current.clone(),
+        Config {
+            endpoints: vec![endpoint],
+            pubkey: PUBLIC_KEY.trim().to_owned(),
+            windows: Some(WindowsConfig {
+                installer_args: None,
+                install_mode: Some(WindowsUpdateInstallMode::Passive),
+            }),
+        },
+    )
+    .timeout(TIMEOUT)
+    .header(header::USER_AGENT, user_agent())
+    .map_err(|e| e.to_string())?;
+    match kind {
+        InstallKind::MacApp(app) => {
+            builder = builder.executable_path(app.join("Contents/MacOS/mpeg-ts-analyzer-gui"))
+        }
+        InstallKind::AppImage(path) => builder = builder.executable_path(path),
+        _ => {}
+    }
+    let update = builder
+        .build()
+        .and_then(|updater| updater.check())
+        .map_err(|e| format!("cannot read the update of {}: {e}", release.tag_name))?
+        .ok_or_else(|| format!("the update of {} is not newer", release.tag_name))?;
+    if update.version.trim_start_matches('v') != version.to_string() {
+        return Err(format!(
+            "the update of {} announces version {}",
+            release.tag_name, update.version
+        ));
+    }
+    validate_url(update.download_url.as_str())?;
+    available.update = Some(Box::new(update));
+    Ok(Some(available))
+}
+
+enum Message {
+    Checked(Result<Option<Available>, String>),
+    /// Installed in place (macOS, AppImage); a restart starts the new version.
+    Installed(Result<(), String>),
+    /// Downloaded and verified (Windows); installed when the GUI exits.
+    Downloaded(Result<Vec<u8>, String>),
+}
+
+pub(crate) enum Phase {
+    Idle,
+    Checking,
+    UpToDate,
+    Available(Box<Available>),
+    Failed(String),
+    Installing(Box<Available>),
+    Installed(Box<Available>),
+}
+
+/// The update state of the app and its window.
+pub(crate) struct Updates {
+    pub phase: Phase,
+    kind: InstallKind,
+    /// Whether the user asked; a startup check stays silent on failure.
+    manual: bool,
+    pub window_open: bool,
+    receiver: Option<Receiver<Message>>,
+    /// A downloaded Windows installer, run from `on_exit`.
+    install_on_exit: Option<(Box<Update>, Vec<u8>)>,
+}
+
+impl Updates {
+    pub(crate) fn new(kind: InstallKind) -> Self {
+        Self {
+            phase: Phase::Idle,
+            kind,
+            manual: false,
+            window_open: false,
+            receiver: None,
+            install_on_exit: None,
+        }
+    }
+
+    /// The state shown by tests, without any network access.
+    #[cfg(test)]
+    pub(crate) fn with_phase(phase: Phase, kind: InstallKind) -> Self {
+        Self {
+            phase,
+            window_open: true,
+            ..Self::new(kind)
+        }
+    }
+
+    /// Checks for an update off the UI thread. `manual` opens the window and
+    /// reports failures; the startup check only reports an update.
+    pub(crate) fn check(&mut self, ctx: &egui::Context, manual: bool) {
+        if self.receiver.is_some() {
+            self.window_open |= manual;
+            return;
+        }
+        self.manual = manual;
+        self.window_open |= manual;
+        self.phase = Phase::Checking;
+        let (sender, receiver) = channel();
+        let kind = self.kind.clone();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let _ = sender.send(Message::Checked(check(&current_version(), &kind)));
+            ctx.request_repaint();
+        });
+        self.receiver = Some(receiver);
+    }
+
+    /// Takes in the result of a check, an install or a download.
+    pub(crate) fn poll(&mut self, ctx: &egui::Context) {
+        let Some(message) = self.receiver.as_ref().and_then(|r| r.try_recv().ok()) else {
+            return;
+        };
+        self.receiver = None;
+        let phase = std::mem::replace(&mut self.phase, Phase::Idle);
+        self.phase = match (message, phase) {
+            (Message::Checked(Ok(Some(available))), _) => Phase::Available(Box::new(available)),
+            (Message::Checked(Ok(None)), _) => Phase::UpToDate,
+            (Message::Checked(Err(error)), _) => {
+                if !self.manual {
+                    eprintln!("update check failed: {error}");
+                }
+                Phase::Failed(error)
+            }
+            (Message::Installed(Ok(())), Phase::Installing(available)) => {
+                Phase::Installed(available)
+            }
+            (Message::Downloaded(Ok(bytes)), Phase::Installing(mut available)) => {
+                if let Some(update) = available.update.take() {
+                    self.install_on_exit = Some((update, bytes));
+                    // eframe saves the settings, then `on_exit` starts the
+                    // installer, which restarts the GUI when it is done.
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+                Phase::Installing(available)
+            }
+            (Message::Installed(Err(error)) | Message::Downloaded(Err(error)), _) => {
+                self.window_open = true;
+                Phase::Failed(format!("The update was not installed: {error}"))
+            }
+            (_, phase) => phase,
+        };
+    }
+
+    /// Downloads, verifies and installs the update.
+    fn install(&mut self, ctx: &egui::Context) {
+        let Phase::Available(available) = std::mem::replace(&mut self.phase, Phase::Idle) else {
+            return;
+        };
+        let Some(update) = available.update.clone() else {
+            self.phase = Phase::Available(available);
+            return;
+        };
+        let (sender, receiver) = channel();
+        let windows = matches!(self.kind, InstallKind::Nsis);
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let message = if windows {
+                // Installing on Windows exits the process; only download and
+                // verify here.
+                Message::Downloaded(update.download().map_err(|e| e.to_string()))
+            } else {
+                Message::Installed(update.download_and_install().map_err(|e| e.to_string()))
+            };
+            let _ = sender.send(message);
+            ctx.request_repaint();
+        });
+        self.receiver = Some(receiver);
+        self.phase = Phase::Installing(available);
+    }
+
+    /// Runs a downloaded Windows installer; called after the settings were saved.
+    pub(crate) fn on_exit(&mut self) {
+        if let Some((update, bytes)) = self.install_on_exit.take()
+            && let Err(error) = update.install(bytes)
+        {
+            eprintln!("the update was not installed: {error}");
+        }
+    }
+
+    /// The status-bar button that announces an update; nothing otherwise.
+    pub(crate) fn status_button(&mut self, ui: &mut egui::Ui) {
+        if let Phase::Available(available) = &self.phase
+            && ui
+                .small_button(format!("Update available: {}", available.version))
+                .clicked()
+        {
+            self.window_open = true;
+        }
+    }
+
+    /// The window that shows the check and offers the update.
+    pub(crate) fn window(&mut self, ctx: &egui::Context, analysis_running: bool) {
+        if !self.window_open {
+            return;
+        }
+        let mut open = true;
+        let mut action = None;
+        egui::Window::new("Software update")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .default_width(380.0)
+            .show(ctx, |ui| {
+                action = self.window_contents(ui, analysis_running);
+            });
+        self.window_open &= open;
+        match action {
+            Some(Action::Check) => self.check(ctx, true),
+            Some(Action::Install) => self.install(ctx),
+            Some(Action::Restart) => self.restart(ctx),
+            Some(Action::Close) => self.window_open = false,
+            None => {}
+        }
+    }
+
+    fn window_contents(&self, ui: &mut egui::Ui, analysis_running: bool) -> Option<Action> {
+        let current = env!("CARGO_PKG_VERSION");
+        let mut action = None;
+        match &self.phase {
+            Phase::Idle => {
+                ui.label(format!("You have GUI {current}."));
+                if ui.button("Check for updates").clicked() {
+                    action = Some(Action::Check);
+                }
+            }
+            Phase::Checking => {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label("Checking for updates…");
+                });
+            }
+            Phase::UpToDate => {
+                ui.label(format!("GUI {current} is the newest version."));
+                if ui.button("OK").clicked() {
+                    action = Some(Action::Close);
+                }
+            }
+            Phase::Failed(error) => {
+                ui.colored_label(ui.visuals().warn_fg_color, error);
+                if ui.button("Try again").clicked() {
+                    action = Some(Action::Check);
+                }
+            }
+            Phase::Available(available) => {
+                describe(ui, available);
+                ui.add_space(8.0);
+                if let Some(reason) = &available.notify_only {
+                    ui.weak(reason);
+                    ui.add_space(4.0);
+                    if ui.button("Open release page").clicked() {
+                        ui.ctx()
+                            .open_url(egui::OpenUrl::new_tab(&available.release_url));
+                    }
+                } else {
+                    ui.horizontal(|ui| {
+                        let install = ui
+                            .add_enabled(!analysis_running, egui::Button::new("Install"))
+                            .on_disabled_hover_text("Wait until the analysis has finished.");
+                        if install.clicked() {
+                            action = Some(Action::Install);
+                        }
+                        if ui.button("Later").clicked() {
+                            action = Some(Action::Close);
+                        }
+                    });
+                    ui.weak(install_note(&self.kind));
+                }
+            }
+            Phase::Installing(available) => {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label(format!("Installing GUI {}…", available.version));
+                });
+            }
+            Phase::Installed(available) => {
+                ui.label(format!(
+                    "GUI {} is installed. Restart to use it.",
+                    available.version
+                ));
+                ui.horizontal(|ui| {
+                    if ui.button("Restart now").clicked() {
+                        action = Some(Action::Restart);
+                    }
+                    if ui.button("Later").clicked() {
+                        action = Some(Action::Close);
+                    }
+                });
+            }
+        }
+        action
+    }
+
+    /// Starts the installed new version and closes this one.
+    fn restart(&mut self, ctx: &egui::Context) {
+        let started = match &self.kind {
+            InstallKind::MacApp(app) => std::process::Command::new("open")
+                .arg("-n")
+                .arg(app)
+                .spawn()
+                .map(drop),
+            InstallKind::AppImage(path) => std::process::Command::new(path).spawn().map(drop),
+            _ => Ok(()),
+        };
+        match started {
+            Ok(()) => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+            Err(error) => {
+                self.phase = Phase::Failed(format!(
+                    "The new version is installed but did not start ({error}). Start it again yourself."
+                ))
+            }
+        }
+    }
+}
+
+enum Action {
+    Check,
+    Install,
+    Restart,
+    Close,
+}
+
+fn describe(ui: &mut egui::Ui, available: &Available) {
+    ui.strong(format!("GUI {} is available", available.version));
+    ui.label(format!(
+        "You have {}. The new version bundles CLI {}.",
+        env!("CARGO_PKG_VERSION"),
+        available.bundled_cli_version
+    ));
+    ui.hyperlink_to("Release notes", &available.release_url);
+}
+
+fn install_note(kind: &InstallKind) -> &'static str {
+    match kind {
+        InstallKind::Nsis => {
+            "The GUI closes, the installer runs, and the new version starts when it is done."
+        }
+        InstallKind::MacApp(_) => {
+            "The app is replaced in place. macOS may ask for an administrator password if you cannot change it."
+        }
+        _ => "The GUI is replaced in place; restart it afterwards.",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn release(tag: &str) -> Release {
+        Release {
+            tag_name: tag.to_owned(),
+            draft: false,
+            prerelease: false,
+            html_url: format!("https://github.com/{OWNER_REPO}/releases/tag/{tag}"),
+            assets: Vec::new(),
+        }
+    }
+
+    fn v(text: &str) -> Version {
+        Version::parse(text).unwrap()
+    }
+
+    #[test]
+    fn picks_the_newest_published_gui_release() {
+        let mut draft = release("gui-v0.9.0");
+        draft.draft = true;
+        let mut pre = release("gui-v0.8.0");
+        pre.prerelease = true;
+        let releases = vec![
+            release("v9.9.9"),
+            release("gui-v0.1.3"),
+            release("gui-v0.2.0"),
+            release("gui-v0.1.10"),
+            draft,
+            pre,
+            release("gui-v1.0.0-rc.1"),
+            release("gui-vbroken"),
+        ];
+        let (version, found) = newest_release(&releases, &v("0.1.2")).unwrap();
+        assert_eq!(version, v("0.2.0"));
+        assert_eq!(found.tag_name, "gui-v0.2.0");
+    }
+
+    #[test]
+    fn never_offers_the_same_or_an_older_version() {
+        let releases = vec![release("gui-v0.1.2"), release("gui-v0.1.1")];
+        assert!(newest_release(&releases, &v("0.1.2")).is_none());
+        assert!(newest_release(&[], &v("0.1.2")).is_none());
+    }
+
+    #[test]
+    fn accepts_only_github_urls_of_this_repository() {
+        for ok in [
+            "https://api.github.com/repos/small-teton/mpeg-ts-analyzer/releases?per_page=100",
+            "https://github.com/small-teton/mpeg-ts-analyzer/releases/download/gui-v0.2.0/mpeg-ts-analyzer-gui_0.2.0_update.json",
+        ] {
+            assert!(validate_url(ok).is_ok(), "{ok}");
+        }
+        for bad in [
+            "http://github.com/small-teton/mpeg-ts-analyzer/releases/download/gui-v0.2.0/x",
+            "https://example.com/small-teton/mpeg-ts-analyzer/releases/download/x",
+            "https://github.com/someone/else/releases/download/gui-v0.2.0/x",
+            "https://github.com/small-teton/mpeg-ts-analyzer/archive/x",
+            "https://api.github.com/repos/someone/else/releases",
+            "https://user@github.com/small-teton/mpeg-ts-analyzer/releases/download/x",
+            "https://github.com:8443/small-teton/mpeg-ts-analyzer/releases/download/x",
+            "https://github.com.evil.example/small-teton/mpeg-ts-analyzer/releases/download/x",
+            "file:///etc/passwd",
+            "not a url",
+        ] {
+            assert!(validate_url(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn the_public_key_is_a_minisign_key() {
+        use base64::Engine;
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(PUBLIC_KEY.trim())
+            .unwrap();
+        let text = String::from_utf8(decoded).unwrap();
+        assert!(text.starts_with("untrusted comment: minisign public key"));
+    }
+
+    #[test]
+    fn detects_macos_installations() {
+        let kind = |exe: &str| detect_from(Os::Mac, Path::new(exe), None, None, |_| true);
+        assert_eq!(
+            kind("/Applications/mpeg-ts-analyzer.app/Contents/MacOS/mpeg-ts-analyzer-gui"),
+            InstallKind::MacApp(PathBuf::from("/Applications/mpeg-ts-analyzer.app"))
+        );
+        assert!(matches!(
+            kind("/Volumes/mpeg-ts-analyzer/mpeg-ts-analyzer.app/Contents/MacOS/mpeg-ts-analyzer-gui"),
+            InstallKind::NotifyOnly(reason) if reason.contains("disk image")
+        ));
+        assert!(matches!(
+            kind("/private/var/folders/x/T/AppTranslocation/ABC/d/mpeg-ts-analyzer.app/Contents/MacOS/mpeg-ts-analyzer-gui"),
+            InstallKind::NotifyOnly(reason) if reason.contains("App Translocation")
+        ));
+        assert_eq!(
+            kind("/Users/me/src/mpeg-ts-analyzer/gui/target/debug/mpeg-ts-analyzer-gui"),
+            InstallKind::NotifyOnly(NOT_PACKAGED.to_owned())
+        );
+    }
+
+    #[test]
+    fn detects_linux_installations() {
+        let appimage = PathBuf::from("/home/me/Apps/mpeg-ts-analyzer.AppImage");
+        let exe = Path::new("/tmp/.mount_abc/usr/bin/mpeg-ts-analyzer-gui");
+        assert_eq!(
+            detect_from(Os::Linux, exe, Some(appimage.clone()), None, |_| true),
+            InstallKind::AppImage(appimage.clone())
+        );
+        assert!(matches!(
+            detect_from(Os::Linux, exe, Some(appimage), None, |_| false),
+            InstallKind::NotifyOnly(reason) if reason.contains("not writable")
+        ));
+        assert!(matches!(
+            detect_from(Os::Linux, Path::new("/usr/bin/mpeg-ts-analyzer-gui"), None, None, |_| true),
+            InstallKind::NotifyOnly(reason) if reason.contains("package manager")
+        ));
+    }
+
+    #[test]
+    fn detects_windows_installations() {
+        let base = std::env::temp_dir().join(format!("mtsa-update-test-{}", std::process::id()));
+        let install = base.join("mpeg-ts-analyzer");
+        std::fs::create_dir_all(&install).unwrap();
+        let exe = install.join("mpeg-ts-analyzer-gui.exe");
+        // Without the NSIS uninstaller it is a copy, not an installation.
+        assert!(matches!(
+            detect_from(Os::Windows, &exe, None, Some(base.clone()), |_| true),
+            InstallKind::NotifyOnly(reason) if reason.contains("portable")
+        ));
+        std::fs::write(install.join("uninstall.exe"), b"").unwrap();
+        assert_eq!(
+            detect_from(Os::Windows, &exe, None, Some(base.clone()), |_| true),
+            InstallKind::Nsis
+        );
+        let elsewhere = Path::new("C:/Tools/mpeg-ts-analyzer/mpeg-ts-analyzer-gui.exe");
+        assert!(matches!(
+            detect_from(Os::Windows, elsewhere, None, Some(base.clone()), |_| true),
+            InstallKind::NotifyOnly(_)
+        ));
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    /// Against the real GitHub API; run with `cargo test -- --ignored`.
+    #[test]
+    #[ignore = "needs network access to api.github.com"]
+    fn finds_the_newest_release_on_github() {
+        let found = check(&v("0.0.1"), &InstallKind::NotifyOnly("test".to_owned()))
+            .expect("check")
+            .expect("a release newer than 0.0.1");
+        assert!(found.version > v("0.0.1"));
+        assert!(!found.bundled_cli_version.is_empty());
+        assert!(
+            found
+                .release_url
+                .ends_with(&format!("/gui-v{}", found.version))
+        );
+        assert!(found.notify_only.is_some());
+        println!(
+            "newest: {} (CLI {}), {}: {:?}",
+            found.version, found.bundled_cli_version, found.release_url, found.notify_only
+        );
+    }
+
+    // The update window, driven through its accessibility tree.
+
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::{NodeT, Queryable};
+
+    fn available(notify_only: Option<&str>) -> Box<Available> {
+        Box::new(Available {
+            version: v("9.9.9"),
+            bundled_cli_version: "9.8.7".to_owned(),
+            release_url: format!("https://github.com/{OWNER_REPO}/releases/tag/gui-v9.9.9"),
+            update: None,
+            notify_only: notify_only.map(str::to_owned),
+        })
+    }
+
+    fn mac() -> InstallKind {
+        InstallKind::MacApp(PathBuf::from("/Applications/mpeg-ts-analyzer.app"))
+    }
+
+    fn window(phase: Phase, kind: InstallKind, running: bool) -> Harness<'static, Updates> {
+        let mut harness = Harness::builder()
+            .with_size(eframe::egui::vec2(800.0, 600.0))
+            .build_ui_state(
+                move |ui, updates: &mut Updates| updates.window(ui.ctx(), running),
+                Updates::with_phase(phase, kind),
+            );
+        // Not run(): the spinners of Checking and Installing keep repainting.
+        harness.run_steps(4);
+        harness
+    }
+
+    #[test]
+    fn an_installable_update_offers_install() {
+        let mut harness = window(Phase::Available(available(None)), mac(), false);
+        harness.get_by_label("GUI 9.9.9 is available");
+        harness.get_by_label_contains("bundles CLI 9.8.7");
+        harness.get_by_label("Release notes");
+        let install = harness.get_by_label("Install");
+        assert!(!install.accesskit_node().is_disabled());
+        harness.get_by_label("Later").click();
+        harness.run();
+        assert!(!harness.state().window_open);
+    }
+
+    #[test]
+    fn install_waits_for_a_running_analysis() {
+        let harness = window(Phase::Available(available(None)), mac(), true);
+        assert!(
+            harness
+                .get_by_label("Install")
+                .accesskit_node()
+                .is_disabled()
+        );
+    }
+
+    #[test]
+    fn a_notify_only_update_links_to_the_release_page() {
+        let reason = "This is a portable copy. Download the new version from the release page.";
+        let harness = window(
+            Phase::Available(available(Some(reason))),
+            InstallKind::NotifyOnly(reason.to_owned()),
+            false,
+        );
+        harness.get_by_label(reason);
+        harness.get_by_label("Open release page");
+        assert!(harness.query_by_label("Install").is_none());
+    }
+
+    #[test]
+    fn shows_every_other_state() {
+        let harness = window(Phase::UpToDate, mac(), false);
+        harness.get_by_label_contains("is the newest version");
+
+        let harness = window(
+            Phase::Failed("cannot reach GitHub: offline".to_owned()),
+            mac(),
+            false,
+        );
+        harness.get_by_label("cannot reach GitHub: offline");
+        harness.get_by_label("Try again");
+
+        let harness = window(Phase::Checking, mac(), false);
+        harness.get_by_label("Checking for updates…");
+
+        let harness = window(Phase::Installing(available(None)), mac(), false);
+        harness.get_by_label("Installing GUI 9.9.9…");
+
+        let harness = window(Phase::Installed(available(None)), mac(), false);
+        harness.get_by_label("GUI 9.9.9 is installed. Restart to use it.");
+        harness.get_by_label("Restart now");
+    }
+
+    #[test]
+    fn the_status_bar_announces_an_update_and_opens_the_window() {
+        let mut updates = Updates::with_phase(Phase::Available(available(None)), mac());
+        updates.window_open = false;
+        let mut harness = Harness::new_ui_state(
+            |ui, updates: &mut Updates| updates.status_button(ui),
+            updates,
+        );
+        harness.run();
+        harness.get_by_label("Update available: 9.9.9").click();
+        harness.run();
+        assert!(harness.state().window_open);
+
+        let mut harness = Harness::new_ui_state(
+            |ui, updates: &mut Updates| updates.status_button(ui),
+            Updates::with_phase(Phase::UpToDate, mac()),
+        );
+        harness.run();
+        assert!(
+            harness
+                .query_by_label_contains("Update available")
+                .is_none()
+        );
+    }
+}

@@ -38,6 +38,8 @@ pub struct Settings {
     pub packets_per_page: u64,
     pub cached_pages: u32,
     pub cli_path: String,
+    /// Look for a newer GUI release once at startup (docs/gui/design.md, "Updates").
+    pub check_updates_at_startup: bool,
 }
 
 impl Default for Settings {
@@ -48,6 +50,7 @@ impl Default for Settings {
             packets_per_page: 100,
             cached_pages: 5,
             cli_path: String::new(),
+            check_updates_at_startup: true,
         }
     }
 }
@@ -88,6 +91,13 @@ impl Settings {
                             })
                             .response
                             .labelled_by(label.id);
+                        ui.end_row();
+
+                        ui.label("Updates");
+                        ui.checkbox(
+                            &mut self.check_updates_at_startup,
+                            "Check for updates at startup",
+                        );
                         ui.end_row();
                     });
 
@@ -206,6 +216,7 @@ mod tests {
             packets_per_page: 50,
             cached_pages: 3,
             cli_path: "/opt/mpeg-ts-analyzer/bin/mpeg-ts-analyzer".to_owned(),
+            check_updates_at_startup: false,
         };
         let mut storage = MemoryStorage::default();
         eframe::set_value(&mut storage, STORAGE_KEY, &saved);
