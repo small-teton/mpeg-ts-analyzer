@@ -45,6 +45,14 @@
     "continuity_counter": {
       "$ref": "#/$defs/continuity"
     },
+    "transport_errors": {
+      "$ref": "#/$defs/affectedPackets",
+      "description": "Packets with transport_error_indicator set, over every packet of the range. Present whenever the analysis ran (status complete)."
+    },
+    "scrambled_packets": {
+      "$ref": "#/$defs/affectedPackets",
+      "description": "Packets with a non-zero transport_scrambling_control, over every packet of the range. Present whenever the analysis ran (status complete)."
+    },
     "timestamp_anomalies": {
       "$ref": "#/$defs/timestampAnomalies"
     },
@@ -278,6 +286,69 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/continuityPID"
+          }
+        }
+      }
+    },
+    "affectedPID": {
+      "type": "object",
+      "required": [
+        "pid",
+        "label",
+        "packet_count",
+        "excluded_packet_count",
+        "first_offset_bytes"
+      ],
+      "properties": {
+        "pid": {
+          "$ref": "#/$defs/pid"
+        },
+        "label": {
+          "type": "string",
+          "description": "Role of the PID in the applied layouts: PAT, PMT, PCR, video, audio, stream_type 0xNN, null for 0x1fff, or unknown."
+        },
+        "packet_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "excluded_packet_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Packets of this PID whose payload or PCR the analysis would have read and left out instead."
+        },
+        "first_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Byte offset of the PID's first affected packet (for M2TS, of its TP_extra_header)."
+        }
+      }
+    },
+    "affectedPackets": {
+      "type": "object",
+      "required": [
+        "status",
+        "packet_count",
+        "excluded_packet_count",
+        "pids"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: ok (no affected packet), affected (affected packets, none carrying data the analysis reads), data_excluded (data of at least one affected packet was left out of the analysis)."
+        },
+        "packet_count": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "excluded_packet_count": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "first_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Byte offset of the first affected packet; absent when packet_count is 0."
+        },
+        "pids": {
+          "type": "array",
+          "description": "Affected PIDs in numeric order; empty when packet_count is 0.",
+          "items": {
+            "$ref": "#/$defs/affectedPID"
           }
         }
       }

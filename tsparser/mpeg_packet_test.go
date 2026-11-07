@@ -772,7 +772,7 @@ func TestScanBoundsPesRetentionForLongContinuation(t *testing.T) {
 	analyzer := newProgramAnalyzer(options.Options{}, 0, 1, 0x30, pid, programInfos, false)
 	continuity := newContinuityCounterSummary(0x30, pid, programInfos)
 	var pos int64
-	result, err := scanPrograms(newContinuationReader(head, continuation), &pos, []*programAnalyzer{analyzer}, continuity, nil, options.Options{}, tsPayloadSize, 0, true)
+	result, err := scanPrograms(newContinuationReader(head, continuation), &pos, []*programAnalyzer{analyzer}, continuity, newTransportTrustSummary(), nil, options.Options{}, tsPayloadSize, 0, true)
 	if err != nil {
 		t.Fatal(err)
 	}
