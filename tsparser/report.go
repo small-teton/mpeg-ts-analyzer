@@ -26,6 +26,8 @@ type AnalysisReport struct {
 	SelectedProgramNumber *uint16                   `json:"selected_program_number,omitempty"`
 	Compliance            *ReportCompliance         `json:"compliance,omitempty"`
 	ContinuityCounter     *ReportContinuity         `json:"continuity_counter,omitempty"`
+	TransportErrors       *ReportAffectedPackets    `json:"transport_errors,omitempty"`
+	ScrambledPackets      *ReportAffectedPackets    `json:"scrambled_packets,omitempty"`
 	TimestampAnomalies    *ReportTimestampAnomalies `json:"timestamp_anomalies,omitempty"`
 	PCRJitter             *ReportPCRJitter          `json:"pcr_jitter,omitempty"`
 	Bitrate               *ReportBitrate            `json:"bitrate,omitempty"`

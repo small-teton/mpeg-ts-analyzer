@@ -19,6 +19,7 @@ In addition, it can dump various MPEG-2 TS internal structures for stream invest
 - PES header with PTS/DTS timestamps
 - PCR jitter analysis (per-interval deviation from the expected PCR, estimated from byte positions and judged only when the stream shows constant delivery)
 - `continuity_counter` validation with an always-on per-PID error summary
+- Transport errors (`transport_error_indicator`) and scrambled packets (`transport_scrambling_control`), counted per PID with an always-on summary; their payload (and the PCR of a packet with a transport error) is kept out of the analysis
 
 Both 188-byte TS packets and 192-byte M2TS packets (BDAV format with TP_extra_header) are supported. The packet size is auto-detected from the stream.
 
@@ -105,6 +106,9 @@ Max PCR interval: 80.000000ms [OK, limit: <= 100.000000ms]
 PCR-PTS/DTS max gap: 726.666667ms [OK, limit: <= 1000.000000ms]
 -----------------------------
 Continuity Counter: no errors detected
+-----------------------------
+Transport Error Indicator: no packets with transport_error_indicator set
+Transport Scrambling: no scrambled packets
 ```
 
 ## Timing compliance verdicts and `--fail-on-error`
@@ -247,6 +251,82 @@ produces one event instead of cascading warnings.
 The summary count is the number of discontinuity events, not an estimate of the
 number of missing transport packets. Known PAT, PMT, PCR, video, and audio PIDs
 receive labels; any other included PID is labeled `unknown`.
+
+## Transport errors and scrambled packets (always on)
+
+Two always-on checks count, per PID, the packets whose
+`transport_error_indicator` is set (a demodulator or other upstream device
+marks a packet with an uncorrectable bit error this way) and the packets whose
+`transport_scrambling_control` is not zero (a payload encrypted by conditional
+access). They cover every packet of the analyzed range, from its first packet,
+including the packets read while the first PAT and PMT were acquired, null
+packets and PIDs no PMT references. A healthy stream gets one line for each:
+
+```
+-----------------------------
+Transport Error Indicator: no packets with transport_error_indicator set
+Transport Scrambling: no scrambled packets
+```
+
+When packets are affected, each check prints its totals, the offset of the
+first affected packet and a status, then one line per PID in numeric order
+(output of `sample_data/sample_188byte_transport_errors.ts`, see
+[Sample data](../development/sample-data.md)):
+
+```
+-----------------------------
+Transport Error Indicator: 6 packets in 5 PIDs, first at 0x00000000, 5 excluded from analysis [DATA EXCLUDED]
+  PID 0x0000 (PAT) : 1 packet, first at 0x00001ca4, 1 excluded
+  PID 0x0100 (video) : 2 packets, first at 0x00001608, 2 excluded
+  PID 0x0101 (audio) : 1 packet, first at 0x0000125c, 1 excluded
+  PID 0x1000 (PMT) : 1 packet, first at 0x00001f94, 1 excluded
+  PID 0x1fff (null) : 1 packet, first at 0x00000000, 0 excluded
+Transport Scrambling: 6 packets in 5 PIDs, first at 0x00000524, 5 excluded from analysis [DATA EXCLUDED]
+  PID 0x0000 (PAT) : 1 packet, first at 0x00002b54, 1 excluded
+  PID 0x0100 (video) : 2 packets, first at 0x000024b8, 2 excluded
+  PID 0x0101 (audio) : 1 packet, first at 0x0000210c, 1 excluded
+  PID 0x0200 (unknown) : 1 packet, first at 0x00000524, 0 excluded
+  PID 0x1000 (PMT) : 1 packet, first at 0x00002e44, 1 excluded
+```
+
+A packet with both conditions counts in both. Offsets are those of the first
+byte of the packet (for M2TS, of its `TP_extra_header`). The status is:
+
+| Status | Meaning |
+| --- | --- |
+| no line of PIDs (`ok` in JSON) | No packet has the condition |
+| `AFFECTED` | Packets have the condition, but none carried data the analysis reads; the other results are complete |
+| `DATA EXCLUDED` | Data of at least one affected packet was left out of the analysis, so the other results are based on less data than the stream carried |
+
+What the analysis does with an affected packet:
+
+| Data | Transport error | Scrambled |
+| --- | --- | --- |
+| PAT / PMT section | The packet is ignored and the section in progress on its PID is discarded, with a warning ([PSI](psi.md#multi-section-pat-and-pmt)) | The same, when the packet has a payload |
+| PES | The payload is not used. The PES packet in progress on the PID ends at the packet and is parsed from the packets before it; the PID resumes at its next unaffected `payload_unit_start_indicator`. No PES header, PTS/DTS, timestamp anomaly or PCR-PTS/DTS gap comes from the affected payload | The same, when the packet has a payload; a scrambled packet without payload changes nothing |
+| PCR | Not used: intervals, jitter, bitrate windows and PCR-PTS/DTS brackets use the surrounding PCRs | Used: the header and adaptation field of a scrambled packet are not scrambled |
+| Continuity counter, bitrate | Counted with the header as decoded | Counted |
+
+An affected packet is **excluded** when it is on a PID whose data the
+analysis reads at that point: the PAT, the PMT of an analyzed program, an
+elementary stream of an analyzed program, or (for a transport error only) its
+`PCR_PID`. A scrambled packet without payload, and an affected packet read
+while the first PAT and PMT were acquired, are never excluded; the acquisition
+reports what it ignored as warnings. The PID of a packet with a transport error
+is the one in its own header, which the error may have changed.
+
+The null PID `0x1FFF` is counted like any other PID and labeled `null`. Its
+payload is never analyzed, so its packets are never excluded; a scrambled null
+packet is itself invalid (ISO/IEC 13818-1 requires
+`transport_scrambling_control` `00` there).
+
+A PAT or PMT that arrives only in affected packets is never acquired: the run
+ends with `PAT not detected` or as incomplete, never as a complete result built
+from unusable tables. Neither check takes part in `--fail-on-error`. A packet
+whose header cannot be parsed at all (for example a reserved
+`adaptation_field_control`) still interrupts the analysis as any malformed
+packet does (it restarts at the next PAT), whether or not it has a transport
+error.
 
 ## Timestamp anomaly report (always on)
 

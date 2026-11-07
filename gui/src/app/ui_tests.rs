@@ -999,7 +999,7 @@ fn findings_open_the_detail_page_with_their_actions() {
         ..checked_cli()
     });
     let mut harness = harness(app);
-    harness.get_by_label("Findings (5)");
+    harness.get_by_label("Findings (7)");
     let link = |harness: &mut Harness<'_, App>, name: &str| {
         harness
             .get_by_role_and_label(Role::Link, name)
@@ -1056,6 +1056,21 @@ fn findings_open_the_detail_page_with_their_actions() {
     harness.get_by_role_and_label(Role::Button, "Open packet at 0x00002A98");
     assert!(harness.query_by_label_contains("on timeline").is_none());
 
+    // Transport errors and scrambled packets: the first affected packet of
+    // each PID, which Timeline does not mark.
+    for (check, offset) in [
+        (Check::TransportErrors, "0x00000524"),
+        (Check::ScrambledPackets, "0x00000814"),
+    ] {
+        back_button(&harness).click();
+        harness.run();
+        link(&mut harness, check.title());
+        harness.get_by_role_and_label(Role::Heading, "Findings (1)");
+        harness.get_by_label("PID 0x1fff (null): 1 packet, 0 excluded from analysis");
+        harness.get_by_role_and_label(Role::Button, &format!("Open packet at {offset}"));
+        assert!(harness.query_by_label_contains("on timeline").is_none());
+    }
+
     // Summary-only findings have no offset to open.
     for check in [
         Check::MaxPcrInterval,
@@ -1078,7 +1093,7 @@ fn findings_open_the_detail_page_with_their_actions() {
 fn findings_account_for_every_check_that_is_not_ok() {
     // Every check of the all-findings sample reports a problem.
     let harness = harness(app_with_report(all_findings_report()));
-    harness.get_by_label("Findings (5)");
+    harness.get_by_label("Findings (7)");
     assert!(harness.query_by_label("None.").is_none());
     for check in Check::ALL {
         assert_eq!(
@@ -1138,7 +1153,7 @@ fn unknown_status_stays_visible() {
         table_row(&harness, Check::PcrJitter)
             .query_by_label("INDETERMINATE")
             .expect("the table shows the status");
-        harness.get_by_label("Findings (5)");
+        harness.get_by_label("Findings (7)");
         open_detail(&mut harness, Check::PcrJitter, false);
         harness.get_by_label("Status: INDETERMINATE");
         harness.get_by_label_contains(
@@ -1180,8 +1195,8 @@ fn status_knowledge_is_per_check() {
     });
     let mut harness = harness_sized(app_with_report(report), WIDE);
     harness.run();
-    // Still five findings (the fixture's), and nothing unavailable.
-    harness.get_by_label("Findings (5)");
+    // Still seven findings (the fixture's), and nothing unavailable.
+    harness.get_by_label("Findings (7)");
     assert!(
         harness
             .query_by_label_contains("Unavailable analysis")

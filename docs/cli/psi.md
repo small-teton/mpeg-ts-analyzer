@@ -72,6 +72,7 @@ retransmissions:
 | `<table>: section ended early by the next payload_unit_start_indicator; partial section discarded` | A section was cut short |
 | `<table>: invalid pointer_field N; packet ignored` | `pointer_field` runs past the payload |
 | `<table>: transport_error_indicator set; packet ignored and any partial section discarded` | The packet has an uncorrectable error, so nothing it carries is used |
+| `<table>: transport_scrambling_control set; scrambled payload ignored and any partial section discarded` | PAT and PMT are never scrambled; a scrambled payload cannot be read as a section |
 | `PAT lists program N with PMT PIDs ...`, `PMT of program N has PCR_PID ...`, `PMT of program N lists elementary PID ... with stream types ...` | Sections disagree; the first value in section order is used |
 
 `<table>` is `PAT` or `PMT of program N on PID 0xXXXX`. A table that is still
@@ -181,6 +182,9 @@ Bitrate Summary (PCR time base):
   Duration: 4.64s (PCR, 2 segment(s))
 -----------------------------
 Continuity Counter: no errors detected
+-----------------------------
+Transport Error Indicator: no packets with transport_error_indicator set
+Transport Scrambling: no scrambled packets
 ```
 
 With `--dump-psi`, every section of an applied table is printed after its

@@ -34,9 +34,14 @@ jitter analysis can establish constant delivery. The defects, by packet index:
 | PTS/DTS anomalies | video PTS in packet 46 is 40 ms before the previous one | `anomalies`: PID 0x0100 `backward` ×1 |
 | Continuity counter | audio packet 25 skips counter 5 (carries 6), then continues | `errors`: 1 on PID 0x0101 (expected 5, actual 6) |
 | PCR jitter | the PCR in packet 58 is 100 µs late | delivery `constant` (2 windows at 75,200 b/s, deviation 0.00 %), `ng`: max +100 µs at packet 58, −50 µs at packets 56 and 60 |
+| Transport errors | null packet 7 has `transport_error_indicator` set | `affected`: 1 packet on PID 0x1fff (null), 0 excluded |
+| Scrambled packets | null packet 11 has `transport_scrambling_control` 2 | `affected`: 1 packet on PID 0x1fff (null), 0 excluded |
+
+Both new defects are on the null PID, whose payload the analysis never reads,
+so they change no other result.
 
 `-omit` leaves defects out (`pcr-interval`, `pcr-pts-gap`, `pts-backward`,
-`cc-gap`, `pcr-jitter`, or `all`); `tsparser` tests use it to show that each
+`cc-gap`, `pcr-jitter`, `tei`, `scrambled`, or `all`); `tsparser` tests use it to show that each
 defect turns only its own check non-OK, and that the stream without defects is
 OK everywhere, with constant delivery and zero estimated jitter. They also
 check that the committed files equal the generator output and pin the results
@@ -49,7 +54,10 @@ TSDuck 3.45 agrees for both files:
 
 - `tsanalyze`: 120 packets, 75,200 b/s from PCRs; PID 0x0100 58 packets with
   55 PCRs and 58 PTS; PID 0x0101 29 packets, 1 discontinuity; PAT 8, PMT 7,
-  null 18.
+  null 17 (tsanalyze leaves the packet with a transport error out of the PID
+  statistics), 1 of them scrambled; 1 packet with a transport error.
+  `tsdump --headers-only` shows `Error: 1` on packet 7 and `Scrambling: 2` on
+  packet 11, both PID 0x1FFF.
 - `continuity`: `packet index: 25, PID: 0x0101 (257), missing 1 packets`.
 - `pcrextract`: 55 PCRs, largest difference 160 ms (packets 20 → 28); the
   video PTS of packet 46 (984,600) is below that of packet 44 (988,200);

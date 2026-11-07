@@ -89,6 +89,7 @@ func BufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 type pesAnalysis struct {
 	compliance complianceReport
 	continuity *continuityCounterSummary
+	trust      *transportTrustSummary
 	anomalies  *TimestampAnomaly
 	jitter     *PcrJitter
 	bitrate    *BitrateStats
@@ -108,6 +109,9 @@ type trackedTables struct {
 	pat           *patTable
 	programNumber uint16
 	pmt           *pmtTable
+	// trust has already counted the affected packets read while acquiring
+	// the PAT and PMT.
+	trust *transportTrustSummary
 }
 
 func truncatedPacketMessage(size int) string {
@@ -138,19 +142,23 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 	analyzer := newProgramAnalyzer(options, *pos, uint16(options.Program), pmtPid, pcrPid, programInfos, false)
 	analyzer.pcrJitter.packetSize = packetSize
 	continuity := newContinuityCounterSummary(pmtPid, pcrPid, programInfos)
+	trust := newTransportTrustSummary()
 	var psi *psiTracker
 	if tables != nil {
+		trust = tables.trust
 		psi = newPsiTracker(tables.pat, continuity, options, packetSize, quiet)
+		psi.trust = trust
 		psi.addProgram(tables.programNumber, pmtPid, tables.pmt, analyzer)
 	}
-	scan, err := scanPrograms(reader, pos, []*programAnalyzer{analyzer}, continuity, psi, options, packetSize, endOffset, quiet)
+	trust.addProgramLabels(pmtPid, pcrPid, programInfos)
+	scan, err := scanPrograms(reader, pos, []*programAnalyzer{analyzer}, continuity, trust, psi, options, packetSize, endOffset, quiet)
 	if err != nil {
 		return nil, err
 	}
 	analyzer.finish()
 
 	report := analyzer.complianceReport()
-	result := &pesAnalysis{compliance: report, continuity: continuity, anomalies: analyzer.anomaly, truncatedBytes: scan.truncatedBytes, truncatedPos: scan.truncatedPos}
+	result := &pesAnalysis{compliance: report, continuity: continuity, trust: trust, anomalies: analyzer.anomaly, truncatedBytes: scan.truncatedBytes, truncatedPos: scan.truncatedPos}
 	if psi != nil {
 		result.transitions, result.psiWarnings, result.sdt = psi.transitions, psi.warnings, psi.sdt
 	}
@@ -170,6 +178,7 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		}
 		analyzer.anomaly.Dump()
 		continuity.Dump()
+		trust.Dump()
 	}
 	if failures := report.failures(); options.FailOnError && len(failures) > 0 {
 		return result, &ComplianceError{Checks: failures}
@@ -190,7 +199,7 @@ type scanResult struct {
 // not stopped. Continuity counters are checked once for the whole multiplex.
 // When psi is set, each packet is then passed to it so PAT/PMT version changes
 // apply from the next packet on.
-func scanPrograms(reader io.Reader, pos *int64, analyzers []*programAnalyzer, continuity *continuityCounterSummary, psi *psiTracker, options options.Options, packetSize int, endOffset int64, quiet bool) (scanResult, error) {
+func scanPrograms(reader io.Reader, pos *int64, analyzers []*programAnalyzer, continuity *continuityCounterSummary, trust *transportTrustSummary, psi *psiTracker, options options.Options, packetSize int, endOffset int64, quiet bool) (scanResult, error) {
 	var result scanResult
 	tsBuffer := make([]byte, packetSize)
 	tsPacket := NewTsPacket()
@@ -227,6 +236,9 @@ func scanPrograms(reader io.Reader, pos *int64, analyzers []*programAnalyzer, co
 			continuity.Add(*event)
 			result.continuityEvents = append(result.continuityEvents, *event)
 		}
+		// Before the analyzers and PSI tracking see the packet, which may stop
+		// a program or move a PMT.
+		trust.observe(tsPacket, *pos, analyzers, psi)
 		for _, analyzer := range analyzers {
 			if *pos >= analyzer.start && !analyzer.stopped {
 				analyzer.observe(tsPacket, *pos, continuityResult.Duplicate)
@@ -316,7 +328,9 @@ func (a *programAnalyzer) observe(tsPacket *TsPacket, pos int64, duplicate bool)
 	pes, exist := a.pesMap[pid]
 	// PCR_PID 0 (unset) and 0x1FFF ("no PCR") are not real carrier PIDs, so no
 	// PCR-based analysis (bitrate, jitter, timestamps) runs against them.
-	if tsPacket.HasAf() && tsPacket.adaptationField.PcrFlag() && a.pcrPid != 0 && a.pcrPid != nullPidValue && pid == a.pcrPid {
+	// The PCR of a packet with a transport error is not trusted; a scrambled
+	// packet's adaptation field is clear, so its PCR is used.
+	if tsPacket.HasAf() && tsPacket.adaptationField.PcrFlag() && !tsPacket.transportError() && a.pcrPid != 0 && a.pcrPid != nullPidValue && pid == a.pcrPid {
 		// The first PCR after a PCR_PID change is handled as a discontinuity, so
 		// no interval, jitter estimate or bitrate window spans the change.
 		pcr, discontinuity := tsPacket.Pcr(), tsPacket.adaptationField.DiscontinuityIndicator() || a.pcrBreak
@@ -348,6 +362,18 @@ func (a *programAnalyzer) observe(tsPacket *TsPacket, pos int64, duplicate bool)
 		a.hasLastPcr = true
 	}
 	if !exist || duplicate {
+		return
+	}
+	if tsPacket.payloadUntrusted() {
+		// The payload is not used. It may continue the PES packet in progress
+		// or start the next one, so the PES in progress ends here and is parsed
+		// from the trusted packets received so far (a header they leave
+		// incomplete fails to parse, so nothing is read from later packets).
+		// The PID then waits for its next unaffected payload_unit_start.
+		if pes != nil {
+			a.completePes(pes)
+			a.pesMap[pid] = nil
+		}
 		return
 	}
 	if pes == nil && !tsPacket.PayloadUnitStartIndicator() {

@@ -22,6 +22,10 @@ bits.
   jumps, or DTS later than PTS.
 - **Continuity counters** of every PID, and the **PAT/PMT layout** of the range,
   including tables split into sections and version changes.
+- **Transport errors and scrambled packets** per PID: affected packets are
+  counted; the PSI/PES payload of both is kept out of the analysis, and so is
+  the PCR of a packet marked with `transport_error_indicator`, while a
+  scrambled packet's PCR (in its clear adaptation field) is still used.
 
 Results are text for people, or JSON with a published schema for CI and other
 programs. See [CLI usage][docs-cli-usage].

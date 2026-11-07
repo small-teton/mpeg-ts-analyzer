@@ -29,6 +29,36 @@
       "actual_cc": 6
     }
   ],
+  "transport_errors": {
+    "status": "affected",
+    "packet_count": 1,
+    "excluded_packet_count": 0,
+    "first_offset_bytes": 1316,
+    "pids": [
+      {
+        "pid": "0x1fff",
+        "label": "null",
+        "packet_count": 1,
+        "excluded_packet_count": 0,
+        "first_offset_bytes": 1316
+      }
+    ]
+  },
+  "scrambled_packets": {
+    "status": "affected",
+    "packet_count": 1,
+    "excluded_packet_count": 0,
+    "first_offset_bytes": 2068,
+    "pids": [
+      {
+        "pid": "0x1fff",
+        "label": "null",
+        "packet_count": 1,
+        "excluded_packet_count": 0,
+        "first_offset_bytes": 2068
+      }
+    ]
+  },
   "programs": [
     {
       "program_number": 1,

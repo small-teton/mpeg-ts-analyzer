@@ -12,7 +12,7 @@ import (
 )
 
 // The all-findings fixtures are a short constant-rate stream with one
-// deliberate defect per Overview compliance card
+// deliberate defect per Overview transport-health check
 // (tools/generate_all_findings). Packet n is slot n of the generator.
 var allFindingsFixtures = []struct {
 	path       string
@@ -23,25 +23,27 @@ var allFindingsFixtures = []struct {
 	{"../sample_data/sample_192byte_all_findings.ts", 192, true},
 }
 
-// cardStatuses returns the statuses of the five Overview cards of the only
+// cardStatuses returns the statuses of the seven Overview checks of the only
 // program: max PCR interval, PCR-PTS/DTS gap, PTS/DTS anomalies, continuity
-// counter and PCR jitter.
-func cardStatuses(t *testing.T, report RangeAnalysisReport) [5]string {
+// counter, PCR jitter, transport errors and scrambled packets.
+func cardStatuses(t *testing.T, report RangeAnalysisReport) [7]string {
 	t.Helper()
-	if report.Status != "complete" || len(report.Programs) != 1 || report.ContinuityCounter == nil {
+	if report.Status != "complete" || len(report.Programs) != 1 || report.ContinuityCounter == nil || report.TransportErrors == nil || report.ScrambledPackets == nil {
 		t.Fatalf("unexpected analysis: %s", toJSON(t, report))
 	}
 	p := report.Programs[0]
-	return [5]string{
+	return [7]string{
 		p.Compliance.MaxPCRInterval.Status,
 		p.Compliance.MaxPCRPTSDTSGap.Status,
 		p.TimestampAnomalies.Status,
 		report.ContinuityCounter.Status,
 		p.PCRJitter.Status,
+		report.TransportErrors.Status,
+		report.ScrambledPackets.Status,
 	}
 }
 
-var allFindingsStatuses = [5]string{"ng", "ng", "anomalies", "errors", "ng"}
+var allFindingsStatuses = [7]string{"ng", "ng", "anomalies", "errors", "ng", "affected", "affected"}
 
 func TestAllFindingsFixtures(t *testing.T) {
 	for _, fixture := range allFindingsFixtures {
@@ -98,6 +100,20 @@ func TestAllFindingsFixtures(t *testing.T) {
 		if d := jitter.Delivery; d.Assessment != "constant" || d.WindowCount != 2 || *d.AverageRateBPS != 75_200 || *d.MinWindowRateBPS != 75_200 ||
 			*d.MaxWindowRateBPS != 75_200 || *d.MaxDeviationPercent != 0 || jitter.Reason != "" {
 			t.Errorf("%s: PCR jitter delivery %s", fixture.path, toJSON(t, jitter))
+		}
+		// Transport errors and scrambling: the null packets in slots 7 and 11,
+		// whose payload the analysis never reads.
+		for _, tt := range []struct {
+			got  *ReportAffectedPackets
+			slot int64
+		}{{report.TransportErrors, 7}, {report.ScrambledPackets, 11}} {
+			first := at(tt.slot)
+			want := &ReportAffectedPackets{Status: "affected", PacketCount: 1, FirstOffsetBytes: &first, PIDs: []ReportAffectedPID{
+				{PID: "0x1fff", Label: "null", PacketCount: 1, FirstOffsetBytes: first},
+			}}
+			if !jsonEqual(t, tt.got, want) {
+				t.Errorf("%s: slot %d: %s", fixture.path, tt.slot, toJSON(t, tt.got))
+			}
 		}
 	}
 }
@@ -156,8 +172,8 @@ func TestAllFindingsFixtureGenerator(t *testing.T) {
 // Leaving one defect out turns only its own card OK, so no defect depends on
 // another to produce its finding; without any defect every card is OK.
 func TestAllFindingsDefectsAreIndependent(t *testing.T) {
-	ok := [5]string{"ok", "ok", "ok", "ok", "ok"}
-	for card, defect := range []string{"pcr-interval", "pcr-pts-gap", "pts-backward", "cc-gap", "pcr-jitter"} {
+	ok := [7]string{"ok", "ok", "ok", "ok", "ok", "ok", "ok"}
+	for card, defect := range []string{"pcr-interval", "pcr-pts-gap", "pts-backward", "cc-gap", "pcr-jitter", "tei", "scrambled"} {
 		want := allFindingsStatuses
 		want[card] = "ok"
 		report, err := decodeRangeAnalysis(t, generateAllFindings(t, "-omit", defect), options.Options{})

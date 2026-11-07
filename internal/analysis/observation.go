@@ -30,3 +30,29 @@ type ContinuityError struct {
 	PID    uint16
 	Offset int64
 }
+
+// TransportError is one packet with transport_error_indicator set, on any PID
+// including the null PID. The PID is the one decoded from the packet's own
+// header, which the error may have corrupted. Offset is the byte offset of the
+// packet. Excluded reports that the parser left data of the packet out of the
+// analysis: the packet is on a PID whose payload or PCR the analysis reads at
+// that point (the PAT, the PMT or PCR_PID of an analyzed program, or one of its
+// elementary streams).
+type TransportError struct {
+	PID      uint16
+	Offset   int64
+	Excluded bool
+}
+
+// Scrambled is one packet whose transport_scrambling_control is not zero, on
+// any PID including the null PID. Offset is the byte offset of the packet.
+// Excluded reports that the parser left the packet's payload out of the
+// analysis: the packet carries a payload on a PID whose payload the analysis
+// reads at that point (the PAT, the PMT of an analyzed program or one of its
+// elementary streams). The header and adaptation field of a scrambled packet
+// are not scrambled, so its PCR is still used and is not reported as excluded.
+type Scrambled struct {
+	PID      uint16
+	Offset   int64
+	Excluded bool
+}
