@@ -201,7 +201,8 @@ func TestTransportErrorsText(t *testing.T) {
 		"  PID 0x1000 (PMT) : 1 packet, first at 0x00002e44, 1 excluded",
 		"",
 	}, "\n")
-	if !strings.HasSuffix(out, want) {
+	// The PES header and PTS repetition summary follows.
+	if !strings.Contains(out, want+"-----------------------------\nPES Headers: ") {
 		t.Errorf("text summary:\n%s\nwant suffix:\n%s", out, want)
 	}
 
@@ -221,7 +222,7 @@ func TestTransportErrorsText(t *testing.T) {
 		}
 	})
 	want = "Transport Error Indicator: no packets with transport_error_indicator set\nTransport Scrambling: no scrambled packets\n"
-	if !strings.HasSuffix(out, want) {
+	if !strings.Contains(out, want+"-----------------------------\nPES Headers: ") {
 		t.Errorf("healthy: %s", out)
 	}
 }

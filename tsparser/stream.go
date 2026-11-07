@@ -290,6 +290,7 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 			report.Compliance = reportCompliance(analysis.compliance)
 			report.ContinuityCounter = reportContinuity(analysis.continuity)
 			report.TransportErrors, report.ScrambledPackets = reportTransportTrust(analysis.trust)
+			report.PESHeaders, report.PTSRepetition = reportPESHealth(analysis.pes)
 			report.TimestampAnomalies = reportAnomalies(analysis.anomalies)
 			if analysis.jitter != nil {
 				report.PCRJitter = reportJitter(analysis.jitter)

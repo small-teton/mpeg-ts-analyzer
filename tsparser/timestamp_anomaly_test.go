@@ -195,3 +195,22 @@ func TestSignedDelta(t *testing.T) {
 		}
 	}
 }
+
+// A step over PES packets without PTS/DTS (or a malformed header, untrusted
+// payload or a continuity error) is not judged as a jump: PTS repetition
+// measures it. A backward step still is, and the next step is judged again.
+func TestAnomalyUntimedStepIsNotAGap(t *testing.T) {
+	a := NewTimestampAnomaly()
+	for i := uint64(0); i < 3; i++ {
+		feed(a, 0x100, int64(i), 2, i*frame, 0)
+	}
+	feed(a, 0x100, 3, 0, 0, 0)
+	feed(a, 0x100, 4, 2, 30*frame, 0) // 1.1 s later, after an untimed PES
+	a.markUntimed(0x200)              // no state yet: nothing to mark
+	a.markUntimed(0x100)
+	feed(a, 0x100, 5, 2, 29*frame, 0) // backward
+	feed(a, 0x100, 6, 2, 60*frame, 0) // a jump again
+	if len(a.order) != 2 || a.order[0].kind != kindBackward || a.order[1].kind != kindGap {
+		t.Errorf("anomalies = %v %v", a.order, a.first)
+	}
+}

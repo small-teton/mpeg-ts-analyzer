@@ -53,6 +53,14 @@
       "$ref": "#/$defs/affectedPackets",
       "description": "Packets with a non-zero transport_scrambling_control, over every packet of the range. Present whenever the analysis ran (status complete)."
     },
+    "pes_headers": {
+      "$ref": "#/$defs/pesHeaders",
+      "description": "PES header checks of every elementary stream of the selected program. Present whenever the analysis ran (status complete)."
+    },
+    "pts_repetition": {
+      "$ref": "#/$defs/ptsRepetition",
+      "description": "Intervals between PES packets carrying a PTS on each video and audio stream of the selected program. Present whenever the analysis ran (status complete)."
+    },
     "timestamp_anomalies": {
       "$ref": "#/$defs/timestampAnomalies"
     },
@@ -349,6 +357,265 @@
           "description": "Affected PIDs in numeric order; empty when packet_count is 0.",
           "items": {
             "$ref": "#/$defs/affectedPID"
+          }
+        }
+      }
+    },
+    "pesHeaderError": {
+      "type": "object",
+      "required": [
+        "kind",
+        "count",
+        "first_offset_bytes"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: truncated, bad_start_code, bad_flags, inconsistent_length, bad_marker_bits."
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "first_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Byte offset of the packet that starts the first PES with this problem (for M2TS, of its TP_extra_header)."
+        }
+      }
+    },
+    "pesHeaderPID": {
+      "type": "object",
+      "required": [
+        "program_number",
+        "pid",
+        "stream_type",
+        "label",
+        "status",
+        "checked_count",
+        "error_count",
+        "unchecked_count",
+        "errors"
+      ],
+      "properties": {
+        "program_number": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "pid": {
+          "$ref": "#/$defs/pid"
+        },
+        "stream_type": {
+          "$ref": "#/$defs/streamType",
+          "description": "The last stream_type the PMT announced for the PID."
+        },
+        "label": {
+          "type": "string",
+          "description": "video, audio or stream_type 0xNN, from stream_type."
+        },
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: ok (every checked header is valid), errors (at least one header failed a check), insufficient_data (no header was checked)."
+        },
+        "reason": {
+          "$ref": "#/$defs/reasonCode",
+          "description": "Present with insufficient_data. Current values: no_pes, untrusted_payload, incomplete_headers."
+        },
+        "checked_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Headers checked, valid or not."
+        },
+        "error_count": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "unchecked_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "PES packets whose header was not complete when the data ended (untrusted payload, a PMT change or the end of the range); not counted as errors."
+        },
+        "first_error_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Offset of the first malformed header; absent when error_count is 0."
+        },
+        "errors": {
+          "type": "array",
+          "description": "Header problems found, in the order of kind listed above.",
+          "items": {
+            "$ref": "#/$defs/pesHeaderError"
+          }
+        }
+      }
+    },
+    "pesHeaders": {
+      "type": "object",
+      "required": [
+        "status",
+        "checked_count",
+        "error_count",
+        "unchecked_count",
+        "errors",
+        "pids"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: ok (every checked header is valid), errors (at least one header failed a check), insufficient_data (no header was checked)."
+        },
+        "reason": {
+          "$ref": "#/$defs/reasonCode",
+          "description": "Present with insufficient_data. Current values: no_pes, untrusted_payload, incomplete_headers."
+        },
+        "checked_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Headers checked, valid or not."
+        },
+        "error_count": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "unchecked_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "PES packets whose header was not complete when the data ended (untrusted payload, a PMT change or the end of the range); not counted as errors."
+        },
+        "first_error_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Offset of the first malformed header; absent when error_count is 0."
+        },
+        "errors": {
+          "type": "array",
+          "description": "Header problems found, in the order of kind listed above.",
+          "items": {
+            "$ref": "#/$defs/pesHeaderError"
+          }
+        },
+        "pids": {
+          "type": "array",
+          "description": "Every elementary stream of the analyzed programs, by program_number and PID.",
+          "items": {
+            "$ref": "#/$defs/pesHeaderPID"
+          }
+        }
+      }
+    },
+    "ptsRepetitionPID": {
+      "type": "object",
+      "required": [
+        "program_number",
+        "pid",
+        "stream_type",
+        "label",
+        "status",
+        "pts_count",
+        "interval_count",
+        "exceeded_count"
+      ],
+      "properties": {
+        "program_number": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "pid": {
+          "$ref": "#/$defs/pid"
+        },
+        "stream_type": {
+          "$ref": "#/$defs/streamType",
+          "description": "The last stream_type the PMT announced for the PID."
+        },
+        "label": {
+          "type": "string",
+          "description": "video, audio or stream_type 0xNN, from stream_type."
+        },
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: ok (at least one interval measured, none above the limit), ng (an interval exceeded the limit), insufficient_data (nothing could be measured), skipped (the stream_type is not a video or audio type)."
+        },
+        "reason": {
+          "$ref": "#/$defs/reasonCode",
+          "description": "Present with insufficient_data or skipped. Current values: no_pes, untrusted_payload, malformed_headers, no_pcr_timing, no_pts, single_pts, not_video_or_audio; for the totals also no_video_or_audio."
+        },
+        "pts_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Valid PES headers carrying a PTS."
+        },
+        "interval_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Intervals measured between two PES packets carrying a PTS."
+        },
+        "max_interval_ms": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Largest interval: measured, or a lower bound above the limit (PES packets without a PTS for that long). Absent when there is none."
+        },
+        "max_interval_start_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Offset of the PES packet that starts the largest interval."
+        },
+        "max_interval_end_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Offset of the PES packet that ends the largest interval."
+        },
+        "exceeded_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Intervals above the limit."
+        },
+        "first_exceeded_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Offset of the PES packet that ends the first interval above the limit; absent when exceeded_count is 0."
+        }
+      }
+    },
+    "ptsRepetition": {
+      "type": "object",
+      "required": [
+        "limit_ms",
+        "status",
+        "pts_count",
+        "interval_count",
+        "exceeded_count",
+        "pids"
+      ],
+      "properties": {
+        "limit_ms": {
+          "type": "number",
+          "description": "700: ISO/IEC 13818-1 clause 2.7.4 and ETSI TR 101 290 indicator 2.5 (PTS_error)."
+        },
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: ok (at least one interval measured, none above the limit), ng (an interval exceeded the limit), insufficient_data (nothing could be measured), skipped (the stream_type is not a video or audio type)."
+        },
+        "reason": {
+          "$ref": "#/$defs/reasonCode",
+          "description": "Present with insufficient_data or skipped. Current values: no_pes, untrusted_payload, malformed_headers, no_pcr_timing, no_pts, single_pts, not_video_or_audio; for the totals also no_video_or_audio."
+        },
+        "pts_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Valid PES headers carrying a PTS."
+        },
+        "interval_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Intervals measured between two PES packets carrying a PTS."
+        },
+        "max_interval_ms": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Largest interval: measured, or a lower bound above the limit (PES packets without a PTS for that long). Absent when there is none."
+        },
+        "max_interval_start_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Offset of the PES packet that starts the largest interval."
+        },
+        "max_interval_end_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Offset of the PES packet that ends the largest interval."
+        },
+        "exceeded_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Intervals above the limit."
+        },
+        "first_exceeded_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Offset of the PES packet that ends the first interval above the limit; absent when exceeded_count is 0."
+        },
+        "pids": {
+          "type": "array",
+          "description": "Every elementary stream of the analyzed programs, by program_number and PID.",
+          "items": {
+            "$ref": "#/$defs/ptsRepetitionPID"
           }
         }
       }

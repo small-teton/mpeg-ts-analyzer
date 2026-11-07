@@ -205,14 +205,16 @@ func TestPesParseInvalidStartCode(t *testing.T) {
 	}
 }
 
-func TestPesParseSpecialStreamIdInvalidLength(t *testing.T) {
-	// stream_id=0xBC with pes_packet_length past the buffered data must error,
-	// not panic while slicing.
-	data := []byte{0x00, 0x00, 0x01, 0xBC, 0x00, 0x64} // length=100, no payload
-	pes := NewPes()
-	pes.Append(data)
-	if err := pes.Parse(); err == nil {
-		t.Error("expected error for pes_packet_length past buffer, got nil")
+func TestPesParseSpecialStreamIdIgnoresBodyLength(t *testing.T) {
+	// A stream without an optional header has nothing after
+	// PES_packet_length that the header check reads, so a body shorter than
+	// PES_packet_length (the PES was cut off) is not a header problem.
+	for _, streamID := range []byte{0xBC, 0xBE, 0xBF, 0xF0, 0xF1, 0xF2, 0xF8, 0xFF} {
+		pes := NewPes()
+		pes.Append([]byte{0x00, 0x00, 0x01, streamID, 0x00, 0x64}) // length=100, no payload
+		if err := pes.Parse(); err != nil {
+			t.Errorf("stream_id 0x%02X: Parse() = %v, want nil", streamID, err)
+		}
 	}
 }
 
@@ -601,32 +603,5 @@ func TestPesAppendRetainsAtMostTheHeader(t *testing.T) {
 	pes.Initialize(0x100, 0, 0, 0, false)
 	if len(pes.buf) != 0 || pes.received != 0 {
 		t.Errorf("after Initialize len(buf) = %d, received = %d", len(pes.buf), pes.received)
-	}
-}
-
-func TestPesParseSpecialStreamIdBeyondRetainedBytes(t *testing.T) {
-	// pes_packet_length of a stream without an optional header is checked
-	// against the bytes received, not only the bytes retained.
-	const length = 1000
-	header := []byte{0x00, 0x00, 0x01, 0xBF, byte(length >> 8), byte(length & 0xFF)}
-	for _, tt := range []struct {
-		name     string
-		body     int
-		wantFail bool
-	}{
-		{name: "complete", body: length},
-		{name: "one byte short", body: length - 1, wantFail: true},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			pes := NewPes()
-			pes.Append(header)
-			pes.Append(make([]byte, tt.body))
-			if len(pes.buf) != maxPesHeaderSize {
-				t.Fatalf("len(buf) = %d, want %d", len(pes.buf), maxPesHeaderSize)
-			}
-			if err := pes.Parse(); (err != nil) != tt.wantFail {
-				t.Errorf("Parse() error = %v, want failure %v", err, tt.wantFail)
-			}
-		})
 	}
 }

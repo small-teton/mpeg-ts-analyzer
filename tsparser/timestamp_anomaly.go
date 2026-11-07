@@ -54,6 +54,9 @@ type tsState struct {
 	last    uint64 // last decode timestamp (DTS, or PTS when no DTS)
 	lastPos int64  // byte position of that timestamp's PES
 	minStep int64  // smallest positive step seen (~frame interval), 0 until known
+	// untimed is set when timestamps may be missing after the last one (see
+	// markUntimed), so the next step is not judged as a jump.
+	untimed bool
 }
 
 type anomalyKey struct {
@@ -88,9 +91,11 @@ func NewTimestampAnomaly() *TimestampAnomaly {
 	}
 }
 
-// Check examines one successfully parsed PES that carries PTS/DTS.
+// Check examines one successfully parsed PES. A PES without PTS/DTS only
+// marks that the next step of its PID spans uncoded timestamps.
 func (a *TimestampAnomaly) Check(p *Pes) {
 	if p.ptsDtsFlags != 2 && p.ptsDtsFlags != 3 {
+		a.markUntimed(p.pid)
 		return
 	}
 
@@ -131,16 +136,27 @@ func (a *TimestampAnomaly) Check(p *Pes) {
 			"%s went backward at 0x%08x (%s) after 0x%08x (%s)",
 			label, p.pos, stampMs(decode), st.lastPos, stampMs(st.last)))
 	default:
-		if st.minStep > 0 && raw > int64(tsGapRatio)*st.minStep && raw-st.minStep > tsGapMinTicks {
+		if !st.untimed && st.minStep > 0 && raw > int64(tsGapRatio)*st.minStep && raw-st.minStep > tsGapMinTicks {
 			a.add(p.pid, p.pos, kindGap, fmt.Sprintf(
 				"%s jumped forward %s at 0x%08x (%s) after 0x%08x (%s), expected ~%s",
 				label, durTicks(raw), p.pos, stampMs(decode), st.lastPos, stampMs(st.last), durTicks(st.minStep)))
 		}
-		if raw > 0 && (st.minStep == 0 || raw < st.minStep) {
+		if !st.untimed && raw > 0 && (st.minStep == 0 || raw < st.minStep) {
 			st.minStep = raw
 		}
 	}
-	st.last, st.lastPos = decode, p.pos
+	st.last, st.lastPos, st.untimed = decode, p.pos, false
+}
+
+// markUntimed records that timestamps of pid may be missing from here on: a
+// PES without PTS/DTS, a malformed or incomplete header, untrusted payload or
+// a continuity error. The next step on the PID is then not judged as a forward
+// jump, which would report the same cause a second time; backward steps,
+// wraparounds and DTS after PTS are still reported.
+func (a *TimestampAnomaly) markUntimed(pid uint16) {
+	if st := a.states[pid]; st != nil {
+		st.untimed = true
+	}
 }
 
 // Dump prints the anomaly report, or nothing when the stream is clean.

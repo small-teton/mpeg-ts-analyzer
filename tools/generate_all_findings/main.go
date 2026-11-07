@@ -18,7 +18,7 @@
 // filler. PCR and PTS values follow the slot clock (10 s + slot × 20 ms), so
 // byte position is an exact time proxy.
 //
-// Seven deliberate defects, each of which can be left out with -omit:
+// Nine deliberate defects, each of which can be left out with -omit:
 //
 //   - pcr-interval: the video packets in slots 22, 24 and 26 carry no PCR, so
 //     the PCRs in slots 20 and 28 are 160 ms apart (limit 100 ms).
@@ -36,6 +36,11 @@
 //     2 (even key), which ISO/IEC 13818-1 does not allow on the null PID.
 //     Both are on the null PID, whose payload the analysis never reads, so
 //     they leave every other result unchanged.
+//   - pes-header: the last marker_bit of the video PTS in slot 106 is 0, so
+//     the header is malformed and its timestamp is not used.
+//   - pts-repetition: the audio PES packets in slots 65 to 97 carry no PTS,
+//     so the audio PTS of slot 61 is followed by that of slot 101, 800 ms
+//     later (limit 700 ms).
 //
 // With -m2ts, each packet gets a 4-byte TP_extra_header whose
 // arrival_time_stamp advances by one 20 ms slot per packet, matching the
@@ -75,9 +80,11 @@ const (
 	defectPcrJitter   = "pcr-jitter"
 	defectTei         = "tei"
 	defectScrambled   = "scrambled"
+	defectPesHeader   = "pes-header"
+	defectPtsRepeat   = "pts-repetition"
 )
 
-var defects = []string{defectPcrInterval, defectPcrPtsGap, defectPtsBackward, defectCcGap, defectPcrJitter, defectTei, defectScrambled}
+var defects = []string{defectPcrInterval, defectPcrPtsGap, defectPtsBackward, defectCcGap, defectPcrJitter, defectTei, defectScrambled, defectPesHeader, defectPtsRepeat}
 
 func crc32MPEG(data []byte) uint32 {
 	crc := uint32(0xFFFFFFFF)
@@ -169,13 +176,18 @@ func ptsBytes(pts uint64) []byte {
 	}
 }
 
-// pesPacket is one TS packet holding a whole PES packet with a PTS, padded
-// with adaptation-field stuffing. pcr is written when hasPcr is set.
-func pesPacket(pid uint16, cc byte, streamID byte, pts uint64, pcr uint64, hasPcr bool) []byte {
+// pesPacket is one TS packet holding a whole PES packet, padded with
+// adaptation-field stuffing. fields are the optional PES header fields: a PTS
+// (5 bytes) or none. pcr is written when hasPcr is set.
+func pesPacket(pid uint16, cc byte, streamID byte, fields []byte, pcr uint64, hasPcr bool) []byte {
 	pes := []byte{0x00, 0x00, 0x01, streamID}
-	pesLength := 3 + 5 + esPayload
-	pes = append(pes, byte(pesLength>>8), byte(pesLength), 0x80, 0x80, 0x05)
-	pes = append(pes, ptsBytes(pts)...)
+	pesLength := 3 + len(fields) + esPayload
+	ptsDtsFlags := byte(0x80)
+	if len(fields) == 0 {
+		ptsDtsFlags = 0x00
+	}
+	pes = append(pes, byte(pesLength>>8), byte(pesLength), 0x80, ptsDtsFlags, byte(len(fields)))
+	pes = append(pes, fields...)
 	for i := range esPayload {
 		pes = append(pes, byte(0xA0+i))
 	}
@@ -222,7 +234,11 @@ func generate(omit map[string]bool) []byte {
 			if with(defectPtsBackward) && slot == 46 {
 				pts = slotPts(slot-2, 100-40)
 			}
-			p = pesPacket(videoPid, videoCC, 0xE0, pts, pcr, hasPcr)
+			fields := ptsBytes(pts)
+			if with(defectPesHeader) && slot == 106 {
+				fields[4] &^= 0x01 // last PTS marker_bit
+			}
+			p = pesPacket(videoPid, videoCC, 0xE0, fields, pcr, hasPcr)
 			videoCC++
 		case slot%4 == 1: // audio, every 80 ms
 			if with(defectCcGap) && slot == 25 {
@@ -232,7 +248,11 @@ func generate(omit map[string]bool) []byte {
 			if with(defectPcrPtsGap) {
 				offsetMs = 1200
 			}
-			p = pesPacket(audioPid, audioCC, 0xC0, slotPts(slot, offsetMs), 0, false)
+			fields := ptsBytes(slotPts(slot, offsetMs))
+			if with(defectPtsRepeat) && slot >= 65 && slot <= 97 {
+				fields = nil
+			}
+			p = pesPacket(audioPid, audioCC, 0xC0, fields, 0, false)
 			audioCC++
 		default:
 			p = nullPacket()

@@ -268,6 +268,9 @@ func summarySchemaCases() []schemaCase {
 				"/status": "complete", "/reason": absent{}, "/error": absent{}, "/selected_program_number": 1,
 				"/transport_errors/status": "ok", "/transport_errors/first_offset_bytes": absent{}, "/transport_errors/pids": []any{},
 				"/scrambled_packets/status": "ok", "/scrambled_packets/packet_count": 0,
+				"/pes_headers/status": "ok", "/pes_headers/reason": absent{}, "/pes_headers/first_error_offset_bytes": absent{}, "/pes_headers/errors": []any{},
+				"/pts_repetition/status": "ok", "/pts_repetition/limit_ms": 700, "/pts_repetition/first_exceeded_offset_bytes": absent{},
+				"/pts_repetition/pids/0/reason": absent{}, "/pts_repetition/pids/0/max_interval_ms": present{},
 				"/pcr_jitter": absent{}, "/bitrate": absent{}, "/psi_transitions": absent{},
 				"/warnings": []any{}, "/input/offset_bytes": 0, "/input/limit_bytes": absent{},
 				"/continuity_counter/total_error_count": 0, "/continuity_counter/pids": []any{},
@@ -323,6 +326,16 @@ func summarySchemaCases() []schemaCase {
 			},
 		},
 		{
+			name: "complete with PES header errors and an excessive PTS interval", schema: summarySchemaFile, path: fixedPath(pesHealthFixtures[0].path),
+			want: map[string]any{
+				"/status": "complete", "/pes_headers/status": "errors", "/pes_headers/error_count": 8, "/pes_headers/errors/4/kind": "bad_marker_bits",
+				"/pes_headers/pids/2/first_error_offset_bytes": 27 * 188, "/pes_headers/pids/4/status": "insufficient_data", "/pes_headers/pids/4/reason": "no_pes",
+				"/pts_repetition/status": "ng", "/pts_repetition/max_interval_ms": 1080, "/pts_repetition/first_exceeded_offset_bytes": 152 * 188,
+				"/pts_repetition/pids/2/status": "skipped", "/pts_repetition/pids/2/reason": "not_video_or_audio", "/pts_repetition/pids/2/max_interval_ms": absent{},
+				"/pts_repetition/pids/3/reason": "single_pts",
+			},
+		},
+		{
 			name: "complete for a selected program", schema: summarySchemaFile, path: fixedPath(twoPrograms188Path),
 			opts: options.Options{Program: 2},
 			want: map[string]any{"/status": "complete", "/selected_program_number": 2, "/programs/0/program_number": 2},
@@ -373,7 +386,7 @@ func summarySchemaCases() []schemaCase {
 			},
 			want: map[string]any{
 				"/status": "incomplete", "/reason": "end_of_input_before_complete_analysis", "/error": absent{},
-				"/programs": []any{}, "/compliance": absent{}, "/transport_errors": absent{}, "/scrambled_packets": absent{},
+				"/programs": []any{}, "/compliance": absent{}, "/transport_errors": absent{}, "/scrambled_packets": absent{}, "/pes_headers": absent{}, "/pts_repetition": absent{},
 			},
 		},
 		{
@@ -423,6 +436,7 @@ func analysisSchemaCases() []schemaCase {
 			want: map[string]any{
 				"/status": "complete", "/programs/0/pcr_jitter/status": "ng", "/programs/0/pcr_jitter/delivery/assessment": "constant",
 				"/transport_errors/status": "affected", "/scrambled_packets/pids/0/pid": "0x1fff",
+				"/pes_headers/status": "errors", "/pts_repetition/status": "ng",
 				"/continuity_events/0/expected_cc": 5, "/programs/0/series/timestamp_events/0": present{},
 			},
 		},
@@ -431,6 +445,13 @@ func analysisSchemaCases() []schemaCase {
 			want: map[string]any{
 				"/status": "complete", "/transport_errors/status": "data_excluded", "/transport_errors/packet_count": 6,
 				"/scrambled_packets/excluded_packet_count": 5, "/scrambled_packets/first_offset_bytes": 7 * 192,
+			},
+		},
+		{
+			name: "complete with PES header errors and an excessive PTS interval in M2TS", schema: analysisSchemaFile, path: fixedPath(pesHealthFixtures[1].path), opts: analysis,
+			want: map[string]any{
+				"/status": "complete", "/pes_headers/first_error_offset_bytes": 27 * 192, "/pes_headers/unchecked_count": 0,
+				"/pts_repetition/max_interval_start_offset_bytes": 98 * 192, "/pts_repetition/pids/0/status": "ng", "/pts_repetition/pids/4/reason": "no_pes",
 			},
 		},
 		{
@@ -461,7 +482,7 @@ func analysisSchemaCases() []schemaCase {
 			}),
 			want: map[string]any{
 				"/status": "incomplete", "/reason": "no_program_analyzed", "/analysis_start_offset_bytes": absent{},
-				"/continuity_counter": absent{}, "/transport_errors": absent{}, "/scrambled_packets": absent{},
+				"/continuity_counter": absent{}, "/transport_errors": absent{}, "/scrambled_packets": absent{}, "/pes_headers": absent{}, "/pts_repetition": absent{},
 			},
 		},
 		{
