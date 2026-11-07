@@ -11,9 +11,10 @@ Packages for macOS, Linux and Windows are described in
 
 [![The four GUI views: Overview and Timeline on the top row, Bitrate and Packets on the bottom row](../images/gui-tabs.png)](../images/gui-tabs.png)
 
-- **Overview** brings the detected program layout, stream properties, timing
-  compliance verdicts, continuity errors, PCR jitter, and per-stream bitrate
-  into one screen.
+- **Overview** brings the detected program layout, stream properties, the
+  transport-health checks (timing, PES timestamps, continuity), and
+  per-stream bitrate into one screen, with a full-page explanation of every
+  check.
 - **Timeline** plots the PCR interval and the PCR → PTS/DTS gap of every
   elementary stream against their limits, with continuity and PAT/PMT events.
 - **Bitrate** shows the bitrate of each PID over the range, the PCR jitter and
@@ -23,24 +24,45 @@ Packages for macOS, Linux and Windows are described in
 
 ## Read the Overview verdicts
 
-Overview shows five compliance cards for the selected program. Each card has a
-title, the verdict the CLI reported (`OK`, `NG`, `WARNING`, `ANOMALIES`,
-`ERRORS` or `SKIPPED`), the value and a short note. The **ⓘ** button next to
-the title opens an explanation of the card: what it measures, whether it covers
-the selected program or the whole multiplex, what the value means, the
-threshold behind every verdict, why it can be skipped, its limitations, and a
-link to the Timeline or Bitrate view with the details. The button can be
-reached with Tab and opened with Enter or Space; Escape, the close button or a
-click outside the window closes it. Opening it does not change the selected
-program or the analysis.
+Overview shows a **Transport health** table for the selected program. Each
+row is one check with the value and the verdict the CLI reported (`OK`, `NG`,
+`WARNING`, `ANOMALIES`, `ERRORS`, `NOT ASSESSABLE` or `SKIPPED`), grouped
+under categories that are always expanded:
 
-| Card | Scope | Verdicts |
-|---|---|---|
-| Max PCR interval | selected program (its PCR PID) | `OK` up to 100 ms, `NG` above |
-| PCR → PTS/DTS gap | selected program | `OK` up to 1000 ms, `NG` above |
-| PTS/DTS anomalies | selected program, per PID | `OK` or `ANOMALIES` |
-| Continuity counter | whole multiplex | `OK` or `ERRORS` |
-| PCR jitter | selected program (its PCR PID) | `OK` within ±500 ns, `WARNING` within ±25 µs, `NG` beyond, when delivery is constant; otherwise `NOT ASSESSABLE` |
+| Category | Check | Applies to | Verdicts |
+|---|---|---|---|
+| Timing | Max PCR interval | selected program (its PCR PID) | `OK` up to 100 ms, `NG` above |
+| Timing | PCR jitter estimate | selected program (its PCR PID) | `OK` within ±500 ns, `WARNING` within ±25 µs, `NG` beyond, when delivery is constant; otherwise `NOT ASSESSABLE` |
+| PES / Timestamps | PCR → PTS/DTS gap | selected program | `OK` up to 1000 ms, `NG` above |
+| PES / Timestamps | PTS/DTS anomalies | selected program, per PID | `OK` or `ANOMALIES` |
+| Integrity | Continuity counter | whole multiplex | `OK` or `ERRORS` |
+
+The table always lists the checks in this order. The verdict is shown exactly
+as the CLI reported it; a status this GUI does not know is still shown, with a
+tooltip saying so. In a narrow window the check names wrap and the Value,
+Status and Help columns keep their width, so every verdict stays visible
+without scrolling sideways.
+
+The **ⓘ** button in the Help column opens the check's page inside Overview;
+Overview stays selected in the left rail. The button can be reached with Tab
+and opened with Enter or Space. The page shows:
+
+- the **current result** — only what the CLI reported for this check, such as
+  the value, the limit, the program or PCR PID, the number of observations,
+  the first or worst offset, and the reason a check was skipped or not
+  assessed; for PCR jitter also the delivery assessment and its evidence;
+- the check's **findings**, each with **Open packet** when it has an offset
+  and **Show on timeline** when Timeline marks it (a continuity error on a PID
+  of the program);
+- the **verdicts**: every status the check can report and the condition behind
+  it, with the current one highlighted;
+- what the check measures, what it applies to, what the value means, when it
+  is skipped and its limitations;
+- a button that opens Timeline or Bitrate with the details.
+
+**Back to Overview** (or the Overview tile) returns to the table at the same
+scroll position, with the same program selected. Opening or leaving a page
+never runs the analysis again.
 
 PCR jitter is an **estimate**. A file has no packet-arrival timestamps, so the
 byte position stands in for time, which is exact only when the stream is
@@ -49,25 +71,22 @@ from the stream itself — its multiplex rate over 1-second windows must stay
 within ±1 % of the average, and no estimated jitter may reach 1 ms — and grades
 the estimate only when delivery is `constant`. For a `variable` or `unknown`
 delivery, such as a variable-bitrate stream without stuffing or a range shorter
-than about two seconds, the card shows `NOT ASSESSABLE` with the estimate as its
-value and the CLI's reason. Its note always gives the delivery assessment and
-evidence, for example `delivery constant: 2 × 1 s windows, max deviation 0.00 %
-of 75.2 kbit/s`. Even a graded estimate is not a direct hardware or TR 101 290
-measurement.
-
-The cards wrap to more rows as the window narrows, keeping their order, so no
-verdict is hidden off screen.
+than about two seconds, the row shows `NOT ASSESSABLE` with the estimate as its
+value, and the page gives the CLI's reason. The page always gives the delivery
+assessment and its evidence, for example `2 × 1 s windows, max deviation
+0.00 % of 75.2 kbit/s`. Even a graded estimate is not a direct hardware or
+TR 101 290 measurement.
 
 **Findings** lists everything that needs attention, and its count includes
-every card that is not `OK`: each failed check, each PTS/DTS anomaly kind per
-PID, each continuity error (with its offset), PCR jitter marked as an estimate,
-and the analyzer's warnings. Each row shows the verdict, the metric, the reason
-and whether it concerns the selected program or the whole multiplex; selecting
-the metric opens its explanation. A card counts once through its own events,
-not again for its total. A check the CLI skipped, and a PCR jitter estimate the
-CLI found `not_assessable`, are listed under **Unavailable analysis** instead,
-with the CLI's reason; they are not findings. The GUI shows the CLI's verdicts
-as they are and never changes them.
+every check that is not `OK`: each failed check, each PTS/DTS anomaly kind per
+PID, each continuity error (with its offset), PCR jitter, and the analyzer's
+warnings. Each row shows the verdict, the check, the reason and whether it
+concerns the selected program or the whole multiplex; selecting the check
+opens its page. A check counts once through its own events, not again for its
+total. A check the CLI skipped, and a PCR jitter estimate the CLI found
+`not_assessable`, are listed under **Unavailable analysis** instead, with the
+CLI's reason; they are not findings. The GUI shows the CLI's verdicts as they
+are and never changes them.
 
 To see every verdict at once, open the intentionally invalid
 [diagnostic sample](../development/sample-data.md#diagnostic-sample-with-every-overview-finding):

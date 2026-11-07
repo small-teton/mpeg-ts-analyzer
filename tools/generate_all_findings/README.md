@@ -1,6 +1,6 @@
 # All-findings diagnostic fixture
 
-Write a short constant-rate stream in which every Overview compliance card
+Write a short constant-rate stream in which every Overview transport-health check
 reports a problem, then check its defects with TSDuck. The stream is
 **intentionally invalid**: use it to demonstrate and test verdicts, never as an
 example of a compliant stream.
@@ -27,7 +27,7 @@ slot clock (10 s + slot × 20 ms), so the byte position is an exact time proxy.
 The stream is long enough for two 1-second windows of PCR time, so the PCR
 jitter analysis can establish constant delivery. The defects, by packet index:
 
-| Card | Defect | Expected analysis |
+| Check | Defect | Expected analysis |
 |---|---|---|
 | Max PCR interval | packets 22, 24 and 26 carry no PCR | `ng`, 160 ms (limit 100 ms), 54 intervals |
 | PCR → PTS/DTS gap | every audio PTS is 1200 ms ahead of its PCR time | `ng`, 1200 ms (limit 1000 ms), 82 timestamps |
@@ -37,7 +37,7 @@ jitter analysis can establish constant delivery. The defects, by packet index:
 
 `-omit` leaves defects out (`pcr-interval`, `pcr-pts-gap`, `pts-backward`,
 `cc-gap`, `pcr-jitter`, or `all`); `tsparser` tests use it to show that each
-defect turns only its own card non-OK, and that the stream without defects is
+defect turns only its own check non-OK, and that the stream without defects is
 OK everywhere, with constant delivery and zero estimated jitter. They also
 check that the committed files equal the generator output and pin the results
 above for both packet sizes.

@@ -1,5 +1,5 @@
 // Command generate_all_findings writes a short, deterministic transport stream
-// in which every Overview compliance card of the range analysis reports a
+// in which every Overview transport-health check of the range analysis reports a
 // non-OK result. It is intentionally invalid: use it to demonstrate and test
 // the verdicts, never as an example of a compliant stream.
 //
