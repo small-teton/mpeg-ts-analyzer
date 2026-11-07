@@ -551,6 +551,10 @@ func analysisSchemaCases() []schemaCase {
 			},
 		},
 		{
+			name: "complete with mux lead in 204-byte packets", schema: analysisSchemaFile, path: fixedPath(muxLeadFixtures[2].path), opts: analysis,
+			want: map[string]any{"/status": "complete", "/input/packet_size_bytes": 204, "/multiplexing/mux_lead": present{}},
+		},
+		{
 			name: "complete with packet gaps in 204-byte packets", schema: analysisSchemaFile, path: fixedPath(packetGapsFixtures[2].path), opts: analysis,
 			want: map[string]any{"/status": "complete", "/input/packet_size_bytes": 204, "/multiplexing/packet_gaps/pids/0/max_gap_start_offset_bytes": 100 * 204},
 		},

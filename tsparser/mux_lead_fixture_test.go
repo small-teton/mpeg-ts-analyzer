@@ -21,18 +21,20 @@ import (
 var muxLeadFixtures = []struct {
 	path       string
 	packetSize int64
-	m2ts       bool
+	// flag selects the packet size of the generator: none, -m2ts or -trailer.
+	flag string
 }{
-	{"../sample_data/sample_188byte_mux_lead.ts", 188, false},
-	{"../sample_data/sample_192byte_mux_lead.ts", 192, true},
+	{"../sample_data/sample_188byte_mux_lead.ts", 188, ""},
+	{"../sample_data/sample_192byte_mux_lead.ts", 192, "-m2ts"},
+	{"../sample_data/sample_204byte_mux_lead.ts", 204, "-trailer"},
 }
 
 func TestMuxLeadFixtureGenerator(t *testing.T) {
 	for _, fixture := range muxLeadFixtures {
 		path := filepath.Join(t.TempDir(), "fixture.ts")
 		args := []string{"run", "../tools/generate_mux_lead", "-output", path}
-		if fixture.m2ts {
-			args = append(args, "-m2ts")
+		if fixture.flag != "" {
+			args = append(args, fixture.flag)
 		}
 		if output, err := exec.Command("go", args...).CombinedOutput(); err != nil {
 			t.Fatalf("generate fixture: %v\n%s", err, output)
