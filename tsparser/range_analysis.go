@@ -23,6 +23,7 @@ type rangeAnalysis struct {
 	scanEnd    int64
 	scan       scanResult
 	continuity *continuityCounterSummary
+	trust      *transportTrustSummary
 	psi        *psiTracker
 	pat        *patTable // the first complete PAT
 	leadStart  int64     // first packet of the range
@@ -49,7 +50,9 @@ func analyzeAllPrograms(reader io.ReadSeeker, pat *patTable, leadStart, programS
 	var analyzers []*programAnalyzer
 	analysis.pat, analysis.leadStart, analysis.packetSize = pat, leadStart, packetSize
 	analysis.continuity = newEmptyContinuitySummary()
+	analysis.trust = newTransportTrustSummary()
 	analysis.psi = newPsiTracker(pat, analysis.continuity, options, packetSize, true)
+	analysis.psi.trust = analysis.trust
 	analysis.psi.layout = newPsiLayoutRecorder()
 	// Programs() already leaves out program_number 0 (the network PID).
 	for _, prog := range pat.Programs() {
@@ -67,6 +70,7 @@ func analyzeAllPrograms(reader io.ReadSeeker, pat *patTable, leadStart, programS
 			entry.analyzer = newProgramAnalyzer(options, pos, prog.ProgramNumber, prog.PmtPid, pmt.PcrPid(), pmt.ProgramInfos(), true)
 			entry.analyzer.pcrJitter.packetSize = packetSize
 			analysis.continuity.addProgramLabels(prog.PmtPid, pmt.PcrPid(), pmt.ProgramInfos())
+			analysis.trust.addProgramLabels(prog.PmtPid, pmt.PcrPid(), pmt.ProgramInfos())
 			analysis.psi.addProgram(prog.ProgramNumber, prog.PmtPid, pmt, entry.analyzer)
 			analyzers = append(analyzers, entry.analyzer)
 		}
@@ -80,13 +84,14 @@ func analyzeAllPrograms(reader io.ReadSeeker, pat *patTable, leadStart, programS
 
 	pos := slices.MinFunc(analyzers, func(a, b *programAnalyzer) int { return cmp.Compare(a.start, b.start) }).start
 	analysis.scanStart = pos
-	if err := observeLead(reader, leadStart, pos, analysis.psi.layout, analysis.psi.sdt, options, packetSize); err != nil {
+	sdt := func(tsPacket *TsPacket, pos int64) { analysis.psi.sdt.observe(tsPacket, pos) }
+	if err := observeLead(reader, leadStart, pos, options, packetSize, analysis.psi.layout.observe, sdt, analysis.trust.observeLead); err != nil {
 		return err
 	}
 	if _, err := reader.Seek(pos, io.SeekStart); err != nil {
 		return fmt.Errorf("file seek error: %w", err)
 	}
-	scan, err := scanPrograms(reader, &pos, analyzers, analysis.continuity, analysis.psi, options, packetSize, endOffset, true)
+	scan, err := scanPrograms(reader, &pos, analyzers, analysis.continuity, analysis.trust, analysis.psi, options, packetSize, endOffset, true)
 	if err != nil {
 		return err
 	}
@@ -104,6 +109,9 @@ func analyzeAllPrograms(reader io.ReadSeeker, pat *patTable, leadStart, programS
 	report.Status = "complete"
 	report.Reason = ""
 	report.Error = ""
+	if syncLost(scan.sync) {
+		report.Status, report.Reason = "incomplete", syncLostReason
+	}
 	return nil
 }
 
@@ -119,8 +127,11 @@ type RangeAnalysisReport struct {
 	Error                    string                  `json:"error,omitempty"`
 	AnalysisStartOffsetBytes *int64                  `json:"analysis_start_offset_bytes,omitempty"`
 	AnalysisEndOffsetBytes   *int64                  `json:"analysis_end_offset_bytes,omitempty"`
+	Sync                     *ReportSync             `json:"sync,omitempty"`
 	ContinuityCounter        *ReportContinuity       `json:"continuity_counter,omitempty"`
 	ContinuityEvents         []ReportContinuityEvent `json:"continuity_events"`
+	TransportErrors          *ReportAffectedPackets  `json:"transport_errors,omitempty"`
+	ScrambledPackets         *ReportAffectedPackets  `json:"scrambled_packets,omitempty"`
 	Programs                 []RangeAnalysisProgram  `json:"programs"`
 	PSITransitions           []ReportPSITransition   `json:"psi_transitions,omitempty"`
 	PSILayout                *ReportPSILayout        `json:"psi_layout,omitempty"`
@@ -233,7 +244,9 @@ func rangeAnalysisReport(report *AnalysisReport) *RangeAnalysisReport {
 	if analysis.scanned {
 		start, end := analysis.scanStart, analysis.scanEnd
 		r.AnalysisStartOffsetBytes, r.AnalysisEndOffsetBytes = &start, &end
+		r.Sync = reportSync(analysis.scan.sync)
 		r.ContinuityCounter = reportContinuity(analysis.continuity)
+		r.TransportErrors, r.ScrambledPackets = reportTransportTrust(analysis.trust)
 		r.PSITransitions = reportPsiTransitions(analysis.psi.transitions)
 		r.PSILayout = reportPsiLayout(analysis)
 		for _, e := range analysis.scan.continuityEvents {

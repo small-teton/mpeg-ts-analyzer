@@ -19,6 +19,8 @@ In addition, it can dump various MPEG-2 TS internal structures for stream invest
 - PES header with PTS/DTS timestamps
 - PCR jitter analysis (per-interval deviation from the expected PCR, estimated from byte positions and judged only when the stream shows constant delivery)
 - `continuity_counter` validation with an always-on per-PID error summary
+- TS synchronization: an always-on check that reports packets without their sync byte and continues from the next confirmed alignment (see [TS synchronization](#ts-synchronization-always-on))
+- Transport errors (`transport_error_indicator`) and scrambled packets (`transport_scrambling_control`), counted per PID with an always-on summary; their payload (and the PCR of a packet with a transport error) is kept out of the analysis
 
 Both 188-byte TS packets and 192-byte M2TS packets (BDAV format with TP_extra_header) are supported. The packet size is auto-detected from the stream.
 
@@ -100,11 +102,16 @@ Detected PMT
 PMT : Program Info : elementary_PID     : 0x100, stream_type : 0x02 (13818-2 video or 11172-2 constrained parameter video stream)
 PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x03 (11172 audio)
 -----------------------------
+TS Sync: no sync loss detected
+-----------------------------
 Compliance Check Results:
 Max PCR interval: 80.000000ms [OK, limit: <= 100.000000ms]
 PCR-PTS/DTS max gap: 726.666667ms [OK, limit: <= 1000.000000ms]
 -----------------------------
 Continuity Counter: no errors detected
+-----------------------------
+Transport Error Indicator: no packets with transport_error_indicator set
+Transport Scrambling: no scrambled packets
 ```
 
 ## Timing compliance verdicts and `--fail-on-error`
@@ -247,6 +254,158 @@ produces one event instead of cascading warnings.
 The summary count is the number of discontinuity events, not an estimate of the
 number of missing transport packets. Known PAT, PMT, PCR, video, and audio PIDs
 receive labels; any other included PID is labeled `unknown`.
+
+## TS synchronization (always on)
+
+Every packet of the analysis must start with the sync byte `0x47` (for
+192-byte M2TS input, the fifth byte, after the 4-byte `TP_extra_header`). When
+a packet boundary has another value, synchronization is lost there. The
+analyzer then looks for the next offset at which **five** consecutive packets,
+one packet size apart, start with `0x47`, and continues from there. The bytes
+in between are skipped: they are never read as packets, so they cannot add PIDs,
+PCRs or timestamps. A single `0x47` inside a payload, or fewer than five in a
+row, is not accepted. The packet size does not change during the search. Five
+is the reacquisition count that monitors of the ETSI TR 101 290 `TS_sync_loss`
+indicator commonly use; it is a fixed policy of this analyzer, not a claim of
+TR 101 290 conformance. TR 101 290 also distinguishes a single corrupted sync
+byte (`Sync_byte_error`) from a loss of synchronization; here every packet
+boundary without a sync byte counts as a loss, and a corrupted sync byte with an
+unchanged alignment skips that one packet.
+
+The search is bounded: a new alignment must start within 1,048,576 bytes
+(1 MiB) of the lost boundary. Each byte is examined at most once, the search
+keeps one fixed 64 KiB buffer, and the result is a fixed set of counters and
+offsets, so neither time nor memory grows with the corrupt span or with
+repeated corruption. When no alignment is found, because the limit is reached
+or the input or `--limit` range ends first (fewer than five aligned packets
+remain), the analysis stops at the lost boundary. Results up to there are kept,
+and JSON reports `status: "incomplete"` with `reason: "sync_lost"`.
+
+Each loss is printed inline, and a summary always appears before the timing
+verdicts:
+
+```
+0x00001d60 sync lost (found 0x00 instead of 0x47); resynchronized at 0x00001e1c after skipping 188 bytes
+0x00002d88 sync lost (found 0xff instead of 0x47); resynchronized at 0x00002d89 after skipping 1 bytes
+0x00003c39 sync lost (found 0x41 instead of 0x47); resynchronized at 0x00003cf4 after skipping 187 bytes
+0x000058dc sync lost (found 0x00 instead of 0x47); resynchronized at 0x00005cc4 after skipping 1000 bytes
+0x000096c8 ignored 100 trailing bytes (incomplete packet at end of input)
+-----------------------------
+TS Sync Summary: recovered
+  Sync losses   : 4 (first at 0x00001d60)
+  Resyncs       : 4 (first at 0x00001e1c)
+  Skipped bytes : 1376 (largest 1000 at 0x000058dc)
+```
+
+That is `sample_data/sample_188byte_sync_loss.ts`: a corrupted sync byte (one
+packet skipped), one inserted byte, one deleted byte (the rest of the next
+packet skipped) and a 1000-byte block of garbage with four false sync bytes.
+All offsets are absolute positions in the input, also after a recovery. A
+healthy stream prints `TS Sync: no sync loss detected`. An unrecovered loss adds
+a line such as
+`Not recovered : at 0x00009494, the input ended before 5 aligned sync bytes; analysis stopped`.
+
+Packets lost to a skipped span usually also cause continuity-counter errors on
+their PIDs, and timing values measured across the span (PCR intervals, the PCR
+jitter estimate, which uses byte positions) include its effect.
+
+Other cases are reported separately:
+
+- **No alignment at all.** When the input has no three consecutive sync bytes
+  one packet apart, there is no transport stream to analyze. The analysis
+  fails with `no TS synchronization found` (JSON `reason:
+  "sync_not_acquired"`), distinct from aligned packets without a PAT.
+- **Before the analysis starts.** The check covers the analyzed packets, from
+  the end of the first complete PAT and PMT on. A packet without a sync byte
+  while those tables are collected restarts the PAT search, with a warning, as
+  before.
+- **A packet with its sync byte but an unparseable header** (for example a
+  reserved `adaptation_field_control`) is aligned, so it is not a loss of
+  synchronization. It still interrupts the analysis, which restarts at the
+  next PAT with a `PES parse error` warning, as described under
+  [Transport errors and scrambled packets](#transport-errors-and-scrambled-packets-always-on).
+- **Trailing partial packet.** Fewer than one packet of bytes at the end of the
+  input is an incomplete packet, not a loss: it is reported as a warning
+  (`ignored N trailing bytes`) and in the JSON `sync` object, and does not
+  change the status.
+
+`--fail-on-error` and the exit status do not depend on this check.
+
+## Transport errors and scrambled packets (always on)
+
+Two always-on checks count, per PID, the packets whose
+`transport_error_indicator` is set (a demodulator or other upstream device
+marks a packet with an uncorrectable bit error this way) and the packets whose
+`transport_scrambling_control` is not zero (a payload encrypted by conditional
+access). They cover every packet of the analyzed range, from its first packet,
+including the packets read while the first PAT and PMT were acquired, null
+packets and PIDs no PMT references. A healthy stream gets one line for each:
+
+```
+-----------------------------
+Transport Error Indicator: no packets with transport_error_indicator set
+Transport Scrambling: no scrambled packets
+```
+
+When packets are affected, each check prints its totals, the offset of the
+first affected packet and a status, then one line per PID in numeric order
+(output of `sample_data/sample_188byte_transport_errors.ts`, see
+[Sample data](../development/sample-data.md)):
+
+```
+-----------------------------
+Transport Error Indicator: 6 packets in 5 PIDs, first at 0x00000000, 5 excluded from analysis [DATA EXCLUDED]
+  PID 0x0000 (PAT) : 1 packet, first at 0x00001ca4, 1 excluded
+  PID 0x0100 (video) : 2 packets, first at 0x00001608, 2 excluded
+  PID 0x0101 (audio) : 1 packet, first at 0x0000125c, 1 excluded
+  PID 0x1000 (PMT) : 1 packet, first at 0x00001f94, 1 excluded
+  PID 0x1fff (null) : 1 packet, first at 0x00000000, 0 excluded
+Transport Scrambling: 6 packets in 5 PIDs, first at 0x00000524, 5 excluded from analysis [DATA EXCLUDED]
+  PID 0x0000 (PAT) : 1 packet, first at 0x00002b54, 1 excluded
+  PID 0x0100 (video) : 2 packets, first at 0x000024b8, 2 excluded
+  PID 0x0101 (audio) : 1 packet, first at 0x0000210c, 1 excluded
+  PID 0x0200 (unknown) : 1 packet, first at 0x00000524, 0 excluded
+  PID 0x1000 (PMT) : 1 packet, first at 0x00002e44, 1 excluded
+```
+
+A packet with both conditions counts in both. Offsets are those of the first
+byte of the packet (for M2TS, of its `TP_extra_header`). The status is:
+
+| Status | Meaning |
+| --- | --- |
+| no line of PIDs (`ok` in JSON) | No packet has the condition |
+| `AFFECTED` | Packets have the condition, but none carried data the analysis reads; the other results are complete |
+| `DATA EXCLUDED` | Data of at least one affected packet was left out of the analysis, so the other results are based on less data than the stream carried |
+
+What the analysis does with an affected packet:
+
+| Data | Transport error | Scrambled |
+| --- | --- | --- |
+| PAT / PMT section | The packet is ignored and the section in progress on its PID is discarded, with a warning ([PSI](psi.md#multi-section-pat-and-pmt)) | The same, when the packet has a payload |
+| PES | The payload is not used. The PES packet in progress on the PID ends at the packet and is parsed from the packets before it; the PID resumes at its next unaffected `payload_unit_start_indicator`. No PES header, PTS/DTS, timestamp anomaly or PCR-PTS/DTS gap comes from the affected payload | The same, when the packet has a payload; a scrambled packet without payload changes nothing |
+| PCR | Not used: intervals, jitter, bitrate windows and PCR-PTS/DTS brackets use the surrounding PCRs | Used: the header and adaptation field of a scrambled packet are not scrambled |
+| Continuity counter, bitrate | Counted with the header as decoded | Counted |
+
+An affected packet is **excluded** when it is on a PID whose data the
+analysis reads at that point: the PAT, the PMT of an analyzed program, an
+elementary stream of an analyzed program, or (for a transport error only) its
+`PCR_PID`. A scrambled packet without payload, and an affected packet read
+while the first PAT and PMT were acquired, are never excluded; the acquisition
+reports what it ignored as warnings. The PID of a packet with a transport error
+is the one in its own header, which the error may have changed.
+
+The null PID `0x1FFF` is counted like any other PID and labeled `null`. Its
+payload is never analyzed, so its packets are never excluded; a scrambled null
+packet is itself invalid (ISO/IEC 13818-1 requires
+`transport_scrambling_control` `00` there).
+
+A PAT or PMT that arrives only in affected packets is never acquired: the run
+ends with `PAT not detected` or as incomplete, never as a complete result built
+from unusable tables. Neither check takes part in `--fail-on-error`. A packet
+whose header cannot be parsed at all (for example a reserved
+`adaptation_field_control`) still interrupts the analysis as any malformed
+packet does (it restarts at the next PAT), whether or not it has a transport
+error.
 
 ## Timestamp anomaly report (always on)
 

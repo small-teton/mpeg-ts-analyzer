@@ -256,7 +256,7 @@ func FuzzPsiTracking(f *testing.F) {
 		tracker.addProgram(1, 0x1000, pmt, analyzer)
 		tracker.layout = newPsiLayoutRecorder()
 		var pos int64
-		if _, err := scanPrograms(bytes.NewReader(data), &pos, []*programAnalyzer{analyzer}, continuity, tracker, opts, tsPayloadSize, 0, true); err != nil {
+		if _, err := scanPrograms(bytes.NewReader(data), &pos, []*programAnalyzer{analyzer}, continuity, newTransportTrustSummary(), tracker, opts, tsPayloadSize, 0, true); err != nil {
 			return
 		}
 		analyzer.finish()
@@ -351,4 +351,38 @@ func fuzzPSIContinuationStream(packetSize int, pid uint16, section []byte) []byt
 	data[second+3] = 0x11
 	copy(data[second+4:second+tsPayloadSize], section[written:])
 	return data
+}
+
+// FuzzSyncRecovery scans arbitrary bytes as 188-byte TS and 192-byte M2TS
+// packets: every loss of synchronization is either recovered or ends the
+// scan, and the scan never reads a skipped byte as a packet.
+func FuzzSyncRecovery(f *testing.F) {
+	stream := syncTestStream(nil, 6)
+	f.Add(stream)
+	f.Add(append(append([]byte{0x00}, stream...), 0x47))
+	f.Add(syncTestStream(bytes.Repeat([]byte{0x47}, 400), 6))
+	f.Add(fuzzPATPackets(tsPayloadSize + tpExtraHeaderSize))
+	f.Add([]byte{})
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		if len(data) > 64*(tsPayloadSize+tpExtraHeaderSize) {
+			return
+		}
+		for _, packetSize := range []int{tsPayloadSize, tsPayloadSize + tpExtraHeaderSize} {
+			var pos int64
+			scan, err := scanPrograms(bytes.NewReader(data), &pos, nil, newEmptyContinuitySummary(), newTransportTrustSummary(), nil, options.Options{}, packetSize, 0, true)
+			if err != nil {
+				continue
+			}
+			s := scan.sync
+			lost := 0
+			if s.Unrecovered {
+				lost = 1
+			}
+			if s.Losses != s.Resyncs+lost || s.SkippedBytes < int64(s.Resyncs) || pos > int64(len(data)) ||
+				s.SkippedBytes+int64(scan.truncatedBytes) > int64(len(data)) || (s.Unrecovered && pos != s.UnrecoveredOffset) {
+				t.Fatalf("packet size %d: inconsistent scan %+v ending at %d", packetSize, scan, pos)
+			}
+		}
+	})
 }

@@ -72,6 +72,7 @@ retransmissions:
 | `<table>: section ended early by the next payload_unit_start_indicator; partial section discarded` | A section was cut short |
 | `<table>: invalid pointer_field N; packet ignored` | `pointer_field` runs past the payload |
 | `<table>: transport_error_indicator set; packet ignored and any partial section discarded` | The packet has an uncorrectable error, so nothing it carries is used |
+| `<table>: transport_scrambling_control set; scrambled payload ignored and any partial section discarded` | PAT and PMT are never scrambled; a scrambled payload cannot be read as a section |
 | `PAT lists program N with PMT PIDs ...`, `PMT of program N has PCR_PID ...`, `PMT of program N lists elementary PID ... with stream types ...` | Sections disagree; the first value in section order is used |
 
 `<table>` is `PAT` or `PMT of program N on PID 0xXXXX`. A table that is still
@@ -164,6 +165,8 @@ PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x03 (11172 audio
 0x0001903c PMT of program 1 on PID 0x1000 version 0 -> 1: PCR_PID 0x0100 -> 0x0200, added 0x0200 (stream_type 0x02), removed 0x0100 (stream_type 0x02), stream_type of 0x0101 0x03 -> 0x04
 0x00033e94 PAT version 0 -> 1: program 1 PMT PID 0x1000 -> 0x1100
 -----------------------------
+TS Sync: no sync loss detected
+-----------------------------
 Compliance Check Results:
 Max PCR interval: 80.000000ms [OK, limit: <= 100.000000ms]
 PCR-PTS/DTS max gap: 726.666667ms [OK, limit: <= 1000.000000ms]
@@ -181,6 +184,9 @@ Bitrate Summary (PCR time base):
   Duration: 4.64s (PCR, 2 segment(s))
 -----------------------------
 Continuity Counter: no errors detected
+-----------------------------
+Transport Error Indicator: no packets with transport_error_indicator set
+Transport Scrambling: no scrambled packets
 ```
 
 With `--dump-psi`, every section of an applied table is printed after its

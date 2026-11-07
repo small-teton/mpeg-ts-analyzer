@@ -1404,7 +1404,13 @@ func TestParseTsFile_TruncatedLastPacketJSON(t *testing.T) {
 		if len(whole.Warnings) != 0 {
 			t.Fatalf("%s: unexpected warnings for an input ending on a packet boundary: %+v", tc.sample, whole.Warnings)
 		}
-		report.Warnings, report.Input = whole.Warnings, whole.Input
+		// The sync result reports the partial packet, and nothing else.
+		wantSync := *whole.Sync
+		wantSync.TrailingPartialPacketBytes, wantSync.TrailingPartialPacketOffsetBytes = tc.extra, &sampleSize
+		if report.Sync == nil || toJSON(t, *report.Sync) != toJSON(t, wantSync) || wantSync.Status != "ok" {
+			t.Errorf("%s +%d: sync = %s, want %s", tc.sample, tc.extra, toJSON(t, report.Sync), toJSON(t, wantSync))
+		}
+		report.Warnings, report.Input, report.Sync = whole.Warnings, whole.Input, whole.Sync
 		got, _ := json.Marshal(report)
 		expected, _ := json.Marshal(whole)
 		if !bytes.Equal(got, expected) {

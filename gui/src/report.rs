@@ -133,8 +133,20 @@ pub struct AnalysisReport {
     pub error: Option<String>,
     pub analysis_start_offset_bytes: Option<u64>,
     pub analysis_end_offset_bytes: Option<u64>,
+    /// TS synchronization of the scan; absent before the CLI reported it and
+    /// when no program was analyzed.
+    #[serde(default)]
+    pub sync: Option<Sync>,
     pub continuity_counter: Option<Continuity>,
     pub continuity_events: Vec<ContinuityEvent>,
+    /// Packets with transport_error_indicator set; absent from a CLI without
+    /// the check and when no program was analyzed.
+    #[serde(default)]
+    pub transport_errors: Option<AffectedPackets>,
+    /// Packets with a non-zero transport_scrambling_control; absent as
+    /// `transport_errors` is.
+    #[serde(default)]
+    pub scrambled_packets: Option<AffectedPackets>,
     pub programs: Vec<Program>,
     pub warnings: Vec<Warning>,
     /// Absent before CLI schema 1.x gained it, and when no program was analyzed.
@@ -258,6 +270,26 @@ pub struct Input {
     pub limit_bytes: Option<u64>,
 }
 
+/// `sync`: packet boundaries without a sync byte and the realignment after
+/// each (docs/reference/json-output.md, "TS synchronization").
+#[derive(Debug, Deserialize)]
+pub struct Sync {
+    pub status: String,
+    pub reason: Option<String>,
+    pub required_sync_bytes: u64,
+    pub max_resync_scan_bytes: u64,
+    pub loss_count: u64,
+    pub resync_count: u64,
+    pub skipped_bytes: u64,
+    pub first_loss_offset_bytes: Option<u64>,
+    pub first_resync_offset_bytes: Option<u64>,
+    pub max_skipped_bytes: Option<u64>,
+    pub max_skipped_offset_bytes: Option<u64>,
+    pub unrecovered_offset_bytes: Option<u64>,
+    pub trailing_partial_packet_bytes: u64,
+    pub trailing_partial_packet_offset_bytes: Option<u64>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Continuity {
     pub status: String,
@@ -270,6 +302,25 @@ pub struct ContinuityPid {
     pub pid: String,
     pub label: String,
     pub error_count: u64,
+}
+
+/// The CLI's `transport_errors` or `scrambled_packets` result.
+#[derive(Debug, Deserialize)]
+pub struct AffectedPackets {
+    pub status: String,
+    pub packet_count: u64,
+    pub excluded_packet_count: u64,
+    pub first_offset_bytes: Option<u64>,
+    pub pids: Vec<AffectedPid>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AffectedPid {
+    pub pid: String,
+    pub label: String,
+    pub packet_count: u64,
+    pub excluded_packet_count: u64,
+    pub first_offset_bytes: u64,
 }
 
 #[derive(Debug, Deserialize)]

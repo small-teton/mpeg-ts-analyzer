@@ -10,12 +10,33 @@
   "status": "complete",
   "analysis_start_offset_bytes": 25380,
   "analysis_end_offset_bytes": 202852,
+  "sync": {
+    "status": "ok",
+    "required_sync_bytes": 5,
+    "max_resync_scan_bytes": 1048576,
+    "loss_count": 0,
+    "resync_count": 0,
+    "skipped_bytes": 0,
+    "trailing_partial_packet_bytes": 0
+  },
   "continuity_counter": {
     "status": "ok",
     "total_error_count": 0,
     "pids": []
   },
   "continuity_events": [],
+  "transport_errors": {
+    "status": "ok",
+    "packet_count": 0,
+    "excluded_packet_count": 0,
+    "pids": []
+  },
+  "scrambled_packets": {
+    "status": "ok",
+    "packet_count": 0,
+    "excluded_packet_count": 0,
+    "pids": []
+  },
   "programs": [
     {
       "program_number": 1,

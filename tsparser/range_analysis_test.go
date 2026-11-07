@@ -369,8 +369,11 @@ func TestRangeAnalysisReaderErrors(t *testing.T) {
 		}
 	}
 
-	// A broken packet after the PSI fails the scan.
-	broken := append(bytes.Clone(data), make([]byte, 188)...)
+	// A packet that cannot be parsed after the PSI fails the scan. (A packet
+	// without its sync byte is a loss of synchronization instead.)
+	brokenPacket := make([]byte, 188)
+	brokenPacket[0] = 0x47 // adaptation_field_control 0 is reserved
+	broken := append(bytes.Clone(data), brokenPacket...)
 	report := newAnalysisReport("synthetic", 0, 0)
 	report.analysis = &rangeAnalysis{}
 	if err := parseTsReaderReport(bytes.NewReader(broken), options.Options{}, report); err == nil || !strings.Contains(err.Error(), "failed to parse TS packet") {

@@ -7,7 +7,7 @@ use crate::icons;
 use crate::plot_data::Timeline;
 use crate::psi;
 use crate::range_bar;
-use crate::report::{AnalysisReport, Program, stream_type_name};
+use crate::report::{AffectedPackets, AnalysisReport, Program, stream_type_name};
 
 /// What Overview shows: the summary, or the full-page explanation of one
 /// check.
@@ -446,6 +446,86 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
                 reason: None,
             })
         }
+        Check::TransportErrors | Check::ScrambledPackets => {
+            let result = affected_packets(report, check)?;
+            let mut facts = vec![
+                ("Packets", result.packet_count.to_string()),
+                ("Excluded", result.excluded_packet_count.to_string()),
+                ("Applies to", "the whole multiplex".to_owned()),
+            ];
+            let pids: Vec<String> = result
+                .pids
+                .iter()
+                .map(|p| {
+                    format!(
+                        "{} ({}): {}, {} excluded",
+                        p.pid, p.label, p.packet_count, p.excluded_packet_count
+                    )
+                })
+                .collect();
+            if !pids.is_empty() {
+                facts.push(("Affected PIDs", pids.join(", ")));
+            }
+            if let Some(first) = result.first_offset_bytes {
+                facts.push(("First offset", format!("0x{first:08X}")));
+            }
+            Some(Row {
+                check,
+                status: result.status.clone(),
+                value: result.packet_count.to_string(),
+                facts,
+                reason: None,
+            })
+        }
+        Check::Synchronization => {
+            let sync = report.sync.as_ref()?;
+            let at = |offset: u64| format!("0x{offset:08X}");
+            let mut facts = vec![
+                ("Losses", sync.loss_count.to_string()),
+                ("Resyncs", sync.resync_count.to_string()),
+                ("Skipped bytes", sync.skipped_bytes.to_string()),
+            ];
+            facts.extend(sync.first_loss_offset_bytes.map(|o| ("First loss", at(o))));
+            facts.extend(
+                sync.first_resync_offset_bytes
+                    .map(|o| ("First resync", at(o))),
+            );
+            if let (Some(bytes), Some(offset)) =
+                (sync.max_skipped_bytes, sync.max_skipped_offset_bytes)
+            {
+                facts.push(("Largest skip", format!("{bytes} bytes at {}", at(offset))));
+            }
+            facts.extend(
+                sync.unrecovered_offset_bytes
+                    .map(|o| ("Analysis stopped at", at(o))),
+            );
+            if let Some(offset) = sync.trailing_partial_packet_offset_bytes {
+                facts.push((
+                    "Partial packet at end",
+                    format!(
+                        "{} bytes at {}",
+                        sync.trailing_partial_packet_bytes,
+                        at(offset)
+                    ),
+                ));
+            }
+            facts.push((
+                "Realignment",
+                format!(
+                    "{} sync bytes one packet apart, within {} bytes",
+                    sync.required_sync_bytes, sync.max_resync_scan_bytes
+                ),
+            ));
+            facts.push(("Applies to", "the whole multiplex".to_owned()));
+            facts.extend(sync.reason.clone().map(|r| ("Reason", r)));
+            Some(Row {
+                check,
+                status: sync.status.clone(),
+                value: sync.loss_count.to_string(),
+                facts,
+                reason: sync.reason.clone(),
+            })
+        }
         Check::PcrJitter => {
             let jitter = program.pcr_jitter.as_ref()?;
             let estimate = &jitter.estimate;
@@ -473,6 +553,14 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
                 reason: jitter.reason.clone(),
             })
         }
+    }
+}
+
+/// The CLI's result of a transport-error or scrambling check.
+fn affected_packets(report: &AnalysisReport, check: Check) -> Option<&AffectedPackets> {
+    match check {
+        Check::TransportErrors => report.transport_errors.as_ref(),
+        _ => report.scrambled_packets.as_ref(),
     }
 }
 
@@ -1001,6 +1089,42 @@ pub(crate) fn findings(
                     ));
                 }
             }
+            Check::TransportErrors | Check::ScrambledPackets => {
+                // One finding per PID, at its first affected packet.
+                for pid in affected_packets(report, check).map_or(&[][..], |r| &r.pids[..]) {
+                    let packets = match pid.packet_count {
+                        1 => "1 packet".to_owned(),
+                        count => format!("{count} packets"),
+                    };
+                    findings.push(finding(
+                        format!(
+                            "PID {} ({}): {packets}, {} excluded from analysis",
+                            pid.pid, pid.label, pid.excluded_packet_count
+                        ),
+                        Scope::Multiplex,
+                        Some(pid.first_offset_bytes),
+                    ));
+                }
+            }
+            Check::Synchronization => {
+                let sync = report.sync.as_ref();
+                let reason = sync.map_or(String::new(), |s| {
+                    let losses = match s.loss_count {
+                        1 => "1 loss".to_owned(),
+                        n => format!("{n} losses"),
+                    };
+                    let mut reason = format!("{losses}, {} bytes skipped", s.skipped_bytes);
+                    if let Some(text) = &s.reason {
+                        reason = format!("{reason}; {text}");
+                    }
+                    reason
+                });
+                findings.push(finding(
+                    reason,
+                    Scope::Multiplex,
+                    sync.and_then(|s| s.first_loss_offset_bytes),
+                ));
+            }
             Check::PcrJitter => {
                 let jitter = program.pcr_jitter.as_ref();
                 let limit = match row.status.as_str() {
@@ -1092,6 +1216,18 @@ mod tests {
                     Scope::Multiplex,
                     Some(25 * 188)
                 ),
+                (
+                    "affected",
+                    "Transport errors",
+                    Scope::Multiplex,
+                    Some(7 * 188)
+                ),
+                (
+                    "affected",
+                    "Scrambled packets",
+                    Scope::Multiplex,
+                    Some(11 * 188)
+                ),
             ]
         );
         assert_eq!(findings[0].reason, "160.0 ms, limit 100 ms");
@@ -1109,8 +1245,19 @@ mod tests {
             findings[4].reason,
             "PID 0x0101: continuity_counter 6 (expected 5)"
         );
-        // Each row is non-OK and has its finding.
+        for finding in &findings[5..] {
+            assert_eq!(
+                finding.reason,
+                "PID 0x1fff (null): 1 packet, 0 excluded from analysis"
+            );
+        }
+        // Each row is non-OK and has its finding, except TS synchronization:
+        // the packets of this sample are aligned (see the sync-loss sample).
         for row in rows(&report, &report.programs[0]) {
+            if row.check == Check::Synchronization {
+                assert_eq!(row.status, "ok");
+                continue;
+            }
             assert!(is_finding(row.check, &row.status), "{:?}", row.check);
             assert!(findings.iter().any(|f| f.check == Some(row.check)));
         }
@@ -1146,6 +1293,8 @@ mod tests {
                 ("indeterminate", "PCR jitter estimate", Scope::Program(1)),
                 ("anomalies", "PTS/DTS anomalies", Scope::Program(1)),
                 ("errors", "Continuity counter", Scope::Multiplex),
+                ("affected", "Transport errors", Scope::Multiplex),
+                ("affected", "Scrambled packets", Scope::Multiplex),
                 ("warning", "Analyzer warning", Scope::Multiplex),
             ]
         );
@@ -1248,6 +1397,9 @@ mod tests {
                 Check::PcrPtsDtsGap,
                 Check::TimestampAnomalies,
                 Check::ContinuityCounter,
+                Check::TransportErrors,
+                Check::ScrambledPackets,
+                Check::Synchronization,
             ]
         );
         let labels: Vec<&str> = rows[0].facts.iter().map(|(label, _)| *label).collect();
@@ -1258,6 +1410,109 @@ mod tests {
         assert_eq!(rows[0].value, "—");
         let continuity: Vec<&str> = rows[3].facts.iter().map(|(label, _)| *label).collect();
         assert_eq!(continuity, ["Errors", "Applies to"]);
+        // A healthy transport check: no PID list and no first offset.
+        let tei: Vec<&str> = rows[4].facts.iter().map(|(label, _)| *label).collect();
+        assert_eq!(tei, ["Packets", "Excluded", "Applies to"]);
+        assert_eq!(
+            (rows[4].status.as_str(), rows[4].value.as_str()),
+            ("ok", "0")
+        );
+        // Without a loss, only the counts and the method.
+        let sync: Vec<&str> = rows[6].facts.iter().map(|(label, _)| *label).collect();
+        assert_eq!(
+            sync,
+            [
+                "Losses",
+                "Resyncs",
+                "Skipped bytes",
+                "Realignment",
+                "Applies to"
+            ]
+        );
+        assert_eq!(rows[6].value, "0");
+    }
+
+    /// The sync-loss sample: a recovered result is a finding at the first
+    /// loss; an unrecovered one carries the CLI's reason.
+    #[test]
+    fn sync_loss_row_and_finding() {
+        let report = report(include_str!(
+            "../../tests/fixtures/analysis_sync_loss_188.json"
+        ));
+        let program = &report.programs[0];
+        let recovered = row(&report, program, Check::Synchronization).unwrap();
+        assert_eq!(
+            (recovered.status.as_str(), recovered.value.as_str()),
+            ("recovered", "4")
+        );
+        assert_eq!(
+            recovered.facts,
+            [
+                ("Losses", "4".to_owned()),
+                ("Resyncs", "4".to_owned()),
+                ("Skipped bytes", "1376".to_owned()),
+                ("First loss", "0x00001D60".to_owned()),
+                ("First resync", "0x00001E1C".to_owned()),
+                ("Largest skip", "1000 bytes at 0x000058DC".to_owned()),
+                (
+                    "Partial packet at end",
+                    "100 bytes at 0x000096C8".to_owned()
+                ),
+                (
+                    "Realignment",
+                    "5 sync bytes one packet apart, within 1048576 bytes".to_owned()
+                ),
+                ("Applies to", "the whole multiplex".to_owned()),
+            ]
+        );
+        assert!(matches!(
+            status_verdict("recovered"),
+            crate::theme::Verdict::Warn
+        ));
+        // The skipped bytes also make delivery variable, so the PCR jitter
+        // estimate is not assessable.
+        let (all, unavailable) = findings(&report, program);
+        assert_eq!(unavailable.len(), 1);
+        assert_eq!(unavailable[0].check, Check::PcrJitter);
+        let sync: Vec<_> = all
+            .iter()
+            .filter(|f| f.check == Some(Check::Synchronization))
+            .collect();
+        assert_eq!(sync.len(), 1);
+        assert_eq!(
+            (sync[0].status.as_str(), sync[0].scope, sync[0].offset),
+            ("recovered", Scope::Multiplex, Some(7520))
+        );
+        assert_eq!(sync[0].reason, "4 losses, 1376 bytes skipped");
+
+        let mut document: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/analysis_sync_loss_188.json"
+        ))
+        .unwrap();
+        document["status"] = "incomplete".into();
+        document["reason"] = "sync_lost".into();
+        document["sync"] = serde_json::json!({
+            "status": "lost", "reason": "synchronization lost at 0x00009494 and not recovered",
+            "required_sync_bytes": 5, "max_resync_scan_bytes": 1048576, "loss_count": 1,
+            "resync_count": 0, "skipped_bytes": 0, "first_loss_offset_bytes": 38036,
+            "unrecovered_offset_bytes": 38036, "trailing_partial_packet_bytes": 0
+        });
+        let report = self::report(&document.to_string());
+        let row = row(&report, &report.programs[0], Check::Synchronization).unwrap();
+        assert!(
+            row.facts
+                .contains(&("Analysis stopped at", "0x00009494".to_owned()))
+        );
+        assert!(matches!(status_verdict("lost"), crate::theme::Verdict::Ng));
+        let (all, _) = findings(&report, &report.programs[0]);
+        let lost = all
+            .iter()
+            .find(|f| f.check == Some(Check::Synchronization))
+            .unwrap();
+        assert_eq!(
+            lost.reason,
+            "1 loss, 0 bytes skipped; synchronization lost at 0x00009494 and not recovered"
+        );
     }
 
     #[test]

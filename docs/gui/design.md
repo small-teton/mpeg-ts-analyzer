@@ -168,11 +168,13 @@ check (`CheckDetail`).
 - **Transport health table**: one non-collapsible table with the columns
   Check, Value, Status and Help, grouped by category. The order is fixed:
   Timing (Max PCR interval, PCR jitter estimate), PES / Timestamps
-  (PCR → PTS/DTS gap, PTS/DTS anomalies), Integrity (Continuity counter).
+  (PCR → PTS/DTS gap, PTS/DTS anomalies), Integrity (Continuity counter,
+  Transport errors, Scrambled packets, TS synchronization).
   Structure and Multiplexing join as their checks land (#157). A check is
   listed when the CLI reported it. There is no scope column or badge: the
-  selected program is shown above, and exceptions (Continuity counter covers
-  the whole multiplex) are on the detail page. Status is the CLI's status
+  selected program is shown above, and exceptions (Continuity counter,
+  Transport errors, Scrambled packets and TS synchronization cover the whole
+  multiplex) are on the detail page. Status is the CLI's status
   verbatim as a badge sized to its text (at least 48 points wide); a status
   the GUI does not describe is shown in the neutral color with a tooltip
   saying so. Help holds the focusable
@@ -187,7 +189,7 @@ check (`CheckDetail`).
 - **Check model**: `gui/src/views/check_help.rs` holds one entry per check —
   category, title, a one-line summary, what it measures, what it applies to,
   what the value means, every status with its condition, when it is skipped,
-  limitations and the Timeline or Bitrate link — and its order is the table
+  limitations and the Timeline, Bitrate or Packets link — and its order is the table
   order. `overview::row` turns the report into a check's value, status and
   current result (only fields the CLI provided). A new check is one
   `check_help` entry and one `row` arm. The texts state the CLI's thresholds
@@ -201,7 +203,7 @@ check (`CheckDetail`).
   table: status badge and condition per status; the current status is
   highlighted and its row marked selected), then What it measures, Applies
   to, What the value means, When it is skipped, Limitations and Details with
-  `Open Timeline` / `Open Bitrate`, each a heading over a wrapped paragraph. A
+  `Open Timeline` / `Open Bitrate` / `Open Packets`, each a heading over a wrapped paragraph. A
   finding with an offset has `Open packet`; one that Timeline marks as an
   event (a continuity error on a PID of the program) also has
   `Show on timeline`, which selects that event. Summary-only findings get no
@@ -222,7 +224,9 @@ check (`CheckDetail`).
 - **Findings** are one normalized list built from the report
   (`overview::findings`): a finding for each failed compliance check, each
   PTS/DTS anomaly group, each continuity event (one finding for the check if
-  the CLI reported errors without events), PCR jitter and each analyzer
+  the CLI reported errors without events), PCR jitter, each PID of
+  `transport_errors` and `scrambled_packets` (at its first offset), TS
+  synchronization (one finding at the first loss offset) and each analyzer
   warning. Any status other than `ok`, `skipped` and `not_assessable`,
   including one the GUI does not know, is a finding with the CLI's status as
   its badge, so an `NG` or `WARNING` row can never sit next to an empty list.
@@ -259,6 +263,9 @@ Per program, per PID:
   carry only a byte offset, sit at the time of the last PCR before them.
 - Series longer than 4000 points are drawn decimated, keeping each bucket's
   minimum and maximum so spikes stay visible; picking uses every point.
+- The drawn series of every program are derived once when an analysis is
+  accepted, in the point type egui_plot borrows; frames lend them to the
+  plots instead of copying every point vector each frame.
 
 ### Bitrate
 
@@ -355,8 +362,8 @@ range in a saved file are clamped when they are used.
 - Status badges: white Inter SemiBold 14 px text on a solid fill, 10 × 3
   points of padding, at least 48 points wide, 4-point radius. Fills by
   class, the same in light and dark: success (`ok`, `complete`) `#2E7D32`,
-  failure (`ng`, `errors`, `failed`) `#C62828`, warning (`warning`,
-  `anomalies`) `#9A6700`, neutral (`not_assessable`, `skipped`, unknown)
+  failure (`ng`, `errors`, `failed`, `lost`) `#C62828`, warning (`warning`,
+  `anomalies`, `recovered`) `#9A6700`, neutral (`not_assessable`, `skipped`, unknown)
   `#59636E`; each is at least 4.5:1 against white.
 - Tables (Transport health, Verdicts) use Material 3-style tonal surfaces
   with values fixed per appearance (light / dark): header row `#E5E7EA` /
