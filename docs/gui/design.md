@@ -170,16 +170,26 @@ check (`CheckDetail`).
   Timing (Max PCR interval, PCR discontinuities, PCR jitter estimate), PES / Timestamps
   (PCR → PTS/DTS gap, PTS/DTS anomalies), Integrity (Continuity counter,
   Transport errors, Scrambled packets, TS synchronization), Structure
-  (Referenced PIDs, Unreferenced PIDs). Multiplexing joins as its checks land
-  (#157). A check is listed when the CLI reported it. There is no scope
+  (Referenced PIDs, Unreferenced PIDs), Multiplexing (Packet gaps). A check
+  is listed when the CLI reported it. There is no scope
   column or badge: the selected program is shown above, and exceptions
   (Continuity counter, Transport errors, Scrambled packets, TS
   synchronization, Referenced PIDs and Unreferenced PIDs cover the whole
-  multiplex) are on the detail page. Status is the CLI's status
+  multiplex; Packet gaps shows the PIDs the selected program references,
+  from the CLI's list of every PID) are on the detail page. Status is the CLI's status
   verbatim as a badge sized to its text (at least 48 points wide); a status
   the GUI does not describe is shown in the neutral color with a tooltip
   saying so. Help holds the focusable
   information button (accessible name and tooltip `About <check>`).
+- **Report-only rows**: a row without a verdict (Packet gaps) has the
+  neutral status `info`, shown as a neutral badge. `is_report_only` makes it
+  neither a finding nor unavailable analysis; its `insufficient_data` (no PID
+  of the program has two consecutive packets) is unavailable analysis like
+  any other. Only a status the GUI does not describe for the check becomes a
+  finding, as everywhere. The row's status is `info` when any PID of the
+  program has a gap, its value the largest gap of the program's elementary
+  streams (in ms, `at least` for a lower bound, or in packets without a PCR
+  time).
 - **Layout**: Value, Status and Help are as wide as their widest cell,
   measured from the text, and keep that width at every window size; Check
   takes the rest and its name wraps. The other cells are centered on the
@@ -209,7 +219,9 @@ check (`CheckDetail`).
   finding with an offset has `Open packet`; one that Timeline marks as an
   event (a continuity error on a PID of the program) also has
   `Show on timeline`, which selects that event. Summary-only findings get no
-  offset.
+  offset. The Packet gaps page adds a Per PID table (PID, role, packets, gap
+  in packets and ms, and the two packets around the gap as `Open packet`
+  buttons) after Current result.
 - **State**: `OverviewState` keeps the page, the summary's vertical scroll
   offset and where focus goes. Opening a page focuses Back and starts the page
   at its top; Back, or the Overview tile while Overview is shown, restores the
@@ -234,8 +246,8 @@ check (`CheckDetail`).
   `silent` (with its own status, at the packet before its longest silence),
   each PID of `pid_references.unreferenced` that is `unreferenced` (at its
   first unreferenced packet) and each analyzer warning. Any status other than
-  `ok`, `skipped`, `not_assessable` and, for the PID-reference checks,
-  `insufficient_data`,
+  `ok`, `skipped`, `not_assessable`, `info` of a report-only check and, for
+  the PID-reference and packet-gap checks, `insufficient_data`,
   including one the GUI does not know, is a finding with the CLI's status as
   its badge, so an `NG` or `WARNING` row can never sit next to an empty list.
   Each finding names its scope (program or whole multiplex); its check link

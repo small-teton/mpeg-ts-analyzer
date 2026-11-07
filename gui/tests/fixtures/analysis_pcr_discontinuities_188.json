@@ -120,6 +120,77 @@
       "pids": []
     }
   },
+  "multiplexing": {
+    "packet_gaps": {
+      "time_basis": "pcr_interpolated_file_position",
+      "pids": [
+        {
+          "pid": "0x0000",
+          "references": [],
+          "packet_count": 15,
+          "status": "info",
+          "max_gap_packets": 19,
+          "max_gap_start_offset_bytes": 3572,
+          "max_gap_end_offset_bytes": 7332,
+          "max_gap_ms": 400,
+          "max_gap_exact": true
+        },
+        {
+          "pid": "0x0100",
+          "references": [
+            {
+              "program_number": 1,
+              "role": "pcr"
+            },
+            {
+              "program_number": 1,
+              "role": "elementary_stream",
+              "stream_type": "0x02"
+            }
+          ],
+          "packet_count": 99,
+          "status": "info",
+          "max_gap_packets": 1,
+          "max_gap_start_offset_bytes": 1128,
+          "max_gap_end_offset_bytes": 1504,
+          "max_gap_ms": 40,
+          "max_gap_exact": true
+        },
+        {
+          "pid": "0x0101",
+          "references": [
+            {
+              "program_number": 1,
+              "role": "pcr"
+            }
+          ],
+          "packet_count": 29,
+          "status": "info",
+          "max_gap_packets": 1,
+          "max_gap_start_offset_bytes": 37976,
+          "max_gap_end_offset_bytes": 38352,
+          "max_gap_ms": 40,
+          "max_gap_exact": true
+        },
+        {
+          "pid": "0x1000",
+          "references": [
+            {
+              "program_number": 1,
+              "role": "pmt"
+            }
+          ],
+          "packet_count": 15,
+          "status": "info",
+          "max_gap_packets": 19,
+          "max_gap_start_offset_bytes": 4324,
+          "max_gap_end_offset_bytes": 8084,
+          "max_gap_ms": 400,
+          "max_gap_exact": true
+        }
+      ]
+    }
+  },
   "programs": [
     {
       "program_number": 1,

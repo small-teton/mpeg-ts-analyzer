@@ -34,6 +34,9 @@ bits.
 - **PID references**: PMT, PCR and elementary-stream PIDs that the PAT/PMT
   reference but that are absent or silent for more than 5 s, and PIDs that
   carry packets without being referenced (after a 0.5 s grace period).
+- **Packet gaps** (report only): for every PID, the longest run of other
+  packets between two of its packets, in packets and estimated milliseconds,
+  to spot poorly interleaved (bursty) multiplexes. No verdict is attached.
 
 Results are text for people, or JSON with a published schema for CI and other
 programs. See [CLI usage][docs-cli-usage].

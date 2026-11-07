@@ -11,7 +11,7 @@ use super::overview::{
 };
 use crate::icons;
 use crate::plot_data::Timeline;
-use crate::report::{AnalysisReport, Program};
+use crate::report::{AnalysisReport, PacketGapPid, Program};
 
 /// What the page shows its check for.
 pub struct Context<'a> {
@@ -96,6 +96,17 @@ fn page(ui: &mut egui::Ui, context: &Context<'_>, check: Check) -> Option<Overvi
         }
     }
     ui.add_space(12.0);
+
+    if check == Check::PacketGaps
+        && let Some(pids) = overview::program_packet_gaps(context.report, context.program)
+        && !pids.is_empty()
+    {
+        section_heading(ui, "Per PID");
+        if let Some(chosen) = packet_gap_table(ui, &pids, context.program.program_number) {
+            action = Some(chosen);
+        }
+        ui.add_space(12.0);
+    }
 
     let (findings, _) = overview::findings(context.report, context.program);
     let findings: Vec<&Finding> = findings.iter().filter(|f| f.check == Some(check)).collect();
@@ -205,6 +216,62 @@ fn finding_row(
             }
         }
     });
+    action
+}
+
+/// The largest gap of every PID of the program, with buttons that open the
+/// packets before and after it.
+fn packet_gap_table(
+    ui: &mut egui::Ui,
+    pids: &[&PacketGapPid],
+    program: u16,
+) -> Option<OverviewAction> {
+    let mut action = None;
+    egui::ScrollArea::horizontal()
+        .id_salt("packet_gaps_scroll")
+        .show(ui, |ui| {
+            egui::Grid::new("packet_gaps")
+                .striped(true)
+                .num_columns(7)
+                .spacing([16.0, 4.0])
+                .show(ui, |ui| {
+                    for header in ["PID", "Role", "Packets", "Gap", "Time", "From", "To"] {
+                        ui.strong(header);
+                    }
+                    ui.end_row();
+                    for pid in pids {
+                        ui.monospace(&pid.pid);
+                        ui.label(overview::gap_roles(pid, program));
+                        ui.monospace(pid.packet_count.to_string());
+                        match pid.max_gap_packets {
+                            Some(gap) => ui.monospace(gap.to_string()),
+                            None => ui.weak(pid.status.replace('_', " ")),
+                        };
+                        ui.monospace(overview::gap_ms(pid).unwrap_or_else(|| "—".to_owned()));
+                        for offset in [pid.max_gap_start_offset_bytes, pid.max_gap_end_offset_bytes]
+                        {
+                            match offset {
+                                Some(offset) => {
+                                    let text = format!("0x{offset:08X}");
+                                    let name = format!("Open packet at {text}");
+                                    let button =
+                                        ui.small_button(egui::RichText::new(&text).monospace());
+                                    button.widget_info(|| {
+                                        egui::WidgetInfo::labeled(egui::Role::Button, true, &name)
+                                    });
+                                    if button.on_hover_text(&name).clicked() {
+                                        action = Some(OverviewAction::OpenPacket(offset));
+                                    }
+                                }
+                                None => {
+                                    ui.weak("—");
+                                }
+                            }
+                        }
+                        ui.end_row();
+                    }
+                });
+        });
     action
 }
 

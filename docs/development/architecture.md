@@ -72,7 +72,7 @@ observations it needs through focused methods.
 | How each PCR relates to the previous one (`continuous`, `wraparound`, `declared`, `pcr_pid_change`, `backward`, `forward_jump`), the maximum PCR interval and the PCR discontinuity status | `analysis` (`PCRClock`, `PCRCheck`) |
 | Where the PCR jitter estimate, the bitrate time base, the time series and the PCR-PTS/DTS bracket split into timing segments | `tsparser`, following the `analysis.PCRStep` of each PCR |
 | Which packets show a PID's presence (not one with `transport_error_indicator`), which PCRs give the time basis, and which PSI layout applies from which packet | `tsparser` (`pidReferenceSummary`, `referenceLayout`), reported as `analysis.Packet`, `analysis.TimedPCR` (the reference program's PCR with its `PCRStep`) and `analysis.ReferenceLayout` |
-| The time of a packet between two PCRs, per-PID packet counts and gaps, silences while referenced, unreferenced runs and their grace period, the referenced and unreferenced statuses | `analysis` (`PacketGaps`, `PIDReferenceCheck`) |
+| The time of a packet between two PCRs, per-PID packet counts and gaps, silences while referenced, unreferenced runs and their grace period, the referenced and unreferenced statuses, the report-only packet-gap statuses | `analysis` (`PacketGaps`, `PIDReferenceCheck`) |
 
 The continuity counter summary is the first check that uses this boundary from
 end to end. It was chosen because it is an existing, always-on transport check
@@ -106,10 +106,15 @@ program with the `PCRStep` its `PCRCheck` returned (`analysis.TimedPCR`), so
 time advances on `continuous` and `wraparound` steps and a new segment starts
 exactly where every other PCR-based result starts one. The state waiting
 for a PCR is a fixed number of stamps per PID; no per-packet history is kept. `PIDReferenceCheck` is built on it and adds the reference
-windows and unreferenced runs; the planned report of per-PID maximum packet
-gaps ([#176](https://github.com/small-teton/mpeg-ts-analyzer/issues/176))
-presents `PacketGaps.PIDs()` from the same collector (`PIDReferenceCheck.Gaps()`)
-instead of keeping a second per-PID history.
+windows and unreferenced runs. The report-only per-PID maximum packet gaps
+([#176](https://github.com/small-teton/mpeg-ts-analyzer/issues/176)) are
+presented from the same collector instead of a second per-PID history:
+`PIDReferenceCheck.PacketGaps()` joins each PID of `PacketGaps.PIDs()` with
+the references of the layouts and gives it the neutral status `info` (or
+`insufficient_data`), and `PIDReferenceCheck.ObserveLayout` restarts a PID's
+chain when a layout stops or resumes referencing it, so a removed and re-added
+stream has no gap across its absence. `tsparser` only formats the
+`multiplexing.packet_gaps` JSON and the text block.
 
 Other aggregate evaluators (PCR jitter, PCR-PTS/DTS gap, timestamp anomalies,
 bitrate) are still in `tsparser`. They move to `analysis` when a change to them

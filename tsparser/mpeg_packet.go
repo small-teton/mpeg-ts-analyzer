@@ -190,6 +190,7 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		trust.Dump()
 		if psi != nil {
 			psi.references.Dump()
+			dumpPacketGaps(psi.references)
 		}
 	}
 	if failures := report.failures(); options.FailOnError && len(failures) > 0 {

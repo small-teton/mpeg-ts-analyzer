@@ -137,6 +137,7 @@ type RangeAnalysisReport struct {
 	TransportErrors          *ReportAffectedPackets  `json:"transport_errors,omitempty"`
 	ScrambledPackets         *ReportAffectedPackets  `json:"scrambled_packets,omitempty"`
 	PIDReferences            *ReportPIDReferences    `json:"pid_references,omitempty"`
+	Multiplexing             *ReportMultiplexing     `json:"multiplexing,omitempty"`
 	Programs                 []RangeAnalysisProgram  `json:"programs"`
 	PSITransitions           []ReportPSITransition   `json:"psi_transitions,omitempty"`
 	PSILayout                *ReportPSILayout        `json:"psi_layout,omitempty"`
@@ -253,6 +254,7 @@ func rangeAnalysisReport(report *AnalysisReport) *RangeAnalysisReport {
 		r.ContinuityCounter = reportContinuity(analysis.continuity)
 		r.TransportErrors, r.ScrambledPackets = reportTransportTrust(analysis.trust)
 		r.PIDReferences = reportPidReferences(analysis.references)
+		r.Multiplexing = reportMultiplexing(analysis.references)
 		r.PSITransitions = reportPsiTransitions(analysis.psi.transitions)
 		r.PSILayout = reportPsiLayout(analysis)
 		for _, e := range analysis.scan.continuityEvents {

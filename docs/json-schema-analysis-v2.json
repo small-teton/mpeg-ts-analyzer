@@ -69,6 +69,10 @@
       "$ref": "json-schema-v2.json#/$defs/pidReferences",
       "description": "Referenced, missing and unreferenced PIDs for the whole multiplex, from the first packet of the range. Absent when no program was analyzed."
     },
+    "multiplexing": {
+      "$ref": "json-schema-v2.json#/$defs/multiplexing",
+      "description": "Report-only multiplexing diagnostics (per-PID maximum packet gaps) for the whole multiplex, from the first packet of the range. Absent when no program was analyzed."
+    },
     "programs": {
       "type": "array",
       "items": {

@@ -1131,10 +1131,11 @@ fn findings_account_for_every_check_that_is_not_ok() {
     harness.get_by_label("Findings (12)");
     assert!(harness.query_by_label("None.").is_none());
     for check in Check::ALL {
-        let links = if check == Check::PcrDiscontinuities {
-            2
-        } else {
-            1
+        // Packet gaps is a report without a verdict: never a finding.
+        let links = match check {
+            Check::PcrDiscontinuities => 2,
+            Check::PacketGaps => 0,
+            _ => 1,
         };
         assert_eq!(
             harness
@@ -1365,6 +1366,47 @@ fn referenced_pids_page_opens_the_packet_before_a_silence() {
     harness.get_by_role_and_label(Role::Heading, "Findings (2)");
     harness.get_by_label("Status: ABSENT");
     harness.get_by_role_and_label(Role::Button, "Open packet at 0x0000AE0C");
+}
+
+/// The packet-gap fixture is what the CLI writes for its sample.
+/// Runs only against a CLI named by MPEG_TS_ANALYZER_CLI (e.g. via `make gui-test`).
+#[test]
+fn packet_gaps_fixture_matches_the_cli() {
+    let args = ["--format", "json", "--output", "analysis"];
+    let Some(json) = crate::cli::run_on_sample("sample_188byte_packet_gaps.ts", &args) else {
+        return;
+    };
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/analysis_packet_gaps_188.json"
+    ))
+    .unwrap();
+    let mut output: serde_json::Value = serde_json::from_slice(&json).unwrap();
+    output["input"]["path"] = fixture["input"]["path"].clone();
+    assert_eq!(output, fixture, "regenerate the fixture with the CLI");
+}
+
+/// The Packet gaps page of the bursty remux: a neutral report without
+/// findings, and a per-PID table whose offsets open the packets around the
+/// largest gap.
+#[test]
+fn packet_gaps_page_lists_every_pid_of_the_program() {
+    let report: AnalysisReport = serde_json::from_str(include_str!(
+        "../../tests/fixtures/analysis_packet_gaps_188.json"
+    ))
+    .unwrap();
+    let mut harness = harness_sized(app_with_report(report), WIDE);
+    harness.run();
+    table_row(&harness, Check::PacketGaps)
+        .query_by_label("INFO")
+        .expect("the table shows the status");
+    open_detail(&mut harness, Check::PacketGaps, false);
+    harness.get_by_label("Status: INFO");
+    harness.get_by_role_and_label(Role::Heading, "Per PID");
+    // No finding section: the report has no verdict.
+    assert!(harness.query_by_label_contains("Findings (").is_none());
+    for offset in ["0x00011F24", "0x00017BAC", "0x000040A0"] {
+        harness.get_by_role_and_label(Role::Button, &format!("Open packet at {offset}"));
+    }
 }
 
 #[test]

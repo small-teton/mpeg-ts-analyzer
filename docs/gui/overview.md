@@ -30,7 +30,7 @@ Overview shows a **Transport health** table for the selected program. Each
 row is one check with the value and the verdict the CLI reported (`OK`, `NG`,
 `WARNING`, `ANOMALIES`, `ERRORS`, `AFFECTED`, `DATA EXCLUDED`, `RECOVERED`,
 `LOST`, `ABSENT`, `SILENT`, `UNREFERENCED`, `INSUFFICIENT DATA`,
-`NOT ASSESSABLE` or `SKIPPED`), grouped
+`NOT ASSESSABLE` or `SKIPPED`, or `INFO` for a report without a verdict), grouped
 under categories that are always expanded:
 
 | Category | Check | Applies to | Verdicts |
@@ -46,6 +46,7 @@ under categories that are always expanded:
 | Integrity | TS synchronization | whole multiplex | `OK`; `RECOVERED` when packets lost their sync byte and the analysis realigned; `LOST` when it could not realign and stopped there |
 | Structure | Referenced PIDs | whole multiplex, every program of the PAT | `OK`; `ABSENT` when a PMT, PCR, video or audio PID had no packet while referenced for more than 5000 ms; `SILENT` when it went more than 5000 ms without one; `INSUFFICIENT DATA` when a PID without packets was referenced too briefly, may be idle (private data), or there is no PCR |
 | Structure | Unreferenced PIDs | whole multiplex | `OK`; `UNREFERENCED` when a PID carried packets without a PAT/PMT reference for more than 500 ms; `INSUFFICIENT DATA` when a PID appeared too close to the end of the range; `SKIPPED` when not every program's PMT was followed |
+| Multiplexing | Packet gaps | PIDs of the selected program (PMT, PCR, elementary streams) | `INFO`: a report without a verdict, never a finding; `INSUFFICIENT DATA` when no PID of the program has two consecutive packets |
 
 The table always lists the checks in this order. The verdict is shown exactly
 as the CLI reported it; a status this GUI does not know is still shown, with a
@@ -65,7 +66,10 @@ and opened with Enter or Space. The page shows:
   and the largest skipped span with their offsets, and a partial packet at
   the end of the input; for Referenced and Unreferenced PIDs the PIDs that
   are not `OK`, grouped by status with their program, role and longest
-  silence or unreferenced time, and the limit;
+  silence or unreferenced time, and the limit; for Packet gaps the largest
+  gap of the program's elementary streams and a Per PID table with each
+  PID's largest gap and **Open packet** buttons for the packets before and
+  after it;
 - the check's **findings**, each with **Open packet** when it has an offset
   (for transport errors and scrambled packets, the first affected packet of
   each PID)
@@ -124,6 +128,17 @@ a reference for more than 0.5 s is `UNREFERENCED`; packets read before the
 first PAT and PMT, and a stream added or removed by a PMT change within that
 time, do not count. Times are estimated from byte positions between PCRs. The
 sample `sample_data/sample_188byte_pid_references.ts` shows each status.
+
+**Packet gaps** reports, for each PID of the selected program, the longest run
+of other packets between two of its packets, in packets (exact) and in
+milliseconds estimated from byte positions between PCRs (`at least` when the
+gap lies outside the PCRs of the analysis or crosses a PCR discontinuity). A
+remux that sends audio in large blocks shows a long gap even when its average
+bitrate is right. It is a report only: there is no limit, its `INFO` status is
+neutral, it never adds a finding and never changes the CLI's exit status. A
+stream removed by a PMT change and added back later has no gap across its
+absence. The bursty sample `sample_data/sample_188byte_packet_gaps.ts` shows
+it.
 
 **Findings** lists everything that needs attention, and its count includes
 every check that is not `OK`: each failed check, each kind of undeclared PCR

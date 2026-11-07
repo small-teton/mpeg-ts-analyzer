@@ -337,6 +337,18 @@ func summarySchemaCases() []schemaCase {
 			},
 		},
 		{
+			name: "complete with packet gaps", schema: summarySchemaFile, path: fixedPath(packetGapsFixtures[0].path),
+			want: map[string]any{
+				"/status": "complete", "/multiplexing/packet_gaps/time_basis": "pcr_interpolated_file_position",
+				"/multiplexing/packet_gaps/pids/0/references": []any{}, "/multiplexing/packet_gaps/pids/0/max_gap_exact": true,
+				"/multiplexing/packet_gaps/pids/2/status": "insufficient_data", "/multiplexing/packet_gaps/pids/2/reason": "no_consecutive_packets",
+				"/multiplexing/packet_gaps/pids/2/max_gap_packets": absent{}, "/multiplexing/packet_gaps/pids/2/max_gap_ms": absent{},
+				"/multiplexing/packet_gaps/pids/4/max_gap_packets": 125, "/multiplexing/packet_gaps/pids/4/max_gap_exact": false,
+				"/multiplexing/packet_gaps/pids/4/references/0/stream_type": "0x03", "/multiplexing/packet_gaps/pids/6/references/0/role": "pcr",
+				"/multiplexing/packet_gaps/pids/6/references/0/stream_type": absent{},
+			},
+		},
+		{
 			name: "complete with unreferenced PIDs skipped for a selected program", schema: summarySchemaFile, path: fixedPath(twoPrograms188Path),
 			opts: options.Options{Program: 1},
 			want: map[string]any{
@@ -404,7 +416,7 @@ func summarySchemaCases() []schemaCase {
 			},
 			want: map[string]any{
 				"/status": "incomplete", "/reason": "end_of_input_before_complete_analysis", "/error": absent{},
-				"/programs": []any{}, "/compliance": absent{}, "/transport_errors": absent{}, "/scrambled_packets": absent{}, "/pid_references": absent{},
+				"/programs": []any{}, "/compliance": absent{}, "/transport_errors": absent{}, "/scrambled_packets": absent{}, "/pid_references": absent{}, "/multiplexing": absent{},
 			},
 		},
 		{
@@ -505,6 +517,13 @@ func analysisSchemaCases() []schemaCase {
 			},
 		},
 		{
+			name: "complete with packet gaps in M2TS", schema: analysisSchemaFile, path: fixedPath(packetGapsFixtures[1].path), opts: analysis,
+			want: map[string]any{
+				"/status": "complete", "/multiplexing/packet_gaps/pids/4/max_gap_start_offset_bytes": 391 * 192,
+				"/multiplexing/packet_gaps/pids/5/max_gap_packets": 63, "/multiplexing/packet_gaps/pids/5/max_gap_ms": 320,
+			},
+		},
+		{
 			name: "complete with PCR discontinuities in M2TS", schema: analysisSchemaFile, path: fixedPath(pcrDiscontinuitiesFixtures[1].path), opts: analysis,
 			want: map[string]any{
 				"/status": "complete", "/programs/0/compliance/pcr_discontinuities/status": "ng",
@@ -540,7 +559,7 @@ func analysisSchemaCases() []schemaCase {
 			}),
 			want: map[string]any{
 				"/status": "incomplete", "/reason": "no_program_analyzed", "/analysis_start_offset_bytes": absent{},
-				"/continuity_counter": absent{}, "/transport_errors": absent{}, "/scrambled_packets": absent{}, "/pid_references": absent{},
+				"/continuity_counter": absent{}, "/transport_errors": absent{}, "/scrambled_packets": absent{}, "/pid_references": absent{}, "/multiplexing": absent{},
 			},
 		},
 		{
