@@ -2,7 +2,7 @@
 
 Status: the free measures below are implemented in
 `.github/workflows/gui-release.yml` (#100), and so is the signing for the
-in-app update (#150), whose GUI side is not implemented yet; code signing with a Developer ID or a
+in-app update and its verification in the GUI (#150); code signing with a Developer ID or a
 commercial certificate is not. The macOS app is only signed ad hoc. The CLI
 releases through GoReleaser and is not covered here.
 
@@ -33,8 +33,8 @@ releases through GoReleaser and is not covered here.
 
 ## Update signing
 
-Status: the release workflow signs the update packages and publishes the
-update manifest (#150); the GUI does not use them yet. The GUI's in-app update
+Status: implemented (#150): the release workflow signs the update packages
+and publishes the update manifest, and the GUI verifies them. The GUI's in-app update
 ([design](design.md#updates)) installs packages only when their signature
 verifies against a public key compiled into the GUI. The signature is a
 minisign signature made with `cargo packager signer`, the format

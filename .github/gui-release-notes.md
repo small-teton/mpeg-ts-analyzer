@@ -12,7 +12,8 @@ records the GUI and CLI versions and the commits they were built from.
 
 The `.app.tar.gz` archive, the `.sig` files and
 `mpeg-ts-analyzer-gui_{{VERSION}}_update.json` are for the GUI's in-app update;
-download the packages above instead.
+download the packages above instead. An installed GUI that has the in-app
+update (About → Check for Updates…) can install this release itself.
 
 ## Opening the app the first time
 

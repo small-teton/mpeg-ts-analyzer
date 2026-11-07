@@ -323,9 +323,11 @@ Language, packets per page and cached pages are laid out but not applied yet.
 
 ## Updates
 
-Status: the release workflow already signs the update packages and publishes
-the update manifest ([update signing](release-security.md#update-signing)); the
-GUI side described below is not implemented yet (#150).
+Status: implemented (#150) in `gui/src/update.rs`; the release workflow signs
+the update packages and publishes the update manifest
+([update signing](release-security.md#update-signing)). Releases published
+before the GUI side existed have no update manifest; the GUI offers only their
+release page.
 
 The GUI can update itself from GitHub Releases. The main reason is macOS: the
 app is signed ad hoc, so a `.dmg` downloaded in a browser carries
@@ -373,14 +375,16 @@ names the GUI and its version).
 
 - **At startup**, when the setting is on (default), once, in the background.
   A failure is silent apart from a line in the log. When an update exists,
-  an "Update available X.Y.Z" button appears in the top bar next to About;
-  nothing pops up.
+  an "Update available: X.Y.Z" button appears at the right end of the status
+  bar; nothing pops up.
 - **Manually**, from a "Check for Updates…" button in the About window. The
   result is shown in the update window: up to date, an update, or the error.
 
-The update window shows the running and new GUI versions, the CLI version the
-new release bundles, and a link to the release notes. It offers Install (when
-this installation can be updated, see below) or Open release page.
+The "Software update" window shows the running and new GUI versions, the CLI
+version the new release bundles, and a link to the release notes. It offers
+Install and Later (when this installation can be updated, see below), or the
+reason and Open release page. A release without an update manifest (published
+before the in-app update existed) is offered as a release page only.
 
 ### Installing
 
@@ -389,21 +393,26 @@ the public key compiled into the GUI, and installs it:
 
 | Installation | How it is detected | Update |
 |---|---|---|
-| macOS `.app` | Running from `<name>.app/Contents/MacOS` | Replace the bundle with the signed `.app.tar.gz`, then offer to restart |
-| Windows NSIS install | Executable in `%LOCALAPPDATA%\mpeg-ts-analyzer` next to the NSIS uninstaller | Run the new installer (passive mode); the GUI exits first |
-| Linux AppImage | `APPIMAGE` is set and the file can be replaced | Replace the AppImage file, then offer to restart |
-| Linux AppImage, not writable | `APPIMAGE` is set but the file or its directory is not writable | Notify only, saying why |
+| macOS `.app` | Running from `<name>.app/Contents/MacOS` | Replace the bundle with the signed `.app.tar.gz`, then offer to restart (`open -n` on the bundle) |
+| Windows NSIS install | Executable in `%LOCALAPPDATA%\mpeg-ts-analyzer` next to the NSIS uninstaller (`uninstall.exe`) | Download and verify, close the GUI, then run the new installer in passive mode (`/P /R`), which starts the GUI again |
+| Linux AppImage | `APPIMAGE` is set and its directory is writable | Replace the AppImage file, then offer to restart |
+| Linux AppImage, not writable | `APPIMAGE` is set but its directory is not writable | Notify only, saying why |
 | Unsupported macOS location | Started from the mounted `.dmg` (`/Volumes/…`) or from an App Translocation path | Notify only, saying why (for example "move the app to Applications first") |
-| Linux `.deb`, Windows portable zip | Anything else | Notify only: show the release page |
+| Linux `.deb`, Windows portable zip, a build that was not packaged | Anything else | Notify only: show the release page |
 
 - Install is disabled while an analysis is running.
-- Settings are saved before installing, because the Windows path exits the
-  process right after starting the installer.
+- Settings are saved before installing: on Windows the installer starts from
+  eframe's `on_exit`, which runs after the settings were saved, because the
+  library exits the process right after starting it.
 - An installed macOS app is not write-tested beforehand: if the user cannot
   move the bundle, the library asks for an administrator password through
   `osascript`; cancelling leaves the old app in place.
 - A signature that does not verify, or a download that fails, aborts the
   update and leaves the installation unchanged; the window shows the error.
+- The GUI's own requests (the release list and the release manifest) follow
+  redirects only to `github.com`, `api.github.com` and
+  `*.githubusercontent.com` over HTTPS. The update manifest and package are
+  fetched by the library from URLs the GUI validated first.
 
 ### Not covered
 
