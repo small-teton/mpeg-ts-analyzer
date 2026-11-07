@@ -151,6 +151,11 @@ type ClockTime struct {
 	// times of one segment is their interval however many wraps lie between
 	// them.
 	Ticks uint64
+	// Ms is the same time in milliseconds without rounding to whole ticks:
+	// Ticks is truncated from the interpolation between two PCRs, Ms is not.
+	// It is used where a lead is reported with sub-tick precision (see
+	// PES.LeadMs).
+	Ms float64
 	// Segment numbers the PCR segments of the program. Times of different
 	// segments are not comparable.
 	Segment int

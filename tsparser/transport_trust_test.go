@@ -139,11 +139,11 @@ func TestProgramAnalyzerTrust(t *testing.T) {
 	t.Run("PCR", func(t *testing.T) {
 		a := newAnalyzer()
 		a.observe(parsedPacket(t, buildPcrPacket(pcrPid, 27_000_000), 0, true, 0), 0, false)
-		if a.hasLastPcr || len(a.series.pcr) != 0 {
+		if a.clock.valid || len(a.series.pcr) != 0 {
 			t.Error("the PCR of a packet with a transport error was used")
 		}
 		a.observe(parsedPacket(t, buildPcrPacket(pcrPid, 27_000_000), 188, false, 2), 188, false)
-		if !a.hasLastPcr || a.lastPcr != 27_000_000 {
+		if !a.clock.valid || a.clock.pcr != 27_000_000 {
 			t.Error("the clear PCR of a scrambled packet was not used")
 		}
 	})

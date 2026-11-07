@@ -2,6 +2,7 @@ package tsparser
 
 import (
 	"errors"
+	"math"
 	"strings"
 	"testing"
 
@@ -94,14 +95,21 @@ func TestPesParseSplitHeader(t *testing.T) {
 func TestArrivalAt(t *testing.T) {
 	prev := pcrAnchor{valid: true, pcr: 1000, unwrapped: 1000, pos: 0, segment: 1}
 	next := nextPcrAnchor(prev, 2000, 100, true)
-	if got := arrivalAt(prev, next, 25); got != (analysis.ClockTime{Valid: true, Ticks: 1250, Segment: 1}) {
+	if got := arrivalAt(prev, next, 25); got != (analysis.ClockTime{Valid: true, Ticks: 1250, Ms: pcrToMs(1000) + (pcrToMs(2000)-pcrToMs(1000))*0.25, Segment: 1}) {
 		t.Errorf("interpolated = %+v", got)
 	}
 	// Across the PCR wrap the time keeps counting, also over several wraps.
 	high := pcrAnchor{valid: true, pcr: pcrWrapTicks - 100, unwrapped: pcrWrapTicks - 100, pos: 0}
 	wrapped := nextPcrAnchor(high, 100, 100, true)
-	if got := arrivalAt(high, wrapped, 75); got != (analysis.ClockTime{Valid: true, Ticks: pcrWrapTicks + 50}) {
+	if got := arrivalAt(high, wrapped, 75); got.Ticks != pcrWrapTicks+50 || !got.Valid || math.Abs(got.Ms-pcrToMs(float64(pcrWrapTicks+50))) > 1e-6 {
 		t.Errorf("wrapped = %+v", got)
+	}
+	// Ticks is truncated to whole ticks, Ms is not.
+	if got := arrivalAt(prev, next, 1); got.Ticks != 1010 || got.Ms != pcrToMs(1000)+(pcrToMs(2000)-pcrToMs(1000))*0.01 {
+		t.Errorf("fraction = %+v", got)
+	}
+	if got := arrivalAt(prev, nextPcrAnchor(prev, 1001, 3, true), 1); got.Ticks != 1000 || got.Ms <= pcrToMs(1000) {
+		t.Errorf("sub-tick = %+v", got)
 	}
 	again := nextPcrAnchor(nextPcrAnchor(wrapped, pcrWrapTicks-100, 200, true), 100, 300, true)
 	if again.unwrapped != 2*pcrWrapTicks+100 {
@@ -167,7 +175,7 @@ func TestPESFeed(t *testing.T) {
 func TestCompletePesIncompleteHeader(t *testing.T) {
 	a := newProgramAnalyzer(options.Options{}, 0, 1, 0x1000, 0x100, []ProgramInfo{{elementaryPid: 0x100, streamType: 0x02}}, false)
 	pes := NewPes()
-	pes.Initialize(0x100, 188, 0, 0, false)
+	pes.initialize(0x100, 188, pcrAnchor{})
 	pes.Append([]byte{0x00, 0x00, 0x01, 0xE0, 0x00})
 	a.pesMap[0x100] = pes
 	a.finish()
@@ -205,7 +213,7 @@ func TestDumpPESHealth(t *testing.T) {
 func TestContinuityErrorEndsPes(t *testing.T) {
 	a := newProgramAnalyzer(options.Options{}, 0, 1, 0x1000, 0x100, []ProgramInfo{{elementaryPid: 0x100, streamType: 0x02}}, false)
 	pes := NewPes()
-	pes.Initialize(0x100, 0, 0, 0, false)
+	pes.initialize(0x100, 0, pcrAnchor{})
 	pes.Append([]byte{0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x80, 0x05, 0x21, 0x00, 0x05, 0xBF, 0x21})
 	a.pesMap[0x100] = pes
 	a.breakPES(0x100, 376, analysis.BreakContinuityError)

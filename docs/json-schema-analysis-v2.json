@@ -300,7 +300,7 @@
         },
         "pcr_gap_ms": {
           "type": "number",
-          "description": "PCR to DTS (or PTS) gap, when PCRs bracket the PES."
+          "description": "PCR to DTS (or PTS) gap, when two PCRs of one timing segment bracket the PES; read modulo 2^33 as the signed difference nearest to zero."
         }
       }
     },

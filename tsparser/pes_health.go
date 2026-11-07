@@ -48,14 +48,20 @@ func nextPcrAnchor(prev pcrAnchor, pcr uint64, pos int64, measured bool) pcrAnch
 // difference to the packet start is negligible here). The time is unknown
 // unless both PCRs are known and belong to the same segment, which makes them
 // consecutive PCRs whose interval was measured; it is never extrapolated. The
-// time is unwrapped within the segment (see pcrAnchor).
+// time is unwrapped within the segment (see pcrAnchor), in whole ticks (Ticks)
+// and in milliseconds (Ms).
 func arrivalAt(prev, next pcrAnchor, pos int64) analysis.ClockTime {
 	if !prev.valid || !next.valid || next.segment != prev.segment || next.pos <= prev.pos {
 		return analysis.ClockTime{}
 	}
 	span := next.unwrapped - prev.unwrapped
 	elapsed := uint64(float64(span) * float64(pos-prev.pos) / float64(next.pos-prev.pos))
-	return analysis.ClockTime{Valid: true, Ticks: prev.unwrapped + elapsed, Segment: prev.segment}
+	// Ms is interpolated in milliseconds without truncation, as the
+	// PCR-PTS/DTS gap has always been, so its values do not change where no
+	// wraparound is crossed.
+	position := float64(pos-prev.pos) / float64(next.pos-prev.pos)
+	prevMs, nextMs := pcrToMs(float64(prev.unwrapped)), pcrToMs(float64(next.unwrapped))
+	return analysis.ClockTime{Valid: true, Ticks: prev.unwrapped + elapsed, Ms: prevMs + (nextMs-prevMs)*position, Segment: prev.segment}
 }
 
 // maxPendingPES bounds the observations a program holds until its next PCR.

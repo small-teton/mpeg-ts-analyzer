@@ -49,8 +49,8 @@ func TestLeadTicks(t *testing.T) {
 		{"unwrapped arrival", 90_000 + 90, PCRWrapTicks + 1000*ms, ms},
 		{"33-bit stamp beyond the period", 1<<33 + 90, 0, ms},
 	} {
-		if got := leadTicks(tc.stamp, tc.arrival); got != tc.want {
-			t.Errorf("%s: leadTicks(%d, %d) = %d, want %d", tc.name, tc.stamp, tc.arrival, got, tc.want)
+		if got := LeadTicks(tc.stamp, tc.arrival); got != tc.want {
+			t.Errorf("%s: LeadTicks(%d, %d) = %d, want %d", tc.name, tc.stamp, tc.arrival, got, tc.want)
 		}
 	}
 }
