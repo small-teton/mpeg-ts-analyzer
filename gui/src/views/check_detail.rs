@@ -77,7 +77,7 @@ fn page(ui: &mut egui::Ui, context: &Context<'_>, check: Check) -> Option<Overvi
             facts(ui, &row.facts);
             if !is_known_status(check, &row.status) {
                 ui.add_space(4.0);
-                let note = if is_finding(&row.status) {
+                let note = if is_finding(check, &row.status) {
                     "It is shown as reported and listed as a finding."
                 } else {
                     "It is shown as reported."

@@ -932,6 +932,23 @@ fn status_knowledge_is_per_check() {
             .query_all_by_role(Role::Row)
             .all(|row| row.accesskit_node().is_selected() != Some(true))
     );
+
+    // `not_assessable` means unavailable only for PCR jitter: on Max PCR
+    // interval it is an unknown status, listed as a finding.
+    let report = edited_report(|d| {
+        d["programs"][0]["compliance"]["max_pcr_interval"]["status"] = "not_assessable".into();
+    });
+    let mut harness = harness_sized(app_with_report(report), WIDE);
+    harness.run();
+    // Still five findings (the fixture's), and nothing unavailable.
+    harness.get_by_label("Findings (5)");
+    assert!(
+        harness
+            .query_by_label_contains("Unavailable analysis")
+            .is_none()
+    );
+    open_detail(&mut harness, Check::MaxPcrInterval, false);
+    harness.get_by_label_contains("It is shown as reported and listed as a finding.");
 }
 
 /// PCR jitter that the CLI did not grade: its status in the table, the

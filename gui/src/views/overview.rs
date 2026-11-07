@@ -881,15 +881,17 @@ pub(crate) struct Finding {
 /// Whether a check status means its analysis is unavailable rather than a
 /// result: `skipped`, or a PCR jitter estimate the CLI did not grade
 /// (`not_assessable`, because delivery is not constant).
-pub(crate) fn is_unavailable(status: &str) -> bool {
-    matches!(status, "skipped" | "not_assessable")
+/// Only a status this check describes counts: an unknown `not_assessable` on
+/// another check stays a finding, shown as the CLI reported it.
+pub(crate) fn is_unavailable(check: Check, status: &str) -> bool {
+    matches!(status, "skipped" | "not_assessable") && is_known_status(check, status)
 }
 
 /// Whether a check status is a finding. Unavailable analysis is not a
 /// finding; any other status than `ok`, including one this GUI does not know,
 /// is shown as the CLI reported it.
-pub(crate) fn is_finding(status: &str) -> bool {
-    status != "ok" && !is_unavailable(status)
+pub(crate) fn is_finding(check: Check, status: &str) -> bool {
+    status != "ok" && !is_unavailable(check, status)
 }
 
 /// A check whose analysis is unavailable, with the CLI's status and reason.
@@ -912,7 +914,7 @@ pub(crate) fn findings(
     let mut unavailable = Vec::new();
     let in_program = Scope::Program(program.program_number);
     for row in rows(report, program) {
-        if is_unavailable(&row.status) {
+        if is_unavailable(row.check, &row.status) {
             let reason = match (row.check, program.pcr_jitter.as_ref()) {
                 // The status reason, then the delivery assessment behind it.
                 (Check::PcrJitter, Some(jitter)) if row.status == "not_assessable" => format!(
@@ -930,7 +932,7 @@ pub(crate) fn findings(
             });
             continue;
         }
-        if !is_finding(&row.status) {
+        if !is_finding(row.check, &row.status) {
             continue;
         }
         let check = row.check;
@@ -1110,7 +1112,7 @@ mod tests {
         );
         // Each row is non-OK and has its finding.
         for row in rows(&report, &report.programs[0]) {
-            assert!(is_finding(&row.status), "{:?}", row.check);
+            assert!(is_finding(row.check, &row.status), "{:?}", row.check);
             assert!(findings.iter().any(|f| f.check == Some(row.check)));
         }
     }
@@ -1168,6 +1170,14 @@ mod tests {
         assert!(is_known_status(Check::PcrJitter, "warning"));
         assert!(!is_known_status(Check::MaxPcrInterval, "warning"));
         assert!(!is_known_status(Check::MaxPcrInterval, "not_assessable"));
+        // Unavailable only where the check describes the status; elsewhere
+        // an unknown status stays a finding.
+        assert!(is_unavailable(Check::PcrJitter, "not_assessable"));
+        assert!(is_unavailable(Check::MaxPcrInterval, "skipped"));
+        assert!(!is_unavailable(Check::MaxPcrInterval, "not_assessable"));
+        assert!(is_finding(Check::MaxPcrInterval, "not_assessable"));
+        assert!(!is_unavailable(Check::ContinuityCounter, "skipped"));
+        assert!(is_finding(Check::ContinuityCounter, "skipped"));
     }
 
     /// A PCR jitter estimate the CLI did not grade is unavailable analysis
