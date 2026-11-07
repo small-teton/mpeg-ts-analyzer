@@ -152,7 +152,7 @@ func gitCommand(args ...string) *exec.Cmd {
 const (
 	usageDoc  = "docs/cli/usage.md"             // every flag, the help text, verdicts and exit codes
 	jsonDoc   = "docs/reference/json-output.md" // the JSON outputs, with complete examples
-	schemaDoc = "docs/json-schema-v1.json"
+	schemaDoc = "docs/json-schema-v2.json"
 )
 
 func evaluate(root string, changed map[string]bool, patches map[string]string, body string) findings {

@@ -64,15 +64,15 @@ func TestEvaluateRequiresDocumentationForOptionsChange(t *testing.T) {
 
 func TestEvaluateAcceptsDocumentedJSONContractChange(t *testing.T) {
 	root := policyFixture(t)
-	writeFile(t, root, "docs/json-schema-v1.json", "{}\n")
+	writeFile(t, root, "docs/json-schema-v2.json", "{}\n")
 	trackFiles(t, root)
 	changed := map[string]bool{
 		"tsparser/report.go":            true,
 		"docs/reference/json-output.md": true,
-		"docs/json-schema-v1.json":      true,
+		"docs/json-schema-v2.json":      true,
 	}
 	patches := map[string]string{"tsparser/report.go": "+\tValue string `json:\"value\"`\n"}
-	body := completeBody("- Updated `docs/reference/json-output.md`.\n- Updated `docs/json-schema-v1.json`.")
+	body := completeBody("- Updated `docs/reference/json-output.md`.\n- Updated `docs/json-schema-v2.json`.")
 
 	result := evaluate(root, changed, patches, body)
 	if len(result.failures) != 0 {

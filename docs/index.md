@@ -29,8 +29,8 @@ desktop GUI. The [README](https://github.com/small-teton/mpeg-ts-analyzer#readme
 - [Machine-readable output](reference/json-output.md): the JSON summary, range
   analysis, PSI layout, packet pages and packet detail, progress events and
   capabilities.
-- JSON schemas: [summary](json-schema-v1.json),
-  [range analysis](json-schema-analysis-v1.json),
+- JSON schemas: [summary](json-schema-v2.json),
+  [range analysis](json-schema-analysis-v2.json),
   [packets](json-schema-packets-v1.json).
 
 ## Develop and release

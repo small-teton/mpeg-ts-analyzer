@@ -159,41 +159,69 @@ appears): a PCR can arrive on time yet carry a wrong value, which upsets the
 decoder's clock recovery (audio pops, video stutter).
 
 ```
-$ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts --dump-pcr-jitter
+$ ./mpeg-ts-analyzer sample_data/sample_188byte_all_findings.ts --dump-pcr-jitter
 ...
 -----------------------------
 PCR Jitter Summary (per-interval, byte-position model):
-  (file-based estimate; assumes ~constant delivery rate, not a TR 101 290 measurement)
-  Samples          : 60 PCR in 1 segment(s)
-  Measured         : 58 interior samples
-  Max jitter       : +23.333333ms at 0x00026244
-  Min jitter       : -28.679245ms at 0x00008664
-  Avg |jitter|     : 16.822812ms
-  Within +/-500ns  : 0.0% (ISO/IEC 13818-1 accuracy limit)
+  (file-based estimate; judged only when the stream shows constant delivery, not a TR 101 290 measurement)
+  Samples          : 55 PCR in 1 segment(s)
+  Measured         : 53 interior samples
+  Max jitter       : +0.100000ms at 0x00002a98
+  Min jitter       : -0.050000ms at 0x00002920
+  Avg |jitter|     : 0.003774ms
+  Within +/-500ns  : 94.3% (ISO/IEC 13818-1 accuracy limit)
+  Delivery         : CONSTANT - the multiplex rate of 2 one-second windows deviates up to 0.00% from the average 75,200 b/s (tolerance 1%)
   Status           : NG (max |jitter| exceeds the +/-25 microsec DVB limit)
   Discontinuities  : 0
 ```
 
-Jitter magnitudes are printed in milliseconds (six decimals, so 1 ns is resolvable).
-`Status` grades the worst-case `|jitter|` against the two standard limits:
+A file has no real arrival timestamps, so the jitter of each PCR is estimated
+from its **byte position**: it is compared with the value interpolated from its
+two neighbors, which is exact only when the multiplex is delivered at a constant
+rate. Jitter magnitudes are printed in milliseconds (six decimals, so 1 ns is
+resolvable).
+
+Because a PCR error and a change of delivery rate look the same in a file,
+`Delivery` first checks whether the stream itself shows constant delivery: the
+multiplex rate over 1-second windows of PCR time must stay within ±1 % of the
+range average, and no estimated jitter may reach the millisecond scale (1 ms)
+that only a varying rate explains. `CONSTANT`, `VARIABLE` or `UNKNOWN` (fewer
+than two windows, a range shorter than about two seconds) is followed by the
+evidence. Only with `CONSTANT` delivery does `Status` grade the worst-case
+`|jitter|` against the two standard limits:
 
 - **OK** — within ±500 ns (ISO/IEC 13818-1 accuracy limit)
 - **WARNING** — beyond ±500 ns but within ±25 µs (DVB receiver tolerance)
 - **NG** — beyond ±25 µs
 
-The result is a file-based estimate (there are no real arrival timestamps in a
-file), not a hardware TR 101 290 measurement, as noted in the output header.
+Otherwise it is **NOT ASSESSABLE**, and the estimate is still shown. The result
+is a file-based estimate, not a hardware TR 101 290 measurement, as noted in the
+output header.
 
-> The bundled sample shows large jitter because its PCR PID also carries VBR video,
-> so the byte rate between PCRs varies a lot — not a clean CBR mux. A compliant
-> CBR broadcast multiplex reports sub-microsecond jitter.
+The example is the intentionally invalid
+[diagnostic sample](../development/sample-data.md#diagnostic-sample-with-every-overview-finding),
+delivered at a constant rate with one PCR stamped 100 µs late; the same stream
+without that defect reports exactly zero and `OK`. The bundled VBR sample is
+not assessable: its PCR PID also carries VBR video and the multiplex has no
+stuffing, so the byte rate varies, and the byte-position "jitter" reaches
+milliseconds:
 
-For a deterministic counterpart, the intentionally invalid
-[diagnostic sample](../development/sample-data.md#diagnostic-sample-with-every-overview-finding)
-is delivered at a constant rate with one PCR stamped 100 µs late: it reports
-`Max jitter : +0.100000ms` and `NG`, and the same stream without that defect
-reports exactly zero. The GUI shows this verdict as the CLI reports it and
-labels it as a byte-position estimate.
+```
+$ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts --dump-pcr-jitter
+...
+  Max jitter       : +23.333333ms at 0x00026244
+  Min jitter       : -28.679245ms at 0x00008664
+  Avg |jitter|     : 16.822812ms
+  Within +/-500ns  : 0.0% (ISO/IEC 13818-1 accuracy limit)
+  Delivery         : VARIABLE - the multiplex rate of 4 one-second windows deviates up to 3.06% from the average 496,754 b/s (tolerance 1%)
+  Status           : NOT ASSESSABLE (delivery rate is variable, so the byte-position estimate does not measure PCR accuracy)
+  Discontinuities  : 0
+```
+
+When no estimate can be made (fewer than 3 PCRs, or too many discontinuities),
+the summary says `analysis skipped` with the reason, still followed by the
+`Delivery` line. PCR jitter does not affect `--fail-on-error`. The JSON form is
+described in [PCR jitter](../reference/json-output.md#pcr-jitter).
 
 ## Dump bitrate
 

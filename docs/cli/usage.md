@@ -17,7 +17,7 @@ In addition, it can dump various MPEG-2 TS internal structures for stream invest
 - PSI layout of an analyzed range (`--output analysis`): the PAT/PMT sections seen, the layout in effect over each byte interval, and every PID observed with what it carries
 - PMT ES info descriptors (ISO 639 language, registration, AVC/HEVC video, AAC audio, teletext, DVB subtitling)
 - PES header with PTS/DTS timestamps
-- PCR jitter analysis (per-interval deviation from the expected PCR)
+- PCR jitter analysis (per-interval deviation from the expected PCR, estimated from byte positions and judged only when the stream shows constant delivery)
 - `continuity_counter` validation with an always-on per-PID error summary
 
 Both 188-byte TS packets and 192-byte M2TS packets (BDAV format with TP_extra_header) are supported. The packet size is auto-detected from the stream.
@@ -140,7 +140,9 @@ program's PCR PID, one segment at a time:
 
 `--fail-on-error` is intended for CI. It preserves all normal output and exits
 with code 2 if either evaluated check is `NG`. Healthy and insufficient-data
-runs exit 0; usage, input, and parsing errors use exit 1.
+runs exit 0; usage, input, and parsing errors use exit 1. The PCR jitter
+estimate of `--dump-pcr-jitter` does not take part, whatever its status
+(see [Dump PCR jitter](dumps.md#dump-pcr-jitter)).
 
 ```sh
 mpeg-ts-analyzer input.ts --fail-on-error
