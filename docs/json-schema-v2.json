@@ -547,7 +547,7 @@
         },
         "pcr_pid": {
           "$ref": "#/$defs/pid",
-          "description": "The reference PCR_PID at the end of the range; absent when the program has none."
+          "description": "The last reference PCR_PID in effect, also after the reference program was removed by a later PAT; absent when the program never had one."
         },
         "segment_count": {
           "$ref": "#/$defs/nonNegativeInteger",

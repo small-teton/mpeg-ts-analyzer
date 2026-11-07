@@ -415,3 +415,41 @@ func TestPsiHealthFollowsPcrSteps(t *testing.T) {
 		}
 	}
 }
+
+// When a later PAT removes the reference program, the time measured before
+// stays, and the result still names its PCR_PID.
+func TestPsiHealthKeepsTheRemovedReference(t *testing.T) {
+	pat0 := patSectionN(0, 0, 0, [2]uint16{1, 0x1000}, [2]uint16{2, 0x1010})
+	pat1 := patSectionN(1, 0, 0, [2]uint16{2, 0x1010})
+	pmt := func(number, pcr uint16) []byte { return pmtSectionN(number, 0, 0, 0, pcr, [2]uint16{0x02, pcr}) }
+	s := newTrackingStream().start(pat0, map[uint16][]byte{0x1000: pmt(1, 0x100), 0x1010: pmt(2, 0x200)}, 0x1000, 0x1010)
+	for i := range uint64(20) {
+		s.pcr(0x100, i*40)
+		switch {
+		case i == 10:
+			s.section(0x0000, pat1)
+		case i%5 == 0 && i < 10:
+			s.section(0x0000, pat0)
+		case i%5 == 0:
+			s.section(0x0000, pat1)
+		case i%5 == 1 && i < 10:
+			s.section(0x1000, pmt(1, 0x100))
+		case i%5 == 2:
+			s.section(0x1010, pmt(2, 0x200))
+		}
+	}
+	path := s.write(t, false)
+	report := summary(t, path, options.Options{Program: 1})
+	h := report.PSIHealth
+	if h == nil || h.TimeBase != (ReportPSITimeBase{Status: "pcr", ProgramNumber: 1, PCRPID: "0x0100", SegmentCount: 1}) || h.Tables[1].WithdrawnOffsetBytes == nil {
+		t.Fatalf("time base after removal: %s", toJSON(t, h))
+	}
+	out := captureStdout(t, func() {
+		if err := ParseTsFile(path, options.Options{Program: 1}); err != nil {
+			t.Error(err)
+		}
+	})
+	if !strings.Contains(out, "time base: PCR PID 0x0100 of program 1)") {
+		t.Errorf("text: %s", out)
+	}
+}

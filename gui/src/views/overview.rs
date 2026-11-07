@@ -557,6 +557,10 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
                         "PCR PID {pid} of program {}, {} segment(s)",
                         base.program_number, base.segment_count
                     ),
+                    (None, "pcr") => format!(
+                        "PCR of program {}, {} segment(s)",
+                        base.program_number, base.segment_count
+                    ),
                     _ => format!("none ({})", base.status),
                 },
             ));
@@ -1523,6 +1527,11 @@ mod tests {
             "../../tests/fixtures/analysis_two_programs_188.json"
         ))
         .unwrap();
+        // A CLI that does not name the PCR_PID of a measured time base.
+        document["psi_health"]["time_base"]
+            .as_object_mut()
+            .unwrap()
+            .remove("pcr_pid");
         let tables = &mut document["psi_health"]["tables"];
         tables[0]["status"] = "insufficient_data".into();
         tables[0]["repetition"] = serde_json::json!({
@@ -1540,6 +1549,10 @@ mod tests {
         let report = super::tests::report(&document.to_string());
         let program = &report.programs[1];
         let pat = row(&report, program, Check::PatHealth).unwrap();
+        assert_eq!(
+            fact(&pat, "Time base").as_deref(),
+            Some("PCR of program 1, 1 segment(s)")
+        );
         assert_eq!(pat.value, "—");
         assert_eq!(
             pat.reason.as_deref(),

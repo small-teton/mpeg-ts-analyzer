@@ -56,8 +56,11 @@ type psiHealthCollector struct {
 	// marks the next PCR as a pcr_pid_change; discontinuityPending is set by a
 	// packet of the PCR_PID with discontinuity_indicator and no PCR, which
 	// makes the next PCR declared, as programAnalyzer.observe does.
-	lastPcrPid           uint16
-	pcrPidChanged        bool
+	lastPcrPid    uint16
+	pcrPidChanged bool
+	// reportedPcrPid is the last non-zero reference PCR_PID, which the
+	// result names even after the reference program was removed.
+	reportedPcrPid       uint16
 	discontinuityPending bool
 }
 
@@ -69,7 +72,7 @@ type healthProgram struct {
 // newPsiHealthCollector follows the range whose first complete PAT is pat.
 // refNumber and pcrPid name the reference program and its PCR_PID.
 func newPsiHealthCollector(pat *patTable, refNumber, pcrPid uint16) *psiHealthCollector {
-	return &psiHealthCollector{
+	h := &psiHealthCollector{
 		check:     analysis.NewPSIHealthCheck(),
 		pat:       &psiAssembler[*Pat]{name: "PAT", tableID: 0x00, anyExtension: true, parse: parsePatSection},
 		programs:  make(map[uint16]*healthProgram),
@@ -78,6 +81,8 @@ func newPsiHealthCollector(pat *patTable, refNumber, pcrPid uint16) *psiHealthCo
 		refNumber: refNumber,
 		pcrPid:    pcrPid,
 	}
+	h.reportedPcrPid = h.referencePcrPid()
+	return h
 }
 
 // referencePcrPid is the PCR_PID that gives the time base at this point, or
@@ -101,6 +106,9 @@ func (h *psiHealthCollector) observe(tsPacket *TsPacket, pos int64) {
 	h.end = pos
 	pid := tsPacket.Pid()
 	pcrPid := h.referencePcrPid()
+	if pcrPid != 0 {
+		h.reportedPcrPid = pcrPid
+	}
 	if pcrPid != h.lastPcrPid {
 		h.lastPcrPid, h.pcrPidChanged, h.discontinuityPending = pcrPid, true, false
 	}
@@ -375,8 +383,8 @@ func reportPsiHealth(h *psiHealthCollector) *ReportPSIHealth {
 		TimeBase:          ReportPSITimeBase{Status: "none", ProgramNumber: h.refNumber, SegmentCount: result.Segments},
 		Tables:            []ReportPSITableHealth{},
 	}
-	if pid := h.referencePcrPid(); pid != 0 {
-		r.TimeBase.PCRPID = reportPID(pid)
+	if h.reportedPcrPid != 0 {
+		r.TimeBase.PCRPID = reportPID(h.reportedPcrPid)
 	}
 	if result.TimeBase {
 		r.TimeBase.Status = "pcr"

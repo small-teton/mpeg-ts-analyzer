@@ -559,7 +559,9 @@ first packet of the range. It is absent when no analysis ran. For
   same [PCR steps](#pcr-timing-results) as every other PCR-based result. Packet times
   are interpolated by byte position between the PCRs around them; no interval
   spans a segment boundary. `status` is `none` without two PCRs in one segment,
-  and every `repetition.status` is then `skipped`.
+  and every `repetition.status` is then `skipped`. When a later PAT removes the
+  reference program, no further time is measured, and `pcr_pid` keeps naming
+  the last reference `PCR_PID`.
 - `tables` lists the PAT, then one entry per `program_number` announced in the
   range, in numeric order. A PMT entry has `program_number`,
   `announced_offset_bytes` (the PAT packet that first announced it; the PMT is
