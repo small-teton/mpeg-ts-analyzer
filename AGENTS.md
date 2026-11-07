@@ -78,12 +78,16 @@ A local (gitignored) comparison helper lives at `local/compare_bitrate.py`.
 
 ## Testing and coverage
 
-The `bitbuffer` and `tsparser` packages must each maintain **100.0% statement
-coverage**. The CLI entry point (`cmd` and `main.go`) is excluded from the
-coverage target.
+The `bitbuffer`, `tsparser` and `internal/analysis` packages must each maintain
+**100.0% statement coverage** through their own tests. The CLI entry point
+(`cmd` and `main.go`) is excluded from the coverage target.
 
-- After changing Go code, run `make coverage` and confirm both packages report
-  `100.0%`.
+- After changing Go code, run `make coverage` and confirm all three packages
+  report `100.0%`.
+- Keep decoding, recovery and trust decisions in `tsparser` and aggregation,
+  applicability, thresholds and statuses in `internal/analysis`, which imports
+  only the standard library; see
+  [docs/development/architecture.md](docs/development/architecture.md).
 - Active fuzzing commands and the regression-corpus workflow are documented in
   [docs/development/fuzzing.md](docs/development/fuzzing.md).
 - Add or update tests whenever a change would otherwise reduce coverage.

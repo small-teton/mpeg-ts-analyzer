@@ -2,7 +2,8 @@ package tsparser
 
 import (
 	"fmt"
-	"sort"
+
+	"github.com/small-teton/mpeg-ts-analyzer/v2/internal/analysis"
 )
 
 // continuityEvent describes one continuity_counter violation. Expected is the
@@ -84,74 +85,56 @@ func (t *continuityTracker) Check(packet *TsPacket) continuityResult {
 	}}
 }
 
-// continuityCounterSummary collects TS-layer continuity events and makes the
-// inline warnings visible as a deterministic end-of-run summary.
+// continuityCounterSummary feeds the continuity errors found by
+// continuityTracker and the applied program layouts to the continuity check of
+// the analysis package, and renders its result as the end-of-run summary.
 type continuityCounterSummary struct {
-	counts map[uint16]int
-	labels map[uint16]string
+	check *analysis.ContinuityCheck
 }
 
+// newContinuityCounterSummary returns a summary that names the PIDs of one
+// program.
 func newContinuityCounterSummary(pmtPid, pcrPid uint16, programInfos []ProgramInfo) *continuityCounterSummary {
-	s := &continuityCounterSummary{
-		counts: make(map[uint16]int),
-		labels: make(map[uint16]string),
-	}
+	s := newEmptyContinuitySummary()
 	s.addProgramLabels(pmtPid, pcrPid, programInfos)
 	return s
 }
 
-// addProgramLabels names the PIDs of one program in the summary.
-func (s *continuityCounterSummary) addProgramLabels(pmtPid, pcrPid uint16, programInfos []ProgramInfo) {
-	s.labels[0] = "PAT"
-	s.labels[pmtPid] = "PMT"
-	if pcrPid != 0 && pcrPid != nullPidValue {
-		s.labels[pcrPid] = "PCR"
-	}
-	for _, info := range programInfos {
-		s.labels[info.elementaryPid] = continuityCounterLabel(info.streamType)
-	}
+// newEmptyContinuitySummary returns a summary with no named PIDs; programs are
+// added with addProgramLabels.
+func newEmptyContinuitySummary() *continuityCounterSummary {
+	return &continuityCounterSummary{check: analysis.NewContinuityCheck()}
 }
 
-func (s *continuityCounterSummary) Add(pid uint16) { s.counts[pid]++ }
+// addProgramLabels names the PIDs of one program in the summary.
+func (s *continuityCounterSummary) addProgramLabels(pmtPid, pcrPid uint16, programInfos []ProgramInfo) {
+	streams := make([]analysis.ElementaryStream, len(programInfos))
+	for i, info := range programInfos {
+		streams[i] = analysis.ElementaryStream{PID: info.elementaryPid, StreamType: info.streamType}
+	}
+	s.check.ObserveLayout(analysis.ProgramLayout{PMTPID: pmtPid, PCRPID: pcrPid, Streams: streams})
+}
+
+// Add counts one continuity error.
+func (s *continuityCounterSummary) Add(event continuityEvent) {
+	s.check.ObserveError(analysis.ContinuityError{PID: event.PID, Offset: event.Pos})
+}
 
 // Dump prints a deterministic per-PID summary. A healthy stream still gets a
 // one-line result because continuity integrity is an always-on health check.
 func (s *continuityCounterSummary) Dump() {
 	fmt.Println("-----------------------------")
-	if len(s.counts) == 0 {
+	result := s.check.Result()
+	if result.Status == analysis.StatusOK {
 		fmt.Println("Continuity Counter: no errors detected")
 		return
 	}
 
 	fmt.Println("Continuity Counter Error Summary:")
-	pids := make([]uint16, 0, len(s.counts))
-	for pid := range s.counts {
-		pids = append(pids, pid)
+	for _, pid := range result.PIDs {
+		fmt.Printf("  PID 0x%04x (%s) : %d %s\n", pid.PID, pid.Label, pid.Errors, errorWord(pid.Errors))
 	}
-	sort.Slice(pids, func(i, j int) bool { return pids[i] < pids[j] })
-
-	var total int
-	for _, pid := range pids {
-		count := s.counts[pid]
-		total += count
-		label := s.labels[pid]
-		if label == "" {
-			label = "unknown"
-		}
-		fmt.Printf("  PID 0x%04x (%s) : %d %s\n", pid, label, count, errorWord(count))
-	}
-	fmt.Printf("  Total              : %d %s in %d %s\n", total, errorWord(total), len(pids), pidWord(len(pids)))
-}
-
-func continuityCounterLabel(streamType uint8) string {
-	switch streamType {
-	case 0x01, 0x02, 0x10, 0x1B, 0x24:
-		return "video"
-	case 0x03, 0x04, 0x0F, 0x11:
-		return "audio"
-	default:
-		return fmt.Sprintf("stream_type 0x%02x", streamType)
-	}
+	fmt.Printf("  Total              : %d %s in %d %s\n", result.TotalErrors, errorWord(result.TotalErrors), len(result.PIDs), pidWord(len(result.PIDs)))
 }
 
 func errorWord(count int) string {

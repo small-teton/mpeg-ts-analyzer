@@ -78,6 +78,7 @@ nav:
       - Machine-readable output: reference/json-output.md
   - Develop and release:
       - Development: development/index.md
+      - Architecture: development/architecture.md
       - Fuzz testing: development/fuzzing.md
       - Sample data: development/sample-data.md
       - Release: development/release.md
