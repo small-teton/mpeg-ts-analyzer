@@ -171,9 +171,12 @@ check (`CheckDetail`).
   (PCR → PTS/DTS gap, PTS/DTS anomalies, PES headers, PTS repetition),
   Integrity (Continuity counter, Transport errors, Scrambled packets, TS
   synchronization), Structure (PAT health, PMT health, Referenced PIDs,
-  Unreferenced PIDs). Within Structure the tables come before the PIDs they
-  announce, as in #157; Multiplexing (Packet gaps). A check is listed when
-  the CLI reported it. There is no scope column or badge: the selected program is
+  Unreferenced PIDs), Multiplexing (Packet gaps, Mux lead). Within Structure
+  the tables come before the PIDs they announce, as in #157.
+  Multiplexing rows are reports without a verdict (#81): their `info` status
+  is a neutral badge, neither a finding nor unavailable analysis
+  (`overview::is_report_only`). A check is listed when the
+  CLI reported it. There is no scope column or badge: the selected program is
   shown above, and exceptions (Continuity counter, Transport errors,
   Scrambled packets, TS synchronization, PAT health, Referenced PIDs and
   Unreferenced PIDs cover the whole multiplex; PMT health is the selected
@@ -227,7 +230,10 @@ check (`CheckDetail`).
   `Show on timeline`, which selects that event. Summary-only findings get no
   offset. The Packet gaps page adds a Per PID table (PID, role, packets, gap
   in packets and ms, and the two packets around the gap as `Open packet`
-  buttons) after Current result.
+  buttons) after Current result. The Mux lead page adds, after Current
+  result, a per-PID table and a per-audio-stream A/V table (egui grids that
+  scroll sideways on their own) whose offset buttons open the PES packets in
+  Packets.
 - **State**: `OverviewState` keeps the page, the summary's vertical scroll
   offset and where focus goes. Opening a page focuses Back and starts the page
   at its top; Back, or the Overview tile while Overview is shown, restores the
@@ -257,8 +263,8 @@ check (`CheckDetail`).
   silence), each PID of `pid_references.unreferenced` that is `unreferenced`
   (at its first unreferenced packet) and each analyzer warning. Any status
   other than `ok`, `skipped`, `not_assessable`, `info` of a report-only check
-  and, for the PAT/PMT, PES, PID-reference and packet-gap checks,
-  `insufficient_data`,
+  (Packet gaps, Mux lead) and, for the PAT/PMT, PES, PID-reference,
+  packet-gap and mux-lead checks, `insufficient_data`,
   including one the GUI does not know, is a finding with the CLI's status as
   its badge, so an `NG` or `WARNING` row can never sit next to an empty list.
   Each finding names its scope (program or whole multiplex); its check link
@@ -268,7 +274,10 @@ check (`CheckDetail`).
   references or unreferenced PIDs the CLI could not judge
   (`insufficient_data`, whether the whole check or only some PIDs) are listed
   under "Unavailable analysis" with their status as the badge and the CLI's
-  reason (for PIDs: which PIDs and why); they are not findings.
+  reason (for PIDs: which PIDs and why); they are not findings. The
+  `info` of the report-only Packet gaps and Mux lead is neither; only a
+  status the GUI does not
+  know for them would be a finding (one per PID with that status).
 
 ### Timeline
 

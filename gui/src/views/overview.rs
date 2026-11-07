@@ -8,8 +8,8 @@ use crate::plot_data::Timeline;
 use crate::psi;
 use crate::range_bar;
 use crate::report::{
-    AffectedPackets, AnalysisReport, PacketGapPid, Program, PsiHealth, PsiTableHealth,
-    ReferencedPid, UnreferencedPid, stream_type_name,
+    AffectedPackets, AnalysisReport, AvLeadProgram, MuxLeadPid, PacketGapPid, Program, PsiHealth,
+    PsiTableHealth, ReferencedPid, UnreferencedPid, stream_type_name,
 };
 
 /// What Overview shows: the summary, or the full-page explanation of one
@@ -587,6 +587,51 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
                 reason: counts.reason.clone(),
             })
         }
+        Check::MuxLead => {
+            let number = program.program_number;
+            let pids = program_mux_leads(report, program)?;
+            let av = program_av_lead(report, program);
+            let status = mux_lead_status(&pids);
+            let mut facts = vec![(
+                "A/V lead difference",
+                match av {
+                    Some(av) => av_difference_text(av),
+                    None => "not measured: the program has no video and audio pair".to_owned(),
+                },
+            )];
+            facts.extend(lead_range(&pids).map(|range| ("Lead range", range)));
+            let negative: u64 = pids.iter().map(|p| p.negative_count).sum();
+            if negative > 0 {
+                facts.push((
+                    "Negative leads",
+                    format!("{negative} PES (multiplexed after their DTS/PTS)"),
+                ));
+            }
+            let unbracketed: u64 = pids.iter().map(|p| p.unbracketed_count).sum();
+            if unbracketed > 0 {
+                facts.push(("Unbracketed", format!("{unbracketed} PES")));
+            }
+            facts.push(("Time basis", "PCR-interpolated file position".to_owned()));
+            facts.push(("Verdict", "none: report only".to_owned()));
+            facts.push((
+                "Applies to",
+                format!("the elementary streams of program {number}"),
+            ));
+            let reason = (status == "insufficient_data").then(|| {
+                pids.iter()
+                    .find_map(|p| p.reason.clone())
+                    .unwrap_or_else(|| format!("program {number} has no elementary stream"))
+            });
+            Some(Row {
+                check,
+                status: status.to_owned(),
+                value: av
+                    .and_then(|av| av.difference.max_av_lead_difference_ms)
+                    .map_or_else(|| "—".to_owned(), |ms| format!("{ms:.1} ms")),
+                facts,
+                reason,
+            })
+        }
         Check::PatHealth | Check::PmtHealth => {
             let health = report.psi_health.as_ref()?;
             let table = psi_table(health, program, check)?;
@@ -968,6 +1013,89 @@ fn repetition_reason(reason: &str) -> String {
         "no_pcr_time_base" => "No PCR time base: no two PCRs in one segment".to_owned(),
         other => other.replace('_', " "),
     }
+}
+
+/// The mux leads of the elementary streams of `program`, in PID order;
+/// `None` when the CLI reported no mux lead.
+pub(crate) fn program_mux_leads<'a>(
+    report: &'a AnalysisReport,
+    program: &Program,
+) -> Option<Vec<&'a MuxLeadPid>> {
+    let lead = report.multiplexing.as_ref()?.mux_lead.as_ref()?;
+    Some(
+        lead.pids
+            .iter()
+            .filter(|p| p.stream.program_number == program.program_number)
+            .collect(),
+    )
+}
+
+/// The A/V lead difference of `program`, if the CLI reported one.
+pub(crate) fn program_av_lead<'a>(
+    report: &'a AnalysisReport,
+    program: &Program,
+) -> Option<&'a AvLeadProgram> {
+    let lead = report.multiplexing.as_ref()?.mux_lead.as_ref()?;
+    lead.programs
+        .iter()
+        .find(|p| p.program_number == program.program_number)
+}
+
+/// The status of the mux-lead row: a PID status this GUI does not know (shown
+/// as the CLI reported it), else `info` when a lead was measured, else
+/// `insufficient_data`.
+fn mux_lead_status<'a>(pids: &[&'a MuxLeadPid]) -> &'a str {
+    pids.iter()
+        .map(|p| p.status.as_str())
+        .find(|s| !matches!(*s, "info" | "insufficient_data"))
+        .or_else(|| pids.iter().any(|p| p.status == "info").then_some("info"))
+        .unwrap_or("insufficient_data")
+}
+
+/// A lead in milliseconds, with one decimal.
+pub(crate) fn lead_ms(ms: Option<f64>) -> String {
+    ms.map_or_else(|| "—".to_owned(), |ms| format!("{ms:.1} ms"))
+}
+
+/// The worst A/V lead difference of a program, with both PES packets.
+fn av_difference_text(av: &AvLeadProgram) -> String {
+    let d = &av.difference;
+    match (
+        &av.audio_pid,
+        &d.video_pid,
+        d.max_av_lead_difference_ms,
+        d.audio_offset_bytes,
+        d.video_offset_bytes,
+    ) {
+        (Some(audio), Some(video), Some(ms), Some(audio_at), Some(video_at)) => format!(
+            "{ms:.1} ms: audio PID {audio} (lead {} at 0x{audio_at:08X}) against video PID {video} (lead {} at 0x{video_at:08X})",
+            lead_ms(d.audio_lead_ms),
+            lead_ms(d.video_lead_ms)
+        ),
+        _ => format!(
+            "not measured: {}",
+            av.reason.as_deref().unwrap_or(&av.status).replace('_', " ")
+        ),
+    }
+}
+
+/// The smallest and largest lead of the program's streams, with their PIDs.
+fn lead_range(pids: &[&MuxLeadPid]) -> Option<String> {
+    let measured = || {
+        pids.iter()
+            .filter(|p| p.min_lead_ms.is_some() && p.max_lead_ms.is_some())
+    };
+    let min =
+        measured().min_by(|a, b| a.min_lead_ms.unwrap().total_cmp(&b.min_lead_ms.unwrap()))?;
+    let max =
+        measured().max_by(|a, b| a.max_lead_ms.unwrap().total_cmp(&b.max_lead_ms.unwrap()))?;
+    Some(format!(
+        "{} (PID {}) to {} (PID {})",
+        lead_ms(min.min_lead_ms),
+        min.stream.pid,
+        lead_ms(max.max_lead_ms),
+        max.stream.pid
+    ))
 }
 
 /// "1 packet" or "N packets".
@@ -1470,8 +1598,8 @@ pub(crate) fn is_unavailable(check: Check, status: &str) -> bool {
 }
 
 /// Whether a check status is a report without a verdict: the `info` of a
-/// report-only check (Packet gaps), which is neither a finding nor
-/// unavailable analysis.
+/// report-only check (Packet gaps, Mux lead), which is neither a finding
+/// nor unavailable analysis.
 pub(crate) fn is_report_only(check: Check, status: &str) -> bool {
     status == "info" && is_known_status(check, status)
 }
@@ -1686,6 +1814,27 @@ pub(crate) fn findings(
                         ),
                         Scope::Program(pid.stream.program_number),
                         counts.first_exceeded_offset_bytes,
+                    ));
+                }
+            }
+            Check::MuxLead => {
+                // Only a status this GUI does not know: one finding per PID
+                // with it, at its largest lead.
+                for pid in program_mux_leads(report, program)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|p| p.status == row.status)
+                {
+                    findings.push(finding(
+                        format!(
+                            "PID {} ({}): lead {} to {}",
+                            pid.stream.pid,
+                            pid.stream.label,
+                            lead_ms(pid.min_lead_ms),
+                            lead_ms(pid.max_lead_ms)
+                        ),
+                        Scope::Program(pid.stream.program_number),
+                        pid.max_lead_offset_bytes,
                     ));
                 }
             }
@@ -1970,7 +2119,7 @@ mod tests {
                 continue;
             }
             // A report without a verdict is never a finding.
-            if row.check == Check::PacketGaps {
+            if matches!(row.check, Check::PacketGaps | Check::MuxLead) {
                 assert_eq!(row.status, "info");
                 assert!(!is_finding(row.check, &row.status));
                 assert!(!is_unavailable(row.check, &row.status));
@@ -1980,6 +2129,134 @@ mod tests {
             assert!(is_finding(row.check, &row.status), "{:?}", row.check);
             assert!(findings.iter().any(|f| f.check == Some(row.check)));
         }
+    }
+
+    /// Mux lead: negative leads, a program without a video and audio pair,
+    /// streams without a lead and a status this GUI does not know.
+    #[test]
+    fn mux_lead_rows() {
+        let document = include_str!("../../tests/fixtures/analysis_mux_lead_188.json");
+        let report = report(document);
+        let program = &report.programs[0];
+        let row = row(&report, program, Check::MuxLead).unwrap();
+        assert_eq!(
+            (row.status.as_str(), row.value.as_str()),
+            ("info", "800.0 ms")
+        );
+        let fact = |label: &str| {
+            row.facts
+                .iter()
+                .find(|(l, _)| *l == label)
+                .map(|(_, v)| v.clone())
+        };
+        assert_eq!(
+            fact("Lead range").as_deref(),
+            Some("-20.0 ms (PID 0x0102) to 1500.0 ms (PID 0x0101)")
+        );
+        assert_eq!(
+            fact("Negative leads").as_deref(),
+            Some("1 PES (multiplexed after their DTS/PTS)")
+        );
+        assert_eq!(fact("Unbracketed").as_deref(), Some("4 PES"));
+        let (all, unavailable) = findings(&report, program);
+        assert!(all.iter().all(|f| f.check != Some(Check::MuxLead)));
+        assert!(unavailable.iter().all(|u| u.check != Check::MuxLead));
+        assert_eq!(program_mux_leads(&report, program).unwrap().len(), 4);
+
+        // An audio stream never compared: not measured, with its reason.
+        let mut edited: serde_json::Value = serde_json::from_str(document).unwrap();
+        let av = &mut edited["multiplexing"]["mux_lead"]["programs"][0];
+        av["status"] = "insufficient_data".into();
+        av["reason"] = "no_comparable_leads".into();
+        for key in [
+            "audio_pid",
+            "video_pid",
+            "max_av_lead_difference_ms",
+            "audio_lead_ms",
+            "video_lead_ms",
+            "audio_offset_bytes",
+            "video_offset_bytes",
+        ] {
+            av.as_object_mut().unwrap().remove(key);
+        }
+        let report = self::report(&edited.to_string());
+        let row = self::row(&report, &report.programs[0], Check::MuxLead).unwrap();
+        assert_eq!(row.value, "—");
+        assert_eq!(row.facts[0].1, "not measured: no comparable leads");
+
+        // No video and audio pair, and no stream with a lead: unavailable
+        // analysis with the first PID's reason.
+        edited["multiplexing"]["mux_lead"]["programs"] = serde_json::json!([]);
+        for pid in edited["multiplexing"]["mux_lead"]["pids"]
+            .as_array_mut()
+            .unwrap()
+        {
+            let pid = pid.as_object_mut().unwrap();
+            pid.insert("status".to_owned(), "insufficient_data".into());
+            pid.insert("reason".to_owned(), "no_pcr_timing".into());
+            for key in ["min_lead_ms", "max_lead_ms", "spread_ms"] {
+                pid.remove(key);
+            }
+        }
+        let report = self::report(&edited.to_string());
+        let program = &report.programs[0];
+        let row = self::row(&report, program, Check::MuxLead).unwrap();
+        assert_eq!(
+            (row.status.as_str(), row.value.as_str()),
+            ("insufficient_data", "—")
+        );
+        assert_eq!(
+            row.facts[0].1,
+            "not measured: the program has no video and audio pair"
+        );
+        assert!(row.facts.iter().all(|(l, _)| *l != "Lead range"));
+        let (_, unavailable) = findings(&report, program);
+        assert!(unavailable.contains(&Unavailable {
+            check: Check::MuxLead,
+            status: "insufficient_data".to_owned(),
+            reason: "no_pcr_timing".to_owned()
+        }));
+
+        // A status this GUI does not know is a finding per PID.
+        edited["multiplexing"]["mux_lead"]["pids"][1]["status"] = "ng".into();
+        edited["multiplexing"]["mux_lead"]["pids"][1]["max_lead_offset_bytes"] = 376.into();
+        let report = self::report(&edited.to_string());
+        let program = &report.programs[0];
+        assert_eq!(
+            self::row(&report, program, Check::MuxLead).unwrap().status,
+            "ng"
+        );
+        let (all, _) = findings(&report, program);
+        let leads: Vec<_> = all
+            .iter()
+            .filter(|f| f.check == Some(Check::MuxLead))
+            .map(|f| (f.status.as_str(), f.reason.as_str(), f.offset))
+            .collect();
+        assert_eq!(
+            leads,
+            [("ng", "PID 0x0101 (audio): lead — to —", Some(376))]
+        );
+
+        // A program without elementary streams in the report.
+        edited["multiplexing"]["mux_lead"]["pids"] = serde_json::json!([]);
+        let report = self::report(&edited.to_string());
+        let row = self::row(&report, &report.programs[0], Check::MuxLead).unwrap();
+        assert_eq!(
+            row.reason.as_deref(),
+            Some("program 1 has no elementary stream")
+        );
+
+        // No mux lead, or no multiplexing result: no row.
+        edited["multiplexing"]
+            .as_object_mut()
+            .unwrap()
+            .remove("mux_lead");
+        let report = self::report(&edited.to_string());
+        assert!(self::row(&report, &report.programs[0], Check::MuxLead).is_none());
+        edited["multiplexing"] = serde_json::Value::Null;
+        let report = self::report(&edited.to_string());
+        assert!(self::row(&report, &report.programs[0], Check::MuxLead).is_none());
+        assert!(program_av_lead(&report, &report.programs[0]).is_none());
     }
 
     /// The PAT row covers the multiplex and the PMT row the selected
@@ -2326,8 +2603,37 @@ mod tests {
                 Check::ReferencedPids,
                 Check::UnreferencedPids,
                 Check::PacketGaps,
+                Check::MuxLead,
             ]
         );
+        // Mux lead of program 1 only: its A/V difference and lead range.
+        let lead = rows.last().unwrap();
+        assert_eq!(
+            (lead.status.as_str(), lead.value.as_str()),
+            ("info", "395.8 ms")
+        );
+        assert_eq!(
+            lead.facts,
+            [
+                (
+                    "A/V lead difference",
+                    "395.8 ms: audio PID 0x0101 (lead 324.9 ms at 0x00024E70) against video PID 0x0100 (lead 720.7 ms at 0x0002A690)"
+                        .to_owned()
+                ),
+                (
+                    "Lead range",
+                    "324.9 ms (PID 0x0101) to 721.5 ms (PID 0x0100)".to_owned()
+                ),
+                ("Unbracketed", "4 PES".to_owned()),
+                ("Time basis", "PCR-interpolated file position".to_owned()),
+                ("Verdict", "none: report only".to_owned()),
+                ("Applies to", "the elementary streams of program 1".to_owned()),
+            ]
+        );
+        assert!(matches!(
+            status_verdict("info"),
+            crate::theme::Verdict::Neutral
+        ));
         // A healthy PAT: no problem, reason or first problem.
         let pat: Vec<&str> = rows[9].facts.iter().map(|(label, _)| *label).collect();
         assert_eq!(

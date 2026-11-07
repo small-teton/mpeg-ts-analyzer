@@ -14,7 +14,7 @@ Packages for macOS, Linux and Windows are described in
 - **Overview** brings the detected program layout, stream properties, the
   transport-health checks (timing, PES timestamps, continuity, transport
   errors and scrambling, TS synchronization, PAT/PMT structure, referenced
-  and unreferenced PIDs), and
+  and unreferenced PIDs, and the report-only mux lead), and
   per-stream bitrate into one screen, with a full-page explanation of every
   check.
 - **Timeline** plots the PCR interval and the PCR → PTS/DTS gap of every
@@ -51,6 +51,7 @@ under categories that are always expanded:
 | Structure | Referenced PIDs | whole multiplex, every program of the PAT | `OK`; `ABSENT` when a PMT, PCR, video or audio PID had no packet while referenced for more than 5000 ms; `SILENT` when it went more than 5000 ms without one; `INSUFFICIENT DATA` when a PID without packets was referenced too briefly, may be idle (private data), or there is no PCR |
 | Structure | Unreferenced PIDs | whole multiplex | `OK`; `UNREFERENCED` when a PID carried packets without a PAT/PMT reference for more than 500 ms; `INSUFFICIENT DATA` when a PID appeared too close to the end of the range; `SKIPPED` when not every program's PMT was followed |
 | Multiplexing | Packet gaps | PIDs of the selected program (PMT, PCR, elementary streams) | `INFO`: a report without a verdict, never a finding; `INSUFFICIENT DATA` when no PID of the program has two consecutive packets |
+| Multiplexing | Mux lead | every elementary stream of the selected program, per PID | Report only, no verdict: `INFO` when a lead (DTS/PTS minus PCR-interpolated arrival) was measured, with the largest audio/video lead difference as the value; `INSUFFICIENT DATA` when no stream has a measured lead. Never a finding |
 
 The table always lists the checks in this order. The verdict is shown exactly
 as the CLI reported it; a status this GUI does not know is still shown, with a
@@ -73,7 +74,12 @@ and opened with Enter or Space. The page shows:
   silence or unreferenced time, and the limit; for Packet gaps the largest
   gap of the program's elementary streams and a Per PID table with each
   PID's largest gap and **Open packet** buttons for the packets before and
-  after it;
+  after it; for Mux lead the A/V lead
+  difference with both PES packets, the range of leads, negative and
+  unbracketed PES, followed by a **Per PID** table (smallest and largest lead
+  with their PES packets, spread, unbracketed PES) and an **A/V lead
+  difference per audio stream** table whose offsets open the packets in
+  **Packets**;
 - the check's **findings**, each with **Open packet** when it has an offset
   (for transport errors and scrambled packets, the first affected packet of
   each PID; for PES headers, the first malformed header of each PID; for PTS
@@ -144,6 +150,16 @@ neutral, it never adds a finding and never changes the CLI's exit status. A
 stream removed by a PMT change and added back later has no gap across its
 absence. The bursty sample `sample_data/sample_188byte_packet_gaps.ts` shows
 it.
+
+**Mux lead** reports, for each elementary stream of the selected program, how
+far ahead of its decode time it is multiplexed (DTS, or PTS without DTS, minus
+the arrival estimated from byte position between PCRs): the smallest and
+largest lead with their PES packets and the spread, and for a program with
+video and audio the largest difference between an audio lead and the video
+lead. It is a report only: its `INFO` status is neutral, a negative lead is an
+observation, it never adds a finding and never changes the CLI's exit status;
+the PCR → PTS/DTS gap judges the largest lead. The audio-preload sample
+`sample_data/sample_188byte_mux_lead.ts` shows it.
 
 **Findings** lists everything that needs attention, and its count includes
 every check that is not `OK`: each failed check, each kind of undeclared PCR

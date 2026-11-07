@@ -207,6 +207,7 @@ type PESBreak struct {
 // elementary PID of the analyzed programs.
 type PESCheck struct {
 	streams map[pesKey]*pesStream
+	av      map[uint16]avLayout // per program, see mux_lead.go
 }
 
 type pesKey struct{ program, pid uint16 }
@@ -237,6 +238,8 @@ type pesStream struct {
 	openFrom        int64
 	openStart, last uint64
 	lastAt          int64
+
+	lead muxLead // see mux_lead.go
 }
 
 type problemCount struct {
@@ -251,7 +254,9 @@ type ptsInterval struct {
 }
 
 // NewPESCheck returns a check with no streams.
-func NewPESCheck() *PESCheck { return &PESCheck{streams: make(map[pesKey]*pesStream)} }
+func NewPESCheck() *PESCheck {
+	return &PESCheck{streams: make(map[pesKey]*pesStream), av: make(map[uint16]avLayout)}
+}
 
 // ObserveProgramLayout applies the layout of a program: each elementary stream
 // is added, a stream whose stream_type changed ends its interval and takes the
@@ -267,6 +272,7 @@ func (c *PESCheck) ObserveProgramLayout(program uint16, layout ProgramLayout) {
 			c.streams[pesKey{program, s.PID}] = st
 		} else if !st.active || st.streamType != s.StreamType {
 			st.endInterval()
+			st.lead.hasLast = false
 			st.streamType = s.StreamType
 		}
 		st.active = true
@@ -275,9 +281,11 @@ func (c *PESCheck) ObserveProgramLayout(program uint16, layout ProgramLayout) {
 	for key, st := range c.streams {
 		if key.program == program && st.active && !current[key.pid] {
 			st.endInterval()
+			st.lead.hasLast = false
 			st.active = false
 		}
 	}
+	c.observeAVLayout(program, layout)
 }
 
 // ObservePES records one PES packet.
@@ -293,12 +301,14 @@ func (c *PESCheck) ObservePES(o PES) {
 		}
 		p.count++
 		st.endInterval()
+		st.lead.hasLast = false
 		return
 	}
 	st.pes++
 	if o.HasPTS {
 		st.pts++
 	}
+	c.observeLead(pesKey{o.Program, o.PID}, st, o)
 	if !isVideoOrAudio(st.streamType) {
 		return
 	}
@@ -338,6 +348,7 @@ func (c *PESCheck) ObserveBreak(o PESBreak) {
 		st.untrusted++
 	}
 	st.endInterval()
+	st.lead.hasLast = false
 }
 
 // record counts a closed interval: a measured one always, a lower bound only

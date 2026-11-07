@@ -403,6 +403,88 @@
           "max_gap_exact": true
         }
       ]
+    },
+    "mux_lead": {
+      "time_basis": "pcr_interpolated_file_position",
+      "pids": [
+        {
+          "program_number": 1,
+          "pid": "0x0100",
+          "stream_type": "0x02",
+          "label": "video",
+          "av_class": "video",
+          "status": "info",
+          "sample_count": 257,
+          "unbracketed_count": 10,
+          "dts_sample_count": 0,
+          "negative_count": 0,
+          "min_lead_ms": 100,
+          "min_lead_offset_bytes": 16732,
+          "max_lead_ms": 100,
+          "max_lead_offset_bytes": 16732,
+          "spread_ms": 0
+        },
+        {
+          "program_number": 1,
+          "pid": "0x0101",
+          "stream_type": "0x03",
+          "label": "audio",
+          "av_class": "audio",
+          "status": "info",
+          "sample_count": 30,
+          "unbracketed_count": 0,
+          "dts_sample_count": 0,
+          "negative_count": 0,
+          "min_lead_ms": 100,
+          "min_lead_offset_bytes": 25004,
+          "max_lead_ms": 100,
+          "max_lead_offset_bytes": 25004,
+          "spread_ms": 0
+        },
+        {
+          "program_number": 1,
+          "pid": "0x0102",
+          "stream_type": "0x06",
+          "label": "stream_type 0x06",
+          "av_class": "other",
+          "status": "info",
+          "sample_count": 6,
+          "unbracketed_count": 0,
+          "dts_sample_count": 0,
+          "negative_count": 0,
+          "min_lead_ms": 100,
+          "min_lead_offset_bytes": 18988,
+          "max_lead_ms": 100,
+          "max_lead_offset_bytes": 18988,
+          "spread_ms": 0
+        }
+      ],
+      "programs": [
+        {
+          "program_number": 1,
+          "status": "info",
+          "audio_pid": "0x0101",
+          "video_pid": "0x0100",
+          "max_av_lead_difference_ms": 0,
+          "audio_lead_ms": 100,
+          "video_lead_ms": 100,
+          "audio_offset_bytes": 25004,
+          "video_offset_bytes": 24440,
+          "audio": [
+            {
+              "pid": "0x0101",
+              "status": "info",
+              "comparison_count": 225,
+              "video_pid": "0x0100",
+              "max_av_lead_difference_ms": 0,
+              "audio_lead_ms": 100,
+              "video_lead_ms": 100,
+              "audio_offset_bytes": 25004,
+              "video_offset_bytes": 24440
+            }
+          ]
+        }
+      ]
     }
   },
   "programs": [

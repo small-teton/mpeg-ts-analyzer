@@ -61,6 +61,7 @@ pub enum Check {
     ReferencedPids,
     UnreferencedPids,
     PacketGaps,
+    MuxLead,
 }
 
 impl Check {
@@ -124,7 +125,7 @@ pub struct CheckHelp {
 
 /// The explanations in table order: grouped by [`Category`], in
 /// [`Category::ALL`] order.
-pub const HELP: [CheckHelp; 16] = [
+pub const HELP: [CheckHelp; 17] = [
     CheckHelp {
         check: Check::MaxPcrInterval,
         category: Category::Timing,
@@ -555,6 +556,31 @@ pub const HELP: [CheckHelp; 16] = [
             "Packets lists the packets around a gap; the detail table opens the packets before and after the largest gap of each PID.",
         )),
     },
+    CheckHelp {
+        check: Check::MuxLead,
+        category: Category::Multiplexing,
+        title: "Mux lead",
+        summary: "How far ahead of its decode time each stream is multiplexed, and how far audio and video leads differ: a report without a verdict.",
+        measures: "For each PES packet with a PTS, its DTS (or PTS when it has no DTS) minus its arrival time: the program's PCR at the first byte of the packet that starts it, interpolated by byte position between the PCRs before and after it. This is the same lead the PCR → PTS/DTS gap judges; here it is reported per PID as its minimum, maximum and spread. For a program with video and audio, each audio stream's most recent lead is compared with the most recent lead of the program's video whenever either gets a new one; the largest difference is the A/V lead difference. A remux that preloads audio far ahead of video shows a large difference even when every gap is within its limit.",
+        applies_to: "The elementary streams of the selected program, each PID separately. Video is stream_type 0x01, 0x02, 0x1B or 0x24 and audio 0x03, 0x04, 0x0F, 0x11, 0x81 or 0x87; each audio stream is compared with the program's lowest-numbered video PID.",
+        value: "The largest A/V lead difference of the program in milliseconds, from its worst audio stream; — when the program has no video and audio pair that could be compared. Current result names the two PES packets and the range of leads; the detail tables list every PID with its smallest and largest lead and every audio stream with its difference, each with the packets to open.",
+        statuses: &[
+            (
+                "info",
+                "A report, not a verdict: at least one stream of the program has a measured lead. No lead or difference is too large or too small, and a negative lead (a PES packet multiplexed after its decode time) is an observation, not an error.",
+            ),
+            (
+                "insufficient_data",
+                "No stream of the program has a measured lead; see When it is skipped.",
+            ),
+        ],
+        skipped: "Reported as insufficient data when no PES packet with a PTS of the program lies between two PCRs of one segment: no PES packet, only malformed headers or untrusted payload, no PTS, or no PCR before and after the PES packets. The A/V difference is not measured when the audio and the video never had leads in one PCR segment at the same time.",
+        limitations: "There is no limit and no verdict: the report never becomes a finding and never changes the CLI's exit status; the PCR → PTS/DTS gap judges the largest lead. A file has no arrival times, so the arrival is an estimate from byte position. PES packets before the first PCR, after the last one or across a PCR discontinuity are unbracketed and not measured. Leads are read modulo the PCR period, so PTS and PCR wraparounds are handled. Leads are paired in the order the PES packets end. AC-3 carried as private data (stream_type 0x06) is identified only by a descriptor and is not treated as audio.",
+        navigation: Some((
+            Screen::Packets,
+            "Packets decodes the PES header of the packets with the smallest and largest lead; the detail tables open them.",
+        )),
+    },
 ];
 
 #[cfg(test)]
@@ -622,6 +648,7 @@ mod tests {
                 Check::ReferencedPids,
                 Check::UnreferencedPids,
                 Check::PacketGaps,
+                Check::MuxLead,
             ]
         );
     }
@@ -657,6 +684,15 @@ mod tests {
         }
         assert!(text(Check::ReferencedPids).contains("5000 ms"));
         assert!(text(Check::UnreferencedPids).contains("500 ms"));
+        let lead = text(Check::MuxLead);
+        for phrase in [
+            "not a verdict",
+            "no verdict",
+            "negative lead",
+            "unbracketed",
+        ] {
+            assert!(lead.contains(phrase), "{phrase}");
+        }
         for check in [Check::PatHealth, Check::PmtHealth] {
             let help = text(check);
             for phrase in [

@@ -212,3 +212,23 @@ go run ./tools/generate_packet_gaps -m2ts -output sample_data/sample_192byte_pac
 
 The packets, the expected gaps and the cross-check are described in
 [`tools/generate_packet_gaps`](https://github.com/small-teton/mpeg-ts-analyzer/tree/master/tools/generate_packet_gaps).
+
+## Mux lead sample
+
+`sample_data/sample_188byte_mux_lead.ts` and its 192-byte M2TS twin
+`sample_data/sample_192byte_mux_lead.ts` (44 and 45 KiB) have known mux leads: a
+remux with a large audio preload (1500 ms against 700 to 708 ms of video), an
+AAC stream with one PES packet multiplexed 20 ms after its PTS and one without
+a PTS, a PCR and PTS/DTS wraparound and a declared PCR discontinuity between a
+PES packet and the next PCR, to test the report-only mux lead. They also carry
+a transport error on one audio packet, and the 1500 ms lead fails the
+PCR-PTS/DTS gap check.
+
+```bash
+go run ./tools/generate_mux_lead -output sample_data/sample_188byte_mux_lead.ts
+go run ./tools/generate_mux_lead -m2ts -output sample_data/sample_192byte_mux_lead.ts
+./mpeg-ts-analyzer sample_data/sample_188byte_mux_lead.ts
+```
+
+The layout, the expected results and the TSDuck cross-check are described in
+[`tools/generate_mux_lead`](https://github.com/small-teton/mpeg-ts-analyzer/tree/master/tools/generate_mux_lead).
