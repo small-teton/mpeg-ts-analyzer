@@ -19,7 +19,7 @@
 // filler. PCR and PTS values follow the slot clock (10 s + slot × 20 ms), so
 // byte position is an exact time proxy.
 //
-// Nine deliberate defects, each of which can be left out with -omit:
+// Ten deliberate defects, each of which can be left out with -omit:
 //
 //   - pcr-interval: the video packets in slots 22, 24 and 26 carry no PCR, so
 //     the PCRs in slots 20 and 28 are 160 ms apart (limit 100 ms).
@@ -37,6 +37,9 @@
 //     2 (even key), which ISO/IEC 13818-1 does not allow on the null PID.
 //     Both are on the null PID, whose payload the analysis never reads, so
 //     they leave every other result unchanged.
+//   - psi-late: the PAT of slot 59 and the PMT of slot 63 are replaced by
+//     null packets, so 800 ms pass between the PATs in slots 39 and 79 and
+//     between the PMTs in slots 43 and 83 (limit 500 ms).
 //   - pes-header: the last marker_bit of the video PTS in slot 106 is 0, so
 //     the header is malformed and its timestamp is not used.
 //   - pts-repetition: the audio PES packets in slots 65 to 97 carry no PTS,
@@ -81,11 +84,12 @@ const (
 	defectPcrJitter   = "pcr-jitter"
 	defectTei         = "tei"
 	defectScrambled   = "scrambled"
+	defectPsiLate     = "psi-late"
 	defectPesHeader   = "pes-header"
 	defectPtsRepeat   = "pts-repetition"
 )
 
-var defects = []string{defectPcrInterval, defectPcrPtsGap, defectPtsBackward, defectCcGap, defectPcrJitter, defectTei, defectScrambled, defectPesHeader, defectPtsRepeat}
+var defects = []string{defectPcrInterval, defectPcrPtsGap, defectPtsBackward, defectCcGap, defectPcrJitter, defectTei, defectScrambled, defectPsiLate, defectPesHeader, defectPtsRepeat}
 
 func crc32MPEG(data []byte) uint32 {
 	crc := uint32(0xFFFFFFFF)
@@ -219,6 +223,8 @@ func generate(omit map[string]bool) []byte {
 	for slot := range slots {
 		var p []byte
 		switch {
+		case with(defectPsiLate) && (slot == 59 || slot == 63):
+			p = nullPacket()
 		case slot == 0 || slot == 1 || slot%20 == 19:
 			p = psiPacket(0x0000, patCC, patSection())
 			patCC++

@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// at is a time on segment 0 of the PCR timeline, in milliseconds.
-func at(milliseconds uint64) ClockTime {
+// atMs is a time on segment 0 of the PCR timeline, in milliseconds.
+func atMs(milliseconds uint64) ClockTime {
 	return ClockTime{Valid: true, Ticks: 10_000*ms + milliseconds*ms}
 }
 
@@ -66,13 +66,13 @@ func TestPESCheckHealthy(t *testing.T) {
 	c := NewPESCheck()
 	c.ObserveProgramLayout(1, pesLayout(video, audio, data))
 	for i := range uint64(10) {
-		c.ObservePES(pts(video.PID, int64(i*376), at(i*40)))
-		c.ObservePES(PES{Program: 1, PID: video.PID, Offset: int64(i*376 + 188), HasPTS: true, HasDTS: true, Arrival: at(i*40 + 20)})
+		c.ObservePES(pts(video.PID, int64(i*376), atMs(i*40)))
+		c.ObservePES(PES{Program: 1, PID: video.PID, Offset: int64(i*376 + 188), HasPTS: true, HasDTS: true, Arrival: atMs(i*40 + 20)})
 	}
-	c.ObservePES(pts(audio.PID, 100, at(5)))
-	c.ObservePES(untimed(audio.PID, 200, at(30)))
-	c.ObservePES(pts(audio.PID, 300, at(65)))
-	c.ObservePES(pts(data.PID, 400, at(70)))
+	c.ObservePES(pts(audio.PID, 100, atMs(5)))
+	c.ObservePES(untimed(audio.PID, 200, atMs(30)))
+	c.ObservePES(pts(audio.PID, 300, atMs(65)))
+	c.ObservePES(pts(data.PID, 400, atMs(70)))
 	got := c.Result()
 	want := PESResult{
 		Headers:    PESHeaderResult{Status: PESOK, Checked: 24, Problems: []PESProblemCount{}},
@@ -100,7 +100,7 @@ func TestPESCheckHeaderProblems(t *testing.T) {
 	c.ObservePES(PES{Program: 1, PID: data.PID, Offset: 940, Problem: PESHeaderBadMarkerBits})
 	c.ObservePES(PES{Program: 1, PID: data.PID, Offset: 564, Problem: PESHeaderBadFlags})
 	c.ObservePES(PES{Program: 1, PID: data.PID, Offset: 1128, Problem: PESHeaderBadFlags})
-	c.ObservePES(pts(data.PID, 1316, at(0)))
+	c.ObservePES(pts(data.PID, 1316, atMs(0)))
 	c.ObservePES(PES{Program: 1, PID: video.PID, Offset: 188, Problem: PESHeaderTruncated})
 	c.ObserveBreak(PESBreak{Program: 1, PID: video.PID, Offset: 2000, Cause: BreakIncompleteHeader})
 	// Observations of a PID no layout announced are ignored.
@@ -163,14 +163,14 @@ func TestPESCheckHeaderReasons(t *testing.T) {
 func TestPTSRepetitionExceeded(t *testing.T) {
 	c := NewPESCheck()
 	c.ObserveProgramLayout(1, pesLayout(video, audio))
-	c.ObservePES(pts(video.PID, 0, at(0)))
-	c.ObservePES(untimed(video.PID, 188, at(40)))
-	c.ObservePES(pts(video.PID, 376, at(1080))) // 1080 ms after the last PTS
-	c.ObservePES(pts(video.PID, 564, at(1120))) // 40 ms
-	c.ObservePES(pts(video.PID, 752, at(1900))) // 780 ms
-	c.ObservePES(pts(audio.PID, 100, at(0)))    //
-	c.ObservePES(pts(audio.PID, 200, at(701)))  // 701 ms
-	c.ObservePES(pts(audio.PID, 300, at(1401))) // 700 ms, not above the limit
+	c.ObservePES(pts(video.PID, 0, atMs(0)))
+	c.ObservePES(untimed(video.PID, 188, atMs(40)))
+	c.ObservePES(pts(video.PID, 376, atMs(1080))) // 1080 ms after the last PTS
+	c.ObservePES(pts(video.PID, 564, atMs(1120))) // 40 ms
+	c.ObservePES(pts(video.PID, 752, atMs(1900))) // 780 ms
+	c.ObservePES(pts(audio.PID, 100, atMs(0)))    //
+	c.ObservePES(pts(audio.PID, 200, atMs(701)))  // 701 ms
+	c.ObservePES(pts(audio.PID, 300, atMs(1401))) // 700 ms, not above the limit
 	got := c.Result()
 	wantVideo := PTSRepetitionResult{Status: PESNG, PTS: 4, Intervals: 3, HasMax: true, MaxTicks: 1080 * ms, MaxFrom: 0, MaxTo: 376, Exceeded: 2, FirstExceeded: 376}
 	if r := pidResult(t, got, video.PID).Repetition; r != wantVideo {
@@ -191,18 +191,18 @@ func TestPTSRepetitionLowerBounds(t *testing.T) {
 	// the end of the range give lower bounds: counted only above the limit.
 	c := NewPESCheck()
 	c.ObserveProgramLayout(1, pesLayout(video, audio))
-	c.ObservePES(untimed(video.PID, 0, at(0)))
-	c.ObservePES(untimed(video.PID, 188, at(400)))
-	c.ObservePES(pts(video.PID, 376, at(800))) // at least 800 ms without PTS
-	c.ObservePES(untimed(video.PID, 564, at(1000)))
-	c.ObservePES(untimed(video.PID, 752, at(1600))) // 800 ms, then a break
+	c.ObservePES(untimed(video.PID, 0, atMs(0)))
+	c.ObservePES(untimed(video.PID, 188, atMs(400)))
+	c.ObservePES(pts(video.PID, 376, atMs(800))) // at least 800 ms without PTS
+	c.ObservePES(untimed(video.PID, 564, atMs(1000)))
+	c.ObservePES(untimed(video.PID, 752, atMs(1600))) // 800 ms, then a break
 	c.ObserveBreak(PESBreak{Program: 1, PID: video.PID, Offset: 940, Cause: BreakContinuityError})
-	c.ObservePES(untimed(video.PID, 1128, at(2000)))
-	c.ObservePES(pts(video.PID, 1316, at(2500))) // 500 ms lower bound: ignored
-	c.ObservePES(pts(video.PID, 1504, at(2540)))
-	c.ObservePES(untimed(video.PID, 1692, at(3500))) // 960 ms at the end
-	c.ObservePES(untimed(audio.PID, 0, at(0)))
-	c.ObservePES(untimed(audio.PID, 100, at(600))) // 600 ms: not enough
+	c.ObservePES(untimed(video.PID, 1128, atMs(2000)))
+	c.ObservePES(pts(video.PID, 1316, atMs(2500))) // 500 ms lower bound: ignored
+	c.ObservePES(pts(video.PID, 1504, atMs(2540)))
+	c.ObservePES(untimed(video.PID, 1692, atMs(3500))) // 960 ms at the end
+	c.ObservePES(untimed(audio.PID, 0, atMs(0)))
+	c.ObservePES(untimed(audio.PID, 100, atMs(600))) // 600 ms: not enough
 	got := c.Result()
 	wantVideo := PTSRepetitionResult{Status: PESNG, PTS: 3, Intervals: 1, HasMax: true, MaxTicks: 960 * ms, MaxFrom: 1504, MaxTo: 1692, Exceeded: 3, FirstExceeded: 376}
 	if r := pidResult(t, got, video.PID).Repetition; r != wantVideo {
@@ -218,9 +218,9 @@ func TestPTSRepetitionPendingAfterExceeded(t *testing.T) {
 	// A pending lower bound smaller than the measured maximum keeps it.
 	c := NewPESCheck()
 	c.ObserveProgramLayout(1, pesLayout(video))
-	c.ObservePES(pts(video.PID, 0, at(0)))
-	c.ObservePES(pts(video.PID, 188, at(1000)))
-	c.ObservePES(untimed(video.PID, 376, at(1800)))
+	c.ObservePES(pts(video.PID, 0, atMs(0)))
+	c.ObservePES(pts(video.PID, 188, atMs(1000)))
+	c.ObservePES(untimed(video.PID, 376, atMs(1800)))
 	want := PTSRepetitionResult{Status: PESNG, PTS: 2, Intervals: 1, HasMax: true, MaxTicks: 1000 * ms, MaxFrom: 0, MaxTo: 188, Exceeded: 2, FirstExceeded: 188}
 	if r := c.Result().Repetition; r != want {
 		t.Errorf("Result = %+v, want %+v", r, want)
@@ -231,7 +231,7 @@ func TestPTSRepetitionTimeline(t *testing.T) {
 	c := NewPESCheck()
 	c.ObserveProgramLayout(1, pesLayout(video, audio))
 	// A new segment ends the interval: no interval spans a discontinuity.
-	c.ObservePES(pts(video.PID, 0, at(0)))
+	c.ObservePES(pts(video.PID, 0, atMs(0)))
 	c.ObservePES(pts(video.PID, 188, ClockTime{Valid: true, Ticks: 0, Segment: 1}))
 	// A PCR wraparound inside a segment is measured: the parser unwraps the
 	// time within the segment.
@@ -257,7 +257,7 @@ func TestPTSRepetitionTimeline(t *testing.T) {
 func TestPTSRepetitionSinglePTS(t *testing.T) {
 	c := NewPESCheck()
 	c.ObserveProgramLayout(1, pesLayout(video, data))
-	c.ObservePES(pts(video.PID, 0, at(0)))
+	c.ObservePES(pts(video.PID, 0, atMs(0)))
 	got := c.Result()
 	if r := pidResult(t, got, video.PID).Repetition; r.Status != PESInsufficientData || r.Reason != PESReasonSinglePTS {
 		t.Errorf("video = %+v, want insufficient data (single PTS)", r)
@@ -271,20 +271,20 @@ func TestPESCheckLayoutChanges(t *testing.T) {
 	c := NewPESCheck()
 	c.ObserveProgramLayout(1, pesLayout(video, audio))
 	c.ObserveProgramLayout(2, pesLayout(ElementaryStream{PID: 0x100, StreamType: 0x1B}))
-	c.ObservePES(pts(video.PID, 0, at(0)))
-	c.ObservePES(untimed(video.PID, 188, at(800)))
+	c.ObservePES(pts(video.PID, 0, atMs(0)))
+	c.ObservePES(untimed(video.PID, 188, atMs(800)))
 	// The PMT retypes the video PID: the interval in progress ends (its 800 ms
 	// lower bound counts) and the PID keeps its counts with the new type.
 	c.ObserveProgramLayout(1, pesLayout(ElementaryStream{PID: 0x100, StreamType: 0x06}, audio))
-	c.ObservePES(pts(video.PID, 376, at(900)))
+	c.ObservePES(pts(video.PID, 376, atMs(900)))
 	// The audio PID is removed and added back: no interval spans its absence.
-	c.ObservePES(pts(audio.PID, 0, at(0)))
+	c.ObservePES(pts(audio.PID, 0, atMs(0)))
 	c.ObserveProgramLayout(1, pesLayout(ElementaryStream{PID: 0x100, StreamType: 0x06}))
 	c.ObserveProgramLayout(1, pesLayout(ElementaryStream{PID: 0x100, StreamType: 0x06}, audio))
-	c.ObservePES(pts(audio.PID, 100, at(2000)))
+	c.ObservePES(pts(audio.PID, 100, atMs(2000)))
 	// The same layout again changes nothing.
 	c.ObserveProgramLayout(1, pesLayout(ElementaryStream{PID: 0x100, StreamType: 0x06}, audio))
-	c.ObservePES(pts(audio.PID, 200, at(2040)))
+	c.ObservePES(pts(audio.PID, 200, atMs(2040)))
 	got := c.Result()
 	if len(got.PIDs) != 3 || got.PIDs[2].Program != 2 {
 		t.Fatalf("PIDs = %+v, want two of program 1 then one of program 2", got.PIDs)
@@ -308,8 +308,8 @@ func TestPTSRepetitionNoPTSAboveLimit(t *testing.T) {
 	// even though no interval between two PTS was measured.
 	c := NewPESCheck()
 	c.ObserveProgramLayout(1, pesLayout(audio))
-	c.ObservePES(untimed(audio.PID, 0, at(0)))
-	c.ObservePES(untimed(audio.PID, 188, at(750)))
+	c.ObservePES(untimed(audio.PID, 0, atMs(0)))
+	c.ObservePES(untimed(audio.PID, 188, atMs(750)))
 	want := PTSRepetitionResult{Status: PESNG, HasMax: true, MaxTicks: 750 * ms, MaxFrom: 0, MaxTo: 188, Exceeded: 1, FirstExceeded: 188}
 	if r := c.Result().Repetition; r != want {
 		t.Errorf("Result = %+v, want %+v", r, want)
@@ -321,8 +321,8 @@ func TestPTSRepetitionFullPCRPeriod(t *testing.T) {
 	// the 100 ms remainder modulo the wrap.
 	c := NewPESCheck()
 	c.ObserveProgramLayout(1, pesLayout(video))
-	c.ObservePES(pts(video.PID, 0, at(0)))
-	c.ObservePES(pts(video.PID, 188, ClockTime{Valid: true, Ticks: at(0).Ticks + PCRWrapTicks + 100*ms}))
+	c.ObservePES(pts(video.PID, 0, atMs(0)))
+	c.ObservePES(pts(video.PID, 188, ClockTime{Valid: true, Ticks: atMs(0).Ticks + PCRWrapTicks + 100*ms}))
 	if r := c.Result().Repetition; r.Status != PESNG || r.MaxTicks != PCRWrapTicks+100*ms {
 		t.Errorf("Result = %+v, want ng with the full interval", r)
 	}

@@ -68,6 +68,68 @@
       }
     ]
   },
+  "psi_health": {
+    "status": "ng",
+    "repetition_limit_ms": 500,
+    "time_base": {
+      "status": "pcr",
+      "program_number": 1,
+      "pcr_pid": "0x0100",
+      "segment_count": 1
+    },
+    "tables": [
+      {
+        "table": "pat",
+        "pid": "0x0000",
+        "status": "ng",
+        "reasons": [
+          "late"
+        ],
+        "instance_count": 7,
+        "first_instance_offset_bytes": 0,
+        "version_change_count": 0,
+        "crc_error_count": 0,
+        "malformed_section_count": 0,
+        "incomplete_count": 0,
+        "wrong_table_id_count": 0,
+        "unusable_packet_count": 0,
+        "repetition": {
+          "status": "late",
+          "interval_count": 3,
+          "max_interval_ms": 800,
+          "max_interval_end_offset_bytes": 14852,
+          "late_interval_count": 1,
+          "first_late_end_offset_bytes": 14852
+        }
+      },
+      {
+        "table": "pmt",
+        "program_number": 1,
+        "pid": "0x1000",
+        "status": "ng",
+        "reasons": [
+          "late"
+        ],
+        "announced_offset_bytes": 0,
+        "instance_count": 6,
+        "first_instance_offset_bytes": 376,
+        "version_change_count": 0,
+        "crc_error_count": 0,
+        "malformed_section_count": 0,
+        "incomplete_count": 0,
+        "wrong_table_id_count": 0,
+        "unusable_packet_count": 0,
+        "repetition": {
+          "status": "late",
+          "interval_count": 3,
+          "max_interval_ms": 800,
+          "max_interval_end_offset_bytes": 15604,
+          "late_interval_count": 1,
+          "first_late_end_offset_bytes": 15604
+        }
+      }
+    ]
+  },
   "pid_references": {
     "time_basis": "pcr_interpolated_file_position",
     "silence_limit_ms": 5000,
@@ -81,16 +143,16 @@
           "pid": "0x1000",
           "status": "ok",
           "silence_judged": true,
-          "packet_count": 7,
+          "packet_count": 6,
           "first_offset_bytes": 376,
           "last_offset_bytes": 19364,
-          "referenced_packet_count": 5,
+          "referenced_packet_count": 4,
           "referenced_from_offset_bytes": 752,
           "referenced_until_offset_bytes": 22560,
-          "max_silence_ms": 400,
+          "max_silence_ms": 800,
           "max_silence_exact": true,
-          "max_silence_start_offset_bytes": 4324,
-          "max_silence_end_offset_bytes": 8084
+          "max_silence_start_offset_bytes": 8084,
+          "max_silence_end_offset_bytes": 15604
         },
         {
           "program_number": 1,
@@ -256,7 +318,7 @@
       ],
       "status": "complete",
       "analysis_start_offset_bytes": 752,
-      "average_bitrate_bps": 63326.31578947369,
+      "average_bitrate_bps": 62007.017543859656,
       "compliance": {
         "max_pcr_interval": {
           "status": "ng",
@@ -330,8 +392,8 @@
           {
             "pid": "0x0000",
             "label": "PAT",
-            "average_bps": 3298.245614035088,
-            "peak_1s_bps": 4512
+            "average_bps": 2638.5964912280706,
+            "peak_1s_bps": 3008
           },
           {
             "pid": "0x0100",
@@ -348,18 +410,18 @@
           {
             "pid": "0x1000",
             "label": "PMT",
-            "average_bps": 3298.245614035088,
-            "peak_1s_bps": 4512
+            "average_bps": 2638.5964912280706,
+            "peak_1s_bps": 3008
           }
         ],
         "null_pid": {
           "pid": "0x1fff",
           "label": "NULL (mux-wide)",
-          "average_bps": 11873.684210526317,
-          "peak_1s_bps": 12032
+          "average_bps": 13192.982456140351,
+          "peak_1s_bps": 13536
         },
-        "program_average_bps": 63326.31578947369,
-        "program_peak_1s_bps": 64672
+        "program_average_bps": 62007.017543859656,
+        "program_peak_1s_bps": 63168
       },
       "series": {
         "pcr": [
@@ -1509,12 +1571,12 @@
               "label": "PAT",
               "bytes": [
                 376,
-                564,
+                376,
                 0
               ],
               "bps": [
                 3008,
-                4512,
+                3008,
                 0
               ]
             },
@@ -1551,12 +1613,12 @@
               "label": "PMT",
               "bytes": [
                 376,
-                564,
+                376,
                 0
               ],
               "bps": [
                 3008,
-                4512,
+                3008,
                 0
               ]
             },
@@ -1565,12 +1627,12 @@
               "label": "NULL (mux-wide)",
               "bytes": [
                 1504,
-                1316,
+                1692,
                 564
               ],
               "bps": [
                 12032,
-                10528,
+                13536,
                 16114.285714285712
               ]
             }
@@ -1584,7 +1646,7 @@
       {
         "offset_bytes": 0,
         "last_offset_bytes": 22372,
-        "count": 8,
+        "count": 7,
         "pid": "0x0000",
         "table": "pat",
         "status": "applied",
@@ -1597,7 +1659,7 @@
       {
         "offset_bytes": 376,
         "last_offset_bytes": 19364,
-        "count": 7,
+        "count": 6,
         "pid": "0x1000",
         "table": "pmt",
         "status": "applied",
@@ -1641,7 +1703,7 @@
     "pids": [
       {
         "pid": "0x0000",
-        "packet_count": 8,
+        "packet_count": 7,
         "first_offset_bytes": 0,
         "last_offset_bytes": 22372,
         "roles": [
@@ -1684,7 +1746,7 @@
       },
       {
         "pid": "0x1000",
-        "packet_count": 7,
+        "packet_count": 6,
         "first_offset_bytes": 376,
         "last_offset_bytes": 19364,
         "roles": [
@@ -1696,7 +1758,7 @@
       },
       {
         "pid": "0x1fff",
-        "packet_count": 18,
+        "packet_count": 20,
         "first_offset_bytes": 1316,
         "last_offset_bytes": 21620,
         "roles": [

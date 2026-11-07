@@ -999,7 +999,7 @@ fn findings_open_the_detail_page_with_their_actions() {
         ..checked_cli()
     });
     let mut harness = harness(app);
-    harness.get_by_label("Findings (9)");
+    harness.get_by_label("Findings (11)");
     let link = |harness: &mut Harness<'_, App>, name: &str| {
         harness
             .get_by_role_and_label(Role::Link, name)
@@ -1067,6 +1067,29 @@ fn findings_open_the_detail_page_with_their_actions() {
         link(&mut harness, check.title());
         harness.get_by_role_and_label(Role::Heading, "Findings (1)");
         harness.get_by_label("PID 0x1fff (null): 1 packet, 0 excluded from analysis");
+        harness.get_by_role_and_label(Role::Button, &format!("Open packet at {offset}"));
+        assert!(harness.query_by_label_contains("on timeline").is_none());
+    }
+
+    // PAT and PMT health: the end of the late interval, which Timeline does
+    // not mark.
+    for (check, offset, reason) in [
+        (
+            Check::PatHealth,
+            "0x00003A04",
+            "PID 0x0000: 1 late interval(s), longest 800.0 ms (limit 500 ms)",
+        ),
+        (
+            Check::PmtHealth,
+            "0x00003CF4",
+            "PID 0x1000: 1 late interval(s), longest 800.0 ms (limit 500 ms)",
+        ),
+    ] {
+        back_button(&harness).click();
+        harness.run();
+        link(&mut harness, check.title());
+        harness.get_by_role_and_label(Role::Heading, "Findings (1)");
+        harness.get_by_label(reason);
         harness.get_by_role_and_label(Role::Button, &format!("Open packet at {offset}"));
         assert!(harness.query_by_label_contains("on timeline").is_none());
     }
@@ -1150,8 +1173,8 @@ fn findings_account_for_every_check_that_is_not_ok() {
     });
     let harness = harness(app_with_report(report));
     // Two findings for PCR discontinuities (a backward step and a forward
-    // jump), and the two PID-reference findings.
-    harness.get_by_label("Findings (14)");
+    // jump), the two PID-reference findings, and two for PAT and PMT health.
+    harness.get_by_label("Findings (16)");
     assert!(harness.query_by_label("None.").is_none());
     for check in Check::ALL {
         let links = if check == Check::PcrDiscontinuities {
@@ -1216,7 +1239,7 @@ fn unknown_status_stays_visible() {
         table_row(&harness, Check::PcrJitter)
             .query_by_label("INDETERMINATE")
             .expect("the table shows the status");
-        harness.get_by_label("Findings (9)");
+        harness.get_by_label("Findings (11)");
         open_detail(&mut harness, Check::PcrJitter, false);
         harness.get_by_label("Status: INDETERMINATE");
         harness.get_by_label_contains(
@@ -1258,8 +1281,8 @@ fn status_knowledge_is_per_check() {
     });
     let mut harness = harness_sized(app_with_report(report), WIDE);
     harness.run();
-    // Still nine findings (the fixture's), and nothing unavailable.
-    harness.get_by_label("Findings (9)");
+    // Still eleven findings (the fixture's), and nothing unavailable.
+    harness.get_by_label("Findings (11)");
     assert!(
         harness
             .query_by_label_contains("Unavailable analysis")

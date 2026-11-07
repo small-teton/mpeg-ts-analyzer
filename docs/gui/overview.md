@@ -13,8 +13,8 @@ Packages for macOS, Linux and Windows are described in
 
 - **Overview** brings the detected program layout, stream properties, the
   transport-health checks (timing, PES timestamps, continuity, transport
-  errors and scrambling, TS synchronization, referenced and unreferenced
-  PIDs), and
+  errors and scrambling, TS synchronization, PAT/PMT structure, referenced
+  and unreferenced PIDs), and
   per-stream bitrate into one screen, with a full-page explanation of every
   check.
 - **Timeline** plots the PCR interval and the PCR → PTS/DTS gap of every
@@ -46,6 +46,8 @@ under categories that are always expanded:
 | Integrity | Transport errors | whole multiplex, every packet of the range | `OK` without `transport_error_indicator`; `AFFECTED` when no marked packet carried data the analysis reads; `DATA EXCLUDED` when one did and its data was left out |
 | Integrity | Scrambled packets | whole multiplex, every packet of the range | `OK` without scrambled packets; `AFFECTED` or `DATA EXCLUDED` as for transport errors |
 | Integrity | TS synchronization | whole multiplex | `OK`; `RECOVERED` when packets lost their sync byte and the analysis realigned; `LOST` when it could not realign and stopped there |
+| Structure | PAT health | whole multiplex (PID 0x0000), every packet of the range | `OK` when the PAT repeats at least every 500 ms (ETSI TR 101 290 1.3.a) and every section is usable; `NG` for a late, missing or unusable PAT; `INSUFFICIENT DATA` when the range does not show it repeating |
+| Structure | PMT health | selected program's PMT | `OK`, `NG` or `INSUFFICIENT DATA` as for the PAT (TR 101 290 1.5.a) |
 | Structure | Referenced PIDs | whole multiplex, every program of the PAT | `OK`; `ABSENT` when a PMT, PCR, video or audio PID had no packet while referenced for more than 5000 ms; `SILENT` when it went more than 5000 ms without one; `INSUFFICIENT DATA` when a PID without packets was referenced too briefly, may be idle (private data), or there is no PCR |
 | Structure | Unreferenced PIDs | whole multiplex | `OK`; `UNREFERENCED` when a PID carried packets without a PAT/PMT reference for more than 500 ms; `INSUFFICIENT DATA` when a PID appeared too close to the end of the range; `SKIPPED` when not every program's PMT was followed |
 
@@ -133,20 +135,21 @@ every check that is not `OK`: each failed check, each kind of undeclared PCR
 discontinuity (at its first PCR), each PTS/DTS anomaly kind per PID, each continuity error (with its offset), PCR jitter, each PID with
 transport errors or scrambled packets (with its first offset), a loss of TS
 synchronization (at the offset of the first loss, with the number of losses
-and skipped bytes, and the CLI's reason when the analysis stopped), each PID
-with malformed PES headers or a PTS interval over the limit (in its program,
-with the offset), each referenced PID that is `ABSENT` or `SILENT` (at the
-packet before its longest silence) and each `UNREFERENCED` PID (at its first
+and skipped bytes, and the CLI's reason when the analysis stopped), a failed
+PAT or PMT (with its first problem or late interval), each PID with malformed
+PES headers or a PTS interval over the limit (in its program, with the
+offset), each referenced PID that is `ABSENT` or `SILENT` (at the packet
+before its longest silence) and each `UNREFERENCED` PID (at its first
 unreferenced packet), with their own status, and the analyzer's warnings. Each row shows the verdict, the check, the reason and whether it
 concerns the selected program or the whole multiplex; selecting the check
 opens its page. A check counts once through its own events, not again for its
 total. A check the CLI skipped, a PCR jitter estimate the CLI found
-`not_assessable`, a PES check the CLI reported as `INSUFFICIENT DATA`, and
-referenced or unreferenced PIDs the CLI could not judge (`INSUFFICIENT DATA`:
-a PID referenced too briefly, one that may be idle, one that appeared too
-close to the end of the range, or no PCR) are listed under
-**Unavailable analysis** instead, with the CLI's reason; they are not
-findings. The GUI shows the CLI's verdicts as they
+`not_assessable`, a PAT or PMT with `INSUFFICIENT DATA`, a PES check the CLI
+reported as `INSUFFICIENT DATA`, and referenced or unreferenced PIDs the CLI
+could not judge (`INSUFFICIENT DATA`: a PID referenced too briefly, one that
+may be idle, one that appeared too close to the end of the range, or no PCR)
+are listed under **Unavailable analysis** instead, with the CLI's reason;
+they are not findings. The GUI shows the CLI's verdicts as they
 are and never changes them.
 
 To see every verdict at once, open the intentionally invalid

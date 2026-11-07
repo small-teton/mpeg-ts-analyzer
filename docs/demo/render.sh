@@ -67,7 +67,7 @@ psi_output="$("$binary" "$sample" --dump-psi | sed "s|$sample|sample.ts|" | fold
 
 timestamp_full="$("$binary" "$sample" --dump-timestamp | sed "s|$sample|sample.ts|")"
 timestamp_samples="$(printf '%s\n' "$timestamp_full" | awk '/^0x/ { print; count++; if (count == 9) exit }')"
-timestamp_summary="$(printf '%s\n' "$timestamp_full" | tail -n 16)"
+timestamp_summary="$(printf '%s\n' "$timestamp_full" | tail -n 20)"
 timestamp_output="${timestamp_samples}
 ...
 ${timestamp_summary}"
@@ -186,7 +186,7 @@ play_scene() {
   transcript="\$ ${command}"
   while IFS= read -r line; do
     transcript+=$'\n'"$line"
-    visible_transcript="$(printf '%s\n' "$transcript" | tail -n 18)"
+    visible_transcript="$(printf '%s\n' "$transcript" | tail -n 20)"
     render_frame "$visible_transcript" "$line_delay"
   done <<<"$scene_output"
   render_frame "$visible_transcript" "$hold_delay"

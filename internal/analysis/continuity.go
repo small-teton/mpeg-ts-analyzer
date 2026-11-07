@@ -19,8 +19,13 @@ const (
 	// StatusDataExcluded means the check found affected packets and the
 	// parser left data of at least one of them out of the analysis.
 	StatusDataExcluded
+	// StatusNG means the check found a violation of its rule.
+	StatusNG
+	// StatusInsufficientData means the check found no violation but the
+	// range did not hold enough evidence to call the result OK.
+	StatusInsufficientData
 	// StatusSkipped means the check could not be evaluated: the input held
-	// too little data for it.
+	// too little data for it, for example no PCR time base.
 	StatusSkipped
 )
 

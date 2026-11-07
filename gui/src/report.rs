@@ -147,6 +147,10 @@ pub struct AnalysisReport {
     /// `transport_errors` is.
     #[serde(default)]
     pub scrambled_packets: Option<AffectedPackets>,
+    /// PAT and PMT availability and repetition; absent as `transport_errors`
+    /// is.
+    #[serde(default)]
+    pub psi_health: Option<PsiHealth>,
     /// PES header checks of every elementary stream; absent as
     /// `transport_errors` is.
     #[serde(default)]
@@ -419,6 +423,62 @@ pub struct PtsRepetitionPid {
     pub stream: PesStream,
     #[serde(flatten)]
     pub counts: PtsRepetitionCounts,
+}
+
+/// The CLI's `psi_health` result.
+#[derive(Debug, Deserialize)]
+pub struct PsiHealth {
+    pub status: String,
+    pub repetition_limit_ms: f64,
+    pub time_base: PsiTimeBase,
+    pub tables: Vec<PsiTableHealth>,
+}
+
+impl PsiHealth {
+    /// The PAT, or the PMT of `program_number`.
+    pub fn table(&self, program_number: Option<u16>) -> Option<&PsiTableHealth> {
+        self.tables
+            .iter()
+            .find(|t| t.program_number == program_number)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PsiTimeBase {
+    pub status: String,
+    pub program_number: u16,
+    pub pcr_pid: Option<String>,
+    pub segment_count: u64,
+}
+
+/// The health of the PAT (no `program_number`) or of one program's PMT.
+#[derive(Debug, Deserialize)]
+pub struct PsiTableHealth {
+    pub table: String,
+    pub program_number: Option<u16>,
+    pub pid: String,
+    pub status: String,
+    pub reasons: Vec<String>,
+    pub instance_count: u64,
+    pub version_change_count: u64,
+    pub crc_error_count: u64,
+    pub malformed_section_count: u64,
+    pub incomplete_count: u64,
+    pub wrong_table_id_count: u64,
+    pub unusable_packet_count: u64,
+    pub first_problem_offset_bytes: Option<u64>,
+    pub repetition: PsiRepetition,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PsiRepetition {
+    pub status: String,
+    pub reason: Option<String>,
+    pub interval_count: u64,
+    pub max_interval_ms: Option<f64>,
+    pub max_interval_end_offset_bytes: Option<u64>,
+    pub late_interval_count: u64,
+    pub first_late_end_offset_bytes: Option<u64>,
 }
 
 /// The CLI's `pid_references` result.
