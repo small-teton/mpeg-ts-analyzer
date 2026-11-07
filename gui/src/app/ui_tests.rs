@@ -261,9 +261,11 @@ fn app_finding(version: Option<&str>, settings: Settings, checks: &Arc<AtomicUsi
     app
 }
 
-/// Runs frames until the update check has finished.
+/// Runs frames until the update check has finished. The first frame handles
+/// a queued click or key press, which is what starts a manual check.
 fn finish_update_check(harness: &mut Harness<'_, App>) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    harness.run_steps(1);
     while harness.state().updates.checking() {
         assert!(
             std::time::Instant::now() < deadline,
@@ -368,6 +370,13 @@ fn startup_check_prompts_once_for_a_new_version() {
     harness.get_by_label("GUI 9.9.9 is available");
     harness.get_by_label("Install");
     harness.get_by_label("Skip this version");
+    // Centered, clear of the rail.
+    let window = bounds(&harness.get_by_role_and_label(Role::Window, "Software update"));
+    assert!(window.min.x > 96.0, "{window:?} covers the rail");
+    assert!(
+        (window.center().x - 640.0).abs() < 2.0,
+        "{window:?} is not centered"
+    );
     // A window, not a modal: the rail still works behind it.
     tab(&harness, Screen::Timeline).click();
     harness.run();
@@ -375,10 +384,31 @@ fn startup_check_prompts_once_for_a_new_version() {
     assert!(update_window_is_open(&harness));
 
     // Later closes it for this launch only.
+    let layer = harness
+        .ctx
+        .layer_id_at(window.center())
+        .expect("window layer");
+    let saved = egui::AreaState::load(&harness.ctx, layer.id);
     harness.get_by_label("Later").click();
     harness.run();
     assert!(!update_window_is_open(&harness));
     assert_eq!(harness.state().settings.skipped_update_version, None);
+
+    // A position saved by an earlier run, over the rail, does not win when
+    // the window opens again.
+    let mut moved = saved.expect("window state");
+    moved.pivot_pos = Some(egui::pos2(20.0, 120.0));
+    harness
+        .ctx
+        .memory_mut(|memory| memory.areas_mut().set_state(layer, moved));
+    harness
+        .get_by_role_and_label(Role::Button, "Update available: 9.9.9")
+        .click();
+    harness.run();
+    let window = bounds(&harness.get_by_role_and_label(Role::Window, "Software update"));
+    assert!(window.min.x > 96.0, "{window:?} reopened over the rail");
+    harness.get_by_label("Later").click();
+    harness.run();
     let ctx = harness.ctx.clone();
     harness.state_mut().startup_update_check(&ctx);
     finish_update_check(&mut harness);

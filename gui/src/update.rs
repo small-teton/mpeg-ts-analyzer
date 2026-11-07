@@ -560,6 +560,8 @@ pub(crate) struct Updates {
     /// The startup check has opened the window once; it does not again.
     prompted: bool,
     pub window_open: bool,
+    /// The window was shown last frame; it is centered whenever it opens.
+    window_shown: bool,
     receiver: Option<Receiver<Message>>,
     /// A downloaded Windows installer, run from `on_exit`.
     install_on_exit: Option<(Box<Update>, Vec<u8>)>,
@@ -574,6 +576,7 @@ impl Updates {
             manual: false,
             prompted: false,
             window_open: false,
+            window_shown: false,
             receiver: None,
             install_on_exit: None,
         }
@@ -749,21 +752,41 @@ impl Updates {
         skipped: &mut Option<String>,
     ) {
         if !self.window_open {
+            self.window_shown = false;
             return;
         }
         let mut open = true;
         let mut action = None;
-        // Centered, so a window opened at startup does not cover the rail.
-        egui::Window::new("Software update")
+        // Centered whenever it opens, also over a position eframe saved from
+        // an earlier run, so a window opened at startup does not cover the
+        // rail. It can still be moved while it is open.
+        let id = egui::Id::unique("software_update_window");
+        let mut window = egui::Window::new("Software update")
+            .id(id)
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
             .default_width(380.0)
-            .pivot(egui::Align2::CENTER_CENTER)
-            .default_pos(ctx.content_rect().center())
-            .show(ctx, |ui| {
-                action = self.window_contents(ui, analysis_running);
-            });
+            .pivot(egui::Align2::CENTER_CENTER);
+        if !std::mem::replace(&mut self.window_shown, true) {
+            let center = ctx.content_rect().center();
+            // egui 0.37 restores a window's remembered position over
+            // `current_pos` (title-bar dragging), so move the remembered
+            // state too.
+            if let Some(mut state) = egui::AreaState::load(ctx, id) {
+                state.pivot = egui::Align2::CENTER_CENTER;
+                state.pivot_pos = Some(center);
+                ctx.memory_mut(|memory| {
+                    memory
+                        .areas_mut()
+                        .set_state(egui::LayerId::new(egui::Order::Middle, id), state);
+                });
+            }
+            window = window.current_pos(center);
+        }
+        window.show(ctx, |ui| {
+            action = self.window_contents(ui, analysis_running);
+        });
         self.window_open &= open;
         match action {
             Some(Action::Check) => self.check(ctx, true),
