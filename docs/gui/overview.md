@@ -40,6 +40,8 @@ under categories that are always expanded:
 | Timing | PCR jitter estimate | selected program (its PCR PID) | `OK` within ±500 ns, `WARNING` within ±25 µs, `NG` beyond, when delivery is constant; otherwise `NOT ASSESSABLE` |
 | PES / Timestamps | PCR → PTS/DTS gap | selected program | `OK` up to 1000 ms, `NG` above |
 | PES / Timestamps | PTS/DTS anomalies | selected program, per PID | `OK` or `ANOMALIES` |
+| PES / Timestamps | PES headers | every elementary stream of the analyzed programs, per PID | `OK` when every checked header is valid, `ERRORS` when one is truncated or has a bad start code, flags, lengths or PTS/DTS marker bits, `INSUFFICIENT DATA` when none could be checked |
+| PES / Timestamps | PTS repetition | every video and audio stream of the analyzed programs, per PID | `OK` up to 700 ms between PES packets carrying a PTS, `NG` above (ISO/IEC 13818-1 2.7.4, TR 101 290 PTS_error), `INSUFFICIENT DATA` when nothing could be measured, `SKIPPED` without a video or audio stream |
 | Integrity | Continuity counter | whole multiplex | `OK` or `ERRORS` |
 | Integrity | Transport errors | whole multiplex, every packet of the range | `OK` without `transport_error_indicator`; `AFFECTED` when no marked packet carried data the analysis reads; `DATA EXCLUDED` when one did and its data was left out |
 | Integrity | Scrambled packets | whole multiplex, every packet of the range | `OK` without scrambled packets; `AFFECTED` or `DATA EXCLUDED` as for transport errors |
@@ -74,7 +76,8 @@ and opened with Enter or Space. The page shows:
   after it;
 - the check's **findings**, each with **Open packet** when it has an offset
   (for transport errors and scrambled packets, the first affected packet of
-  each PID)
+  each PID; for PES headers, the first malformed header of each PID; for PTS
+  repetition, the end of the first interval over 700 ms on each PID)
   and **Show on timeline** when Timeline marks it (a continuity error on a PID
   of the program);
 - the **verdicts**: every status the check can report and the condition behind
@@ -148,18 +151,20 @@ discontinuity (at its first PCR), each PTS/DTS anomaly kind per PID, each contin
 transport errors or scrambled packets (with its first offset), a loss of TS
 synchronization (at the offset of the first loss, with the number of losses
 and skipped bytes, and the CLI's reason when the analysis stopped), a failed
-PAT or PMT (with its first problem or late interval), each referenced PID
-that is `ABSENT` or `SILENT` (at the packet before its longest silence) and
-each `UNREFERENCED` PID (at its first unreferenced packet), with their own
-status, and the analyzer's warnings. Each row shows the verdict, the check, the reason and whether it
+PAT or PMT (with its first problem or late interval), each PID with malformed
+PES headers or a PTS interval over the limit (in its program, with the
+offset), each referenced PID that is `ABSENT` or `SILENT` (at the packet
+before its longest silence) and each `UNREFERENCED` PID (at its first
+unreferenced packet), with their own status, and the analyzer's warnings. Each row shows the verdict, the check, the reason and whether it
 concerns the selected program or the whole multiplex; selecting the check
 opens its page. A check counts once through its own events, not again for its
 total. A check the CLI skipped, a PCR jitter estimate the CLI found
-`not_assessable`, a PAT or PMT with `INSUFFICIENT DATA`, and referenced or
-unreferenced PIDs the CLI could not judge (`INSUFFICIENT DATA`: a PID
-referenced too briefly, one that may be idle, one that appeared too close to
-the end of the range, or no PCR) are listed under **Unavailable analysis**
-instead, with the CLI's reason; they are not findings. The GUI shows the CLI's verdicts as they
+`not_assessable`, a PAT or PMT with `INSUFFICIENT DATA`, a PES check the CLI
+reported as `INSUFFICIENT DATA`, and referenced or unreferenced PIDs the CLI
+could not judge (`INSUFFICIENT DATA`: a PID referenced too briefly, one that
+may be idle, one that appeared too close to the end of the range, or no PCR)
+are listed under **Unavailable analysis** instead, with the CLI's reason;
+they are not findings. The GUI shows the CLI's verdicts as they
 are and never changes them.
 
 To see every verdict at once, open the intentionally invalid

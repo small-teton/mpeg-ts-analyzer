@@ -195,6 +195,97 @@
       "pids": []
     }
   },
+  "pes_headers": {
+    "status": "ok",
+    "checked_count": 303,
+    "error_count": 0,
+    "unchecked_count": 0,
+    "errors": [],
+    "pids": [
+      {
+        "program_number": 1,
+        "pid": "0x0100",
+        "stream_type": "0x02",
+        "label": "video",
+        "status": "ok",
+        "checked_count": 267,
+        "error_count": 0,
+        "unchecked_count": 0,
+        "errors": []
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0101",
+        "stream_type": "0x03",
+        "label": "audio",
+        "status": "ok",
+        "checked_count": 30,
+        "error_count": 0,
+        "unchecked_count": 0,
+        "errors": []
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0102",
+        "stream_type": "0x06",
+        "label": "stream_type 0x06",
+        "status": "ok",
+        "checked_count": 6,
+        "error_count": 0,
+        "unchecked_count": 0,
+        "errors": []
+      }
+    ]
+  },
+  "pts_repetition": {
+    "limit_ms": 700,
+    "status": "ok",
+    "pts_count": 303,
+    "interval_count": 281,
+    "max_interval_ms": 310,
+    "max_interval_start_offset_bytes": 25380,
+    "max_interval_end_offset_bytes": 37036,
+    "exceeded_count": 0,
+    "pids": [
+      {
+        "program_number": 1,
+        "pid": "0x0100",
+        "stream_type": "0x02",
+        "label": "video",
+        "status": "ok",
+        "pts_count": 267,
+        "interval_count": 253,
+        "max_interval_ms": 30,
+        "max_interval_start_offset_bytes": 17108,
+        "max_interval_end_offset_bytes": 18236,
+        "exceeded_count": 0
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0101",
+        "stream_type": "0x03",
+        "label": "audio",
+        "status": "ok",
+        "pts_count": 30,
+        "interval_count": 28,
+        "max_interval_ms": 310,
+        "max_interval_start_offset_bytes": 25380,
+        "max_interval_end_offset_bytes": 37036,
+        "exceeded_count": 0
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0102",
+        "stream_type": "0x06",
+        "label": "stream_type 0x06",
+        "status": "skipped",
+        "reason": "not_video_or_audio",
+        "pts_count": 6,
+        "interval_count": 0,
+        "exceeded_count": 0
+      }
+    ]
+  },
   "multiplexing": {
     "packet_gaps": {
       "time_basis": "pcr_interpolated_file_position",

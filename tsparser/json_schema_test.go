@@ -271,6 +271,9 @@ func summarySchemaCases() []schemaCase {
 				"/psi_health/status": "ok", "/psi_health/time_base/status": "pcr", "/psi_health/tables/0/table": "pat",
 				"/psi_health/tables/1/program_number": 1, "/psi_health/tables/0/program_number": absent{},
 				"/psi_health/tables/0/first_problem_offset_bytes": absent{}, "/psi_health/tables/1/withdrawn_offset_bytes": absent{},
+				"/pes_headers/status": "ok", "/pes_headers/reason": absent{}, "/pes_headers/first_error_offset_bytes": absent{}, "/pes_headers/errors": []any{},
+				"/pts_repetition/status": "ok", "/pts_repetition/limit_ms": 700, "/pts_repetition/first_exceeded_offset_bytes": absent{},
+				"/pts_repetition/pids/0/reason": absent{}, "/pts_repetition/pids/0/max_interval_ms": present{},
 				"/pid_references/referenced/status": "ok", "/pid_references/unreferenced/status": "ok", "/pid_references/unreferenced/reason": absent{},
 				"/pid_references/referenced/pids/0/stream_type": absent{}, "/pid_references/referenced/pids/2/stream_type": "0x02",
 				"/pcr_jitter": absent{}, "/bitrate": absent{}, "/psi_transitions": absent{},
@@ -338,6 +341,16 @@ func summarySchemaCases() []schemaCase {
 				"/psi_health/tables/0/reasons": []any{"late", "wrong_table_id"}, "/psi_health/tables/0/repetition/status": "late",
 				"/psi_health/tables/0/repetition/first_late_end_offset_bytes": 99 * 188,
 				"/psi_health/tables/2/reasons":                                []any{"missing", "incomplete"}, "/psi_health/tables/2/first_instance_offset_bytes": absent{},
+			},
+		},
+		{
+			name: "complete with PES header errors and an excessive PTS interval", schema: summarySchemaFile, path: fixedPath(pesHealthFixtures[0].path),
+			want: map[string]any{
+				"/status": "complete", "/pes_headers/status": "errors", "/pes_headers/error_count": 8, "/pes_headers/errors/4/kind": "bad_marker_bits",
+				"/pes_headers/pids/2/first_error_offset_bytes": 27 * 188, "/pes_headers/pids/4/status": "insufficient_data", "/pes_headers/pids/4/reason": "no_pes",
+				"/pts_repetition/status": "ng", "/pts_repetition/max_interval_ms": 1080, "/pts_repetition/first_exceeded_offset_bytes": 152 * 188,
+				"/pts_repetition/pids/2/status": "skipped", "/pts_repetition/pids/2/reason": "not_video_or_audio", "/pts_repetition/pids/2/max_interval_ms": absent{},
+				"/pts_repetition/pids/3/reason": "single_pts",
 			},
 		},
 		{
@@ -430,7 +443,7 @@ func summarySchemaCases() []schemaCase {
 			want: map[string]any{
 				"/status": "incomplete", "/reason": "end_of_input_before_complete_analysis", "/error": absent{},
 				"/programs": []any{}, "/compliance": absent{}, "/transport_errors": absent{}, "/scrambled_packets": absent{}, "/pid_references": absent{},
-				"/psi_health": absent{}, "/multiplexing": absent{},
+				"/psi_health": absent{}, "/pes_headers": absent{}, "/pts_repetition": absent{}, "/multiplexing": absent{},
 			},
 		},
 		{
@@ -501,6 +514,7 @@ func analysisSchemaCases() []schemaCase {
 			want: map[string]any{
 				"/status": "complete", "/programs/0/pcr_jitter/status": "ng", "/programs/0/pcr_jitter/delivery/assessment": "constant",
 				"/transport_errors/status": "affected", "/scrambled_packets/pids/0/pid": "0x1fff",
+				"/pes_headers/status": "errors", "/pts_repetition/status": "ng",
 				"/continuity_events/0/expected_cc": 5, "/programs/0/series/timestamp_events/0": present{},
 			},
 		},
@@ -540,6 +554,13 @@ func analysisSchemaCases() []schemaCase {
 				"/status": "complete", "/psi_health/status": "insufficient_data", "/psi_health/time_base/status": "none",
 				"/psi_health/time_base/pcr_pid": absent{}, "/psi_health/tables/0/repetition/status": "skipped",
 				"/psi_health/tables/0/repetition/reason": "no_pcr_time_base", "/psi_health/tables/0/repetition/max_interval_ms": absent{},
+			},
+		},
+		{
+			name: "complete with PES header errors and an excessive PTS interval in M2TS", schema: analysisSchemaFile, path: fixedPath(pesHealthFixtures[1].path), opts: analysis,
+			want: map[string]any{
+				"/status": "complete", "/pes_headers/first_error_offset_bytes": 27 * 192, "/pes_headers/unchecked_count": 0,
+				"/pts_repetition/max_interval_start_offset_bytes": 98 * 192, "/pts_repetition/pids/0/status": "ng", "/pts_repetition/pids/4/reason": "no_pes",
 			},
 		},
 		{
@@ -593,7 +614,7 @@ func analysisSchemaCases() []schemaCase {
 			want: map[string]any{
 				"/status": "incomplete", "/reason": "no_program_analyzed", "/analysis_start_offset_bytes": absent{},
 				"/continuity_counter": absent{}, "/transport_errors": absent{}, "/scrambled_packets": absent{}, "/pid_references": absent{},
-				"/psi_health": absent{}, "/multiplexing": absent{},
+				"/psi_health": absent{}, "/pes_headers": absent{}, "/pts_repetition": absent{}, "/multiplexing": absent{},
 			},
 		},
 		{

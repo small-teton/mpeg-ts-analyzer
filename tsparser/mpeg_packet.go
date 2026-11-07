@@ -91,6 +91,7 @@ type pesAnalysis struct {
 	compliance complianceReport
 	continuity *continuityCounterSummary
 	trust      *transportTrustSummary
+	pes        *analysis.PESCheck
 	references *pidReferenceSummary // nil without PSI tracking
 	anomalies  *TimestampAnomaly
 	jitter     *PcrJitter
@@ -160,6 +161,7 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		psi.addProgram(tables.programNumber, pmtPid, tables.pmt, analyzer)
 		psi.references = tables.references
 		tables.references.usePcrOf([]*programAnalyzer{analyzer})
+		analyzer.attachPESCheck(analysis.NewPESCheck(), tables.programNumber)
 	}
 	trust.addProgramLabels(pmtPid, pcrPid, programInfos)
 	scan, err := scanPrograms(reader, pos, []*programAnalyzer{analyzer}, continuity, trust, psi, options, packetSize, endOffset, quiet)
@@ -169,7 +171,7 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 	analyzer.finish()
 
 	report := analyzer.complianceReport()
-	result := &pesAnalysis{compliance: report, continuity: continuity, trust: trust, anomalies: analyzer.anomaly, truncatedBytes: scan.truncatedBytes, truncatedPos: scan.truncatedPos, sync: scan.sync}
+	result := &pesAnalysis{compliance: report, continuity: continuity, trust: trust, pes: analyzer.pes.check, anomalies: analyzer.anomaly, truncatedBytes: scan.truncatedBytes, truncatedPos: scan.truncatedPos, sync: scan.sync}
 	if psi != nil {
 		result.transitions, result.psiWarnings, result.sdt, result.health = psi.transitions, psi.warnings, psi.sdt, psi.health
 		result.references = psi.references
@@ -197,6 +199,10 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		}
 		if psi != nil {
 			psi.references.Dump()
+		}
+		dumpPESHealth(analyzer.pes.check.Result())
+		// The report-only packet gaps come last, after every verdict.
+		if psi != nil {
 			dumpPacketGaps(psi.references)
 		}
 	}
@@ -269,6 +275,11 @@ func scanPrograms(reader io.Reader, pos *int64, analyzers []*programAnalyzer, co
 			}
 			continuity.Add(*event)
 			result.continuityEvents = append(result.continuityEvents, *event)
+			for _, analyzer := range analyzers {
+				if *pos >= analyzer.start && !analyzer.stopped {
+					analyzer.breakPES(event.PID, *pos, analysis.BreakContinuityError)
+				}
+			}
 		}
 		// Before the analyzers and PSI tracking see the packet, which may stop
 		// a program or move a PMT.
@@ -330,8 +341,14 @@ type programAnalyzer struct {
 	pcrJitter     PcrJitter
 	bitrate       *BitrateStats
 	anomaly       *TimestampAnomaly
-	series        *programSeries // nil unless time series are collected
-	programInfos  []ProgramInfo  // elementary streams of the current layout
+	// pes feeds the check of the PES headers and the PTS repetition of the
+	// program; in a range analysis the check is shared by every program.
+	pes *pesFeed
+	// clock is the last PCR, which places a PES that starts next on the PCR
+	// timeline.
+	clock        pcrAnchor
+	series       *programSeries // nil unless time series are collected
+	programInfos []ProgramInfo  // elementary streams of the current layout
 	// onPcr, when set, receives each PCR the analysis uses and its step: the
 	// time basis of the PID reference check.
 	onPcr func(pos int64, step analysis.PCRStep)
@@ -372,7 +389,34 @@ func newProgramAnalyzer(options options.Options, start int64, programNumber, pmt
 	if withSeries {
 		a.series = newProgramSeries()
 	}
+	a.attachPESCheck(analysis.NewPESCheck(), programNumber)
 	return a
+}
+
+// attachPESCheck makes check record the PES packets of the program, numbered
+// program, from its current layout on.
+func (a *programAnalyzer) attachPESCheck(check *analysis.PESCheck, program uint16) {
+	a.pes = newPESFeed(check, program)
+	check.ObserveProgramLayout(program, programLayout(0, a.pcrPid, a.programInfos))
+}
+
+// breakPES records that PES packets of pid may have been lost or not read at
+// pos, if pid is an elementary stream of the program.
+//
+// After a continuity error the PES in progress ends: it is parsed from the
+// packets before the loss, and the PID waits for its next
+// payload_unit_start_indicator, so no PES packet spans the loss.
+func (a *programAnalyzer) breakPES(pid uint16, pos int64, cause analysis.BreakCause) {
+	pes, stream := a.pesMap[pid]
+	if !stream {
+		return
+	}
+	if cause == analysis.BreakContinuityError && pes != nil {
+		a.completePes(pes, false)
+		a.pesMap[pid] = nil
+	}
+	a.anomaly.markUntimed(pid)
+	a.pes.observeBreak(analysis.PESBreak{Program: a.pes.program, PID: pid, Offset: pos, Cause: cause})
 }
 
 // observe processes one packet of the multiplex at offset pos.
@@ -403,9 +447,10 @@ func (a *programAnalyzer) observe(tsPacket *TsPacket, pos int64, duplicate bool)
 		// incomplete fails to parse, so nothing is read from later packets).
 		// The PID then waits for its next unaffected payload_unit_start.
 		if pes != nil {
-			a.completePes(pes)
+			a.completePes(pes, false)
 			a.pesMap[pid] = nil
 		}
+		a.breakPES(pid, pos, analysis.BreakUntrustedPayload)
 		return
 	}
 	if pes == nil && !tsPacket.PayloadUnitStartIndicator() {
@@ -419,12 +464,13 @@ func (a *programAnalyzer) observe(tsPacket *TsPacket, pos int64, duplicate bool)
 
 	if tsPacket.PayloadUnitStartIndicator() {
 		if pes != nil {
-			a.completePes(pes)
+			a.completePes(pes, true)
 		} else {
 			pes = NewPes()
 			a.pesMap[pid] = pes
 		}
 		pes.Initialize(pid, pos, a.lastPcr, a.lastPcrPos, a.hasLastPcr)
+		pes.prevAnchor = a.clock
 		pes.Append(tsPacket.Payload()) // read until pointer_field
 	} else {
 		pes.Append(tsPacket.Payload())
@@ -473,6 +519,15 @@ func (a *programAnalyzer) observePcr(tsPacket *TsPacket, pos int64) {
 			activePes.hasNextPcr = true
 		}
 	}
+	// A PCR that the PCR check does not measure against the previous one
+	// starts a new segment of the timeline that places PES packets.
+	a.clock = nextPcrAnchor(a.clock, pcr, pos, step.Comparable())
+	a.pes.release(a.clock)
+	for _, activePes := range a.pesMap {
+		if activePes != nil && !activePes.nextAnchor.valid {
+			activePes.nextAnchor = a.clock
+		}
+	}
 	if a.series != nil {
 		a.series.addPcr(pos, pcr, step)
 	}
@@ -481,8 +536,13 @@ func (a *programAnalyzer) observePcr(tsPacket *TsPacket, pos int64) {
 	a.hasLastPcr = true
 }
 
-// completePes parses a buffered PES and records its timestamps.
-func (a *programAnalyzer) completePes(pes *Pes) {
+// completePes parses a buffered PES, checks its header and records its
+// timestamps. next is true when the PES ended because the next PES of the PID
+// started; otherwise the data ended (untrusted payload, a layout change or the
+// end of the range), and a header that is not complete yet is not a problem of
+// the stream but a header that could not be checked. Only a header that passed
+// every check feeds the timestamp checks.
+func (a *programAnalyzer) completePes(pes *Pes, next bool) {
 	perr := pes.Parse()
 	if a.options.DumpTimestamp {
 		pes.DumpTimestamp()
@@ -490,7 +550,9 @@ func (a *programAnalyzer) completePes(pes *Pes) {
 	if a.options.DumpPesHeader {
 		pes.DumpHeader()
 	}
+	a.observePES(pes, pesProblem(perr), next)
 	if perr != nil {
+		a.anomaly.markUntimed(pes.pid)
 		return
 	}
 	a.anomaly.Check(pes)
@@ -519,8 +581,11 @@ func (a *programAnalyzer) finish() {
 		if pes == nil || len(pes.buf) == 0 {
 			continue
 		}
-		a.completePes(pes)
+		a.completePes(pes, false)
 	}
+	// No PCR follows: the PES packets still waiting for one are placed by
+	// extrapolation.
+	a.pes.release(pcrAnchor{})
 }
 
 // setLayout switches the analysis to a new PMT version (or a PMT moved to
@@ -541,7 +606,7 @@ func (a *programAnalyzer) setLayout(pmtPid, pcrPid uint16, programInfos []Progra
 			continue
 		}
 		if pes := a.pesMap[info.elementaryPid]; pes != nil && len(pes.buf) > 0 {
-			a.completePes(pes)
+			a.completePes(pes, false)
 		}
 		delete(a.pesMap, info.elementaryPid)
 		delete(a.anomaly.states, info.elementaryPid)
@@ -556,12 +621,18 @@ func (a *programAnalyzer) setLayout(pmtPid, pcrPid uint16, programInfos []Progra
 	if pcrPid != a.pcrPid {
 		a.pcrPid, a.pcrDiscontinuityPending, a.pcrPidChanged = pcrPid, false, true
 		a.lastPcr, a.hasLastPcr = 0, false
+		a.clock = pcrAnchor{segment: a.clock.segment}
 		for _, pes := range a.pesMap {
 			if pes != nil && !pes.hasNextPcr {
 				pes.hasPrevPcr = false
 			}
+			if pes != nil && !pes.nextAnchor.valid {
+				pes.prevAnchor = pcrAnchor{}
+			}
 		}
 	}
+	a.pes.release(pcrAnchor{})
+	a.pes.check.ObserveProgramLayout(a.pes.program, programLayout(pmtPid, pcrPid, programInfos))
 	if a.bitrate != nil {
 		a.bitrate.setLayout(pmtPid, pcrPid, programInfos)
 	}

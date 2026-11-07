@@ -183,6 +183,51 @@
       "pids": []
     }
   },
+  "pes_headers": {
+    "status": "ok",
+    "checked_count": 96,
+    "error_count": 0,
+    "unchecked_count": 0,
+    "errors": [],
+    "pids": [
+      {
+        "program_number": 1,
+        "pid": "0x0100",
+        "stream_type": "0x02",
+        "label": "video",
+        "status": "ok",
+        "checked_count": 96,
+        "error_count": 0,
+        "unchecked_count": 0,
+        "errors": []
+      }
+    ]
+  },
+  "pts_repetition": {
+    "limit_ms": 700,
+    "status": "ok",
+    "pts_count": 96,
+    "interval_count": 92,
+    "max_interval_ms": 20,
+    "max_interval_start_offset_bytes": 752,
+    "max_interval_end_offset_bytes": 1128,
+    "exceeded_count": 0,
+    "pids": [
+      {
+        "program_number": 1,
+        "pid": "0x0100",
+        "stream_type": "0x02",
+        "label": "video",
+        "status": "ok",
+        "pts_count": 96,
+        "interval_count": 92,
+        "max_interval_ms": 20,
+        "max_interval_start_offset_bytes": 752,
+        "max_interval_end_offset_bytes": 1128,
+        "exceeded_count": 0
+      }
+    ]
+  },
   "multiplexing": {
     "packet_gaps": {
       "time_basis": "pcr_interpolated_file_position",
@@ -271,7 +316,7 @@
           "status": "ok",
           "value_ms": 100,
           "limit_ms": 1000,
-          "observations": 95
+          "observations": 93
         }
       },
       "timestamp_anomalies": {
@@ -1046,8 +1091,7 @@
             "pid": "0x0100",
             "offset_bytes": 7144,
             "elapsed_ms": 340,
-            "pts_ms": 10480,
-            "pcr_gap_ms": 100
+            "pts_ms": 10480
           },
           {
             "pid": "0x0100",
@@ -1186,8 +1230,7 @@
             "pid": "0x0100",
             "offset_bytes": 15041,
             "elapsed_ms": 760,
-            "pts_ms": 10900,
-            "pcr_gap_ms": 100
+            "pts_ms": 10900
           },
           {
             "pid": "0x0100",

@@ -37,6 +37,9 @@ bits.
 - **PID references**: PMT, PCR and elementary-stream PIDs that the PAT/PMT
   reference but that are absent or silent for more than 5 s, and PIDs that
   carry packets without being referenced (after a 0.5 s grace period).
+- **PES headers** of every elementary stream (truncated, bad start code,
+  flags, lengths or PTS/DTS marker bits), and **PTS repetition**: a PTS at
+  least every 700 ms on video and audio streams (ISO/IEC 13818-1, 2.7.4).
 - **Packet gaps** (report only): for every PID, the longest run of other
   packets between two of its packets, in packets and estimated milliseconds,
   to spot poorly interleaved (bursty) multiplexes. No verdict is attached.

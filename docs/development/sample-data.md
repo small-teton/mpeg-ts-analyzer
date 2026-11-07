@@ -26,8 +26,9 @@ invalid**. They are not examples of a good stream: each carries deliberate
 defects so that every Overview transport-health check reports a problem in one
 analysis — a 160 ms PCR interval, a 1200 ms PCR → PTS/DTS gap, a backward PTS,
 one continuity-counter gap, a PCR that is 100 µs late, a null packet with
-`transport_error_indicator` set, a scrambled null packet and an 800 ms gap
-between two PATs and between two PMTs. The stream is
+`transport_error_indicator` set, a scrambled null packet, an 800 ms gap
+between two PATs and between two PMTs, a video PES header with a bad PTS
+marker bit and 800 ms of audio PES packets without a PTS. The stream is
 delivered at a constant 75.2 kbit/s for 2.4 s, long enough for two 1-second
 windows, so the PCR jitter analysis finds constant delivery and judges the
 late PCR (`NG`). Its packets are aligned and its PCR clock is continuous, so
@@ -160,6 +161,26 @@ go run ./tools/generate_pid_references -m2ts -output sample_data/sample_192byte_
 
 The packets, the expected results and the TSDuck cross-check are described in
 [`tools/generate_pid_references`](https://github.com/small-teton/mpeg-ts-analyzer/tree/master/tools/generate_pid_references).
+
+## PES header and PTS repetition sample
+
+`sample_data/sample_188byte_pes_health.ts` and its 192-byte M2TS twin
+`sample_data/sample_192byte_pes_health.ts` (37 KiB each) are also
+**intentionally invalid**. They carry PES headers that are truncated or have a
+bad start code, bad flags, inconsistent lengths or bad PTS marker bits, a
+valid header split over two TS packets, `PES_packet_length` 0 on video, and a
+video stream without a PTS for 1080 ms, to test the PES header and PTS
+repetition checks.
+
+```bash
+go run ./tools/generate_pes_health -output sample_data/sample_188byte_pes_health.ts
+go run ./tools/generate_pes_health -m2ts -output sample_data/sample_192byte_pes_health.ts
+./mpeg-ts-analyzer sample_data/sample_188byte_pes_health.ts
+```
+
+The defects, the expected results and the TSDuck and ffprobe cross-checks are
+described in
+[`tools/generate_pes_health`](https://github.com/small-teton/mpeg-ts-analyzer/tree/master/tools/generate_pes_health).
 
 ## Packet-gap sample
 

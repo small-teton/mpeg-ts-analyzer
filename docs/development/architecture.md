@@ -75,6 +75,8 @@ observations it needs through focused methods.
 | How packet times are interpolated from PCRs, which intervals are complete or open, the 500 ms limit and the `ok` / `ng` / `insufficient_data` status per table | `analysis` (`PSIHealthCheck`) |
 | Which packets show a PID's presence (not one with `transport_error_indicator`), which PCRs give the time basis, and which PSI layout applies from which packet | `tsparser` (`pidReferenceSummary`, `referenceLayout`), reported as `analysis.Packet`, `analysis.TimedPCR` (the reference program's PCR with its `PCRStep`) and `analysis.ReferenceLayout` |
 | The time of a packet between two PCRs, per-PID packet counts and gaps, silences while referenced, unreferenced runs and their grace period, the referenced and unreferenced statuses, the report-only packet-gap statuses | `analysis` (`PacketGaps`, `PIDReferenceCheck`) |
+| Whether a PES header is valid and which problem it has, its PTS/DTS, and the PES packet's time on the PCR timeline (interpolated between the PCRs around it) | `tsparser` (`Pes.Parse`, `pesFeed`, `arrivalAt`), reported as `analysis.PES` and `analysis.PESBreak` |
+| How header problems are counted per PID, which streams the 700 ms PTS repetition limit applies to, how intervals, breaks and lower bounds are measured, and the statuses and reasons | `analysis` (`PESCheck`) |
 
 The continuity counter summary is the first check that uses this boundary from
 end to end. It was chosen because it is an existing, always-on transport check
@@ -121,6 +123,13 @@ the references of the layouts and gives it the neutral status `info` (or
 chain when a layout stops or resumes referencing it, so a removed and re-added
 stream has no gap across its absence. `tsparser` only formats the
 `multiplexing.packet_gaps` JSON and the text block.
+
+The PES header and PTS repetition check
+([#164](https://github.com/small-teton/mpeg-ts-analyzer/issues/164)) follows
+the same split. Its `analysis.PES` observation carries one PES packet's header
+outcome, PTS/DTS and PCR-timeline time without any payload, so later
+timestamp checks (such as a multiplex lead between PCR and PTS/DTS) can
+consume the same observation.
 
 Other aggregate evaluators (PCR jitter, PCR-PTS/DTS gap, timestamp anomalies,
 bitrate) are still in `tsparser`. They move to `analysis` when a change to them

@@ -151,6 +151,14 @@ pub struct AnalysisReport {
     /// is.
     #[serde(default)]
     pub psi_health: Option<PsiHealth>,
+    /// PES header checks of every elementary stream; absent as
+    /// `transport_errors` is.
+    #[serde(default)]
+    pub pes_headers: Option<PesHeaders>,
+    /// Intervals between PES packets carrying a PTS; absent as
+    /// `transport_errors` is.
+    #[serde(default)]
+    pub pts_repetition: Option<PtsRepetition>,
     /// Referenced, missing and unreferenced PIDs; absent as
     /// `transport_errors` is.
     #[serde(default)]
@@ -332,6 +340,92 @@ pub struct AffectedPid {
     pub packet_count: u64,
     pub excluded_packet_count: u64,
     pub first_offset_bytes: u64,
+}
+
+/// The CLI's `pes_headers` result: the totals and every elementary PID.
+#[derive(Debug, Deserialize)]
+pub struct PesHeaders {
+    #[serde(flatten)]
+    pub counts: PesHeaderCounts,
+    pub pids: Vec<PesHeaderPid>,
+}
+
+/// The header counts of one PID or of all PIDs.
+#[derive(Debug, Deserialize)]
+pub struct PesHeaderCounts {
+    pub status: String,
+    pub reason: Option<String>,
+    pub checked_count: u64,
+    pub error_count: u64,
+    pub unchecked_count: u64,
+    pub first_error_offset_bytes: Option<u64>,
+    pub errors: Vec<PesHeaderError>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PesHeaderError {
+    pub kind: String,
+    pub count: u64,
+    pub first_offset_bytes: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PesHeaderPid {
+    #[serde(flatten)]
+    pub stream: PesStream,
+    #[serde(flatten)]
+    pub counts: PesHeaderCounts,
+}
+
+/// An elementary stream of a program in the PES results.
+#[derive(Debug, Deserialize)]
+pub struct PesStream {
+    pub program_number: u16,
+    pub pid: String,
+    pub stream_type: String,
+    pub label: String,
+}
+
+impl PesStream {
+    /// "Program 1 PID 0x0100 (video)".
+    pub fn describe(&self) -> String {
+        format!(
+            "Program {} PID {} ({})",
+            self.program_number, self.pid, self.label
+        )
+    }
+}
+
+/// The CLI's `pts_repetition` result: the limit, the totals and every
+/// elementary PID.
+#[derive(Debug, Deserialize)]
+pub struct PtsRepetition {
+    pub limit_ms: f64,
+    #[serde(flatten)]
+    pub counts: PtsRepetitionCounts,
+    pub pids: Vec<PtsRepetitionPid>,
+}
+
+/// The PTS repetition values of one PID or of all PIDs.
+#[derive(Debug, Deserialize)]
+pub struct PtsRepetitionCounts {
+    pub status: String,
+    pub reason: Option<String>,
+    pub pts_count: u64,
+    pub interval_count: u64,
+    pub max_interval_ms: Option<f64>,
+    pub max_interval_start_offset_bytes: Option<u64>,
+    pub max_interval_end_offset_bytes: Option<u64>,
+    pub exceeded_count: u64,
+    pub first_exceeded_offset_bytes: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PtsRepetitionPid {
+    #[serde(flatten)]
+    pub stream: PesStream,
+    #[serde(flatten)]
+    pub counts: PtsRepetitionCounts,
 }
 
 /// The CLI's `psi_health` result.

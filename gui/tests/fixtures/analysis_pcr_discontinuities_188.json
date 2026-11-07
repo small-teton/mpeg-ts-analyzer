@@ -176,6 +176,49 @@
       "pids": []
     }
   },
+  "pes_headers": {
+    "status": "insufficient_data",
+    "reason": "no_pes",
+    "checked_count": 0,
+    "error_count": 0,
+    "unchecked_count": 0,
+    "errors": [],
+    "pids": [
+      {
+        "program_number": 1,
+        "pid": "0x0100",
+        "stream_type": "0x02",
+        "label": "video",
+        "status": "insufficient_data",
+        "reason": "no_pes",
+        "checked_count": 0,
+        "error_count": 0,
+        "unchecked_count": 0,
+        "errors": []
+      }
+    ]
+  },
+  "pts_repetition": {
+    "limit_ms": 700,
+    "status": "insufficient_data",
+    "reason": "no_pes",
+    "pts_count": 0,
+    "interval_count": 0,
+    "exceeded_count": 0,
+    "pids": [
+      {
+        "program_number": 1,
+        "pid": "0x0100",
+        "stream_type": "0x02",
+        "label": "video",
+        "status": "insufficient_data",
+        "reason": "no_pes",
+        "pts_count": 0,
+        "interval_count": 0,
+        "exceeded_count": 0
+      }
+    ]
+  },
   "multiplexing": {
     "packet_gaps": {
       "time_basis": "pcr_interpolated_file_position",

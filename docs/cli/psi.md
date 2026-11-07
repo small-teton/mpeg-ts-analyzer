@@ -197,6 +197,9 @@ PAT/PMT health: OK (repetition limit 500 ms, ETSI TR 101 290 1.3.a/1.5.a; time b
 Referenced PIDs: 8 references, silence limit 5000 ms [OK]
 Unreferenced PIDs: none [OK]
 -----------------------------
+PES Headers: 220 checked on 3 PIDs, no errors
+PTS Repetition (limit 700ms): max interval 66.666667ms over 208 intervals [OK]
+-----------------------------
 Max packet gaps (report only): 7 PIDs, time basis pcr_interpolated_file_position
   PID 0x0000 : 43 packets, max gap 44 packets, 150.222 ms from 0x0001e27c to 0x00020388
   PID 0x0011 : 10 packets, max gap 173 packets, at least 471.111 ms from 0x00016e74 to 0x0001ee3c

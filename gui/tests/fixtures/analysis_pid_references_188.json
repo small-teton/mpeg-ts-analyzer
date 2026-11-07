@@ -272,6 +272,171 @@
       ]
     }
   },
+  "pes_headers": {
+    "status": "ok",
+    "checked_count": 313,
+    "error_count": 0,
+    "unchecked_count": 0,
+    "errors": [],
+    "pids": [
+      {
+        "program_number": 1,
+        "pid": "0x0100",
+        "stream_type": "0x02",
+        "label": "video",
+        "status": "ok",
+        "checked_count": 149,
+        "error_count": 0,
+        "unchecked_count": 0,
+        "errors": []
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0101",
+        "stream_type": "0x03",
+        "label": "audio",
+        "status": "ok",
+        "checked_count": 89,
+        "error_count": 0,
+        "unchecked_count": 0,
+        "errors": []
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0102",
+        "stream_type": "0x06",
+        "label": "stream_type 0x06",
+        "status": "insufficient_data",
+        "reason": "no_pes",
+        "checked_count": 0,
+        "error_count": 0,
+        "unchecked_count": 0,
+        "errors": []
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0103",
+        "stream_type": "0x04",
+        "label": "audio",
+        "status": "insufficient_data",
+        "reason": "no_pes",
+        "checked_count": 0,
+        "error_count": 0,
+        "unchecked_count": 0,
+        "errors": []
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0105",
+        "stream_type": "0x03",
+        "label": "audio",
+        "status": "ok",
+        "checked_count": 9,
+        "error_count": 0,
+        "unchecked_count": 0,
+        "errors": []
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0106",
+        "stream_type": "0x03",
+        "label": "audio",
+        "status": "ok",
+        "checked_count": 66,
+        "error_count": 0,
+        "unchecked_count": 0,
+        "errors": []
+      }
+    ]
+  },
+  "pts_repetition": {
+    "limit_ms": 700,
+    "status": "ng",
+    "pts_count": 313,
+    "interval_count": 305,
+    "max_interval_ms": 6100,
+    "max_interval_start_offset_bytes": 44556,
+    "max_interval_end_offset_bytes": 90428,
+    "exceeded_count": 1,
+    "first_exceeded_offset_bytes": 90428,
+    "pids": [
+      {
+        "program_number": 1,
+        "pid": "0x0100",
+        "stream_type": "0x02",
+        "label": "video",
+        "status": "ok",
+        "pts_count": 149,
+        "interval_count": 147,
+        "max_interval_ms": 100,
+        "max_interval_start_offset_bytes": 8272,
+        "max_interval_end_offset_bytes": 9024,
+        "exceeded_count": 0
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0101",
+        "stream_type": "0x03",
+        "label": "audio",
+        "status": "ng",
+        "pts_count": 89,
+        "interval_count": 87,
+        "max_interval_ms": 6100,
+        "max_interval_start_offset_bytes": 44556,
+        "max_interval_end_offset_bytes": 90428,
+        "exceeded_count": 1,
+        "first_exceeded_offset_bytes": 90428
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0102",
+        "stream_type": "0x06",
+        "label": "stream_type 0x06",
+        "status": "skipped",
+        "reason": "not_video_or_audio",
+        "pts_count": 0,
+        "interval_count": 0,
+        "exceeded_count": 0
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0103",
+        "stream_type": "0x04",
+        "label": "audio",
+        "status": "insufficient_data",
+        "reason": "no_pes",
+        "pts_count": 0,
+        "interval_count": 0,
+        "exceeded_count": 0
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0105",
+        "stream_type": "0x03",
+        "label": "audio",
+        "status": "ok",
+        "pts_count": 9,
+        "interval_count": 7,
+        "max_interval_ms": 200,
+        "max_interval_start_offset_bytes": 108100,
+        "max_interval_end_offset_bytes": 109604,
+        "exceeded_count": 0
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0106",
+        "stream_type": "0x03",
+        "label": "audio",
+        "status": "ok",
+        "pts_count": 66,
+        "interval_count": 64,
+        "max_interval_ms": 200,
+        "max_interval_start_offset_bytes": 9588,
+        "max_interval_end_offset_bytes": 11092,
+        "exceeded_count": 0
+      }
+    ]
+  },
   "multiplexing": {
     "packet_gaps": {
       "time_basis": "pcr_interpolated_file_position",

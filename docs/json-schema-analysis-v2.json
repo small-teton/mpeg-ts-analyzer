@@ -73,6 +73,14 @@
       "$ref": "json-schema-v2.json#/$defs/pidReferences",
       "description": "Referenced, missing and unreferenced PIDs for the whole multiplex, from the first packet of the range. Absent when no program was analyzed."
     },
+    "pes_headers": {
+      "$ref": "json-schema-v2.json#/$defs/pesHeaders",
+      "description": "PES header checks of every elementary stream of the analyzed programs. Absent when no program was analyzed."
+    },
+    "pts_repetition": {
+      "$ref": "json-schema-v2.json#/$defs/ptsRepetition",
+      "description": "Intervals between PES packets carrying a PTS on each video and audio stream of the analyzed programs. Absent when no program was analyzed."
+    },
     "multiplexing": {
       "$ref": "json-schema-v2.json#/$defs/multiplexing",
       "description": "Report-only multiplexing diagnostics (per-PID maximum packet gaps) for the whole multiplex, from the first packet of the range. Absent when no program was analyzed."
@@ -117,10 +125,7 @@
           "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger"
         },
         "packet_size_bytes": {
-          "enum": [
-            188,
-            192
-          ]
+          "enum": [188, 192]
         },
         "offset_bytes": {
           "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger"

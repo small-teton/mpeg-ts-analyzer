@@ -6,6 +6,7 @@ import (
 	"io"
 	"slices"
 
+	pesanalysis "github.com/small-teton/mpeg-ts-analyzer/v2/internal/analysis"
 	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 )
 
@@ -25,6 +26,7 @@ type rangeAnalysis struct {
 	continuity *continuityCounterSummary
 	trust      *transportTrustSummary
 	health     *psiHealthCollector
+	pes        *pesanalysis.PESCheck
 	references *pidReferenceSummary
 	psi        *psiTracker
 	pat        *patTable // the first complete PAT
@@ -53,6 +55,7 @@ func analyzeAllPrograms(reader io.ReadSeeker, pat *patTable, leadStart, programS
 	analysis.pat, analysis.leadStart, analysis.packetSize = pat, leadStart, packetSize
 	analysis.continuity = newEmptyContinuitySummary()
 	analysis.trust = newTransportTrustSummary()
+	analysis.pes = pesanalysis.NewPESCheck()
 	analysis.psi = newPsiTracker(pat, analysis.continuity, options, packetSize, true)
 	analysis.psi.trust = analysis.trust
 	analysis.references = newPidReferenceSummary(leadStart, packetSize)
@@ -73,6 +76,7 @@ func analyzeAllPrograms(reader io.ReadSeeker, pat *patTable, leadStart, programS
 			entry.pmt, entry.table = pmt.Pmt, pmt
 			entry.analyzer = newProgramAnalyzer(options, pos, prog.ProgramNumber, prog.PmtPid, pmt.PcrPid(), pmt.ProgramInfos(), true)
 			entry.analyzer.pcrJitter.packetSize = packetSize
+			entry.analyzer.attachPESCheck(analysis.pes, prog.ProgramNumber)
 			analysis.continuity.addProgramLabels(prog.PmtPid, pmt.PcrPid(), pmt.ProgramInfos())
 			analysis.trust.addProgramLabels(prog.PmtPid, pmt.PcrPid(), pmt.ProgramInfos())
 			analysis.psi.addProgram(prog.ProgramNumber, prog.PmtPid, pmt, entry.analyzer)
@@ -141,6 +145,8 @@ type RangeAnalysisReport struct {
 	ScrambledPackets         *ReportAffectedPackets  `json:"scrambled_packets,omitempty"`
 	PSIHealth                *ReportPSIHealth        `json:"psi_health,omitempty"`
 	PIDReferences            *ReportPIDReferences    `json:"pid_references,omitempty"`
+	PESHeaders               *ReportPESHeaders       `json:"pes_headers,omitempty"`
+	PTSRepetition            *ReportPTSRepetition    `json:"pts_repetition,omitempty"`
 	Multiplexing             *ReportMultiplexing     `json:"multiplexing,omitempty"`
 	Programs                 []RangeAnalysisProgram  `json:"programs"`
 	PSITransitions           []ReportPSITransition   `json:"psi_transitions,omitempty"`
@@ -259,6 +265,7 @@ func rangeAnalysisReport(report *AnalysisReport) *RangeAnalysisReport {
 		r.TransportErrors, r.ScrambledPackets = reportTransportTrust(analysis.trust)
 		r.PSIHealth = reportPsiHealth(analysis.health)
 		r.PIDReferences = reportPidReferences(analysis.references)
+		r.PESHeaders, r.PTSRepetition = reportPESHealth(analysis.pes)
 		r.Multiplexing = reportMultiplexing(analysis.references)
 		r.PSITransitions = reportPsiTransitions(analysis.psi.transitions)
 		r.PSILayout = reportPsiLayout(analysis)
