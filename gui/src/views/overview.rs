@@ -575,7 +575,8 @@ fn health_table(ui: &mut egui::Ui, rows: &[Row], state: &mut OverviewState) {
         ui.set_width(inner);
         accessible_scope(ui, builder, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
-            table_row(ui, &columns, None, None, |ui, cell| {
+            let header_fill = crate::theme::table_header_fill(ui.visuals());
+            table_row(ui, &columns, Some(header_fill), None, |ui, cell| {
                 let title = match cell {
                     Cell::Check => "Check",
                     Cell::Value => "Value",
@@ -774,10 +775,11 @@ const CELL_MAX_HEIGHT: f32 = 10_000.0;
 /// room above it, announced as a heading with its title as written.
 fn category_row(ui: &mut egui::Ui, title: &str, width: f32) {
     egui::Frame::new()
+        .fill(crate::theme::table_category_fill(ui.visuals()))
         .inner_margin(egui::Margin {
             left: CELL_PADDING as i8,
             right: CELL_PADDING as i8,
-            top: 10,
+            top: 6,
             bottom: 4,
         })
         .show(ui, |ui| {

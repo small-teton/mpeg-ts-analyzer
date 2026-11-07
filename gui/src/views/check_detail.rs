@@ -255,7 +255,7 @@ fn verdict_table(ui: &mut egui::Ui, statuses: &[(&str, &str)], current: Option<&
                         ui.visuals(),
                     ));
                 },
-                None,
+                Some(crate::theme::table_header_fill(ui.visuals())),
                 None,
             );
             overview::rule(ui, inner, crate::theme::table_header_rule(ui.visuals()));

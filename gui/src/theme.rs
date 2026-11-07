@@ -42,11 +42,11 @@ pub const VIDEO_COLOR: Color32 = Color32::from_rgb(0x4e, 0xa8, 0xff);
 pub const AUDIO_COLOR: Color32 = Color32::from_rgb(0x7f, 0xd6, 0x8a);
 pub const PSI_COLOR: Color32 = Color32::from_rgb(0xc7, 0x92, 0xea);
 pub const LIMIT_COLOR: Color32 = Color32::from_rgb(0xff, 0x7a, 0x7a);
-// Tables follow Material Design 3's data tables: the header row sits on the
-// same surface as the rows (no fill) with medium-emphasis semibold text and a
-// stronger rule below it; rows are separated by thin dividers; a category is a
-// subheader in the accent color. Every color comes from the current light or
-// dark visuals, never a fixed value.
+// Tables loosely follow Material Design 3's data tables: a lightly tinted
+// header row with medium-emphasis semibold text and a stronger rule below it,
+// thin dividers between rows, and categories as accent subheaders on a
+// fainter tint. Every color comes from the current light or dark visuals,
+// never a fixed value.
 
 /// Text of a table's column headers: semibold, in the theme's ordinary
 /// (medium-emphasis) text color.
@@ -54,6 +54,28 @@ pub fn table_header_text(text: &str, visuals: &egui::Visuals) -> egui::RichText 
     egui::RichText::new(text)
         .family(FontFamily::Name(HEADING_FAMILY.into()))
         .color(visuals.text_color())
+}
+
+/// `base` moved `amount` (0–1) of the way toward `toward`.
+fn mix(base: Color32, toward: Color32, amount: f32) -> Color32 {
+    let channel =
+        |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * amount).round() as u8;
+    Color32::from_rgb(
+        channel(base.r(), toward.r()),
+        channel(base.g(), toward.g()),
+        channel(base.b(), toward.b()),
+    )
+}
+
+/// Fill of a table's header row: the panel tinted slightly toward the text
+/// color, so it stands apart by the same small step in light and dark.
+pub fn table_header_fill(visuals: &egui::Visuals) -> Color32 {
+    mix(visuals.panel_fill, visuals.text_color(), 0.12)
+}
+
+/// Fill of a category subheader row: half the header's tint.
+pub fn table_category_fill(visuals: &egui::Visuals) -> Color32 {
+    mix(visuals.panel_fill, visuals.text_color(), 0.06)
 }
 
 /// The rule under a table's header row, stronger than the row dividers.
