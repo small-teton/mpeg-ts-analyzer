@@ -14,7 +14,8 @@ desktop GUI. The [README](https://github.com/small-teton/mpeg-ts-analyzer#readme
 ## Use the command-line analyzer
 
 - [CLI usage](cli/usage.md): what is checked, every flag, verdicts and exit
-  codes, multi-program streams, continuity and timestamp reports.
+  codes, multi-program streams, continuity, TS synchronization and timestamp
+  reports.
 - [PSI tables](cli/psi.md): PAT and PMT split into sections, service names from
   the SDT, and PAT/PMT version changes during an analysis.
 - [Dump output examples](cli/dumps.md): annotated output of the dump flags.

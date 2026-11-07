@@ -1091,14 +1091,33 @@ fn findings_open_the_detail_page_with_their_actions() {
 
 #[test]
 fn findings_account_for_every_check_that_is_not_ok() {
-    // Every check of the all-findings sample reports a problem, except PCR
-    // discontinuities: its PCR clock is continuous. The PCR-discontinuities
-    // sample has that finding.
-    let harness = harness(app_with_report(all_findings_report()));
-    harness.get_by_label("Findings (7)");
+    // Every check of the all-findings sample reports a problem; its packets
+    // are aligned and its PCR clock is continuous, so the sync result of the
+    // sync-loss sample and the PCR discontinuities of the
+    // PCR-discontinuities sample are added.
+    let sync_loss: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/analysis_sync_loss_188.json"
+    ))
+    .unwrap();
+    let pcr_discontinuities: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/analysis_pcr_discontinuities_188.json"
+    ))
+    .unwrap();
+    let report = edited_report(|document| {
+        document["sync"] = sync_loss["sync"].clone();
+        document["programs"][0]["compliance"]["pcr_discontinuities"] =
+            pcr_discontinuities["programs"][0]["compliance"]["pcr_discontinuities"].clone();
+    });
+    let harness = harness(app_with_report(report));
+    // Two findings for PCR discontinuities: a backward step and a forward jump.
+    harness.get_by_label("Findings (10)");
     assert!(harness.query_by_label("None.").is_none());
     for check in Check::ALL {
-        let links = usize::from(check != Check::PcrDiscontinuities);
+        let links = if check == Check::PcrDiscontinuities {
+            2
+        } else {
+            1
+        };
         assert_eq!(
             harness
                 .query_all_by_role_and_label(Role::Link, check.title())
@@ -1107,20 +1126,6 @@ fn findings_account_for_every_check_that_is_not_ok() {
             "{check:?}"
         );
     }
-    let harness = self::harness(app_with_report(
-        crate::report::parse_analysis(
-            include_bytes!("../../tests/fixtures/analysis_pcr_discontinuities_188.json"),
-            "2",
-        )
-        .unwrap(),
-    ));
-    harness.get_by_label("Findings (2)");
-    assert_eq!(
-        harness
-            .query_all_by_role_and_label(Role::Link, Check::PcrDiscontinuities.title())
-            .count(),
-        2
-    );
 
     // The two-program sample is VBR: PCR jitter is not assessable, which is
     // unavailable analysis with the CLI's reason, not a finding.
@@ -1306,4 +1311,21 @@ fn all_findings_fixture_matches_the_cli() {
     };
     assert_eq!(summary(&m2ts), summary(&report));
     assert_eq!(m2ts.input.packet_size_bytes, Some(192));
+}
+
+/// The sync-loss fixture is what the CLI writes for the sample.
+/// Runs only against a CLI named by MPEG_TS_ANALYZER_CLI (e.g. via `make gui-test`).
+#[test]
+fn sync_loss_fixture_matches_the_cli() {
+    let args = ["--format", "json", "--output", "analysis"];
+    let Some(json) = crate::cli::run_on_sample("sample_188byte_sync_loss.ts", &args) else {
+        return;
+    };
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/analysis_sync_loss_188.json"
+    ))
+    .unwrap();
+    let mut output: serde_json::Value = serde_json::from_slice(&json).unwrap();
+    output["input"]["path"] = fixture["input"]["path"].clone();
+    assert_eq!(output, fixture, "regenerate the fixture with the CLI");
 }

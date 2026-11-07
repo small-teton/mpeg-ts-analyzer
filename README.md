@@ -25,6 +25,8 @@ bits.
   jumps, or DTS later than PTS.
 - **Continuity counters** of every PID, and the **PAT/PMT layout** of the range,
   including tables split into sections and version changes.
+- **TS synchronization**: packets without their sync byte, with byte offsets,
+  and bounded realignment so that later results are still reported.
 - **Transport errors and scrambled packets** per PID: affected packets are
   counted; the PSI/PES payload of both is kept out of the analysis, and so is
   the PCR of a packet marked with `transport_error_indicator`, while a

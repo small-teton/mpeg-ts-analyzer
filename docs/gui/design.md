@@ -28,6 +28,18 @@ Work is tracked in #101 (milestone GUI v0.1).
   opening another file, a packet page leaving the cache) only sends the
   supervisor a message, so the UI thread never waits for the process, even when
   a CLI has closed its output and keeps running.
+- Arguments reach the CLI as native OS strings: the input and CLI paths stay
+  `PathBuf`/`OsString` and are converted lossily only for display, so a Unix
+  file name that is not UTF-8 is analyzed, paged and decoded under the same
+  name.
+- Everything read from the CLI is bounded, since any executable can be chosen
+  as the CLI ([limits](cli-interface.md#output-limits)). JSON is parsed as it
+  is read from the pipe, so the raw document never coexists with the parsed
+  one; output past its limit is rejected, never truncated, and the process is
+  killed. Only the latest progress event and a bounded tail of stderr
+  diagnostics are kept. A cancelled run's readers stop at their next read, and
+  the kill ends a producer that never finishes, so its partly read output is
+  released promptly.
 - Analysis logic and verdicts live only in the CLI, so the GUI and the CLI
   cannot disagree. CLI changes for the GUI add output surfaces; they do not
   change analysis results.
@@ -157,12 +169,12 @@ check (`CheckDetail`).
   Check, Value, Status and Help, grouped by category. The order is fixed:
   Timing (Max PCR interval, PCR discontinuities, PCR jitter estimate), PES / Timestamps
   (PCR → PTS/DTS gap, PTS/DTS anomalies), Integrity (Continuity counter,
-  Transport errors, Scrambled packets).
+  Transport errors, Scrambled packets, TS synchronization).
   Structure and Multiplexing join as their checks land (#157). A check is
   listed when the CLI reported it. There is no scope column or badge: the
   selected program is shown above, and exceptions (Continuity counter,
-  Transport errors and Scrambled packets cover the whole multiplex) are on the
-  detail page. Status is the CLI's status
+  Transport errors, Scrambled packets and TS synchronization cover the whole
+  multiplex) are on the detail page. Status is the CLI's status
   verbatim as a badge sized to its text (at least 48 points wide); a status
   the GUI does not describe is shown in the neutral color with a tooltip
   saying so. Help holds the focusable
@@ -215,8 +227,9 @@ check (`CheckDetail`).
   discontinuities, one per undeclared kind at its first PCR), each
   PTS/DTS anomaly group, each continuity event (one finding for the check if
   the CLI reported errors without events), PCR jitter, each PID of
-  `transport_errors` and `scrambled_packets` (at its first offset) and each
-  analyzer warning. Any status other than `ok`, `skipped` and `not_assessable`,
+  `transport_errors` and `scrambled_packets` (at its first offset), TS
+  synchronization (one finding at the first loss offset) and each analyzer
+  warning. Any status other than `ok`, `skipped` and `not_assessable`,
   including one the GUI does not know, is a finding with the CLI's status as
   its badge, so an `NG` or `WARNING` row can never sit next to an empty list.
   Each finding names its scope (program or whole multiplex); its check link
@@ -351,8 +364,8 @@ range in a saved file are clamped when they are used.
 - Status badges: white Inter SemiBold 14 px text on a solid fill, 10 × 3
   points of padding, at least 48 points wide, 4-point radius. Fills by
   class, the same in light and dark: success (`ok`, `complete`) `#2E7D32`,
-  failure (`ng`, `errors`, `failed`) `#C62828`, warning (`warning`,
-  `anomalies`) `#9A6700`, neutral (`not_assessable`, `skipped`, unknown)
+  failure (`ng`, `errors`, `failed`, `lost`) `#C62828`, warning (`warning`,
+  `anomalies`, `recovered`) `#9A6700`, neutral (`not_assessable`, `skipped`, unknown)
   `#59636E`; each is at least 4.5:1 against white.
 - Tables (Transport health, Verdicts) use Material 3-style tonal surfaces
   with values fixed per appearance (light / dark): header row `#E5E7EA` /

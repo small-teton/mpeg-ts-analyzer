@@ -145,6 +145,8 @@ PMT : Program Info : elementary_PID     : 0x101, stream_type : 0x03 (11172 audio
 0x0004a728 PTS: 0x0008affa[06325.977778ms] (pid:0x101) (delay:662.486106ms)
 0x0004b0b4 PTS: 0x0008c0da[06373.977778ms] (pid:0x101) (delay:665.094372ms)
 -----------------------------
+TS Sync: no sync loss detected
+-----------------------------
 Compliance Check Results:
 Max PCR interval: 80.000000ms [OK, limit: <= 100.000000ms]
 PCR discontinuities: 0 undeclared in 60 PCRs [OK]
