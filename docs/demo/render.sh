@@ -63,9 +63,11 @@ header_output="$(printf '%s\n' "$header_full" | sed -n '1,12p')"
 adaptation_full="$("$binary" "$sample" --dump-adaptation-field --limit 65536 | sed "s|$sample|sample.ts|")"
 adaptation_output="$(printf '%s\n' "$adaptation_full" | sed -n '1,17p')"
 
-psi_output="$("$binary" "$sample" --dump-psi | sed "s|$sample|sample.ts|" | fold -s -w 118)"
+# The scenes end with the verdict summaries; the report-only mux lead block
+# that follows them is left out (sed drops that block and its separator).
+psi_output="$("$binary" "$sample" --dump-psi | sed "s|$sample|sample.ts|" | sed '/^Mux Lead/,$d' | sed '$d' | fold -s -w 118)"
 
-timestamp_full="$("$binary" "$sample" --dump-timestamp | sed "s|$sample|sample.ts|")"
+timestamp_full="$("$binary" "$sample" --dump-timestamp | sed "s|$sample|sample.ts|" | sed '/^Mux Lead/,$d' | sed '$d')"
 timestamp_samples="$(printf '%s\n' "$timestamp_full" | awk '/^0x/ { print; count++; if (count == 9) exit }')"
 timestamp_summary="$(printf '%s\n' "$timestamp_full" | tail -n 20)"
 timestamp_output="${timestamp_samples}

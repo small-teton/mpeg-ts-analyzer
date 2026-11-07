@@ -274,6 +274,9 @@ func summarySchemaCases() []schemaCase {
 				"/pes_headers/status": "ok", "/pes_headers/reason": absent{}, "/pes_headers/first_error_offset_bytes": absent{}, "/pes_headers/errors": []any{},
 				"/pts_repetition/status": "ok", "/pts_repetition/limit_ms": 700, "/pts_repetition/first_exceeded_offset_bytes": absent{},
 				"/pts_repetition/pids/0/reason": absent{}, "/pts_repetition/pids/0/max_interval_ms": present{},
+				"/multiplexing/mux_lead/time_basis": "pcr_interpolated_file_position", "/multiplexing/mux_lead/pids/0/status": "info",
+				"/multiplexing/mux_lead/pids/0/reason": absent{}, "/multiplexing/mux_lead/pids/0/min_lead_ms": 691.111,
+				"/multiplexing/mux_lead/programs/0/audio_pid": "0x0101", "/multiplexing/mux_lead/programs/0/max_av_lead_difference_ms": 47.016,
 				"/pid_references/referenced/status": "ok", "/pid_references/unreferenced/status": "ok", "/pid_references/unreferenced/reason": absent{},
 				"/pid_references/referenced/pids/0/stream_type": absent{}, "/pid_references/referenced/pids/2/stream_type": "0x02",
 				"/pcr_jitter": absent{}, "/bitrate": absent{}, "/psi_transitions": absent{},
@@ -350,7 +353,17 @@ func summarySchemaCases() []schemaCase {
 				"/pes_headers/pids/2/first_error_offset_bytes": 27 * 188, "/pes_headers/pids/4/status": "insufficient_data", "/pes_headers/pids/4/reason": "no_pes",
 				"/pts_repetition/status": "ng", "/pts_repetition/max_interval_ms": 1080, "/pts_repetition/first_exceeded_offset_bytes": 152 * 188,
 				"/pts_repetition/pids/2/status": "skipped", "/pts_repetition/pids/2/reason": "not_video_or_audio", "/pts_repetition/pids/2/max_interval_ms": absent{},
-				"/pts_repetition/pids/3/reason": "single_pts",
+				"/pts_repetition/pids/3/reason":        "single_pts",
+				"/multiplexing/mux_lead/pids/4/status": "insufficient_data", "/multiplexing/mux_lead/pids/4/reason": "no_pes",
+				"/multiplexing/mux_lead/pids/4/min_lead_ms": absent{}, "/multiplexing/mux_lead/pids/4/av_class": "video",
+			},
+		},
+		{
+			name: "complete with mux leads", schema: summarySchemaFile, path: fixedPath(muxLeadFixtures[0].path),
+			want: map[string]any{
+				"/status": "complete", "/multiplexing/mux_lead/pids/2/min_lead_ms": -20, "/multiplexing/mux_lead/pids/2/negative_count": 1,
+				"/multiplexing/mux_lead/pids/3/av_class": "other", "/multiplexing/mux_lead/programs/0/max_av_lead_difference_ms": 800,
+				"/multiplexing/mux_lead/programs/0/audio/1/video_offset_bytes": 68 * 188, "/multiplexing/mux_lead/programs/0/reason": absent{},
 			},
 		},
 		{
@@ -431,7 +444,7 @@ func summarySchemaCases() []schemaCase {
 			want: map[string]any{
 				"/status": "incomplete", "/reason": "end_of_input_before_complete_analysis", "/error": absent{},
 				"/programs": []any{}, "/compliance": absent{}, "/transport_errors": absent{}, "/scrambled_packets": absent{}, "/pid_references": absent{},
-				"/psi_health": absent{}, "/pes_headers": absent{}, "/pts_repetition": absent{},
+				"/psi_health": absent{}, "/pes_headers": absent{}, "/pts_repetition": absent{}, "/multiplexing": absent{},
 			},
 		},
 		{
@@ -552,6 +565,13 @@ func analysisSchemaCases() []schemaCase {
 			},
 		},
 		{
+			name: "complete with mux leads in M2TS", schema: analysisSchemaFile, path: fixedPath(muxLeadFixtures[1].path), opts: analysis,
+			want: map[string]any{
+				"/status": "complete", "/multiplexing/mux_lead/pids/0/unbracketed_count": 2, "/multiplexing/mux_lead/pids/0/dts_sample_count": 115,
+				"/multiplexing/mux_lead/programs/0/audio_offset_bytes": 9 * 192, "/multiplexing/mux_lead/programs/0/audio/0/comparison_count": 161,
+			},
+		},
+		{
 			name: "complete with PID reference findings in M2TS", schema: analysisSchemaFile, path: fixedPath(pidReferencesFixtures[1].path), opts: analysis,
 			want: map[string]any{
 				"/status": "complete", "/pid_references/referenced/pids/5/status": "absent",
@@ -595,7 +615,7 @@ func analysisSchemaCases() []schemaCase {
 			want: map[string]any{
 				"/status": "incomplete", "/reason": "no_program_analyzed", "/analysis_start_offset_bytes": absent{},
 				"/continuity_counter": absent{}, "/transport_errors": absent{}, "/scrambled_packets": absent{}, "/pid_references": absent{},
-				"/psi_health": absent{}, "/pes_headers": absent{}, "/pts_repetition": absent{},
+				"/psi_health": absent{}, "/pes_headers": absent{}, "/pts_repetition": absent{}, "/multiplexing": absent{},
 			},
 		},
 		{

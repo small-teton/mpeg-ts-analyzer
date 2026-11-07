@@ -387,6 +387,131 @@
       }
     ]
   },
+  "multiplexing": {
+    "mux_lead": {
+      "time_basis": "pcr_interpolated_file_position",
+      "pids": [
+        {
+          "program_number": 1,
+          "pid": "0x0100",
+          "stream_type": "0x02",
+          "label": "video",
+          "av_class": "video",
+          "status": "info",
+          "sample_count": 44,
+          "unbracketed_count": 3,
+          "dts_sample_count": 44,
+          "negative_count": 0,
+          "min_lead_ms": 670.097,
+          "min_lead_offset_bytes": 157168,
+          "max_lead_ms": 721.538,
+          "max_lead_offset_bytes": 118440,
+          "spread_ms": 51.441
+        },
+        {
+          "program_number": 1,
+          "pid": "0x0101",
+          "stream_type": "0x03",
+          "label": "audio",
+          "av_class": "audio",
+          "status": "info",
+          "sample_count": 5,
+          "unbracketed_count": 1,
+          "dts_sample_count": 0,
+          "negative_count": 0,
+          "min_lead_ms": 324.929,
+          "min_lead_offset_bytes": 151152,
+          "max_lead_ms": 379.209,
+          "max_lead_offset_bytes": 119944,
+          "spread_ms": 54.279
+        },
+        {
+          "program_number": 2,
+          "pid": "0x0102",
+          "stream_type": "0x02",
+          "label": "video",
+          "av_class": "video",
+          "status": "info",
+          "sample_count": 44,
+          "unbracketed_count": 3,
+          "dts_sample_count": 44,
+          "negative_count": 0,
+          "min_lead_ms": 671.594,
+          "min_lead_offset_bytes": 158484,
+          "max_lead_ms": 728.148,
+          "max_lead_offset_bytes": 138744,
+          "spread_ms": 56.554
+        },
+        {
+          "program_number": 2,
+          "pid": "0x0103",
+          "stream_type": "0x03",
+          "label": "audio",
+          "av_class": "audio",
+          "status": "info",
+          "sample_count": 5,
+          "unbracketed_count": 1,
+          "dts_sample_count": 0,
+          "negative_count": 0,
+          "min_lead_ms": 328.239,
+          "min_lead_offset_bytes": 154160,
+          "max_lead_ms": 359.782,
+          "max_lead_offset_bytes": 122952,
+          "spread_ms": 31.543
+        }
+      ],
+      "programs": [
+        {
+          "program_number": 1,
+          "status": "info",
+          "audio_pid": "0x0101",
+          "video_pid": "0x0100",
+          "max_av_lead_difference_ms": 395.811,
+          "audio_lead_ms": 324.929,
+          "video_lead_ms": 720.741,
+          "audio_offset_bytes": 151152,
+          "video_offset_bytes": 173712,
+          "audio": [
+            {
+              "pid": "0x0101",
+              "status": "info",
+              "comparison_count": 35,
+              "video_pid": "0x0100",
+              "max_av_lead_difference_ms": 395.811,
+              "audio_lead_ms": 324.929,
+              "video_lead_ms": 720.741,
+              "audio_offset_bytes": 151152,
+              "video_offset_bytes": 173712
+            }
+          ]
+        },
+        {
+          "program_number": 2,
+          "status": "info",
+          "audio_pid": "0x0103",
+          "video_pid": "0x0102",
+          "max_av_lead_difference_ms": 398.904,
+          "audio_lead_ms": 328.239,
+          "video_lead_ms": 727.143,
+          "audio_offset_bytes": 154160,
+          "video_offset_bytes": 183864,
+          "audio": [
+            {
+              "pid": "0x0103",
+              "status": "info",
+              "comparison_count": 35,
+              "video_pid": "0x0102",
+              "max_av_lead_difference_ms": 398.904,
+              "audio_lead_ms": 328.239,
+              "video_lead_ms": 727.143,
+              "audio_offset_bytes": 154160,
+              "video_offset_bytes": 183864
+            }
+          ]
+        }
+      ]
+    }
+  },
   "programs": [
     {
       "program_number": 1,

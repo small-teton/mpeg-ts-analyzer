@@ -363,6 +363,73 @@ $ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_
       }
     ]
   },
+  "multiplexing": {
+    "mux_lead": {
+      "time_basis": "pcr_interpolated_file_position",
+      "pids": [
+        {
+          "program_number": 1,
+          "pid": "0x0100",
+          "stream_type": "0x02",
+          "label": "video",
+          "av_class": "video",
+          "status": "info",
+          "sample_count": 118,
+          "unbracketed_count": 1,
+          "dts_sample_count": 118,
+          "negative_count": 0,
+          "min_lead_ms": 691.111,
+          "min_lead_offset_bytes": 31772,
+          "max_lead_ms": 726.667,
+          "max_lead_offset_bytes": 123892,
+          "spread_ms": 35.556
+        },
+        {
+          "program_number": 1,
+          "pid": "0x0101",
+          "stream_type": "0x03",
+          "label": "audio",
+          "av_class": "audio",
+          "status": "info",
+          "sample_count": 98,
+          "unbracketed_count": 3,
+          "dts_sample_count": 0,
+          "negative_count": 0,
+          "min_lead_ms": 663.311,
+          "min_lead_offset_bytes": 22184,
+          "max_lead_ms": 688.598,
+          "max_lead_offset_bytes": 253800,
+          "spread_ms": 25.287
+        }
+      ],
+      "programs": [
+        {
+          "program_number": 1,
+          "status": "info",
+          "audio_pid": "0x0101",
+          "video_pid": "0x0100",
+          "max_av_lead_difference_ms": 47.016,
+          "audio_lead_ms": 678.867,
+          "video_lead_ms": 725.882,
+          "audio_offset_bytes": 31960,
+          "video_offset_bytes": 34968,
+          "audio": [
+            {
+              "pid": "0x0101",
+              "status": "info",
+              "comparison_count": 215,
+              "video_pid": "0x0100",
+              "max_av_lead_difference_ms": 47.016,
+              "audio_lead_ms": 678.867,
+              "video_lead_ms": 725.882,
+              "audio_offset_bytes": 31960,
+              "video_offset_bytes": 34968
+            }
+          ]
+        }
+      ]
+    }
+  },
   "timestamp_anomalies": {
     "status": "ok",
     "items": []
@@ -408,10 +475,14 @@ Status and top-level reason values are:
 | `pes_headers.errors[].kind` | `truncated`, `bad_start_code`, `bad_flags`, `inconsistent_length`, `bad_marker_bits` |
 | `pts_repetition.status` (and per PID) | `ok`, `ng`, `insufficient_data`, `skipped` |
 | `pts_repetition` `reason` | `no_pes`, `untrusted_payload`, `malformed_headers`, `no_pcr_timing`, `no_pts`, `single_pts`, `not_video_or_audio`; totals also `no_video_or_audio` |
+| `multiplexing.mux_lead.pids[].status`, `multiplexing.mux_lead.programs[].status` (and `audio[]`) | `info`, `insufficient_data` (report only, never a verdict) |
+| `multiplexing.mux_lead.pids[].reason` | `no_pes`, `untrusted_payload`, `malformed_headers`, `no_pts`, `no_pcr_timing` |
+| `multiplexing.mux_lead.programs[].reason` (and `audio[]`) | `no_comparable_leads` |
+| `multiplexing.mux_lead.pids[].av_class` | `video`, `audio`, `other` |
 | `timestamp_anomalies.status` | `ok`, `anomalies` |
 
 Top-level and per-program `reason` values, and the `reason` values of
-`pes_headers` and `pts_repetition`, are stable codes intended for machine
+`pes_headers`, `pts_repetition` and `multiplexing`, are stable codes intended for machine
 matching. `error` and analysis-section `reason` values are explanatory text and
 must not be matched. `status: "incomplete"` exits 0 for compatibility with text
 mode; automation should require `status == "complete"` instead of relying on
@@ -1318,6 +1389,123 @@ without a timestamp, a malformed or incomplete header, untrusted payload or a
 continuity error, since `pts_repetition`, `pes_headers` or the other checks
 already report that cause. Neither object takes part in `--fail-on-error`.
 
+## Multiplexing: mux lead
+
+Every complete analysis (summary and `--output analysis`) has
+`multiplexing.mux_lead`; `multiplexing` is absent when no analysis ran. It is a
+**report without a verdict**: no limit applies, its `status` is `info` or
+`insufficient_data`, it never counts as a finding and it never changes the
+exit status (`--fail-on-error` included).
+
+The mux lead of a PES packet is how far ahead of its decode time it was
+multiplexed: its DTS (its PTS when it has no DTS) minus its arrival time, the
+program's PCR at the first byte of the packet that starts it, interpolated by
+byte position between the PCR before and the PCR after it
+(`time_basis` `pcr_interpolated_file_position`). For the bundled 188-byte
+sample:
+
+```json
+  "multiplexing": {
+    "mux_lead": {
+      "time_basis": "pcr_interpolated_file_position",
+      "pids": [
+        {
+          "program_number": 1,
+          "pid": "0x0100",
+          "stream_type": "0x02",
+          "label": "video",
+          "av_class": "video",
+          "status": "info",
+          "sample_count": 118,
+          "unbracketed_count": 1,
+          "dts_sample_count": 118,
+          "negative_count": 0,
+          "min_lead_ms": 691.111,
+          "min_lead_offset_bytes": 31772,
+          "max_lead_ms": 726.667,
+          "max_lead_offset_bytes": 123892,
+          "spread_ms": 35.556
+        },
+        { "program_number": 1, "pid": "0x0101", "label": "audio", "av_class": "audio", "min_lead_ms": 663.311, "max_lead_ms": 688.598, ... }
+      ],
+      "programs": [
+        {
+          "program_number": 1,
+          "status": "info",
+          "audio_pid": "0x0101",
+          "video_pid": "0x0100",
+          "max_av_lead_difference_ms": 47.016,
+          "audio_lead_ms": 678.867,
+          "video_lead_ms": 725.882,
+          "audio_offset_bytes": 31960,
+          "video_offset_bytes": 34968,
+          "audio": [ { "pid": "0x0101", "status": "info", "comparison_count": 215, "video_pid": "0x0100", "max_av_lead_difference_ms": 47.016, ... } ]
+        }
+      ]
+    }
+  }
+```
+
+- Samples: every PES packet with a valid header (see
+  [PES headers](#pes-headers-and-pts-repetition)) carrying a PTS, on every
+  elementary stream of the analyzed programs. `sample_count` counts the leads
+  measured, `dts_sample_count` those taken from a DTS. A malformed header and a
+  PES packet whose payload was not used because of a transport error or
+  scrambling ([Transport errors and scrambled packets](#transport-errors-and-scrambled-packets))
+  give no sample.
+- `unbracketed_count` counts PES packets with a PTS that do not lie between
+  two PCRs of one segment: before the first PCR, after the last one, across a
+  PCR discontinuity (`declared`, `pcr_pid_change`, `backward`,
+  `forward_jump`, see [PCR timing results](#pcr-timing-results)) or in a program
+  without PCR. Their lead is not measured.
+- `min_lead_ms` / `max_lead_ms` are the smallest and largest lead, with the
+  offset of the PES packet (the first of equal ones), and `spread_ms` their
+  difference; the five are absent without samples. Values are rounded to the
+  microsecond.
+- Wraparound: the PTS/DTS (33 bits at 90 kHz) and the PCR wrap at different
+  moments, so the lead is taken modulo the PCR period (2^33 × 300 at 27 MHz)
+  and read as the signed value nearest to zero. It is right across either
+  wraparound while its magnitude is below half the period (about 13 hours).
+- `negative_count` counts PES packets multiplexed after their DTS/PTS
+  (a negative lead). It is an observation, not an error.
+- `status` is `info` with at least one sample; otherwise `insufficient_data`
+  with `reason` `no_pes`, `untrusted_payload`, `malformed_headers`, `no_pts`
+  (valid headers, none with a PTS) or `no_pcr_timing` (every PES packet with a
+  PTS was unbracketed).
+
+`programs` lists every analyzed program that has had both a video and an audio
+stream. `av_class` classifies `stream_type`: `video` is MPEG-1 and MPEG-2 video,
+H.264 and HEVC (0x01, 0x02, 0x1B, 0x24); `audio` is MPEG-1 and MPEG-2 audio,
+AAC in ADTS and LATM, and the ATSC AC-3 and E-AC-3 types (0x03, 0x04, 0x0F,
+0x11, 0x81, 0x87); everything else is `other` (for example MPEG-4 Visual 0x10,
+or AC-3 carried as private data 0x06, which only a descriptor identifies).
+
+- The program's video is its lowest-numbered `video` PID in the PMT in force.
+  Each `audio` PID is compared with it: whenever either gets a new sample, the
+  most recent audio lead and the most recent video lead are compared, in the
+  order the PES packets end, if both lie in the same PCR segment. A break of
+  the PID (untrusted payload, a continuity error, a header that could not be
+  checked), a malformed header, an unbracketed PES packet with a PTS, and a
+  PMT change that removes the PID or changes its `stream_type` forget its
+  most recent lead.
+- Each entry of `audio` (every audio PID, by PID) reports its
+  `comparison_count` and, when it was compared, the largest absolute
+  difference `max_av_lead_difference_ms` with the `video_pid`, both leads and
+  both PES offsets of that comparison. Otherwise it is `insufficient_data`
+  with `no_comparable_leads`.
+- The program's own fields repeat its worst audio PID (`audio_pid`, the lowest
+  PID of equal differences) as the representative value; `status` is `info`
+  when any audio PID was compared.
+
+Relationship to the other timestamp checks: the lead is the computation of
+the PCR-PTS/DTS gap (`compliance.max_pcr_pts_dts_gap`) on the same PES packets
+with the same PCR bracket and interpolation. The gap check keeps the largest
+lead of the program (without the modulo reading, and skipping a bracket that
+spans a PCR wraparound) and judges it against 1000 ms; the mux lead reports the
+distribution per PID without judging it. One PES packet therefore produces at
+most one verdict (the gap check), and `timestamp_anomalies`, which compares
+consecutive PTS/DTS values rather than leads, is independent of both.
+
 ## PCR jitter
 
 `--dump-pcr-jitter` (and every `--output analysis` program) adds `pcr_jitter`.
@@ -1528,7 +1716,8 @@ Everything else, including the `series.pcr_jitter` points, is unchanged.
 Within 2.0, `transport_errors` and `scrambled_packets` were added to both
 documents, and `compliance.pcr_discontinuities` and the `kind` of each
 `pcr_jitter.estimate.discontinuities` entry to both, and `psi_health`,
-`pid_references`, `pes_headers` and `pts_repetition` to both documents
+`pid_references`, `pes_headers` and `pts_repetition` to both documents, and
+`multiplexing` (`mux_lead`, report only) to both documents
 (additive changes). Aligning
 the PCR steps also changed some values within 2.0 for streams with these steps
 (none of the bundled samples except the new PCR-discontinuities sample):
@@ -1583,6 +1772,7 @@ Abridged output for the two-program sample:
   "pid_references": { "time_basis": "pcr_interpolated_file_position", "silence_limit_ms": 5000, "unreferenced_grace_ms": 500, "referenced": { "status": "ok", "pids": [ ... ] }, "unreferenced": { "status": "ok", "pids": [] } },
   "pes_headers": { "status": "ok", "checked_count": 106, "error_count": 0, "unchecked_count": 0, "errors": [], "pids": [ ... ] },
   "pts_repetition": { "limit_ms": 700, "status": "ok", "pts_count": 106, "interval_count": 94, "max_interval_ms": 414.2792962962963, ... },
+  "multiplexing": { "mux_lead": { "time_basis": "pcr_interpolated_file_position", "pids": [ ... ], "programs": [ ... ] } },
   "programs": [
     {
       "program_number": 1,
@@ -1645,7 +1835,9 @@ Abridged output for the two-program sample:
   once every program's PMT is followed.
 - `pes_headers` and `pts_repetition` are reported once and list the
   elementary streams of every analyzed program by `program_number` and PID
-  ([PES headers and PTS repetition](#pes-headers-and-pts-repetition)).
+  ([PES headers and PTS repetition](#pes-headers-and-pts-repetition)), and so
+  is `multiplexing.mux_lead`, with one `programs` entry per analyzed program
+  that has video and audio ([Multiplexing: mux lead](#multiplexing-mux-lead)).
 - Bitrate and PCR jitter are always collected in this mode. `series.pcr_jitter`
   is the `byte_position` estimate of each observation; see
   [PCR jitter](#pcr-jitter).

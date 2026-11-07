@@ -228,6 +228,31 @@
       }
     ]
   },
+  "multiplexing": {
+    "mux_lead": {
+      "time_basis": "pcr_interpolated_file_position",
+      "pids": [
+        {
+          "program_number": 1,
+          "pid": "0x0100",
+          "stream_type": "0x02",
+          "label": "video",
+          "av_class": "video",
+          "status": "info",
+          "sample_count": 95,
+          "unbracketed_count": 1,
+          "dts_sample_count": 0,
+          "negative_count": 0,
+          "min_lead_ms": 100,
+          "min_lead_offset_bytes": 752,
+          "max_lead_ms": 100,
+          "max_lead_offset_bytes": 752,
+          "spread_ms": 0
+        }
+      ],
+      "programs": []
+    }
+  },
   "programs": [
     {
       "program_number": 1,

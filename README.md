@@ -40,6 +40,9 @@ bits.
 - **PES headers** of every elementary stream (truncated, bad start code,
   flags, lengths or PTS/DTS marker bits), and **PTS repetition**: a PTS at
   least every 700 ms on video and audio streams (ISO/IEC 13818-1, 2.7.4).
+- **Mux lead** (report only, no verdict): how far ahead of its DTS/PTS each
+  elementary stream is multiplexed (minimum, maximum and spread per PID, with
+  offsets), and the largest audio/video lead difference of each program.
 
 Results are text for people, or JSON with a published schema for CI and other
 programs. See [CLI usage][docs-cli-usage].

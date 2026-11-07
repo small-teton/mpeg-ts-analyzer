@@ -219,6 +219,27 @@
       }
     ]
   },
+  "multiplexing": {
+    "mux_lead": {
+      "time_basis": "pcr_interpolated_file_position",
+      "pids": [
+        {
+          "program_number": 1,
+          "pid": "0x0100",
+          "stream_type": "0x02",
+          "label": "video",
+          "av_class": "video",
+          "status": "insufficient_data",
+          "reason": "no_pes",
+          "sample_count": 0,
+          "unbracketed_count": 0,
+          "dts_sample_count": 0,
+          "negative_count": 0
+        }
+      ],
+      "programs": []
+    }
+  },
   "programs": [
     {
       "program_number": 1,

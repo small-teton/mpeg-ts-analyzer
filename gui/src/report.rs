@@ -163,6 +163,9 @@ pub struct AnalysisReport {
     /// `transport_errors` is.
     #[serde(default)]
     pub pid_references: Option<PidReferences>,
+    /// Report-only multiplexing diagnostics; absent as `transport_errors` is.
+    #[serde(default)]
+    pub multiplexing: Option<Multiplexing>,
     pub programs: Vec<Program>,
     pub warnings: Vec<Warning>,
     /// Absent before CLI schema 1.x gained it, and when no program was analyzed.
@@ -423,6 +426,77 @@ pub struct PtsRepetitionPid {
     pub stream: PesStream,
     #[serde(flatten)]
     pub counts: PtsRepetitionCounts,
+}
+
+/// The CLI's `multiplexing` result: report-only diagnostics without a verdict.
+#[derive(Debug, Deserialize)]
+pub struct Multiplexing {
+    /// Absent from a CLI without the mux lead report.
+    #[serde(default)]
+    pub mux_lead: Option<MuxLead>,
+}
+
+/// The mux lead of every elementary PID and the A/V lead difference of every
+/// program with video and audio.
+#[derive(Debug, Deserialize)]
+pub struct MuxLead {
+    pub pids: Vec<MuxLeadPid>,
+    pub programs: Vec<AvLeadProgram>,
+}
+
+/// The mux lead of one elementary PID: DTS (or PTS) minus the PCR-interpolated
+/// arrival time of its PES packets. The lead fields are absent without samples.
+#[derive(Debug, Deserialize)]
+pub struct MuxLeadPid {
+    #[serde(flatten)]
+    pub stream: PesStream,
+    pub av_class: String,
+    pub status: String,
+    pub reason: Option<String>,
+    pub sample_count: u64,
+    pub unbracketed_count: u64,
+    pub negative_count: u64,
+    pub min_lead_ms: Option<f64>,
+    pub min_lead_offset_bytes: Option<u64>,
+    pub max_lead_ms: Option<f64>,
+    pub max_lead_offset_bytes: Option<u64>,
+    pub spread_ms: Option<f64>,
+}
+
+/// The largest lead difference between an audio PID and the program's video;
+/// absent when they were never compared.
+#[derive(Debug, Deserialize)]
+pub struct AvLeadDifference {
+    pub video_pid: Option<String>,
+    pub max_av_lead_difference_ms: Option<f64>,
+    pub audio_lead_ms: Option<f64>,
+    pub video_lead_ms: Option<f64>,
+    pub audio_offset_bytes: Option<u64>,
+    pub video_offset_bytes: Option<u64>,
+}
+
+/// The A/V lead difference of one audio PID.
+#[derive(Debug, Deserialize)]
+pub struct AvLeadAudio {
+    pub pid: String,
+    pub status: String,
+    pub reason: Option<String>,
+    pub comparison_count: u64,
+    #[serde(flatten)]
+    pub difference: AvLeadDifference,
+}
+
+/// The A/V lead difference of one program: its worst audio PID and every
+/// audio PID.
+#[derive(Debug, Deserialize)]
+pub struct AvLeadProgram {
+    pub program_number: u16,
+    pub status: String,
+    pub reason: Option<String>,
+    pub audio_pid: Option<String>,
+    #[serde(flatten)]
+    pub difference: AvLeadDifference,
+    pub audio: Vec<AvLeadAudio>,
 }
 
 /// The CLI's `psi_health` result.

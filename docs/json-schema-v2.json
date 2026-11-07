@@ -72,6 +72,10 @@
       "$ref": "#/$defs/ptsRepetition",
       "description": "Intervals between PES packets carrying a PTS on each video and audio stream of the selected program. Present whenever the analysis ran (status complete)."
     },
+    "multiplexing": {
+      "$ref": "#/$defs/multiplexing",
+      "description": "Report-only multiplexing diagnostics (mux lead and A/V lead difference) of every elementary stream of the selected program. They carry no verdict and never affect the exit status. Present whenever the analysis ran (status complete)."
+    },
     "timestamp_anomalies": {
       "$ref": "#/$defs/timestampAnomalies"
     },
@@ -954,6 +958,233 @@
           "description": "Every elementary stream of the analyzed programs, by program_number and PID.",
           "items": {
             "$ref": "#/$defs/ptsRepetitionPID"
+          }
+        }
+      }
+    },
+    "multiplexing": {
+      "type": "object",
+      "required": [
+        "mux_lead"
+      ],
+      "description": "Report-only multiplexing diagnostics. They carry no verdict, never become findings and never affect the exit status.",
+      "properties": {
+        "mux_lead": {
+          "$ref": "#/$defs/muxLead"
+        }
+      }
+    },
+    "muxLead": {
+      "type": "object",
+      "required": [
+        "time_basis",
+        "pids",
+        "programs"
+      ],
+      "properties": {
+        "time_basis": {
+          "$ref": "#/$defs/status",
+          "description": "Time model of the arrival time. Current value: pcr_interpolated_file_position (the byte position of the packet that starts the PES packet, interpolated between the program's PCRs before and after it within one PCR segment, as for the PCR-PTS/DTS gap)."
+        },
+        "pids": {
+          "type": "array",
+          "description": "Every elementary stream of the analyzed programs, by program_number and PID.",
+          "items": {
+            "$ref": "#/$defs/muxLeadPID"
+          }
+        },
+        "programs": {
+          "type": "array",
+          "description": "Every analyzed program that had both a video and an audio stream (see av_class), by program_number.",
+          "items": {
+            "$ref": "#/$defs/avLeadProgram"
+          }
+        }
+      }
+    },
+    "muxLeadPID": {
+      "type": "object",
+      "required": [
+        "program_number",
+        "pid",
+        "stream_type",
+        "label",
+        "av_class",
+        "status",
+        "sample_count",
+        "unbracketed_count",
+        "dts_sample_count",
+        "negative_count"
+      ],
+      "properties": {
+        "program_number": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "pid": {
+          "$ref": "#/$defs/pid"
+        },
+        "stream_type": {
+          "$ref": "#/$defs/streamType",
+          "description": "The last stream_type the PMT announced for the PID."
+        },
+        "label": {
+          "type": "string",
+          "description": "video, audio or stream_type 0xNN, from stream_type (as for pes_headers)."
+        },
+        "av_class": {
+          "$ref": "#/$defs/status",
+          "description": "Class used for the A/V lead difference. Current values: video (stream_type 0x01, 0x02, 0x1B, 0x24), audio (0x03, 0x04, 0x0F, 0x11, 0x81, 0x87), other."
+        },
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Not a verdict. Current values: info (at least one lead measured), insufficient_data (none)."
+        },
+        "reason": {
+          "$ref": "#/$defs/reasonCode",
+          "description": "Present with insufficient_data. Current values: no_pes, untrusted_payload, malformed_headers, no_pts, no_pcr_timing."
+        },
+        "sample_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "PES packets with a valid header and a PTS whose lead was measured."
+        },
+        "unbracketed_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "PES packets with a valid header and a PTS that do not lie between two PCRs of one segment (before the first or after the last PCR, across a PCR discontinuity, or without PCR); not measured."
+        },
+        "dts_sample_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Samples measured from their DTS; the others used the PTS."
+        },
+        "negative_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Samples with a negative lead (multiplexed after their DTS/PTS). An observation, not an error."
+        },
+        "min_lead_ms": {
+          "type": "number",
+          "description": "Smallest lead: DTS (PTS without DTS) minus the arrival time, modulo the PCR period and read as the signed value nearest to zero. Absent without samples."
+        },
+        "min_lead_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Offset of the PES packet with the smallest lead (the first of equal ones)."
+        },
+        "max_lead_ms": {
+          "type": "number",
+          "description": "Largest lead."
+        },
+        "max_lead_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Offset of the PES packet with the largest lead (the first of equal ones)."
+        },
+        "spread_ms": {
+          "type": "number",
+          "minimum": 0,
+          "description": "max_lead_ms minus min_lead_ms."
+        }
+      }
+    },
+    "avLeadAudio": {
+      "type": "object",
+      "required": [
+        "pid",
+        "status",
+        "comparison_count"
+      ],
+      "properties": {
+        "pid": {
+          "$ref": "#/$defs/pid"
+        },
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Not a verdict. Current values: info (compared at least once), insufficient_data."
+        },
+        "reason": {
+          "$ref": "#/$defs/reasonCode",
+          "description": "Present with insufficient_data. Current value: no_comparable_leads (the audio and the program's video never had a lead in the same PCR segment at the same time)."
+        },
+        "comparison_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Comparisons of the audio lead with the program's video lead."
+        },
+        "video_pid": {
+          "$ref": "#/$defs/pid",
+          "description": "The program's video PID the largest difference was measured against."
+        },
+        "max_av_lead_difference_ms": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Largest absolute difference between the most recent audio lead and the most recent video lead, evaluated whenever either got a new sample."
+        },
+        "audio_lead_ms": {
+          "type": "number",
+          "description": "The audio lead of that comparison."
+        },
+        "video_lead_ms": {
+          "type": "number",
+          "description": "The video lead of that comparison."
+        },
+        "audio_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Offset of the audio PES packet of that comparison."
+        },
+        "video_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Offset of the video PES packet of that comparison."
+        }
+      }
+    },
+    "avLeadProgram": {
+      "type": "object",
+      "required": [
+        "program_number",
+        "status",
+        "audio"
+      ],
+      "properties": {
+        "program_number": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Not a verdict. Current values: info (an audio PID was compared), insufficient_data."
+        },
+        "reason": {
+          "$ref": "#/$defs/reasonCode",
+          "description": "Present with insufficient_data. Current value: no_comparable_leads."
+        },
+        "audio_pid": {
+          "$ref": "#/$defs/pid",
+          "description": "The representative audio PID: the one with the largest difference (the lowest PID of equal ones). The difference fields below are its own; all are absent with insufficient_data."
+        },
+        "video_pid": {
+          "$ref": "#/$defs/pid",
+          "description": "The program's video PID the largest difference was measured against."
+        },
+        "max_av_lead_difference_ms": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Largest absolute difference between the most recent audio lead and the most recent video lead, evaluated whenever either got a new sample."
+        },
+        "audio_lead_ms": {
+          "type": "number",
+          "description": "The audio lead of that comparison."
+        },
+        "video_lead_ms": {
+          "type": "number",
+          "description": "The video lead of that comparison."
+        },
+        "audio_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Offset of the audio PES packet of that comparison."
+        },
+        "video_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Offset of the video PES packet of that comparison."
+        },
+        "audio": {
+          "type": "array",
+          "description": "Every audio PID of the program, by PID, each compared with the program's video: its lowest-numbered video PID in the layout in force.",
+          "items": {
+            "$ref": "#/$defs/avLeadAudio"
           }
         }
       }

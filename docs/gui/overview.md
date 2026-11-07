@@ -14,7 +14,7 @@ Packages for macOS, Linux and Windows are described in
 - **Overview** brings the detected program layout, stream properties, the
   transport-health checks (timing, PES timestamps, continuity, transport
   errors and scrambling, TS synchronization, PAT/PMT structure, referenced
-  and unreferenced PIDs), and
+  and unreferenced PIDs, and the report-only mux lead), and
   per-stream bitrate into one screen, with a full-page explanation of every
   check.
 - **Timeline** plots the PCR interval and the PCR → PTS/DTS gap of every
@@ -50,6 +50,7 @@ under categories that are always expanded:
 | Structure | PMT health | selected program's PMT | `OK`, `NG` or `INSUFFICIENT DATA` as for the PAT (TR 101 290 1.5.a) |
 | Structure | Referenced PIDs | whole multiplex, every program of the PAT | `OK`; `ABSENT` when a PMT, PCR, video or audio PID had no packet while referenced for more than 5000 ms; `SILENT` when it went more than 5000 ms without one; `INSUFFICIENT DATA` when a PID without packets was referenced too briefly, may be idle (private data), or there is no PCR |
 | Structure | Unreferenced PIDs | whole multiplex | `OK`; `UNREFERENCED` when a PID carried packets without a PAT/PMT reference for more than 500 ms; `INSUFFICIENT DATA` when a PID appeared too close to the end of the range; `SKIPPED` when not every program's PMT was followed |
+| Multiplexing | Mux lead | every elementary stream of the selected program, per PID | Report only, no verdict: `INFO` when a lead (DTS/PTS minus PCR-interpolated arrival) was measured, with the largest audio/video lead difference as the value; `INSUFFICIENT DATA` when no stream has a measured lead. Never a finding |
 
 The table always lists the checks in this order. The verdict is shown exactly
 as the CLI reported it; a status this GUI does not know is still shown, with a
@@ -69,7 +70,12 @@ and opened with Enter or Space. The page shows:
   and the largest skipped span with their offsets, and a partial packet at
   the end of the input; for Referenced and Unreferenced PIDs the PIDs that
   are not `OK`, grouped by status with their program, role and longest
-  silence or unreferenced time, and the limit;
+  silence or unreferenced time, and the limit; for Mux lead the A/V lead
+  difference with both PES packets, the range of leads, negative and
+  unbracketed PES, followed by a **Per PID** table (smallest and largest lead
+  with their PES packets, spread, unbracketed PES) and an **A/V lead
+  difference per audio stream** table whose offsets open the packets in
+  **Packets**;
 - the check's **findings**, each with **Open packet** when it has an offset
   (for transport errors and scrambled packets, the first affected packet of
   each PID; for PES headers, the first malformed header of each PID; for PTS

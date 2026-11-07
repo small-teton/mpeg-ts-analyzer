@@ -1,0 +1,3632 @@
+{
+  "schema_version": "2.0",
+  "output": "analysis",
+  "input": {
+    "path": "sample_data/sample_188byte_mux_lead.ts",
+    "file_size_bytes": 45120,
+    "packet_size_bytes": 188,
+    "offset_bytes": 0
+  },
+  "status": "complete",
+  "analysis_start_offset_bytes": 940,
+  "analysis_end_offset_bytes": 45120,
+  "sync": {
+    "status": "ok",
+    "required_sync_bytes": 5,
+    "max_resync_scan_bytes": 1048576,
+    "loss_count": 0,
+    "resync_count": 0,
+    "skipped_bytes": 0,
+    "trailing_partial_packet_bytes": 0
+  },
+  "continuity_counter": {
+    "status": "ok",
+    "total_error_count": 0,
+    "pids": []
+  },
+  "continuity_events": [],
+  "transport_errors": {
+    "status": "data_excluded",
+    "packet_count": 1,
+    "excluded_packet_count": 1,
+    "first_offset_bytes": 11468,
+    "pids": [
+      {
+        "pid": "0x0101",
+        "label": "audio",
+        "packet_count": 1,
+        "excluded_packet_count": 1,
+        "first_offset_bytes": 11468
+      }
+    ]
+  },
+  "scrambled_packets": {
+    "status": "ok",
+    "packet_count": 0,
+    "excluded_packet_count": 0,
+    "pids": []
+  },
+  "psi_health": {
+    "status": "ok",
+    "repetition_limit_ms": 500,
+    "time_base": {
+      "status": "pcr",
+      "program_number": 1,
+      "pcr_pid": "0x0100",
+      "segment_count": 2
+    },
+    "tables": [
+      {
+        "table": "pat",
+        "pid": "0x0000",
+        "status": "ok",
+        "reasons": [],
+        "instance_count": 14,
+        "first_instance_offset_bytes": 188,
+        "version_change_count": 0,
+        "crc_error_count": 0,
+        "malformed_section_count": 0,
+        "incomplete_count": 0,
+        "wrong_table_id_count": 0,
+        "unusable_packet_count": 0,
+        "repetition": {
+          "status": "ok",
+          "interval_count": 9,
+          "max_interval_ms": 400,
+          "max_interval_end_offset_bytes": 7332,
+          "late_interval_count": 0
+        }
+      },
+      {
+        "table": "pmt",
+        "program_number": 1,
+        "pid": "0x1000",
+        "status": "ok",
+        "reasons": [],
+        "announced_offset_bytes": 188,
+        "instance_count": 13,
+        "first_instance_offset_bytes": 564,
+        "version_change_count": 0,
+        "crc_error_count": 0,
+        "malformed_section_count": 0,
+        "incomplete_count": 0,
+        "wrong_table_id_count": 0,
+        "unusable_packet_count": 0,
+        "repetition": {
+          "status": "ok",
+          "interval_count": 9,
+          "max_interval_ms": 400,
+          "max_interval_end_offset_bytes": 8084,
+          "late_interval_count": 0
+        }
+      }
+    ]
+  },
+  "pid_references": {
+    "time_basis": "pcr_interpolated_file_position",
+    "silence_limit_ms": 5000,
+    "unreferenced_grace_ms": 500,
+    "referenced": {
+      "status": "ok",
+      "pids": [
+        {
+          "program_number": 1,
+          "role": "pmt",
+          "pid": "0x1000",
+          "status": "ok",
+          "silence_judged": true,
+          "packet_count": 13,
+          "first_offset_bytes": 564,
+          "last_offset_bytes": 41924,
+          "referenced_packet_count": 11,
+          "referenced_from_offset_bytes": 940,
+          "referenced_until_offset_bytes": 45120,
+          "max_silence_ms": 400,
+          "max_silence_exact": true,
+          "max_silence_start_offset_bytes": 4324,
+          "max_silence_end_offset_bytes": 8084
+        },
+        {
+          "program_number": 1,
+          "role": "pcr",
+          "pid": "0x0100",
+          "status": "ok",
+          "silence_judged": true,
+          "packet_count": 117,
+          "first_offset_bytes": 1128,
+          "last_offset_bytes": 44744,
+          "referenced_packet_count": 117,
+          "referenced_from_offset_bytes": 940,
+          "referenced_until_offset_bytes": 45120,
+          "max_silence_ms": 40,
+          "max_silence_exact": true,
+          "max_silence_start_offset_bytes": 1128,
+          "max_silence_end_offset_bytes": 1504
+        },
+        {
+          "program_number": 1,
+          "role": "elementary_stream",
+          "pid": "0x0100",
+          "stream_type": "0x02",
+          "status": "ok",
+          "silence_judged": true,
+          "packet_count": 117,
+          "first_offset_bytes": 1128,
+          "last_offset_bytes": 44744,
+          "referenced_packet_count": 117,
+          "referenced_from_offset_bytes": 940,
+          "referenced_until_offset_bytes": 45120,
+          "max_silence_ms": 40,
+          "max_silence_exact": true,
+          "max_silence_start_offset_bytes": 1128,
+          "max_silence_end_offset_bytes": 1504
+        },
+        {
+          "program_number": 1,
+          "role": "elementary_stream",
+          "pid": "0x0101",
+          "stream_type": "0x03",
+          "status": "ok",
+          "silence_judged": true,
+          "packet_count": 58,
+          "first_offset_bytes": 940,
+          "last_offset_bytes": 44556,
+          "referenced_packet_count": 58,
+          "referenced_from_offset_bytes": 940,
+          "referenced_until_offset_bytes": 45120,
+          "max_silence_ms": 160,
+          "max_silence_exact": true,
+          "max_silence_start_offset_bytes": 10716,
+          "max_silence_end_offset_bytes": 12220
+        },
+        {
+          "program_number": 1,
+          "role": "elementary_stream",
+          "pid": "0x0102",
+          "stream_type": "0x0f",
+          "status": "ok",
+          "silence_judged": true,
+          "packet_count": 18,
+          "first_offset_bytes": 2068,
+          "last_offset_bytes": 44180,
+          "referenced_packet_count": 18,
+          "referenced_from_offset_bytes": 940,
+          "referenced_until_offset_bytes": 45120,
+          "max_silence_ms": 320,
+          "max_silence_exact": true,
+          "max_silence_start_offset_bytes": 2068,
+          "max_silence_end_offset_bytes": 5076
+        },
+        {
+          "program_number": 1,
+          "role": "elementary_stream",
+          "pid": "0x0103",
+          "stream_type": "0x06",
+          "status": "ok",
+          "silence_judged": false,
+          "packet_count": 1,
+          "first_offset_bytes": 2820,
+          "last_offset_bytes": 2820,
+          "referenced_packet_count": 1,
+          "referenced_from_offset_bytes": 940,
+          "referenced_until_offset_bytes": 45120,
+          "max_silence_ms": 4420,
+          "max_silence_exact": false,
+          "max_silence_start_offset_bytes": 2820,
+          "max_silence_end_offset_bytes": 45120
+        }
+      ]
+    },
+    "unreferenced": {
+      "status": "ok",
+      "pids": []
+    }
+  },
+  "pes_headers": {
+    "status": "ok",
+    "checked_count": 194,
+    "error_count": 0,
+    "unchecked_count": 0,
+    "errors": [],
+    "pids": [
+      {
+        "program_number": 1,
+        "pid": "0x0100",
+        "stream_type": "0x02",
+        "label": "video",
+        "status": "ok",
+        "checked_count": 117,
+        "error_count": 0,
+        "unchecked_count": 0,
+        "errors": []
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0101",
+        "stream_type": "0x03",
+        "label": "audio",
+        "status": "ok",
+        "checked_count": 58,
+        "error_count": 0,
+        "unchecked_count": 0,
+        "errors": []
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0102",
+        "stream_type": "0x0f",
+        "label": "audio",
+        "status": "ok",
+        "checked_count": 18,
+        "error_count": 0,
+        "unchecked_count": 0,
+        "errors": []
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0103",
+        "stream_type": "0x06",
+        "label": "stream_type 0x06",
+        "status": "ok",
+        "checked_count": 1,
+        "error_count": 0,
+        "unchecked_count": 0,
+        "errors": []
+      }
+    ]
+  },
+  "pts_repetition": {
+    "limit_ms": 700,
+    "status": "ok",
+    "pts_count": 193,
+    "interval_count": 181,
+    "max_interval_ms": 480,
+    "max_interval_start_offset_bytes": 9588,
+    "max_interval_end_offset_bytes": 14100,
+    "exceeded_count": 0,
+    "pids": [
+      {
+        "program_number": 1,
+        "pid": "0x0100",
+        "stream_type": "0x02",
+        "label": "video",
+        "status": "ok",
+        "pts_count": 117,
+        "interval_count": 113,
+        "max_interval_ms": 40,
+        "max_interval_start_offset_bytes": 1128,
+        "max_interval_end_offset_bytes": 1504,
+        "exceeded_count": 0
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0101",
+        "stream_type": "0x03",
+        "label": "audio",
+        "status": "ok",
+        "pts_count": 58,
+        "interval_count": 53,
+        "max_interval_ms": 80,
+        "max_interval_start_offset_bytes": 1692,
+        "max_interval_end_offset_bytes": 2444,
+        "exceeded_count": 0
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0102",
+        "stream_type": "0x0f",
+        "label": "audio",
+        "status": "ok",
+        "pts_count": 17,
+        "interval_count": 15,
+        "max_interval_ms": 480,
+        "max_interval_start_offset_bytes": 9588,
+        "max_interval_end_offset_bytes": 14100,
+        "exceeded_count": 0
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0103",
+        "stream_type": "0x06",
+        "label": "stream_type 0x06",
+        "status": "skipped",
+        "reason": "not_video_or_audio",
+        "pts_count": 1,
+        "interval_count": 0,
+        "exceeded_count": 0
+      }
+    ]
+  },
+  "multiplexing": {
+    "mux_lead": {
+      "time_basis": "pcr_interpolated_file_position",
+      "pids": [
+        {
+          "program_number": 1,
+          "pid": "0x0100",
+          "stream_type": "0x02",
+          "label": "video",
+          "av_class": "video",
+          "status": "info",
+          "sample_count": 115,
+          "unbracketed_count": 2,
+          "dts_sample_count": 115,
+          "negative_count": 0,
+          "min_lead_ms": 700,
+          "min_lead_offset_bytes": 1880,
+          "max_lead_ms": 708,
+          "max_lead_offset_bytes": 1504,
+          "spread_ms": 8
+        },
+        {
+          "program_number": 1,
+          "pid": "0x0101",
+          "stream_type": "0x03",
+          "label": "audio",
+          "av_class": "audio",
+          "status": "info",
+          "sample_count": 56,
+          "unbracketed_count": 2,
+          "dts_sample_count": 0,
+          "negative_count": 0,
+          "min_lead_ms": 1500,
+          "min_lead_offset_bytes": 1692,
+          "max_lead_ms": 1500,
+          "max_lead_offset_bytes": 1692,
+          "spread_ms": 0
+        },
+        {
+          "program_number": 1,
+          "pid": "0x0102",
+          "stream_type": "0x0f",
+          "label": "audio",
+          "av_class": "audio",
+          "status": "info",
+          "sample_count": 17,
+          "unbracketed_count": 0,
+          "dts_sample_count": 0,
+          "negative_count": 1,
+          "min_lead_ms": -20,
+          "min_lead_offset_bytes": 9588,
+          "max_lead_ms": 650,
+          "max_lead_offset_bytes": 2068,
+          "spread_ms": 670
+        },
+        {
+          "program_number": 1,
+          "pid": "0x0103",
+          "stream_type": "0x06",
+          "label": "stream_type 0x06",
+          "av_class": "other",
+          "status": "info",
+          "sample_count": 1,
+          "unbracketed_count": 0,
+          "dts_sample_count": 0,
+          "negative_count": 0,
+          "min_lead_ms": 300,
+          "min_lead_offset_bytes": 2820,
+          "max_lead_ms": 300,
+          "max_lead_offset_bytes": 2820,
+          "spread_ms": 0
+        }
+      ],
+      "programs": [
+        {
+          "program_number": 1,
+          "status": "info",
+          "audio_pid": "0x0101",
+          "video_pid": "0x0100",
+          "max_av_lead_difference_ms": 800,
+          "audio_lead_ms": 1500,
+          "video_lead_ms": 700,
+          "audio_offset_bytes": 1692,
+          "video_offset_bytes": 1880,
+          "audio": [
+            {
+              "pid": "0x0101",
+              "status": "info",
+              "comparison_count": 161,
+              "video_pid": "0x0100",
+              "max_av_lead_difference_ms": 800,
+              "audio_lead_ms": 1500,
+              "video_lead_ms": 700,
+              "audio_offset_bytes": 1692,
+              "video_offset_bytes": 1880
+            },
+            {
+              "pid": "0x0102",
+              "status": "info",
+              "comparison_count": 111,
+              "video_pid": "0x0100",
+              "max_av_lead_difference_ms": 728,
+              "audio_lead_ms": -20,
+              "video_lead_ms": 708,
+              "audio_offset_bytes": 9588,
+              "video_offset_bytes": 12784
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "programs": [
+    {
+      "program_number": 1,
+      "pmt_pid": "0x1000",
+      "pcr_pid": "0x0100",
+      "elementary_streams": [
+        {
+          "pid": "0x0100",
+          "stream_type": "0x02",
+          "stream_type_description": "13818-2 video or 11172-2 constrained parameter video stream"
+        },
+        {
+          "pid": "0x0101",
+          "stream_type": "0x03",
+          "stream_type_description": "11172 audio"
+        },
+        {
+          "pid": "0x0102",
+          "stream_type": "0x0f",
+          "stream_type_description": "13818-7 audio with ADTS transport syntax"
+        },
+        {
+          "pid": "0x0103",
+          "stream_type": "0x06",
+          "stream_type_description": "13818-1 PES packet containing private data"
+        }
+      ],
+      "status": "complete",
+      "analysis_start_offset_bytes": 940,
+      "average_bitrate_bps": 69641.73913043478,
+      "compliance": {
+        "max_pcr_interval": {
+          "status": "ok",
+          "value_ms": 40,
+          "limit_ms": 100,
+          "observations": 115
+        },
+        "pcr_discontinuities": {
+          "status": "ok",
+          "pcr_count": 117,
+          "undeclared_count": 0,
+          "jump_limit_ms": 1000,
+          "items": [
+            {
+              "kind": "wraparound",
+              "count": 1,
+              "first_offset_bytes": 18800,
+              "first_jump_ms": 40
+            },
+            {
+              "kind": "declared",
+              "count": 1,
+              "first_offset_bytes": 28200,
+              "first_jump_ms": 10040
+            }
+          ]
+        },
+        "max_pcr_pts_dts_gap": {
+          "status": "ng",
+          "value_ms": 1500,
+          "limit_ms": 1000,
+          "observations": 188
+        }
+      },
+      "timestamp_anomalies": {
+        "status": "anomalies",
+        "items": [
+          {
+            "pid": "0x0101",
+            "kind": "wraparound",
+            "count": 1,
+            "message": "PTS wrapped around (33-bit counter overflow) at 0x0000125c"
+          },
+          {
+            "pid": "0x0102",
+            "kind": "backward",
+            "count": 1,
+            "message": "PTS went backward at 0x00002574 (95442717.689ms) after 0x000019b4 (95443067.689ms)"
+          },
+          {
+            "pid": "0x0100",
+            "kind": "wraparound",
+            "count": 1,
+            "message": "DTS wrapped around (33-bit counter overflow) at 0x00003078"
+          },
+          {
+            "pid": "0x0102",
+            "kind": "wraparound",
+            "count": 1,
+            "message": "PTS wrapped around (33-bit counter overflow) at 0x00003714"
+          },
+          {
+            "pid": "0x0100",
+            "kind": "forward_gap",
+            "count": 1,
+            "message": "DTS jumped forward 10.0s at 0x00006e28 (11700.000ms) after 0x00006cb0 (1668.000ms), expected ~32ms"
+          },
+          {
+            "pid": "0x0101",
+            "kind": "forward_gap",
+            "count": 1,
+            "message": "PTS jumped forward 10.1s at 0x0000705c (12560.000ms) after 0x00006d6c (2480.000ms), expected ~80ms"
+          },
+          {
+            "pid": "0x0102",
+            "kind": "forward_gap",
+            "count": 1,
+            "message": "PTS jumped forward 10.2s at 0x000071d4 (11750.000ms) after 0x00006bf4 (1590.000ms), expected ~160ms"
+          }
+        ]
+      },
+      "pcr_jitter": {
+        "status": "ok",
+        "estimate": {
+          "model": "byte_position",
+          "pcr_pids": [
+            "0x0100"
+          ],
+          "sample_count": 117,
+          "segment_count": 2,
+          "observations": 113,
+          "max_abs_jitter_ns": 0,
+          "max_abs_jitter_offset_bytes": 1504,
+          "max_jitter_ns": 0,
+          "max_jitter_offset_bytes": 1504,
+          "min_jitter_ns": 0,
+          "min_jitter_offset_bytes": 1504,
+          "average_absolute_jitter_ns": 0,
+          "within_500ns_percent": 100,
+          "discontinuities": [
+            {
+              "offset_bytes": 28200,
+              "kind": "declared",
+              "jump_ms": 10040,
+              "from_segment": 1,
+              "to_segment": 2
+            }
+          ]
+        },
+        "delivery": {
+          "assessment": "constant",
+          "reason": "the multiplex rate of 3 one-second windows deviates up to 0.00% from the average 75,200 b/s (tolerance 1%)",
+          "window_seconds": 1,
+          "window_count": 3,
+          "average_rate_bps": 75200,
+          "min_window_rate_bps": 75200,
+          "max_window_rate_bps": 75200,
+          "max_deviation_percent": 0,
+          "tolerance_percent": 1,
+          "plausible_jitter_limit_ns": 1000000
+        }
+      },
+      "bitrate": {
+        "status": "ok",
+        "duration_seconds": 4.6,
+        "segment_count": 2,
+        "pids": [
+          {
+            "pid": "0x0000",
+            "label": "PAT",
+            "average_bps": 3596.521739130435,
+            "peak_1s_bps": 4512
+          },
+          {
+            "pid": "0x0100",
+            "label": "13818-2 video or 11172-2 constrained parameter video stream",
+            "average_bps": 37600,
+            "peak_1s_bps": 37600
+          },
+          {
+            "pid": "0x0101",
+            "label": "11172 audio",
+            "average_bps": 18636.521739130436,
+            "peak_1s_bps": 19552
+          },
+          {
+            "pid": "0x0102",
+            "label": "13818-7 audio with ADTS transport syntax",
+            "average_bps": 5885.217391304348,
+            "peak_1s_bps": 7520
+          },
+          {
+            "pid": "0x0103",
+            "label": "13818-1 PES packet containing private data",
+            "average_bps": 326.95652173913044,
+            "peak_1s_bps": 1504
+          },
+          {
+            "pid": "0x1000",
+            "label": "PMT",
+            "average_bps": 3596.521739130435,
+            "peak_1s_bps": 4512
+          }
+        ],
+        "null_pid": {
+          "pid": "0x1fff",
+          "label": "NULL (mux-wide)",
+          "average_bps": 5558.260869565218,
+          "peak_1s_bps": 6016
+        },
+        "program_average_bps": 69641.73913043478,
+        "program_peak_1s_bps": 70688
+      },
+      "series": {
+        "pcr": [
+          {
+            "offset_bytes": 1128,
+            "elapsed_ms": 0,
+            "pcr_ms": 95441837.68888889
+          },
+          {
+            "offset_bytes": 1504,
+            "elapsed_ms": 40,
+            "pcr_ms": 95441877.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 1880,
+            "elapsed_ms": 80,
+            "pcr_ms": 95441917.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 2256,
+            "elapsed_ms": 120,
+            "pcr_ms": 95441957.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 2632,
+            "elapsed_ms": 160,
+            "pcr_ms": 95441997.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 3008,
+            "elapsed_ms": 200,
+            "pcr_ms": 95442037.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 3384,
+            "elapsed_ms": 240,
+            "pcr_ms": 95442077.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 3760,
+            "elapsed_ms": 280,
+            "pcr_ms": 95442117.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 4136,
+            "elapsed_ms": 320,
+            "pcr_ms": 95442157.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 4512,
+            "elapsed_ms": 360,
+            "pcr_ms": 95442197.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 4888,
+            "elapsed_ms": 400,
+            "pcr_ms": 95442237.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 5264,
+            "elapsed_ms": 440,
+            "pcr_ms": 95442277.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 5640,
+            "elapsed_ms": 480,
+            "pcr_ms": 95442317.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 6016,
+            "elapsed_ms": 520,
+            "pcr_ms": 95442357.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 6392,
+            "elapsed_ms": 560,
+            "pcr_ms": 95442397.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 6768,
+            "elapsed_ms": 600,
+            "pcr_ms": 95442437.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 7144,
+            "elapsed_ms": 640,
+            "pcr_ms": 95442477.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 7520,
+            "elapsed_ms": 680,
+            "pcr_ms": 95442517.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 7896,
+            "elapsed_ms": 720,
+            "pcr_ms": 95442557.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 8272,
+            "elapsed_ms": 760,
+            "pcr_ms": 95442597.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 8648,
+            "elapsed_ms": 800,
+            "pcr_ms": 95442637.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 9024,
+            "elapsed_ms": 840,
+            "pcr_ms": 95442677.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 9400,
+            "elapsed_ms": 880,
+            "pcr_ms": 95442717.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 9776,
+            "elapsed_ms": 920,
+            "pcr_ms": 95442757.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 10152,
+            "elapsed_ms": 960,
+            "pcr_ms": 95442797.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 10528,
+            "elapsed_ms": 1000,
+            "pcr_ms": 95442837.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 10904,
+            "elapsed_ms": 1040,
+            "pcr_ms": 95442877.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 11280,
+            "elapsed_ms": 1080,
+            "pcr_ms": 95442917.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 11656,
+            "elapsed_ms": 1120,
+            "pcr_ms": 95442957.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 12032,
+            "elapsed_ms": 1160,
+            "pcr_ms": 95442997.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 12408,
+            "elapsed_ms": 1200,
+            "pcr_ms": 95443037.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 12784,
+            "elapsed_ms": 1240,
+            "pcr_ms": 95443077.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 13160,
+            "elapsed_ms": 1280,
+            "pcr_ms": 95443117.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 13536,
+            "elapsed_ms": 1320,
+            "pcr_ms": 95443157.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 13912,
+            "elapsed_ms": 1360,
+            "pcr_ms": 95443197.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 14288,
+            "elapsed_ms": 1400,
+            "pcr_ms": 95443237.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 14664,
+            "elapsed_ms": 1440,
+            "pcr_ms": 95443277.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 15040,
+            "elapsed_ms": 1480,
+            "pcr_ms": 95443317.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 15416,
+            "elapsed_ms": 1520,
+            "pcr_ms": 95443357.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 15792,
+            "elapsed_ms": 1560,
+            "pcr_ms": 95443397.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 16168,
+            "elapsed_ms": 1600,
+            "pcr_ms": 95443437.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 16544,
+            "elapsed_ms": 1640,
+            "pcr_ms": 95443477.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 16920,
+            "elapsed_ms": 1680,
+            "pcr_ms": 95443517.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 17296,
+            "elapsed_ms": 1720,
+            "pcr_ms": 95443557.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 17672,
+            "elapsed_ms": 1760,
+            "pcr_ms": 95443597.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 18048,
+            "elapsed_ms": 1800,
+            "pcr_ms": 95443637.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 18424,
+            "elapsed_ms": 1840,
+            "pcr_ms": 95443677.68888889,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 18800,
+            "elapsed_ms": 1880,
+            "pcr_ms": 0,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 19176,
+            "elapsed_ms": 1920,
+            "pcr_ms": 40,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 19552,
+            "elapsed_ms": 1960,
+            "pcr_ms": 80,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 19928,
+            "elapsed_ms": 2000,
+            "pcr_ms": 120,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 20304,
+            "elapsed_ms": 2040,
+            "pcr_ms": 160,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 20680,
+            "elapsed_ms": 2080,
+            "pcr_ms": 200,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 21056,
+            "elapsed_ms": 2120,
+            "pcr_ms": 240,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 21432,
+            "elapsed_ms": 2160,
+            "pcr_ms": 280,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 21808,
+            "elapsed_ms": 2200,
+            "pcr_ms": 320,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 22184,
+            "elapsed_ms": 2240,
+            "pcr_ms": 360,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 22560,
+            "elapsed_ms": 2280,
+            "pcr_ms": 400,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 22936,
+            "elapsed_ms": 2320,
+            "pcr_ms": 440,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 23312,
+            "elapsed_ms": 2360,
+            "pcr_ms": 480,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 23688,
+            "elapsed_ms": 2400,
+            "pcr_ms": 520,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 24064,
+            "elapsed_ms": 2440,
+            "pcr_ms": 560,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 24440,
+            "elapsed_ms": 2480,
+            "pcr_ms": 600,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 24816,
+            "elapsed_ms": 2520,
+            "pcr_ms": 640,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 25192,
+            "elapsed_ms": 2560,
+            "pcr_ms": 680,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 25568,
+            "elapsed_ms": 2600,
+            "pcr_ms": 720,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 25944,
+            "elapsed_ms": 2640,
+            "pcr_ms": 760,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 26320,
+            "elapsed_ms": 2680,
+            "pcr_ms": 800,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 26696,
+            "elapsed_ms": 2720,
+            "pcr_ms": 840,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 27072,
+            "elapsed_ms": 2760,
+            "pcr_ms": 880,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 27448,
+            "elapsed_ms": 2800,
+            "pcr_ms": 920,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 27824,
+            "elapsed_ms": 2840,
+            "pcr_ms": 960,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 28200,
+            "elapsed_ms": 2840,
+            "pcr_ms": 11000,
+            "discontinuity": true
+          },
+          {
+            "offset_bytes": 28576,
+            "elapsed_ms": 2880,
+            "pcr_ms": 11040,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 28952,
+            "elapsed_ms": 2920,
+            "pcr_ms": 11080,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 29328,
+            "elapsed_ms": 2960,
+            "pcr_ms": 11120,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 29704,
+            "elapsed_ms": 3000,
+            "pcr_ms": 11160,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 30080,
+            "elapsed_ms": 3040,
+            "pcr_ms": 11200,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 30456,
+            "elapsed_ms": 3080,
+            "pcr_ms": 11240,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 30832,
+            "elapsed_ms": 3120,
+            "pcr_ms": 11280,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 31208,
+            "elapsed_ms": 3160,
+            "pcr_ms": 11320,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 31584,
+            "elapsed_ms": 3200,
+            "pcr_ms": 11360,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 31960,
+            "elapsed_ms": 3240,
+            "pcr_ms": 11400,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 32336,
+            "elapsed_ms": 3280,
+            "pcr_ms": 11440,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 32712,
+            "elapsed_ms": 3320,
+            "pcr_ms": 11480,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 33088,
+            "elapsed_ms": 3360,
+            "pcr_ms": 11520,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 33464,
+            "elapsed_ms": 3400,
+            "pcr_ms": 11560,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 33840,
+            "elapsed_ms": 3440,
+            "pcr_ms": 11600,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 34216,
+            "elapsed_ms": 3480,
+            "pcr_ms": 11640,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 34592,
+            "elapsed_ms": 3520,
+            "pcr_ms": 11680,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 34968,
+            "elapsed_ms": 3560,
+            "pcr_ms": 11720,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 35344,
+            "elapsed_ms": 3600,
+            "pcr_ms": 11760,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 35720,
+            "elapsed_ms": 3640,
+            "pcr_ms": 11800,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 36096,
+            "elapsed_ms": 3680,
+            "pcr_ms": 11840,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 36472,
+            "elapsed_ms": 3720,
+            "pcr_ms": 11880,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 36848,
+            "elapsed_ms": 3760,
+            "pcr_ms": 11920,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 37224,
+            "elapsed_ms": 3800,
+            "pcr_ms": 11960,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 37600,
+            "elapsed_ms": 3840,
+            "pcr_ms": 12000,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 37976,
+            "elapsed_ms": 3880,
+            "pcr_ms": 12040,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 38352,
+            "elapsed_ms": 3920,
+            "pcr_ms": 12080,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 38728,
+            "elapsed_ms": 3960,
+            "pcr_ms": 12120,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 39104,
+            "elapsed_ms": 4000,
+            "pcr_ms": 12160,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 39480,
+            "elapsed_ms": 4040,
+            "pcr_ms": 12200,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 39856,
+            "elapsed_ms": 4080,
+            "pcr_ms": 12240,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 40232,
+            "elapsed_ms": 4120,
+            "pcr_ms": 12280,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 40608,
+            "elapsed_ms": 4160,
+            "pcr_ms": 12320,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 40984,
+            "elapsed_ms": 4200,
+            "pcr_ms": 12360,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 41360,
+            "elapsed_ms": 4240,
+            "pcr_ms": 12400,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 41736,
+            "elapsed_ms": 4280,
+            "pcr_ms": 12440,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 42112,
+            "elapsed_ms": 4320,
+            "pcr_ms": 12480,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 42488,
+            "elapsed_ms": 4360,
+            "pcr_ms": 12520,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 42864,
+            "elapsed_ms": 4400,
+            "pcr_ms": 12560,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 43240,
+            "elapsed_ms": 4440,
+            "pcr_ms": 12600,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 43616,
+            "elapsed_ms": 4480,
+            "pcr_ms": 12640,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 43992,
+            "elapsed_ms": 4520,
+            "pcr_ms": 12680,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 44368,
+            "elapsed_ms": 4560,
+            "pcr_ms": 12720,
+            "interval_ms": 40
+          },
+          {
+            "offset_bytes": 44744,
+            "elapsed_ms": 4600,
+            "pcr_ms": 12760,
+            "interval_ms": 40
+          }
+        ],
+        "pes": [
+          {
+            "pid": "0x0101",
+            "offset_bytes": 940,
+            "pts_ms": 95443317.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 1128,
+            "elapsed_ms": 0,
+            "pts_ms": 95442583.68888889,
+            "dts_ms": 95442543.68888889,
+            "pcr_gap_ms": 706
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 1504,
+            "elapsed_ms": 40,
+            "pts_ms": 95442625.68888889,
+            "dts_ms": 95442585.68888889,
+            "pcr_gap_ms": 708
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 1692,
+            "elapsed_ms": 40,
+            "pts_ms": 95443397.68888889,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 1880,
+            "elapsed_ms": 80,
+            "pts_ms": 95442657.68888889,
+            "dts_ms": 95442617.68888889,
+            "pcr_gap_ms": 700
+          },
+          {
+            "pid": "0x0102",
+            "offset_bytes": 2068,
+            "elapsed_ms": 80,
+            "pts_ms": 95442587.68888889,
+            "pcr_gap_ms": 650
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 2256,
+            "elapsed_ms": 120,
+            "pts_ms": 95442699.68888889,
+            "dts_ms": 95442659.68888889,
+            "pcr_gap_ms": 702
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 2444,
+            "elapsed_ms": 120,
+            "pts_ms": 95443477.68888889,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 2632,
+            "elapsed_ms": 160,
+            "pts_ms": 95442741.68888889,
+            "dts_ms": 95442701.68888889,
+            "pcr_gap_ms": 704
+          },
+          {
+            "pid": "0x0103",
+            "offset_bytes": 2820,
+            "elapsed_ms": 160,
+            "pts_ms": 95442317.68888889,
+            "pcr_gap_ms": 300
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 3008,
+            "elapsed_ms": 200,
+            "pts_ms": 95442783.68888889,
+            "dts_ms": 95442743.68888889,
+            "pcr_gap_ms": 706
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 3196,
+            "elapsed_ms": 200,
+            "pts_ms": 95443557.68888889,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 3384,
+            "elapsed_ms": 240,
+            "pts_ms": 95442825.68888889,
+            "dts_ms": 95442785.68888889,
+            "pcr_gap_ms": 708
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 3760,
+            "elapsed_ms": 280,
+            "pts_ms": 95442857.68888889,
+            "dts_ms": 95442817.68888889,
+            "pcr_gap_ms": 700
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 3948,
+            "elapsed_ms": 280,
+            "pts_ms": 95443637.68888889,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 4136,
+            "elapsed_ms": 320,
+            "pts_ms": 95442899.68888889,
+            "dts_ms": 95442859.68888889,
+            "pcr_gap_ms": 702
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 4512,
+            "elapsed_ms": 360,
+            "pts_ms": 95442941.68888889,
+            "dts_ms": 95442901.68888889,
+            "pcr_gap_ms": 704
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 4700,
+            "elapsed_ms": 360,
+            "pts_ms": 0,
+            "pcr_gap_ms": -95442217.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 4888,
+            "elapsed_ms": 400,
+            "pts_ms": 95442983.68888889,
+            "dts_ms": 95442943.68888889,
+            "pcr_gap_ms": 706
+          },
+          {
+            "pid": "0x0102",
+            "offset_bytes": 5076,
+            "elapsed_ms": 400,
+            "pts_ms": 95442907.68888889,
+            "pcr_gap_ms": 650
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 5264,
+            "elapsed_ms": 440,
+            "pts_ms": 95443025.68888889,
+            "dts_ms": 95442985.68888889,
+            "pcr_gap_ms": 708
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 5452,
+            "elapsed_ms": 440,
+            "pts_ms": 80,
+            "pcr_gap_ms": -95442217.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 5640,
+            "elapsed_ms": 480,
+            "pts_ms": 95443057.68888889,
+            "dts_ms": 95443017.68888889,
+            "pcr_gap_ms": 700
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 6016,
+            "elapsed_ms": 520,
+            "pts_ms": 95443099.68888889,
+            "dts_ms": 95443059.68888889,
+            "pcr_gap_ms": 702
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 6204,
+            "elapsed_ms": 520,
+            "pts_ms": 160,
+            "pcr_gap_ms": -95442217.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 6392,
+            "elapsed_ms": 560,
+            "pts_ms": 95443141.68888889,
+            "dts_ms": 95443101.68888889,
+            "pcr_gap_ms": 704
+          },
+          {
+            "pid": "0x0102",
+            "offset_bytes": 6580,
+            "elapsed_ms": 560,
+            "pts_ms": 95443067.68888889,
+            "pcr_gap_ms": 650
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 6768,
+            "elapsed_ms": 600,
+            "pts_ms": 95443183.68888889,
+            "dts_ms": 95443143.68888889,
+            "pcr_gap_ms": 706
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 6956,
+            "elapsed_ms": 600,
+            "pts_ms": 240,
+            "pcr_gap_ms": -95442217.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 7144,
+            "elapsed_ms": 640,
+            "pts_ms": 95443225.68888889,
+            "dts_ms": 95443185.68888889,
+            "pcr_gap_ms": 708
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 7520,
+            "elapsed_ms": 680,
+            "pts_ms": 95443257.68888889,
+            "dts_ms": 95443217.68888889,
+            "pcr_gap_ms": 700
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 7708,
+            "elapsed_ms": 680,
+            "pts_ms": 320,
+            "pcr_gap_ms": -95442217.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 7896,
+            "elapsed_ms": 720,
+            "pts_ms": 95443299.68888889,
+            "dts_ms": 95443259.68888889,
+            "pcr_gap_ms": 702
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 8272,
+            "elapsed_ms": 760,
+            "pts_ms": 95443341.68888889,
+            "dts_ms": 95443301.68888889,
+            "pcr_gap_ms": 704
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 8460,
+            "elapsed_ms": 760,
+            "pts_ms": 400,
+            "pcr_gap_ms": -95442217.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 8648,
+            "elapsed_ms": 800,
+            "pts_ms": 95443383.68888889,
+            "dts_ms": 95443343.68888889,
+            "pcr_gap_ms": 706
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 9024,
+            "elapsed_ms": 840,
+            "pts_ms": 95443425.68888889,
+            "dts_ms": 95443385.68888889,
+            "pcr_gap_ms": 708
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 9212,
+            "elapsed_ms": 840,
+            "pts_ms": 480,
+            "pcr_gap_ms": -95442217.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 9400,
+            "elapsed_ms": 880,
+            "pts_ms": 95443457.68888889,
+            "dts_ms": 95443417.68888889,
+            "pcr_gap_ms": 700
+          },
+          {
+            "pid": "0x0102",
+            "offset_bytes": 9588,
+            "elapsed_ms": 880,
+            "pts_ms": 95442717.68888889,
+            "pcr_gap_ms": -20
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 9776,
+            "elapsed_ms": 920,
+            "pts_ms": 95443499.68888889,
+            "dts_ms": 95443459.68888889,
+            "pcr_gap_ms": 702
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 9964,
+            "elapsed_ms": 920,
+            "pts_ms": 560,
+            "pcr_gap_ms": -95442217.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 10152,
+            "elapsed_ms": 960,
+            "pts_ms": 95443541.68888889,
+            "dts_ms": 95443501.68888889,
+            "pcr_gap_ms": 704
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 10528,
+            "elapsed_ms": 1000,
+            "pts_ms": 95443583.68888889,
+            "dts_ms": 95443543.68888889,
+            "pcr_gap_ms": 706
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 10716,
+            "elapsed_ms": 1000,
+            "pts_ms": 640,
+            "pcr_gap_ms": -95442217.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 10904,
+            "elapsed_ms": 1040,
+            "pts_ms": 95443625.68888889,
+            "dts_ms": 95443585.68888889,
+            "pcr_gap_ms": 708
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 11280,
+            "elapsed_ms": 1080,
+            "pts_ms": 95443657.68888889,
+            "dts_ms": 95443617.68888889,
+            "pcr_gap_ms": 700
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 11656,
+            "elapsed_ms": 1120,
+            "pts_ms": 95443699.68888889,
+            "dts_ms": 95443659.68888889,
+            "pcr_gap_ms": 702
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 12032,
+            "elapsed_ms": 1160,
+            "pts_ms": 24,
+            "dts_ms": 95443701.68888889,
+            "pcr_gap_ms": 704
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 12220,
+            "elapsed_ms": 1160,
+            "pts_ms": 800,
+            "pcr_gap_ms": -95442217.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 12408,
+            "elapsed_ms": 1200,
+            "pts_ms": 66,
+            "dts_ms": 26,
+            "pcr_gap_ms": -95443011.68888889
+          },
+          {
+            "pid": "0x0102",
+            "offset_bytes": 12596,
+            "elapsed_ms": 1200
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 12784,
+            "elapsed_ms": 1240,
+            "pts_ms": 108,
+            "dts_ms": 68,
+            "pcr_gap_ms": -95443009.68888889
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 12972,
+            "elapsed_ms": 1240,
+            "pts_ms": 880,
+            "pcr_gap_ms": -95442217.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 13160,
+            "elapsed_ms": 1280,
+            "pts_ms": 140,
+            "dts_ms": 100,
+            "pcr_gap_ms": -95443017.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 13536,
+            "elapsed_ms": 1320,
+            "pts_ms": 182,
+            "dts_ms": 142,
+            "pcr_gap_ms": -95443015.68888889
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 13724,
+            "elapsed_ms": 1320,
+            "pts_ms": 960,
+            "pcr_gap_ms": -95442217.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 13912,
+            "elapsed_ms": 1360,
+            "pts_ms": 224,
+            "dts_ms": 184,
+            "pcr_gap_ms": -95443013.68888889
+          },
+          {
+            "pid": "0x0102",
+            "offset_bytes": 14100,
+            "elapsed_ms": 1360,
+            "pts_ms": 150,
+            "pcr_gap_ms": -95443067.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 14288,
+            "elapsed_ms": 1400,
+            "pts_ms": 266,
+            "dts_ms": 226,
+            "pcr_gap_ms": -95443011.68888889
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 14476,
+            "elapsed_ms": 1400,
+            "pts_ms": 1040,
+            "pcr_gap_ms": -95442217.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 14664,
+            "elapsed_ms": 1440,
+            "pts_ms": 308,
+            "dts_ms": 268,
+            "pcr_gap_ms": -95443009.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 15040,
+            "elapsed_ms": 1480,
+            "pts_ms": 340,
+            "dts_ms": 300,
+            "pcr_gap_ms": -95443017.68888889
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 15228,
+            "elapsed_ms": 1480,
+            "pts_ms": 1120,
+            "pcr_gap_ms": -95442217.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 15416,
+            "elapsed_ms": 1520,
+            "pts_ms": 382,
+            "dts_ms": 342,
+            "pcr_gap_ms": -95443015.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 15792,
+            "elapsed_ms": 1560,
+            "pts_ms": 424,
+            "dts_ms": 384,
+            "pcr_gap_ms": -95443013.68888889
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 15980,
+            "elapsed_ms": 1560,
+            "pts_ms": 1200,
+            "pcr_gap_ms": -95442217.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 16168,
+            "elapsed_ms": 1600,
+            "pts_ms": 466,
+            "dts_ms": 426,
+            "pcr_gap_ms": -95443011.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 16544,
+            "elapsed_ms": 1640,
+            "pts_ms": 508,
+            "dts_ms": 468,
+            "pcr_gap_ms": -95443009.68888889
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 16732,
+            "elapsed_ms": 1640,
+            "pts_ms": 1280,
+            "pcr_gap_ms": -95442217.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 16920,
+            "elapsed_ms": 1680,
+            "pts_ms": 540,
+            "dts_ms": 500,
+            "pcr_gap_ms": -95443017.68888889
+          },
+          {
+            "pid": "0x0102",
+            "offset_bytes": 17108,
+            "elapsed_ms": 1680,
+            "pts_ms": 470,
+            "pcr_gap_ms": -95443067.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 17296,
+            "elapsed_ms": 1720,
+            "pts_ms": 582,
+            "dts_ms": 542,
+            "pcr_gap_ms": -95443015.68888889
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 17484,
+            "elapsed_ms": 1720,
+            "pts_ms": 1360,
+            "pcr_gap_ms": -95442217.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 17672,
+            "elapsed_ms": 1760,
+            "pts_ms": 624,
+            "dts_ms": 584,
+            "pcr_gap_ms": -95443013.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 18048,
+            "elapsed_ms": 1800,
+            "pts_ms": 666,
+            "dts_ms": 626,
+            "pcr_gap_ms": -95443011.68888889
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 18236,
+            "elapsed_ms": 1800,
+            "pts_ms": 1440,
+            "pcr_gap_ms": -95442217.68888889
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 18424,
+            "elapsed_ms": 1840,
+            "pts_ms": 708,
+            "dts_ms": 668
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 18800,
+            "elapsed_ms": 1880,
+            "pts_ms": 740,
+            "dts_ms": 700,
+            "pcr_gap_ms": 700
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 18988,
+            "elapsed_ms": 1880,
+            "pts_ms": 1520,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 19176,
+            "elapsed_ms": 1920,
+            "pts_ms": 782,
+            "dts_ms": 742,
+            "pcr_gap_ms": 702
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 19552,
+            "elapsed_ms": 1960,
+            "pts_ms": 824,
+            "dts_ms": 784,
+            "pcr_gap_ms": 704
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 19740,
+            "elapsed_ms": 1960,
+            "pts_ms": 1600,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 19928,
+            "elapsed_ms": 2000,
+            "pts_ms": 866,
+            "dts_ms": 826,
+            "pcr_gap_ms": 706
+          },
+          {
+            "pid": "0x0102",
+            "offset_bytes": 20116,
+            "elapsed_ms": 2000,
+            "pts_ms": 790,
+            "pcr_gap_ms": 650
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 20304,
+            "elapsed_ms": 2040,
+            "pts_ms": 908,
+            "dts_ms": 868,
+            "pcr_gap_ms": 708
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 20492,
+            "elapsed_ms": 2040,
+            "pts_ms": 1680,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 20680,
+            "elapsed_ms": 2080,
+            "pts_ms": 940,
+            "dts_ms": 900,
+            "pcr_gap_ms": 700
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 21056,
+            "elapsed_ms": 2120,
+            "pts_ms": 982,
+            "dts_ms": 942,
+            "pcr_gap_ms": 702
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 21244,
+            "elapsed_ms": 2120,
+            "pts_ms": 1760,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 21432,
+            "elapsed_ms": 2160,
+            "pts_ms": 1024,
+            "dts_ms": 984,
+            "pcr_gap_ms": 704
+          },
+          {
+            "pid": "0x0102",
+            "offset_bytes": 21620,
+            "elapsed_ms": 2160,
+            "pts_ms": 950,
+            "pcr_gap_ms": 650
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 21808,
+            "elapsed_ms": 2200,
+            "pts_ms": 1066,
+            "dts_ms": 1026,
+            "pcr_gap_ms": 706
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 21996,
+            "elapsed_ms": 2200,
+            "pts_ms": 1840,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 22184,
+            "elapsed_ms": 2240,
+            "pts_ms": 1108,
+            "dts_ms": 1068,
+            "pcr_gap_ms": 708
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 22560,
+            "elapsed_ms": 2280,
+            "pts_ms": 1140,
+            "dts_ms": 1100,
+            "pcr_gap_ms": 700
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 22748,
+            "elapsed_ms": 2280,
+            "pts_ms": 1920,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 22936,
+            "elapsed_ms": 2320,
+            "pts_ms": 1182,
+            "dts_ms": 1142,
+            "pcr_gap_ms": 702
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 23312,
+            "elapsed_ms": 2360,
+            "pts_ms": 1224,
+            "dts_ms": 1184,
+            "pcr_gap_ms": 704
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 23500,
+            "elapsed_ms": 2360,
+            "pts_ms": 2000,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 23688,
+            "elapsed_ms": 2400,
+            "pts_ms": 1266,
+            "dts_ms": 1226,
+            "pcr_gap_ms": 706
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 24064,
+            "elapsed_ms": 2440,
+            "pts_ms": 1308,
+            "dts_ms": 1268,
+            "pcr_gap_ms": 708
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 24252,
+            "elapsed_ms": 2440,
+            "pts_ms": 2080,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 24440,
+            "elapsed_ms": 2480,
+            "pts_ms": 1340,
+            "dts_ms": 1300,
+            "pcr_gap_ms": 700
+          },
+          {
+            "pid": "0x0102",
+            "offset_bytes": 24628,
+            "elapsed_ms": 2480,
+            "pts_ms": 1270,
+            "pcr_gap_ms": 650
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 24816,
+            "elapsed_ms": 2520,
+            "pts_ms": 1382,
+            "dts_ms": 1342,
+            "pcr_gap_ms": 702
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 25004,
+            "elapsed_ms": 2520,
+            "pts_ms": 2160,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 25192,
+            "elapsed_ms": 2560,
+            "pts_ms": 1424,
+            "dts_ms": 1384,
+            "pcr_gap_ms": 704
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 25568,
+            "elapsed_ms": 2600,
+            "pts_ms": 1466,
+            "dts_ms": 1426,
+            "pcr_gap_ms": 706
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 25756,
+            "elapsed_ms": 2600,
+            "pts_ms": 2240,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 25944,
+            "elapsed_ms": 2640,
+            "pts_ms": 1508,
+            "dts_ms": 1468,
+            "pcr_gap_ms": 708
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 26320,
+            "elapsed_ms": 2680,
+            "pts_ms": 1540,
+            "dts_ms": 1500,
+            "pcr_gap_ms": 700
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 26508,
+            "elapsed_ms": 2680,
+            "pts_ms": 2320,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 26696,
+            "elapsed_ms": 2720,
+            "pts_ms": 1582,
+            "dts_ms": 1542,
+            "pcr_gap_ms": 702
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 27072,
+            "elapsed_ms": 2760,
+            "pts_ms": 1624,
+            "dts_ms": 1584,
+            "pcr_gap_ms": 704
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 27260,
+            "elapsed_ms": 2760,
+            "pts_ms": 2400,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 27448,
+            "elapsed_ms": 2800,
+            "pts_ms": 1666,
+            "dts_ms": 1626,
+            "pcr_gap_ms": 706
+          },
+          {
+            "pid": "0x0102",
+            "offset_bytes": 27636,
+            "elapsed_ms": 2800,
+            "pts_ms": 1590,
+            "pcr_gap_ms": 650
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 27824,
+            "pts_ms": 1708,
+            "dts_ms": 1668
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 28012,
+            "pts_ms": 2480
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 28200,
+            "elapsed_ms": 2840,
+            "pts_ms": 11740,
+            "dts_ms": 11700,
+            "pcr_gap_ms": 700
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 28576,
+            "elapsed_ms": 2880,
+            "pts_ms": 11782,
+            "dts_ms": 11742,
+            "pcr_gap_ms": 702
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 28764,
+            "elapsed_ms": 2880,
+            "pts_ms": 12560,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 28952,
+            "elapsed_ms": 2920,
+            "pts_ms": 11824,
+            "dts_ms": 11784,
+            "pcr_gap_ms": 704
+          },
+          {
+            "pid": "0x0102",
+            "offset_bytes": 29140,
+            "elapsed_ms": 2920,
+            "pts_ms": 11750,
+            "pcr_gap_ms": 650
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 29328,
+            "elapsed_ms": 2960,
+            "pts_ms": 11866,
+            "dts_ms": 11826,
+            "pcr_gap_ms": 706
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 29516,
+            "elapsed_ms": 2960,
+            "pts_ms": 12640,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 29704,
+            "elapsed_ms": 3000,
+            "pts_ms": 11908,
+            "dts_ms": 11868,
+            "pcr_gap_ms": 708
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 30080,
+            "elapsed_ms": 3040,
+            "pts_ms": 11940,
+            "dts_ms": 11900,
+            "pcr_gap_ms": 700
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 30268,
+            "elapsed_ms": 3040,
+            "pts_ms": 12720,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 30456,
+            "elapsed_ms": 3080,
+            "pts_ms": 11982,
+            "dts_ms": 11942,
+            "pcr_gap_ms": 702
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 30832,
+            "elapsed_ms": 3120,
+            "pts_ms": 12024,
+            "dts_ms": 11984,
+            "pcr_gap_ms": 704
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 31020,
+            "elapsed_ms": 3120,
+            "pts_ms": 12800,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 31208,
+            "elapsed_ms": 3160,
+            "pts_ms": 12066,
+            "dts_ms": 12026,
+            "pcr_gap_ms": 706
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 31584,
+            "elapsed_ms": 3200,
+            "pts_ms": 12108,
+            "dts_ms": 12068,
+            "pcr_gap_ms": 708
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 31772,
+            "elapsed_ms": 3200,
+            "pts_ms": 12880,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 31960,
+            "elapsed_ms": 3240,
+            "pts_ms": 12140,
+            "dts_ms": 12100,
+            "pcr_gap_ms": 700
+          },
+          {
+            "pid": "0x0102",
+            "offset_bytes": 32148,
+            "elapsed_ms": 3240,
+            "pts_ms": 12070,
+            "pcr_gap_ms": 650
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 32336,
+            "elapsed_ms": 3280,
+            "pts_ms": 12182,
+            "dts_ms": 12142,
+            "pcr_gap_ms": 702
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 32524,
+            "elapsed_ms": 3280,
+            "pts_ms": 12960,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 32712,
+            "elapsed_ms": 3320,
+            "pts_ms": 12224,
+            "dts_ms": 12184,
+            "pcr_gap_ms": 704
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 33088,
+            "elapsed_ms": 3360,
+            "pts_ms": 12266,
+            "dts_ms": 12226,
+            "pcr_gap_ms": 706
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 33276,
+            "elapsed_ms": 3360,
+            "pts_ms": 13040,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 33464,
+            "elapsed_ms": 3400,
+            "pts_ms": 12308,
+            "dts_ms": 12268,
+            "pcr_gap_ms": 708
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 33840,
+            "elapsed_ms": 3440,
+            "pts_ms": 12340,
+            "dts_ms": 12300,
+            "pcr_gap_ms": 700
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 34028,
+            "elapsed_ms": 3440,
+            "pts_ms": 13120,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 34216,
+            "elapsed_ms": 3480,
+            "pts_ms": 12382,
+            "dts_ms": 12342,
+            "pcr_gap_ms": 702
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 34592,
+            "elapsed_ms": 3520,
+            "pts_ms": 12424,
+            "dts_ms": 12384,
+            "pcr_gap_ms": 704
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 34780,
+            "elapsed_ms": 3520,
+            "pts_ms": 13200,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 34968,
+            "elapsed_ms": 3560,
+            "pts_ms": 12466,
+            "dts_ms": 12426,
+            "pcr_gap_ms": 706
+          },
+          {
+            "pid": "0x0102",
+            "offset_bytes": 35156,
+            "elapsed_ms": 3560,
+            "pts_ms": 12390,
+            "pcr_gap_ms": 650
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 35344,
+            "elapsed_ms": 3600,
+            "pts_ms": 12508,
+            "dts_ms": 12468,
+            "pcr_gap_ms": 708
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 35532,
+            "elapsed_ms": 3600,
+            "pts_ms": 13280,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 35720,
+            "elapsed_ms": 3640,
+            "pts_ms": 12540,
+            "dts_ms": 12500,
+            "pcr_gap_ms": 700
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 36096,
+            "elapsed_ms": 3680,
+            "pts_ms": 12582,
+            "dts_ms": 12542,
+            "pcr_gap_ms": 702
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 36284,
+            "elapsed_ms": 3680,
+            "pts_ms": 13360,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 36472,
+            "elapsed_ms": 3720,
+            "pts_ms": 12624,
+            "dts_ms": 12584,
+            "pcr_gap_ms": 704
+          },
+          {
+            "pid": "0x0102",
+            "offset_bytes": 36660,
+            "elapsed_ms": 3720,
+            "pts_ms": 12550,
+            "pcr_gap_ms": 650
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 36848,
+            "elapsed_ms": 3760,
+            "pts_ms": 12666,
+            "dts_ms": 12626,
+            "pcr_gap_ms": 706
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 37036,
+            "elapsed_ms": 3760,
+            "pts_ms": 13440,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 37224,
+            "elapsed_ms": 3800,
+            "pts_ms": 12708,
+            "dts_ms": 12668,
+            "pcr_gap_ms": 708
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 37600,
+            "elapsed_ms": 3840,
+            "pts_ms": 12740,
+            "dts_ms": 12700,
+            "pcr_gap_ms": 700
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 37788,
+            "elapsed_ms": 3840,
+            "pts_ms": 13520,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 37976,
+            "elapsed_ms": 3880,
+            "pts_ms": 12782,
+            "dts_ms": 12742,
+            "pcr_gap_ms": 702
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 38352,
+            "elapsed_ms": 3920,
+            "pts_ms": 12824,
+            "dts_ms": 12784,
+            "pcr_gap_ms": 704
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 38540,
+            "elapsed_ms": 3920,
+            "pts_ms": 13600,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 38728,
+            "elapsed_ms": 3960,
+            "pts_ms": 12866,
+            "dts_ms": 12826,
+            "pcr_gap_ms": 706
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 39104,
+            "elapsed_ms": 4000,
+            "pts_ms": 12908,
+            "dts_ms": 12868,
+            "pcr_gap_ms": 708
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 39292,
+            "elapsed_ms": 4000,
+            "pts_ms": 13680,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 39480,
+            "elapsed_ms": 4040,
+            "pts_ms": 12940,
+            "dts_ms": 12900,
+            "pcr_gap_ms": 700
+          },
+          {
+            "pid": "0x0102",
+            "offset_bytes": 39668,
+            "elapsed_ms": 4040,
+            "pts_ms": 12870,
+            "pcr_gap_ms": 650
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 39856,
+            "elapsed_ms": 4080,
+            "pts_ms": 12982,
+            "dts_ms": 12942,
+            "pcr_gap_ms": 702
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 40044,
+            "elapsed_ms": 4080,
+            "pts_ms": 13760,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 40232,
+            "elapsed_ms": 4120,
+            "pts_ms": 13024,
+            "dts_ms": 12984,
+            "pcr_gap_ms": 704
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 40608,
+            "elapsed_ms": 4160,
+            "pts_ms": 13066,
+            "dts_ms": 13026,
+            "pcr_gap_ms": 706
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 40796,
+            "elapsed_ms": 4160,
+            "pts_ms": 13840,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 40984,
+            "elapsed_ms": 4200,
+            "pts_ms": 13108,
+            "dts_ms": 13068,
+            "pcr_gap_ms": 708
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 41360,
+            "elapsed_ms": 4240,
+            "pts_ms": 13140,
+            "dts_ms": 13100,
+            "pcr_gap_ms": 700
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 41548,
+            "elapsed_ms": 4240,
+            "pts_ms": 13920,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 41736,
+            "elapsed_ms": 4280,
+            "pts_ms": 13182,
+            "dts_ms": 13142,
+            "pcr_gap_ms": 702
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 42112,
+            "elapsed_ms": 4320,
+            "pts_ms": 13224,
+            "dts_ms": 13184,
+            "pcr_gap_ms": 704
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 42300,
+            "elapsed_ms": 4320,
+            "pts_ms": 14000,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 42488,
+            "elapsed_ms": 4360,
+            "pts_ms": 13266,
+            "dts_ms": 13226,
+            "pcr_gap_ms": 706
+          },
+          {
+            "pid": "0x0102",
+            "offset_bytes": 42676,
+            "elapsed_ms": 4360,
+            "pts_ms": 13190,
+            "pcr_gap_ms": 650
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 42864,
+            "elapsed_ms": 4400,
+            "pts_ms": 13308,
+            "dts_ms": 13268,
+            "pcr_gap_ms": 708
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 43052,
+            "elapsed_ms": 4400,
+            "pts_ms": 14080,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 43240,
+            "elapsed_ms": 4440,
+            "pts_ms": 13340,
+            "dts_ms": 13300,
+            "pcr_gap_ms": 700
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 43616,
+            "elapsed_ms": 4480,
+            "pts_ms": 13382,
+            "dts_ms": 13342,
+            "pcr_gap_ms": 702
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 43804,
+            "elapsed_ms": 4480,
+            "pts_ms": 14160,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 43992,
+            "elapsed_ms": 4520,
+            "pts_ms": 13424,
+            "dts_ms": 13384,
+            "pcr_gap_ms": 704
+          },
+          {
+            "pid": "0x0102",
+            "offset_bytes": 44180,
+            "elapsed_ms": 4520,
+            "pts_ms": 13350,
+            "pcr_gap_ms": 650
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 44368,
+            "elapsed_ms": 4560,
+            "pts_ms": 13466,
+            "dts_ms": 13426,
+            "pcr_gap_ms": 706
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 44556,
+            "elapsed_ms": 4560,
+            "pts_ms": 14240,
+            "pcr_gap_ms": 1500
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 44744,
+            "elapsed_ms": 4600,
+            "pts_ms": 13508,
+            "dts_ms": 13468
+          }
+        ],
+        "timestamp_events": [
+          {
+            "pid": "0x0101",
+            "offset_bytes": 4700,
+            "kind": "wraparound",
+            "message": "PTS wrapped around (33-bit counter overflow) at 0x0000125c"
+          },
+          {
+            "pid": "0x0102",
+            "offset_bytes": 9588,
+            "kind": "backward",
+            "message": "PTS went backward at 0x00002574 (95442717.689ms) after 0x000019b4 (95443067.689ms)"
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 12408,
+            "kind": "wraparound",
+            "message": "DTS wrapped around (33-bit counter overflow) at 0x00003078"
+          },
+          {
+            "pid": "0x0102",
+            "offset_bytes": 14100,
+            "kind": "wraparound",
+            "message": "PTS wrapped around (33-bit counter overflow) at 0x00003714"
+          },
+          {
+            "pid": "0x0100",
+            "offset_bytes": 28200,
+            "kind": "forward_gap",
+            "message": "DTS jumped forward 10.0s at 0x00006e28 (11700.000ms) after 0x00006cb0 (1668.000ms), expected ~32ms"
+          },
+          {
+            "pid": "0x0101",
+            "offset_bytes": 28764,
+            "kind": "forward_gap",
+            "message": "PTS jumped forward 10.1s at 0x0000705c (12560.000ms) after 0x00006d6c (2480.000ms), expected ~80ms"
+          },
+          {
+            "pid": "0x0102",
+            "offset_bytes": 29140,
+            "kind": "forward_gap",
+            "message": "PTS jumped forward 10.2s at 0x000071d4 (11750.000ms) after 0x00006bf4 (1590.000ms), expected ~160ms"
+          }
+        ],
+        "pcr_jitter": [
+          {
+            "offset_bytes": 1504,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 1880,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 2256,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 2632,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 3008,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 3384,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 3760,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 4136,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 4512,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 4888,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 5264,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 5640,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 6016,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 6392,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 6768,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 7144,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 7520,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 7896,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 8272,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 8648,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 9024,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 9400,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 9776,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 10152,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 10528,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 10904,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 11280,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 11656,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 12032,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 12408,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 12784,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 13160,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 13536,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 13912,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 14288,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 14664,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 15040,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 15416,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 15792,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 16168,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 16544,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 16920,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 17296,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 17672,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 18048,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 18424,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 18800,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 19176,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 19552,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 19928,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 20304,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 20680,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 21056,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 21432,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 21808,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 22184,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 22560,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 22936,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 23312,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 23688,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 24064,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 24440,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 24816,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 25192,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 25568,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 25944,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 26320,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 26696,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 27072,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 27448,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 28576,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 28952,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 29328,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 29704,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 30080,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 30456,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 30832,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 31208,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 31584,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 31960,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 32336,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 32712,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 33088,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 33464,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 33840,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 34216,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 34592,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 34968,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 35344,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 35720,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 36096,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 36472,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 36848,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 37224,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 37600,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 37976,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 38352,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 38728,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 39104,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 39480,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 39856,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 40232,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 40608,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 40984,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 41360,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 41736,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 42112,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 42488,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 42864,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 43240,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 43616,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 43992,
+            "jitter_ns": 0
+          },
+          {
+            "offset_bytes": 44368,
+            "jitter_ns": 0
+          }
+        ],
+        "bitrate": {
+          "window_seconds": 1,
+          "duration_seconds": [
+            1,
+            1,
+            1,
+            1,
+            0.6
+          ],
+          "pids": [
+            {
+              "pid": "0x0000",
+              "label": "PAT",
+              "bytes": [
+                376,
+                564,
+                376,
+                564,
+                188
+              ],
+              "bps": [
+                3008,
+                4512,
+                3008,
+                4512,
+                2506.666666666667
+              ]
+            },
+            {
+              "pid": "0x0100",
+              "label": "13818-2 video or 11172-2 constrained parameter video stream",
+              "bytes": [
+                4700,
+                4700,
+                4700,
+                4700,
+                2820
+              ],
+              "bps": [
+                37600,
+                37600,
+                37600,
+                37600,
+                37600
+              ]
+            },
+            {
+              "pid": "0x0101",
+              "label": "11172 audio",
+              "bytes": [
+                2256,
+                2444,
+                2256,
+                2256,
+                1504
+              ],
+              "bps": [
+                18048,
+                19552,
+                18048,
+                18048,
+                20053.333333333336
+              ]
+            },
+            {
+              "pid": "0x0102",
+              "label": "13818-7 audio with ADTS transport syntax",
+              "bytes": [
+                752,
+                564,
+                940,
+                564,
+                564
+              ],
+              "bps": [
+                6016,
+                4512,
+                7520,
+                4512,
+                7520
+              ]
+            },
+            {
+              "pid": "0x0103",
+              "label": "13818-1 PES packet containing private data",
+              "bytes": [
+                188,
+                0,
+                0,
+                0,
+                0
+              ],
+              "bps": [
+                1504,
+                0,
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "pid": "0x1000",
+              "label": "PMT",
+              "bytes": [
+                376,
+                564,
+                376,
+                564,
+                188
+              ],
+              "bps": [
+                3008,
+                4512,
+                3008,
+                4512,
+                2506.666666666667
+              ]
+            },
+            {
+              "pid": "0x1fff",
+              "label": "NULL (mux-wide)",
+              "bytes": [
+                752,
+                564,
+                752,
+                752,
+                376
+              ],
+              "bps": [
+                6016,
+                4512,
+                6016,
+                6016,
+                5013.333333333334
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "psi_layout": {
+    "sections": [
+      {
+        "offset_bytes": 188,
+        "last_offset_bytes": 44932,
+        "count": 14,
+        "pid": "0x0000",
+        "table": "pat",
+        "status": "applied",
+        "transport_stream_id": 1,
+        "version_number": 0,
+        "section_number": 0,
+        "last_section_number": 0,
+        "current_next_indicator": 1
+      },
+      {
+        "offset_bytes": 564,
+        "last_offset_bytes": 41924,
+        "count": 13,
+        "pid": "0x1000",
+        "table": "pmt",
+        "status": "applied",
+        "program_number": 1,
+        "version_number": 0,
+        "section_number": 0,
+        "last_section_number": 0,
+        "current_next_indicator": 1
+      }
+    ],
+    "layouts": [
+      {
+        "offset_bytes": 0,
+        "end_offset_bytes": 45120,
+        "transition_indices": [],
+        "pat_version": 0,
+        "pat_offset_bytes": 188,
+        "programs": [
+          {
+            "program_number": 1,
+            "pmt_pid": "0x1000",
+            "pmt_version": 0,
+            "pmt_offset_bytes": 564,
+            "pcr_pid": "0x0100",
+            "elementary_streams": [
+              {
+                "pid": "0x0100",
+                "stream_type": "0x02",
+                "stream_type_description": "13818-2 video or 11172-2 constrained parameter video stream"
+              },
+              {
+                "pid": "0x0101",
+                "stream_type": "0x03",
+                "stream_type_description": "11172 audio"
+              },
+              {
+                "pid": "0x0102",
+                "stream_type": "0x0f",
+                "stream_type_description": "13818-7 audio with ADTS transport syntax"
+              },
+              {
+                "pid": "0x0103",
+                "stream_type": "0x06",
+                "stream_type_description": "13818-1 PES packet containing private data"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "pids": [
+      {
+        "pid": "0x0000",
+        "packet_count": 14,
+        "first_offset_bytes": 188,
+        "last_offset_bytes": 44932,
+        "roles": [
+          {
+            "kind": "pat"
+          }
+        ]
+      },
+      {
+        "pid": "0x0100",
+        "packet_count": 117,
+        "first_offset_bytes": 1128,
+        "last_offset_bytes": 44744,
+        "roles": [
+          {
+            "kind": "pcr",
+            "program_number": 1
+          },
+          {
+            "kind": "elementary_stream",
+            "program_number": 1,
+            "stream_type": "0x02",
+            "stream_type_description": "13818-2 video or 11172-2 constrained parameter video stream"
+          }
+        ]
+      },
+      {
+        "pid": "0x0101",
+        "packet_count": 59,
+        "first_offset_bytes": 940,
+        "last_offset_bytes": 44556,
+        "roles": [
+          {
+            "kind": "elementary_stream",
+            "program_number": 1,
+            "stream_type": "0x03",
+            "stream_type_description": "11172 audio"
+          }
+        ]
+      },
+      {
+        "pid": "0x0102",
+        "packet_count": 18,
+        "first_offset_bytes": 2068,
+        "last_offset_bytes": 44180,
+        "roles": [
+          {
+            "kind": "elementary_stream",
+            "program_number": 1,
+            "stream_type": "0x0f",
+            "stream_type_description": "13818-7 audio with ADTS transport syntax"
+          }
+        ]
+      },
+      {
+        "pid": "0x0103",
+        "packet_count": 1,
+        "first_offset_bytes": 2820,
+        "last_offset_bytes": 2820,
+        "roles": [
+          {
+            "kind": "elementary_stream",
+            "program_number": 1,
+            "stream_type": "0x06",
+            "stream_type_description": "13818-1 PES packet containing private data"
+          }
+        ]
+      },
+      {
+        "pid": "0x1000",
+        "packet_count": 13,
+        "first_offset_bytes": 564,
+        "last_offset_bytes": 41924,
+        "roles": [
+          {
+            "kind": "pmt",
+            "program_number": 1
+          }
+        ]
+      },
+      {
+        "pid": "0x1fff",
+        "packet_count": 18,
+        "first_offset_bytes": 0,
+        "last_offset_bytes": 43428,
+        "roles": [
+          {
+            "kind": "null"
+          }
+        ]
+      }
+    ]
+  },
+  "warnings": []
+}

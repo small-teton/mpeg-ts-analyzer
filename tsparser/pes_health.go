@@ -175,6 +175,7 @@ var pesReasonText = map[analysis.PESReason]string{
 	analysis.PESReasonSinglePTS:         "fewer than two comparable PTS",
 	analysis.PESReasonNotVideoOrAudio:   "not a video or audio stream",
 	analysis.PESReasonNoVideoOrAudio:    "no video or audio stream",
+	analysis.PESReasonNoComparableLeads: "the audio and video leads never lay in one PCR segment at the same time",
 }
 
 // dumpPESHealth prints the PES header and PTS repetition summary. A healthy

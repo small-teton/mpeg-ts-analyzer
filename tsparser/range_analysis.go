@@ -147,6 +147,7 @@ type RangeAnalysisReport struct {
 	PIDReferences            *ReportPIDReferences    `json:"pid_references,omitempty"`
 	PESHeaders               *ReportPESHeaders       `json:"pes_headers,omitempty"`
 	PTSRepetition            *ReportPTSRepetition    `json:"pts_repetition,omitempty"`
+	Multiplexing             *ReportMultiplexing     `json:"multiplexing,omitempty"`
 	Programs                 []RangeAnalysisProgram  `json:"programs"`
 	PSITransitions           []ReportPSITransition   `json:"psi_transitions,omitempty"`
 	PSILayout                *ReportPSILayout        `json:"psi_layout,omitempty"`
@@ -265,6 +266,7 @@ func rangeAnalysisReport(report *AnalysisReport) *RangeAnalysisReport {
 		r.PSIHealth = reportPsiHealth(analysis.health)
 		r.PIDReferences = reportPidReferences(analysis.references)
 		r.PESHeaders, r.PTSRepetition = reportPESHealth(analysis.pes)
+		r.Multiplexing = reportMultiplexing(analysis.pes)
 		r.PSITransitions = reportPsiTransitions(analysis.psi.transitions)
 		r.PSILayout = reportPsiLayout(analysis)
 		for _, e := range analysis.scan.continuityEvents {

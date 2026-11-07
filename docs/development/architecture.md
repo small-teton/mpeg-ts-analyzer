@@ -77,6 +77,7 @@ observations it needs through focused methods.
 | The time of a packet between two PCRs, per-PID packet counts and gaps, silences while referenced, unreferenced runs and their grace period, the referenced and unreferenced statuses | `analysis` (`PacketGaps`, `PIDReferenceCheck`) |
 | Whether a PES header is valid and which problem it has, its PTS/DTS, and the PES packet's time on the PCR timeline (interpolated between the PCRs around it) | `tsparser` (`Pes.Parse`, `pesFeed`, `arrivalAt`), reported as `analysis.PES` and `analysis.PESBreak` |
 | How header problems are counted per PID, which streams the 700 ms PTS repetition limit applies to, how intervals, breaks and lower bounds are measured, and the statuses and reasons | `analysis` (`PESCheck`) |
+| The mux lead of each PES packet (DTS/PTS minus its PCR-timeline time, modulo the PCR period), its per-PID minimum, maximum and spread, the audio/video classes and the A/V lead difference; report only | `analysis` (`PESCheck.MuxLead`, from the same `analysis.PES` observations) |
 
 The continuity counter summary is the first check that uses this boundary from
 end to end. It was chosen because it is an existing, always-on transport check
@@ -123,8 +124,15 @@ The PES header and PTS repetition check
 ([#164](https://github.com/small-teton/mpeg-ts-analyzer/issues/164)) follows
 the same split. Its `analysis.PES` observation carries one PES packet's header
 outcome, PTS/DTS and PCR-timeline time without any payload, so later
-timestamp checks (such as a multiplex lead between PCR and PTS/DTS) can
-consume the same observation.
+timestamp checks can consume the same observation. The report-only mux lead
+([#177](https://github.com/small-teton/mpeg-ts-analyzer/issues/177)) does: it
+adds a fixed-size aggregate to each elementary PID of `PESCheck` and keeps,
+per program, only the video and audio PIDs of the PMT in force
+(`PESCheck.MuxLead()`), so no second PES or time model exists. Its lead is the
+value `Pes.BracketedTimestampDelay` gives the PCR-PTS/DTS gap check in
+`tsparser` for the same PES packet (`arrivalAt` and `Pes.referencePcrMs`
+interpolate between the same PCRs); the gap check keeps its verdict and the
+mux lead only reports the per-PID distribution.
 
 Other aggregate evaluators (PCR jitter, PCR-PTS/DTS gap, timestamp anomalies,
 bitrate) are still in `tsparser`. They move to `analysis` when a change to them
