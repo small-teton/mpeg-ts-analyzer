@@ -22,6 +22,12 @@ Work is tracked in #101 (milestone GUI v0.1).
 
 - The GUI runs the CLI as a child process and reads JSON from stdout. There is
   no FFI (cgo / c-shared).
+- Each CLI run is owned by one supervisor thread, the only owner of the child
+  process: it polls the process, reaps it, and kills it on request. stdout and
+  stderr are read on threads of their own. Cancelling or dropping a run (Cancel,
+  opening another file, a packet page leaving the cache) only sends the
+  supervisor a message, so the UI thread never waits for the process, even when
+  a CLI has closed its output and keeps running.
 - Analysis logic and verdicts live only in the CLI, so the GUI and the CLI
   cannot disagree. CLI changes for the GUI add output surfaces; they do not
   change analysis results.
@@ -117,8 +123,9 @@ separate Analyze step per screen.
 ## Screens
 
 Navigation is a left rail of tiles (large icon over a short label): Overview,
-Timeline, Bitrate, Packets. Settings and About are icons at the bottom of the
-rail. There is no menu bar.
+Timeline, Bitrate, Packets. Update, Settings and About are icons at the bottom
+of the rail, in that order (see [Updates](#updates) for the update button).
+There is no menu bar.
 
 ### Program selection
 
@@ -319,6 +326,7 @@ data is large, so the whole range is never held in memory.
 | Cached pages | 5 | Packet pages kept in memory |
 | CLI path | empty | See [CLI discovery order](#cli-discovery-order) |
 | Check for updates at startup | On | See [Updates](#updates) |
+| Skipped update version | none | Set by Skip this version in the update window; not shown in the Settings window. Restore defaults clears it |
 
 Settings are saved with eframe's `persistence` feature when the GUI exits and
 loaded at startup; fields missing from an older save take their defaults.
@@ -458,17 +466,33 @@ names the GUI and its version).
 ### Checking
 
 - **At startup**, when the setting is on (default), once, in the background.
-  A failure is silent apart from a line in the log. When an update exists,
-  an "Update available: X.Y.Z" button appears at the right end of the status
-  bar; nothing pops up.
-- **Manually**, from a "Check for Updates…" button in the About window. The
-  result is shown in the update window: up to date, an update, or the error.
+  A failure is silent apart from a line in the log. When it finds a release
+  newer than the running GUI that the user has not skipped, it opens the
+  "Software update" window, once per launch. The window is a normal window,
+  not a modal: analysis and the rest of the GUI stay usable. With the setting
+  off, nothing is requested or shown.
+- **Manually**, from the update button in the navigation rail (an
+  arrow-circle-up icon above Settings, named and tooltipped "Check for
+  Updates") or the "Check for Updates…" button in the About window. The result
+  is shown in the update window: up to date, an update, or the error. A
+  manual check ignores a skipped version.
+
+Once a check has found an update, the rail button shows a colored badge dot
+and its name and tooltip become "Update available: X.Y.Z"; activating it opens
+the window without checking again. The status bar does not announce updates.
 
 The "Software update" window shows the running and new GUI versions, the CLI
 version the new release bundles, and a link to the release notes. It offers
-Install and Later (when this installation can be updated, see below), or the
-reason and Open release page. A release without an update manifest (published
-before the in-app update existed) is offered as a release page only.
+Install (when this installation can be updated, see below) or the reason and
+Open release page, then Later and Skip this version:
+
+- **Later** closes the window; the next launch prompts again.
+- **Skip this version** stores the version in the settings
+  (`skipped_update_version`); startup checks no longer open the window for
+  it, but a newer release does. The rail badge still shows the update.
+
+A release without an update manifest (published before the in-app update
+existed) is offered as a release page only.
 
 ### Installing
 
@@ -531,6 +555,7 @@ GUI; the signed trusted comment must name exactly that file. Only then does
 | In-app update with `cargo-packager-updater` (#150) | Avoids the macOS "Open Anyway" detour after the first install; already part of the packaging toolchain; verifies a minisign signature and handles `.app`, NSIS and AppImage | Own downloader and installer; Sparkle (macOS only); only linking to the release page |
 | Find updates through the Releases API and a manifest asset of each release | No extra hosting; works with GUI releases that are not "latest" | A fixed-URL manifest on GitHub Pages (the docs workflow owns the Pages deployment) |
 | Startup update check on by default, with a setting | Users learn about releases without action; one unauthenticated request | Manual check only |
+| Announce an update by opening the update window at startup, with Later and Skip this version, plus an update button with a badge in the rail (#166) | The earlier silent status-bar button ("nothing pops up") went unnoticed; the owner reversed that decision. A normal window does not block analysis, and Skip keeps it from nagging | Status-bar button only; a modal dialog; a notification that disappears |
 | Overview checks in one grouped Transport health table (Check, Value, Status, Help) instead of cards (#159) | #157 adds more checks; a table scans and compares better than a card per check, and a new check is one row; compact columns keep every verdict visible in a narrow window | A card per check in a responsive grid (#156); collapsible categories; a Scope column or badge |
 | Explain each check on a page inside Overview instead of a popup window (#159) | Long, structured text reads better in the normal content area; no separate sizing, focus, dismissal or nested scrolling; Back restores the summary as it was | A popup window per check (#156); hover-only tooltips; a top-level Checks screen |
 | One table of check texts (`check_help.rs`) for the table, detail pages, findings and tests | One source of truth; a new check is one entry | Texts in the view code |

@@ -2,6 +2,8 @@
 //! egui_kittest, without a native window, a file dialog or a CLI process.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use eframe::egui::{
     self,
@@ -15,6 +17,7 @@ use crate::cli::Cli;
 use crate::range_bar::AnalysisRange;
 use crate::report::{AnalysisReport, PacketDetail, PacketsPage};
 use crate::settings::Settings;
+use crate::update::{Available, InstallKind, Updates};
 use crate::views::Screen;
 use crate::views::check_help::Check;
 use crate::views::overview::OverviewPage;
@@ -234,6 +237,238 @@ fn opens_and_closes_settings_and_about() {
         .click();
     harness.run();
     assert!(!harness.state().about_open);
+}
+
+// The in-app update: the rail's button and the startup prompt. A fake
+// checker stands in for GitHub; no test reaches the network.
+
+/// An app whose update checks find `version` (none for `None`), counting
+/// the checks in `checks`.
+fn app_finding(version: Option<&str>, settings: Settings, checks: &Arc<AtomicUsize>) -> App {
+    let version = version.map(str::to_owned);
+    let checks = Arc::clone(checks);
+    let mut app = App {
+        cli: Ok(checked_cli()),
+        ..App::without_cli_check(settings)
+    };
+    let kind = InstallKind::MacApp(PathBuf::from("/Applications/mpeg-ts-analyzer.app"));
+    app.updates = Updates::new(kind).with_checker(move |_, _| {
+        checks.fetch_add(1, Ordering::SeqCst);
+        Ok(version
+            .as_deref()
+            .map(|version| Available::for_test(version, None)))
+    });
+    app
+}
+
+/// Runs frames until the update check has finished. The first frame handles
+/// a queued click or key press, which is what starts a manual check.
+fn finish_update_check(harness: &mut Harness<'_, App>) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    harness.run_steps(1);
+    while harness.state().updates.checking() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the check did not finish"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        harness.run_steps(1);
+    }
+    harness.run_steps(2);
+}
+
+/// Launches `app`: the first frame, then the startup check and its result.
+fn launch(app: App) -> Harness<'static, App> {
+    let mut harness = harness(app);
+    let ctx = harness.ctx.clone();
+    harness.state_mut().startup_update_check(&ctx);
+    finish_update_check(&mut harness);
+    harness
+}
+
+fn update_window_is_open(harness: &Harness<'_, App>) -> bool {
+    harness
+        .query_by_role_and_label(Role::Window, "Software update")
+        .is_some()
+}
+
+#[test]
+fn rail_update_button_checks_and_announces_an_update() {
+    let checks = Arc::new(AtomicUsize::new(0));
+    let mut harness = harness(app_finding(None, Settings::default(), &checks));
+    assert!(!update_window_is_open(&harness));
+    // Update, Settings, About from top to bottom of the rail.
+    let top = |label: &str| {
+        bounds(&harness.get_by_role_and_label(Role::Button, label))
+            .min
+            .y
+    };
+    assert!(top("Check for Updates") < top("Settings"));
+    assert!(top("Settings") < top("About"));
+    assert!(
+        harness
+            .query_by_label_contains("Update available")
+            .is_none()
+    );
+
+    // A manual check from the keyboard: the window shows its result.
+    harness
+        .get_by_role_and_label(Role::Button, "Check for Updates")
+        .focus();
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    finish_update_check(&mut harness);
+    assert_eq!(checks.load(Ordering::SeqCst), 1);
+    assert!(update_window_is_open(&harness));
+    harness.get_by_label_contains("is the newest version");
+    harness.get_by_label("OK").click();
+    harness.run();
+    assert!(!update_window_is_open(&harness));
+
+    // Once a check has found an update, the button names it and opens the
+    // window without checking again.
+    let mut harness = launch(app_finding(Some("9.9.9"), Settings::default(), &checks));
+    assert_eq!(checks.load(Ordering::SeqCst), 2);
+    harness.get_by_label("Later").click();
+    harness.run();
+    assert!(harness.query_by_label("Check for Updates").is_none());
+    let button = harness.get_by_role_and_label(Role::Button, "Update available: 9.9.9");
+    button.hover();
+    harness.run();
+    // The name, and the same text in its tooltip.
+    assert_eq!(
+        harness
+            .query_all_by_label("Update available: 9.9.9")
+            .count(),
+        2
+    );
+    harness
+        .get_by_role_and_label(Role::Button, "Update available: 9.9.9")
+        .click();
+    harness.run();
+    assert!(update_window_is_open(&harness));
+    assert_eq!(checks.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn about_keeps_check_for_updates() {
+    let checks = Arc::new(AtomicUsize::new(0));
+    let mut harness = harness(app_finding(None, Settings::default(), &checks));
+    harness.get_by_role_and_label(Role::Button, "About").click();
+    harness.run();
+    harness.get_by_label("Check for Updates…").click();
+    finish_update_check(&mut harness);
+    assert_eq!(checks.load(Ordering::SeqCst), 1);
+    assert!(update_window_is_open(&harness));
+}
+
+#[test]
+fn startup_check_prompts_once_for_a_new_version() {
+    let checks = Arc::new(AtomicUsize::new(0));
+    let mut harness = launch(app_finding(Some("9.9.9"), Settings::default(), &checks));
+    assert!(update_window_is_open(&harness));
+    harness.get_by_label("GUI 9.9.9 is available");
+    harness.get_by_label("Install");
+    harness.get_by_label("Skip this version");
+    // Centered, clear of the rail.
+    let window = bounds(&harness.get_by_role_and_label(Role::Window, "Software update"));
+    assert!(window.min.x > 96.0, "{window:?} covers the rail");
+    assert!(
+        (window.center().x - 640.0).abs() < 2.0,
+        "{window:?} is not centered"
+    );
+    // A window, not a modal: the rail still works behind it.
+    tab(&harness, Screen::Timeline).click();
+    harness.run();
+    assert_eq!(harness.state().screen, Screen::Timeline);
+    assert!(update_window_is_open(&harness));
+
+    // Later closes it for this launch only.
+    let layer = harness
+        .ctx
+        .layer_id_at(window.center())
+        .expect("window layer");
+    let saved = egui::AreaState::load(&harness.ctx, layer.id);
+    harness.get_by_label("Later").click();
+    harness.run();
+    assert!(!update_window_is_open(&harness));
+    assert_eq!(harness.state().settings.skipped_update_version, None);
+
+    // A position saved by an earlier run, over the rail, does not win when
+    // the window opens again.
+    let mut moved = saved.expect("window state");
+    moved.pivot_pos = Some(egui::pos2(20.0, 120.0));
+    harness
+        .ctx
+        .memory_mut(|memory| memory.areas_mut().set_state(layer, moved));
+    harness
+        .get_by_role_and_label(Role::Button, "Update available: 9.9.9")
+        .click();
+    harness.run();
+    let window = bounds(&harness.get_by_role_and_label(Role::Window, "Software update"));
+    assert!(window.min.x > 96.0, "{window:?} reopened over the rail");
+    harness.get_by_label("Later").click();
+    harness.run();
+    let ctx = harness.ctx.clone();
+    harness.state_mut().startup_update_check(&ctx);
+    finish_update_check(&mut harness);
+    assert!(
+        !update_window_is_open(&harness),
+        "prompted twice in one launch"
+    );
+
+    // The next launch prompts again.
+    let harness = launch(app_finding(Some("9.9.9"), Settings::default(), &checks));
+    assert!(update_window_is_open(&harness));
+}
+
+#[test]
+fn a_skipped_version_does_not_prompt_at_startup() {
+    let checks = Arc::new(AtomicUsize::new(0));
+    let mut harness = launch(app_finding(Some("9.9.9"), Settings::default(), &checks));
+    harness.get_by_label("Skip this version").click();
+    harness.run();
+    assert!(!update_window_is_open(&harness));
+    let settings = harness.state().settings.clone();
+    assert_eq!(settings.skipped_update_version.as_deref(), Some("9.9.9"));
+    harness.get_by_role_and_label(Role::Button, "Update available: 9.9.9");
+
+    // After a restart (the skip is saved with the settings), the startup
+    // check stays quiet about 9.9.9 but the rail still announces it.
+    let mut harness = launch(app_finding(Some("9.9.9"), settings.clone(), &checks));
+    assert!(!update_window_is_open(&harness));
+    harness
+        .get_by_role_and_label(Role::Button, "Update available: 9.9.9")
+        .click();
+    harness.run();
+    assert!(update_window_is_open(&harness));
+
+    // A manual check ignores the skip.
+    let mut harness = self::harness(app_finding(Some("9.9.9"), settings.clone(), &checks));
+    harness
+        .get_by_role_and_label(Role::Button, "Check for Updates")
+        .click();
+    finish_update_check(&mut harness);
+    assert!(update_window_is_open(&harness));
+    harness.get_by_label("GUI 9.9.9 is available");
+
+    // A newer release prompts again.
+    let harness = launch(app_finding(Some("9.9.10"), settings, &checks));
+    assert!(update_window_is_open(&harness));
+    harness.get_by_label("GUI 9.9.10 is available");
+}
+
+#[test]
+fn startup_check_turned_off_requests_and_shows_nothing() {
+    let checks = Arc::new(AtomicUsize::new(0));
+    let settings = Settings {
+        check_updates_at_startup: false,
+        ..Settings::default()
+    };
+    let harness = launch(app_finding(Some("9.9.9"), settings, &checks));
+    assert_eq!(checks.load(Ordering::SeqCst), 0);
+    assert!(!update_window_is_open(&harness));
+    harness.get_by_role_and_label(Role::Button, "Check for Updates");
 }
 
 #[test]
