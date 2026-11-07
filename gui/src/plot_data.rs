@@ -5,6 +5,8 @@
 //! Values that carry only a byte offset (events, jitter samples) are placed at
 //! the elapsed time of the last PCR at or before that offset.
 
+use egui_plot::PlotPoint;
+
 use crate::psi::{self, NULL_PID, ProgramPids};
 use crate::report::{AnalysisReport, PcrPoint, Program};
 
@@ -23,8 +25,9 @@ pub struct PidSeries {
     pub pid: String,
     pub label: String,
     pub points: Vec<Point>,
-    /// `points` reduced to at most about `MAX_PLOT_POINTS` for drawing.
-    pub drawn: Vec<[f64; 2]>,
+    /// `points` reduced to at most about `MAX_PLOT_POINTS` for drawing, in
+    /// the form egui_plot borrows, so frames draw it without a copy.
+    pub drawn: Vec<PlotPoint>,
 }
 
 /// PCR→PTS/DTS gaps of one PID.
@@ -35,7 +38,7 @@ pub struct GapSeries {
     pub points: Vec<Point>,
     /// `points` reduced for drawing, one line per stretch of layouts that list
     /// the PID, so a PID that leaves and comes back is not joined across.
-    pub drawn: Vec<Vec<[f64; 2]>>,
+    pub drawn: Vec<Vec<PlotPoint>>,
 }
 
 /// An applied PAT or PMT change.
@@ -63,15 +66,17 @@ pub struct Timeline {
     /// PCR interval (ms) at each PCR that has one.
     pub pcr_interval: Vec<Point>,
     /// `pcr_interval` reduced for drawing.
-    pub pcr_drawn: Vec<[f64; 2]>,
+    pub pcr_drawn: Vec<PlotPoint>,
     /// PCR intervals above the compliance limit, drawn as markers.
-    pub pcr_over_limit: Vec<[f64; 2]>,
+    pub pcr_over_limit: Vec<PlotPoint>,
     /// PCR→PTS/DTS gap (ms) per elementary-stream PID, in PID order.
     pub gaps: Vec<GapSeries>,
     /// PAT changes and the program's PMT changes, drawn as vertical lines.
     pub markers: Vec<Marker>,
     /// Timestamp anomalies of the program and continuity errors on its PIDs.
     pub events: Vec<Event>,
+    /// `events` as markers on the zero line of the events plot.
+    pub event_drawn: Vec<PlotPoint>,
 }
 
 /// What the Bitrate screen draws for one program.
@@ -84,11 +89,11 @@ pub struct Bitrate {
     pub pids: Vec<PidSeries>,
     /// The sum over the program's PIDs, without null packets, as steps
     /// reduced for drawing.
-    pub program_drawn: Vec<[f64; 2]>,
+    pub program_drawn: Vec<PlotPoint>,
     /// PCR jitter (ms) per sample.
     pub jitter: Vec<Point>,
     /// `jitter` reduced for drawing.
-    pub jitter_drawn: Vec<[f64; 2]>,
+    pub jitter_drawn: Vec<PlotPoint>,
     /// Histogram of `jitter`: (center, count, width) per bin.
     pub jitter_histogram: Vec<(f64, f64, f64)>,
     /// Fixed Y range of the bitrate plot (Mbps), from 0 to above the highest window.
@@ -134,8 +139,8 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
         .map_or(100.0, |c| c.max_pcr_interval.limit_ms);
     // Markers come from the reduced series, which keeps each bucket's highest
     // interval, so they stay bounded and every bucket over the limit shows.
-    let pcr_drawn = decimate(&pcr_interval, MAX_PLOT_POINTS);
-    let pcr_over_limit = pcr_drawn.iter().copied().filter(|p| p[1] > limit).collect();
+    let pcr_drawn = plot_points(decimate(&pcr_interval, MAX_PLOT_POINTS));
+    let pcr_over_limit = pcr_drawn.iter().copied().filter(|p| p.y > limit).collect();
 
     let program_pids = ProgramPids::new(report, program);
     let mut gaps: Vec<GapSeries> = Vec::new();
@@ -176,7 +181,7 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
         let budget = MAX_PLOT_POINTS / stretches.len().max(1);
         gap.drawn = stretches
             .into_iter()
-            .map(|points| decimate(points, budget))
+            .map(|points| plot_points(decimate(points, budget)))
             .collect();
     }
     let markers: Vec<Marker> = report
@@ -223,6 +228,10 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
             }),
     );
     events.sort_by_key(|e| e.offset_bytes);
+    let event_drawn = events
+        .iter()
+        .map(|e| PlotPoint::new(e.seconds, 0.0))
+        .collect();
 
     let elapsed = series
         .pcr
@@ -237,6 +246,7 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
         gaps,
         markers,
         events,
+        event_drawn,
     }
 }
 
@@ -302,7 +312,7 @@ pub fn bitrate(report: &AnalysisReport, program: &Program) -> Bitrate {
                 pid.pid,
                 program_pids.carried_by(&pid.pid, &pid.label)
             ),
-            drawn: decimate_steps(&pid_steps, MAX_PLOT_POINTS),
+            drawn: plot_points(decimate_steps(&pid_steps, MAX_PLOT_POINTS)),
             points: pid_steps
                 .into_iter()
                 .map(|[seconds, value]| Point {
@@ -338,8 +348,8 @@ pub fn bitrate(report: &AnalysisReport, program: &Program) -> Bitrate {
             (-half, half)
         },
         pids,
-        program_drawn: decimate_steps(&program_series, MAX_PLOT_POINTS),
-        jitter_drawn: decimate(&jitter, MAX_PLOT_POINTS),
+        program_drawn: plot_points(decimate_steps(&program_series, MAX_PLOT_POINTS)),
+        jitter_drawn: plot_points(decimate(&jitter, MAX_PLOT_POINTS)),
         jitter_histogram: histogram(&values, HISTOGRAM_BINS),
         jitter,
         program_pids,
@@ -376,6 +386,12 @@ pub fn histogram(values: &[f64], bins: usize) -> Vec<(f64, f64, f64)> {
         .enumerate()
         .map(|(index, count)| (min + width * (index as f64 + 0.5), count, width))
         .collect()
+}
+
+/// Coordinates as egui_plot points. Both are two `f64`s, so the collection
+/// reuses the vector's allocation.
+fn plot_points(coordinates: Vec<[f64; 2]>) -> Vec<PlotPoint> {
+    coordinates.into_iter().map(PlotPoint::from).collect()
 }
 
 /// Reduces a series to at most about `max` points for drawing, keeping the
@@ -470,12 +486,12 @@ pub fn decimate_steps(steps: &[[f64; 2]], max: usize) -> Vec<[f64; 2]> {
 }
 
 /// The point nearest to `target` among `points`, by a caller-supplied distance.
-pub fn nearest<'a>(
-    points: impl Iterator<Item = &'a Point>,
+pub fn nearest(
+    points: impl Iterator<Item = Point>,
     distance: impl Fn(&Point) -> f32,
-) -> Option<(&'a Point, f32)> {
+) -> Option<(Point, f32)> {
     points
-        .map(|p| (p, distance(p)))
+        .map(|p| (p, distance(&p)))
         .min_by(|a, b| a.1.total_cmp(&b.1))
 }
 
@@ -562,7 +578,7 @@ mod tests {
             let program_bits: f64 = bitrate
                 .program_drawn
                 .chunks(2)
-                .map(|step| step[0][1] * 1e6 * (step[1][0] - step[0][0]))
+                .map(|step| step[0].y * 1e6 * (step[1].x - step[0].x))
                 .sum();
             assert!((program_bits / seconds - summary.program_average_bps).abs() < 1e-6);
             assert!(bitrate.pids.iter().all(|p| p.pid != NULL_PID));
@@ -575,7 +591,7 @@ mod tests {
             assert!(!bitrate.pids.is_empty());
             // The fixed Y ranges hold every drawn value.
             let (low, high) = bitrate.mbps_range;
-            assert!(low == 0.0 && bitrate.program_drawn.iter().all(|p| p[1] < high));
+            assert!(low == 0.0 && bitrate.program_drawn.iter().all(|p| p.y < high));
             let (low, high) = bitrate.jitter_range;
             assert!(low == -high && bitrate.jitter.iter().all(|p| p.value.abs() < high));
             assert_eq!(

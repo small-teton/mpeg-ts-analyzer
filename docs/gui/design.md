@@ -247,6 +247,9 @@ Per program, per PID:
   carry only a byte offset, sit at the time of the last PCR before them.
 - Series longer than 4000 points are drawn decimated, keeping each bucket's
   minimum and maximum so spikes stay visible; picking uses every point.
+- The drawn series of every program are derived once when an analysis is
+  accepted, in the point type egui_plot borrows; frames lend them to the
+  plots instead of copying every point vector each frame.
 
 ### Bitrate
 

@@ -72,7 +72,7 @@ pub(super) fn analyzed_app() -> App {
 
 /// An app showing `report`, with the Packets screen loaded as in
 /// [`analyzed_app`].
-fn app_with_report(report: AnalysisReport) -> App {
+pub(super) fn app_with_report(report: AnalysisReport) -> App {
     let mut app = app(Ok(checked_cli()));
     app.input = Some(PathBuf::from(&report.input.path));
     app.file_size = report.input.file_size_bytes;
