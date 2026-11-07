@@ -20,10 +20,11 @@ ffmpeg -f lavfi -i "color=c=red:s=320x240:d=2,format=yuv420p" \
 
 ## 204-byte packets
 
-Four samples have a 204-byte twin, `sample_data/sample_204byte_*.ts`: the
+Five samples have a 204-byte twin, `sample_data/sample_204byte_*.ts`: the
 [all-findings sample](#diagnostic-sample-with-every-overview-finding), the
 [sync-loss sample](#diagnostic-sample-with-ts-synchronization-loss), the
-[packet-gap sample](#packet-gap-sample) and the [mux lead sample](#mux-lead-sample). Their generators' `-trailer` flag
+[packet-gap sample](#packet-gap-sample), the [mux lead sample](#mux-lead-sample)
+and the [PCR-to-PTS/DTS gap wraparound sample](#pcr-to-ptsdts-gap-wraparound-sample). Their generators' `-trailer` flag
 follows every 188-byte TS packet with a 16-byte trailer, the layout of 204-byte
 broadcast streams whose trailer is commonly `RS(204,188)` parity. The trailer
 is deterministic filler (bytes 0x80–0xBF, never a sync byte), not real parity;
