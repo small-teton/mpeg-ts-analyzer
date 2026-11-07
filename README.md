@@ -26,6 +26,9 @@ bits.
   counted; the PSI/PES payload of both is kept out of the analysis, and so is
   the PCR of a packet marked with `transport_error_indicator`, while a
   scrambled packet's PCR (in its clear adaptation field) is still used.
+- **PAT/PMT health**: whether the PAT and the PMT of every announced program
+  were found, repeat at least every 500 ms (the ETSI TR 101 290 1.3.a/1.5.a
+  value, timed by PCR), and arrive with valid CRC, syntax and table_id.
 
 Results are text for people, or JSON with a published schema for CI and other
 programs. See [CLI usage][docs-cli-usage].

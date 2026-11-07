@@ -53,6 +53,10 @@
       "$ref": "#/$defs/affectedPackets",
       "description": "Packets with a non-zero transport_scrambling_control, over every packet of the range. Present whenever the analysis ran (status complete)."
     },
+    "psi_health": {
+      "$ref": "#/$defs/psiHealth",
+      "description": "Availability and repetition of the PAT and of the PMT of every program the applied PAT announces (not only the selected one), over every packet of the range. Present whenever the analysis ran (status complete)."
+    },
     "timestamp_anomalies": {
       "$ref": "#/$defs/timestampAnomalies"
     },
@@ -350,6 +354,189 @@
           "items": {
             "$ref": "#/$defs/affectedPID"
           }
+        }
+      }
+    },
+    "psiHealth": {
+      "type": "object",
+      "required": [
+        "status",
+        "repetition_limit_ms",
+        "time_base",
+        "tables"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: ok (every table ok), ng (at least one table ng), insufficient_data (no table ng, at least one without enough evidence)."
+        },
+        "repetition_limit_ms": {
+          "type": "number",
+          "description": "Longest allowed time between two tables: 500, from ETSI TR 101 290 V1.4.1 indicators 1.3.a (PAT_error_2) and 1.5.a (PMT_error_2). ISO/IEC 13818-1 sets no repetition interval."
+        },
+        "time_base": {
+          "$ref": "#/$defs/psiTimeBase"
+        },
+        "tables": {
+          "type": "array",
+          "description": "The PAT first, then one entry per program_number announced in the range, in numeric order.",
+          "items": {
+            "$ref": "#/$defs/psiTableHealth"
+          }
+        }
+      }
+    },
+    "psiTimeBase": {
+      "type": "object",
+      "required": [
+        "status",
+        "program_number",
+        "segment_count"
+      ],
+      "description": "The PCR that times the intervals: the PCR_PID of the selected program, or with --output analysis of the first analyzed program that has one. Packet times are interpolated by byte position between the PCRs around them.",
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: pcr (at least two PCRs in one segment), none (no usable PCR time base)."
+        },
+        "program_number": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "pcr_pid": {
+          "$ref": "#/$defs/pid",
+          "description": "The reference PCR_PID at the end of the range; absent when the program has none."
+        },
+        "segment_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "PCR segments: a discontinuity_indicator, a change of PCR_PID, a backward step or a step over 1 s starts a new one. No interval spans two segments."
+        }
+      }
+    },
+    "psiTableHealth": {
+      "type": "object",
+      "required": [
+        "table",
+        "pid",
+        "status",
+        "reasons",
+        "instance_count",
+        "version_change_count",
+        "crc_error_count",
+        "malformed_section_count",
+        "incomplete_count",
+        "wrong_table_id_count",
+        "unusable_packet_count",
+        "repetition"
+      ],
+      "properties": {
+        "table": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: pat, pmt."
+        },
+        "program_number": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "For a PMT; absent for the PAT."
+        },
+        "pid": {
+          "$ref": "#/$defs/pid",
+          "description": "The table's PID; for a PMT moved by a PAT change, the latest one."
+        },
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: ok, ng (at least one reason), insufficient_data (no reason, but the repetition is not ok)."
+        },
+        "reasons": {
+          "type": "array",
+          "description": "Why the table is ng, in this order. Current values: missing, late, crc_error, malformed_section, incomplete, wrong_table_id, unusable_packets. Empty unless status is ng.",
+          "items": {
+            "$ref": "#/$defs/status"
+          }
+        },
+        "announced_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "For a PMT: offset of the PAT packet that first announced the program. The PMT is read from the next packet."
+        },
+        "withdrawn_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "For a PMT: offset of the PAT packet from which the program is no longer listed; absent while it is listed."
+        },
+        "instance_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Complete current tables: every section of one version arrived valid. Counted at the packet that completes the table."
+        },
+        "first_instance_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Absent when instance_count is 0."
+        },
+        "version_change_count": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "crc_error_count": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "malformed_section_count": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "incomplete_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Collected sections discarded before the table completed, plus 1 when the range ends while a table that never completed is being collected."
+        },
+        "wrong_table_id_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Sections with a table_id other than 0x00 on PID 0x0000 (PAT only)."
+        },
+        "unusable_packet_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Packets of the table's PID not read because of transport_error_indicator or a scrambled payload."
+        },
+        "first_problem_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Offset of the earliest counted problem; absent without problem."
+        },
+        "repetition": {
+          "$ref": "#/$defs/psiRepetition"
+        }
+      }
+    },
+    "psiRepetition": {
+      "type": "object",
+      "required": [
+        "status",
+        "interval_count",
+        "late_interval_count"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: ok (at least one complete interval and none over the limit), late (an interval over the limit), insufficient_data (no complete interval), skipped (no PCR time base)."
+        },
+        "reason": {
+          "$ref": "#/$defs/reasonCode",
+          "description": "For insufficient_data: no_complete_interval. For skipped: no_pcr_time_base."
+        },
+        "interval_count": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Complete intervals: between two consecutive tables in one PCR segment."
+        },
+        "max_interval_ms": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Longest interval, complete or open. An open interval runs from the start of a segment (or the first PCR after the announcement) to the first table, or from the last table to the last PCR of the segment; it is a lower bound of the real interval. Absent when no interval was measured."
+        },
+        "max_interval_end_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Where the longest interval ends: the packet completing the table, or the last PCR of the segment for an open interval."
+        },
+        "late_interval_count": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "first_late_end_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Where the first interval over the limit ends; absent without one."
         }
       }
     },

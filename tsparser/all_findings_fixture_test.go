@@ -23,16 +23,17 @@ var allFindingsFixtures = []struct {
 	{"../sample_data/sample_192byte_all_findings.ts", 192, true},
 }
 
-// cardStatuses returns the statuses of the seven Overview checks of the only
+// cardStatuses returns the statuses of the eight Overview checks of the only
 // program: max PCR interval, PCR-PTS/DTS gap, PTS/DTS anomalies, continuity
-// counter, PCR jitter, transport errors and scrambled packets.
-func cardStatuses(t *testing.T, report RangeAnalysisReport) [7]string {
+// counter, PCR jitter, transport errors, scrambled packets and PAT/PMT
+// health.
+func cardStatuses(t *testing.T, report RangeAnalysisReport) [8]string {
 	t.Helper()
-	if report.Status != "complete" || len(report.Programs) != 1 || report.ContinuityCounter == nil || report.TransportErrors == nil || report.ScrambledPackets == nil {
+	if report.Status != "complete" || len(report.Programs) != 1 || report.ContinuityCounter == nil || report.TransportErrors == nil || report.ScrambledPackets == nil || report.PSIHealth == nil {
 		t.Fatalf("unexpected analysis: %s", toJSON(t, report))
 	}
 	p := report.Programs[0]
-	return [7]string{
+	return [8]string{
 		p.Compliance.MaxPCRInterval.Status,
 		p.Compliance.MaxPCRPTSDTSGap.Status,
 		p.TimestampAnomalies.Status,
@@ -40,10 +41,11 @@ func cardStatuses(t *testing.T, report RangeAnalysisReport) [7]string {
 		p.PCRJitter.Status,
 		report.TransportErrors.Status,
 		report.ScrambledPackets.Status,
+		report.PSIHealth.Status,
 	}
 }
 
-var allFindingsStatuses = [7]string{"ng", "ng", "anomalies", "errors", "ng", "affected", "affected"}
+var allFindingsStatuses = [8]string{"ng", "ng", "anomalies", "errors", "ng", "affected", "affected", "ng"}
 
 func TestAllFindingsFixtures(t *testing.T) {
 	for _, fixture := range allFindingsFixtures {
@@ -115,6 +117,14 @@ func TestAllFindingsFixtures(t *testing.T) {
 				t.Errorf("%s: slot %d: %s", fixture.path, tt.slot, toJSON(t, tt.got))
 			}
 		}
+		// PAT/PMT health: no PAT in slot 59, so 800 ms pass between the PATs
+		// in slots 39 and 79; the PMT repeats every 400 ms.
+		h := report.PSIHealth
+		if pat, pmt := h.Tables[0], h.Tables[1]; len(h.Tables) != 2 || !jsonEqual(t, pat.Reasons, []string{"late"}) || pat.InstanceCount != 7 ||
+			*pat.Repetition.MaxIntervalMs != 800 || *pat.Repetition.MaxIntervalEndOffsetBytes != at(79) || pat.Repetition.LateIntervalCount != 1 ||
+			pmt.Status != "ok" || *pmt.Repetition.MaxIntervalMs != 400 {
+			t.Errorf("%s: PAT/PMT health %s", fixture.path, toJSON(t, h))
+		}
 	}
 }
 
@@ -172,8 +182,8 @@ func TestAllFindingsFixtureGenerator(t *testing.T) {
 // Leaving one defect out turns only its own card OK, so no defect depends on
 // another to produce its finding; without any defect every card is OK.
 func TestAllFindingsDefectsAreIndependent(t *testing.T) {
-	ok := [7]string{"ok", "ok", "ok", "ok", "ok", "ok", "ok"}
-	for card, defect := range []string{"pcr-interval", "pcr-pts-gap", "pts-backward", "cc-gap", "pcr-jitter", "tei", "scrambled"} {
+	ok := [8]string{"ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"}
+	for card, defect := range []string{"pcr-interval", "pcr-pts-gap", "pts-backward", "cc-gap", "pcr-jitter", "tei", "scrambled", "psi-late"} {
 		want := allFindingsStatuses
 		want[card] = "ok"
 		report, err := decodeRangeAnalysis(t, generateAllFindings(t, "-omit", defect), options.Options{})

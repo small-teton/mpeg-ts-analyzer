@@ -185,7 +185,16 @@ Continuity Counter: no errors detected
 -----------------------------
 Transport Error Indicator: no packets with transport_error_indicator set
 Transport Scrambling: no scrambled packets
+-----------------------------
+PAT/PMT health: OK (repetition limit 500 ms, ETSI TR 101 290 1.3.a/1.5.a; time base: PCR PID 0x0200 of program 1)
+  PAT PID 0x0000 : 43 tables, 38 intervals, max 150.222 ms ending at 0x00020388 [OK]
+  PMT program 1 PID 0x1100 : 43 tables, 37 intervals, max 148.444 ms ending at 0x00020444 [OK]
 ```
+
+The [PAT/PMT health](usage.md#pat-and-pmt-health-always-on) summary counts the
+PMT of program 1 on both PIDs as one table: its intervals restart on the new
+PID, and the PCR_PID change starts a new PCR segment, so no interval spans
+either change.
 
 With `--dump-psi`, every section of an applied table is printed after its
 line. In JSON, the same changes are (abridged):

@@ -138,6 +138,63 @@ $ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_
     "excluded_packet_count": 0,
     "pids": []
   },
+  "psi_health": {
+    "status": "ok",
+    "repetition_limit_ms": 500,
+    "time_base": {
+      "status": "pcr",
+      "program_number": 1,
+      "pcr_pid": "0x0100",
+      "segment_count": 1
+    },
+    "tables": [
+      {
+        "table": "pat",
+        "pid": "0x0000",
+        "status": "ok",
+        "reasons": [],
+        "instance_count": 43,
+        "first_instance_offset_bytes": 188,
+        "version_change_count": 0,
+        "crc_error_count": 0,
+        "malformed_section_count": 0,
+        "incomplete_count": 0,
+        "wrong_table_id_count": 0,
+        "unusable_packet_count": 0,
+        "repetition": {
+          "status": "ok",
+          "interval_count": 40,
+          "max_interval_ms": 150.22222222222223,
+          "max_interval_end_offset_bytes": 131976,
+          "late_interval_count": 0
+        }
+      },
+      {
+        "table": "pmt",
+        "program_number": 1,
+        "pid": "0x1000",
+        "status": "ok",
+        "reasons": [],
+        "announced_offset_bytes": 188,
+        "instance_count": 43,
+        "first_instance_offset_bytes": 376,
+        "version_change_count": 0,
+        "crc_error_count": 0,
+        "malformed_section_count": 0,
+        "incomplete_count": 0,
+        "wrong_table_id_count": 0,
+        "unusable_packet_count": 0,
+        "repetition": {
+          "status": "ok",
+          "interval_count": 40,
+          "max_interval_ms": 148.44444444444446,
+          "max_interval_end_offset_bytes": 132164,
+          "late_interval_count": 0
+        }
+      }
+    ]
+  },
+
   "timestamp_anomalies": {
     "status": "ok",
     "items": []
@@ -168,6 +225,11 @@ Status and top-level reason values are:
 | `bitrate.status` | `ok`, `skipped` |
 | `continuity_counter.status` | `ok`, `errors` |
 | `transport_errors.status`, `scrambled_packets.status` | `ok`, `affected`, `data_excluded` |
+| `psi_health.status`, `psi_health.tables[].status` | `ok`, `ng`, `insufficient_data` |
+| `psi_health.tables[].reasons[]` | `missing`, `late`, `crc_error`, `malformed_section`, `incomplete`, `wrong_table_id`, `unusable_packets` |
+| `psi_health.tables[].repetition.status` | `ok`, `late`, `insufficient_data`, `skipped` |
+| `psi_health.tables[].repetition.reason` | `no_complete_interval`, `no_pcr_time_base` |
+| `psi_health.time_base.status` | `pcr`, `none` |
 | `timestamp_anomalies.status` | `ok`, `anomalies` |
 
 Top-level and per-program `reason` values are stable codes intended for machine
@@ -332,6 +394,148 @@ PCR-PTS/DTS gap; the PAT/PMT warnings it causes are listed in `warnings`. See
 [Transport errors and scrambled packets](../cli/usage.md#transport-errors-and-scrambled-packets-always-on)
 for the complete policy. Neither object takes part in `--fail-on-error`.
 
+## PAT and PMT health
+
+Every complete analysis (summary and `--output analysis`) has `psi_health`:
+the availability and repetition of the PAT and of the PMT of every program the
+applied PAT announces, including programs that are not analyzed, from the
+first packet of the range. It is absent when no analysis ran. For
+`sample_data/sample_188byte_psi_health.ts` with `--program 1`:
+
+```json
+{
+  "psi_health": {
+    "status": "ng",
+    "repetition_limit_ms": 500,
+    "time_base": {
+      "status": "pcr",
+      "program_number": 1,
+      "pcr_pid": "0x0100",
+      "segment_count": 1
+    },
+    "tables": [
+      {
+        "table": "pat",
+        "pid": "0x0000",
+        "status": "ng",
+        "reasons": [
+          "late",
+          "wrong_table_id"
+        ],
+        "instance_count": 12,
+        "first_instance_offset_bytes": 188,
+        "version_change_count": 0,
+        "crc_error_count": 0,
+        "malformed_section_count": 0,
+        "incomplete_count": 0,
+        "wrong_table_id_count": 1,
+        "unusable_packet_count": 0,
+        "first_problem_offset_bytes": 11092,
+        "repetition": {
+          "status": "late",
+          "interval_count": 8,
+          "max_interval_ms": 1200,
+          "max_interval_end_offset_bytes": 18612,
+          "late_interval_count": 1,
+          "first_late_end_offset_bytes": 18612
+        }
+      },
+      {
+        "table": "pmt",
+        "program_number": 1,
+        "pid": "0x1000",
+        "status": "ng",
+        "reasons": [
+          "crc_error"
+        ],
+        "announced_offset_bytes": 188,
+        "instance_count": 15,
+        "first_instance_offset_bytes": 564,
+        "version_change_count": 1,
+        "crc_error_count": 1,
+        "malformed_section_count": 0,
+        "incomplete_count": 0,
+        "wrong_table_id_count": 0,
+        "unusable_packet_count": 0,
+        "first_problem_offset_bytes": 11844,
+        "repetition": {
+          "status": "ok",
+          "interval_count": 12,
+          "max_interval_ms": 400,
+          "max_interval_end_offset_bytes": 13724,
+          "late_interval_count": 0
+        }
+      },
+      {
+        "table": "pmt",
+        "program_number": 2,
+        "pid": "0x1010",
+        "status": "ng",
+        "reasons": [
+          "missing",
+          "incomplete"
+        ],
+        "announced_offset_bytes": 188,
+        "instance_count": 0,
+        "version_change_count": 0,
+        "crc_error_count": 0,
+        "malformed_section_count": 0,
+        "incomplete_count": 1,
+        "wrong_table_id_count": 0,
+        "unusable_packet_count": 0,
+        "first_problem_offset_bytes": 28012,
+        "repetition": {
+          "status": "late",
+          "interval_count": 0,
+          "max_interval_ms": 2840,
+          "max_interval_end_offset_bytes": 27824,
+          "late_interval_count": 1,
+          "first_late_end_offset_bytes": 27824
+        }
+      }
+    ]
+  }
+}
+```
+
+- `status` is the worst table status: `ng` before `insufficient_data` before
+  `ok`. `repetition_limit_ms` is 500, the value of ETSI TR 101 290 V1.4.1
+  §5.2.1 indicators 1.3.a (`PAT_error_2`) and 1.5.a (`PMT_error_2`).
+  ISO/IEC 13818-1 sets no repetition interval; the table identity, CRC_32 and
+  section syntax rules are generic ISO/IEC 13818-1 §2.4.4 requirements.
+- `time_base` names the PCR that times the intervals: the reference
+  `PCR_PID` (of the selected program, or with `--output analysis` of the first
+  analyzed program that has one) and the number of PCR segments. Packet times
+  are interpolated by byte position between the PCRs around them; no interval
+  spans a segment boundary. `status` is `none` without two PCRs in one segment,
+  and every `repetition.status` is then `skipped`.
+- `tables` lists the PAT, then one entry per `program_number` announced in the
+  range, in numeric order. A PMT entry has `program_number`,
+  `announced_offset_bytes` (the PAT packet that first announced it; the PMT is
+  read from the next packet) and, for a program a later PAT removed,
+  `withdrawn_offset_bytes`. `pid` is the latest PMT PID.
+- `instance_count` counts complete current tables (every section of one
+  version valid), at the packet that completes each; `version_change_count`
+  counts consecutive tables with different `version_number`.
+- The problem counts are numbers of sections or packets; see the reasons in
+  [PAT and PMT health](../cli/usage.md#pat-and-pmt-health-always-on).
+  `first_problem_offset_bytes` is the earliest of them and is absent without
+  problem. `reasons` lists the reasons of an `ng` table in a fixed order and is
+  empty otherwise.
+- `repetition.interval_count` counts complete intervals (two consecutive
+  tables in one PCR segment). `max_interval_ms` is the longest interval,
+  including open intervals at the start and end of a segment, which are lower
+  bounds of the real one; `max_interval_end_offset_bytes` is where it ends (the
+  packet completing the table, or the last PCR of the segment).
+  `late_interval_count` counts intervals over the limit and
+  `first_late_end_offset_bytes` is where the first one ends. The interval
+  fields are absent when nothing was measured. `status` is `ok` with a complete
+  interval and none late, `late`, `insufficient_data` (`reason`
+  `no_complete_interval`) or `skipped` (`reason` `no_pcr_time_base`).
+
+The size of `psi_health` is bounded by the number of programs announced in the
+range. It does not take part in `--fail-on-error`.
+
 ## PCR jitter
 
 `--dump-pcr-jitter` (and every `--output analysis` program) adds `pcr_jitter`.
@@ -483,8 +687,8 @@ packet documents stay at 1.0. A 1.x consumer must be updated:
 | — | `estimate.model`, `estimate.pcr_pids`, `delivery` |
 
 Everything else, including the `series.pcr_jitter` points, is unchanged.
-Within 2.0, `transport_errors` and `scrambled_packets` were added to both
-documents (an additive change).
+Within 2.0, `transport_errors`, `scrambled_packets` and `psi_health` were added
+to both documents (additive changes).
 `--capabilities` reports the schema version of each output, so a caller can
 tell the two apart before running an analysis.
 
@@ -519,6 +723,7 @@ Abridged output for the two-program sample:
   "continuity_events": [],
   "transport_errors": { "status": "ok", "packet_count": 0, "excluded_packet_count": 0, "pids": [] },
   "scrambled_packets": { "status": "ok", "packet_count": 0, "excluded_packet_count": 0, "pids": [] },
+  "psi_health": { "status": "ok", "repetition_limit_ms": 500, "time_base": { ... }, "tables": [ ... ] },
   "programs": [
     {
       "program_number": 1,
@@ -570,6 +775,9 @@ Abridged output for the two-program sample:
 - `transport_errors` and `scrambled_packets` are reported once for the whole
   multiplex, from the first packet of the range, as in the summary
   ([Transport errors and scrambled packets](#transport-errors-and-scrambled-packets)).
+- `psi_health` is reported once for the range, from its first packet, with the
+  PCR of the first analyzed program that has one as its time base
+  ([PAT and PMT health](#pat-and-pmt-health)).
 - Bitrate and PCR jitter are always collected in this mode. `series.pcr_jitter`
   is the `byte_position` estimate of each observation; see
   [PCR jitter](#pcr-jitter).

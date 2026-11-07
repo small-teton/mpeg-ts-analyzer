@@ -24,6 +24,7 @@ type rangeAnalysis struct {
 	scan       scanResult
 	continuity *continuityCounterSummary
 	trust      *transportTrustSummary
+	health     *psiHealthCollector
 	psi        *psiTracker
 	pat        *patTable // the first complete PAT
 	leadStart  int64     // first packet of the range
@@ -84,8 +85,10 @@ func analyzeAllPrograms(reader io.ReadSeeker, pat *patTable, leadStart, programS
 
 	pos := slices.MinFunc(analyzers, func(a, b *programAnalyzer) int { return cmp.Compare(a.start, b.start) }).start
 	analysis.scanStart = pos
+	analysis.health = newRangePsiHealth(pat, analysis.programs)
+	analysis.psi.health = analysis.health
 	sdt := func(tsPacket *TsPacket, pos int64) { analysis.psi.sdt.observe(tsPacket, pos) }
-	if err := observeLead(reader, leadStart, pos, options, packetSize, analysis.psi.layout.observe, sdt, analysis.trust.observeLead); err != nil {
+	if err := observeLead(reader, leadStart, pos, options, packetSize, analysis.psi.layout.observe, sdt, analysis.trust.observeLead, analysis.health.observe); err != nil {
 		return err
 	}
 	if _, err := reader.Seek(pos, io.SeekStart); err != nil {
@@ -128,6 +131,7 @@ type RangeAnalysisReport struct {
 	ContinuityEvents         []ReportContinuityEvent `json:"continuity_events"`
 	TransportErrors          *ReportAffectedPackets  `json:"transport_errors,omitempty"`
 	ScrambledPackets         *ReportAffectedPackets  `json:"scrambled_packets,omitempty"`
+	PSIHealth                *ReportPSIHealth        `json:"psi_health,omitempty"`
 	Programs                 []RangeAnalysisProgram  `json:"programs"`
 	PSITransitions           []ReportPSITransition   `json:"psi_transitions,omitempty"`
 	PSILayout                *ReportPSILayout        `json:"psi_layout,omitempty"`
@@ -242,6 +246,7 @@ func rangeAnalysisReport(report *AnalysisReport) *RangeAnalysisReport {
 		r.AnalysisStartOffsetBytes, r.AnalysisEndOffsetBytes = &start, &end
 		r.ContinuityCounter = reportContinuity(analysis.continuity)
 		r.TransportErrors, r.ScrambledPackets = reportTransportTrust(analysis.trust)
+		r.PSIHealth = reportPsiHealth(analysis.health)
 		r.PSITransitions = reportPsiTransitions(analysis.psi.transitions)
 		r.PSILayout = reportPsiLayout(analysis)
 		for _, e := range analysis.scan.continuityEvents {
@@ -339,4 +344,28 @@ func optionalFloat(value float64, ok bool) *float64 {
 		return nil
 	}
 	return &value
+}
+
+// newRangePsiHealth follows the PSI health of an --output analysis range. The
+// time base is the PCR_PID of the first analyzed program, in program_number
+// order, that has one; without such a program it is the first analyzed
+// program, which has no time base.
+func newRangePsiHealth(pat *patTable, programs []rangeProgram) *psiHealthCollector {
+	var ref *rangeProgram
+	for i := range programs {
+		p := &programs[i]
+		if p.analyzer == nil {
+			continue
+		}
+		if ref == nil {
+			ref = p
+		}
+		if pid := p.analyzer.pcrPid; pid != 0 && pid != nullPidValue {
+			ref = p
+			break
+		}
+	}
+	health := newPsiHealthCollector(pat, ref.program.ProgramNumber, ref.analyzer.pcrPid)
+	health.ref = ref.analyzer
+	return health
 }

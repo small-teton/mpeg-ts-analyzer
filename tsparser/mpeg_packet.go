@@ -101,6 +101,7 @@ type pesAnalysis struct {
 	transitions []psiTransition
 	psiWarnings []psiDiagnostic
 	sdt         *sdtCollector
+	health      *psiHealthCollector
 }
 
 // trackedTables are the PAT and PMT a single-program analysis starts from;
@@ -112,6 +113,9 @@ type trackedTables struct {
 	// trust has already counted the affected packets read while acquiring
 	// the PAT and PMT.
 	trust *transportTrustSummary
+	// health has already seen the packets read while acquiring the PAT and
+	// PMT.
+	health *psiHealthCollector
 }
 
 func truncatedPacketMessage(size int) string {
@@ -148,6 +152,8 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		trust = tables.trust
 		psi = newPsiTracker(tables.pat, continuity, options, packetSize, quiet)
 		psi.trust = trust
+		psi.health = tables.health
+		psi.health.ref = analyzer
 		psi.addProgram(tables.programNumber, pmtPid, tables.pmt, analyzer)
 	}
 	trust.addProgramLabels(pmtPid, pcrPid, programInfos)
@@ -160,7 +166,7 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 	report := analyzer.complianceReport()
 	result := &pesAnalysis{compliance: report, continuity: continuity, trust: trust, anomalies: analyzer.anomaly, truncatedBytes: scan.truncatedBytes, truncatedPos: scan.truncatedPos}
 	if psi != nil {
-		result.transitions, result.psiWarnings, result.sdt = psi.transitions, psi.warnings, psi.sdt
+		result.transitions, result.psiWarnings, result.sdt, result.health = psi.transitions, psi.warnings, psi.sdt, psi.health
 	}
 	if options.DumpPcrJitter {
 		result.jitter = &analyzer.pcrJitter
@@ -179,6 +185,9 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		analyzer.anomaly.Dump()
 		continuity.Dump()
 		trust.Dump()
+		if result.health != nil {
+			dumpPsiHealth(reportPsiHealth(result.health))
+		}
 	}
 	if failures := report.failures(); options.FailOnError && len(failures) > 0 {
 		return result, &ComplianceError{Checks: failures}
@@ -245,6 +254,9 @@ func scanPrograms(reader io.Reader, pos *int64, analyzers []*programAnalyzer, co
 			}
 		}
 		if psi != nil {
+			if psi.health != nil {
+				psi.health.observe(tsPacket, *pos)
+			}
 			psi.observe(tsPacket, *pos, continuityTracker)
 		}
 		*pos += int64(size)

@@ -201,8 +201,9 @@ func TestTransportErrorsText(t *testing.T) {
 		"  PID 0x1000 (PMT) : 1 packet, first at 0x00002e44, 1 excluded",
 		"",
 	}, "\n")
-	if !strings.HasSuffix(out, want) {
-		t.Errorf("text summary:\n%s\nwant suffix:\n%s", out, want)
+	// The PAT/PMT health summary follows.
+	if !strings.Contains(out, want+"-----------------------------\nPAT/PMT health: ") {
+		t.Errorf("text summary:\n%s\nwant:\n%s", out, want)
 	}
 
 	out = captureStdout(t, func() {
@@ -221,7 +222,7 @@ func TestTransportErrorsText(t *testing.T) {
 		}
 	})
 	want = "Transport Error Indicator: no packets with transport_error_indicator set\nTransport Scrambling: no scrambled packets\n"
-	if !strings.HasSuffix(out, want) {
+	if !strings.Contains(out, want) {
 		t.Errorf("healthy: %s", out)
 	}
 }
