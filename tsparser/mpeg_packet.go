@@ -105,6 +105,7 @@ type pesAnalysis struct {
 	transitions []psiTransition
 	psiWarnings []psiDiagnostic
 	sdt         *sdtCollector
+	health      *psiHealthCollector
 }
 
 // trackedTables are the PAT and PMT a single-program analysis starts from;
@@ -113,10 +114,11 @@ type trackedTables struct {
 	pat           *patTable
 	programNumber uint16
 	pmt           *pmtTable
-	// trust and references have already counted the packets read while
-	// acquiring the PAT and PMT.
+	// trust and references have already counted, and health has already
+	// seen, the packets read while acquiring the PAT and PMT.
 	trust      *transportTrustSummary
 	references *pidReferenceSummary
+	health     *psiHealthCollector
 }
 
 func truncatedPacketMessage(size int) string {
@@ -153,6 +155,8 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		trust = tables.trust
 		psi = newPsiTracker(tables.pat, continuity, options, packetSize, quiet)
 		psi.trust = trust
+		psi.health = tables.health
+		psi.health.ref = analyzer
 		psi.addProgram(tables.programNumber, pmtPid, tables.pmt, analyzer)
 		psi.references = tables.references
 		tables.references.usePcrOf([]*programAnalyzer{analyzer})
@@ -167,7 +171,7 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 	report := analyzer.complianceReport()
 	result := &pesAnalysis{compliance: report, continuity: continuity, trust: trust, anomalies: analyzer.anomaly, truncatedBytes: scan.truncatedBytes, truncatedPos: scan.truncatedPos, sync: scan.sync}
 	if psi != nil {
-		result.transitions, result.psiWarnings, result.sdt = psi.transitions, psi.warnings, psi.sdt
+		result.transitions, result.psiWarnings, result.sdt, result.health = psi.transitions, psi.warnings, psi.sdt, psi.health
 		result.references = psi.references
 	}
 	if options.DumpPcrJitter {
@@ -188,6 +192,9 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		analyzer.anomaly.Dump()
 		continuity.Dump()
 		trust.Dump()
+		if result.health != nil {
+			dumpPsiHealth(reportPsiHealth(result.health))
+		}
 		if psi != nil {
 			psi.references.Dump()
 		}
@@ -271,6 +278,9 @@ func scanPrograms(reader io.Reader, pos *int64, analyzers []*programAnalyzer, co
 			}
 		}
 		if psi != nil {
+			if psi.health != nil {
+				psi.health.observe(tsPacket, *pos)
+			}
 			// After the analyzers, which pass the packet's PCR to the PID
 			// reference check, and before PSI tracking applies a change
 			// from the next packet on.

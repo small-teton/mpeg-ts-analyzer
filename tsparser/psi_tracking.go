@@ -103,6 +103,7 @@ type psiTracker struct {
 	warned      map[string]bool
 	layout      *psiLayoutRecorder // records sections and PIDs for --output analysis
 	sdt         *sdtCollector
+	health      *psiHealthCollector // follows PAT changes for psi_health, when set
 }
 
 type trackedProgram struct {
@@ -277,6 +278,9 @@ func (t *psiTracker) applyPat(pos int64, sections []*Pat, continuity *continuity
 		}
 	}
 	t.patVersion, t.patTable, t.patPrograms = version, table, table.Programs()
+	if t.health != nil {
+		t.health.patApplied(pos, t.patPrograms)
+	}
 	t.generation++
 
 	for _, p := range t.programs {

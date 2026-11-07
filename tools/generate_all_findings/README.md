@@ -37,12 +37,14 @@ jitter analysis can establish constant delivery. The defects, by packet index:
 | PCR jitter | the PCR in packet 58 is 100 µs late | delivery `constant` (2 windows at 75,200 b/s, deviation 0.00 %), `ng`: max +100 µs at packet 58, −50 µs at packets 56 and 60 |
 | Transport errors | null packet 7 has `transport_error_indicator` set | `affected`: 1 packet on PID 0x1fff (null), 0 excluded |
 | Scrambled packets | null packet 11 has `transport_scrambling_control` 2 | `affected`: 1 packet on PID 0x1fff (null), 0 excluded |
+| PAT health, PMT health | packets 59 and 63 are null packets instead of the PAT and the PMT | `ng`: PAT `late`, 800 ms between the PATs in packets 39 and 79; PMT `late`, 800 ms between the PMTs in packets 43 and 83 (limit 500 ms) |
 
-Both new defects are on the null PID, whose payload the analysis never reads,
-so they change no other result.
+The transport-error and scrambling defects are on the null PID, whose payload
+the analysis never reads, and the missing PAT and PMT copies leave the layout
+unchanged, so none of them changes another result.
 
 `-omit` leaves defects out (`pcr-interval`, `pcr-pts-gap`, `pts-backward`,
-`cc-gap`, `pcr-jitter`, `tei`, `scrambled`, or `all`); `tsparser` tests use it to show that each
+`cc-gap`, `pcr-jitter`, `tei`, `scrambled`, `psi-late`, or `all`); `tsparser` tests use it to show that each
 defect turns only its own check non-OK, and that the stream without defects is
 OK everywhere, with constant delivery and zero estimated jitter. They also
 check that the committed files equal the generator output and pin the results
@@ -54,9 +56,11 @@ advances by one slot (540,000 ticks of 27 MHz), the intended constant delivery.
 TSDuck 3.45 agrees for both files:
 
 - `tsanalyze`: 120 packets, 75,200 b/s from PCRs; PID 0x0100 58 packets with
-  55 PCRs and 58 PTS; PID 0x0101 29 packets, 1 discontinuity; PAT 8, PMT 7,
-  null 17 (tsanalyze leaves the packet with a transport error out of the PID
+  55 PCRs and 58 PTS; PID 0x0101 29 packets, 1 discontinuity; PAT 7, PMT 6,
+  null 19 (tsanalyze leaves the packet with a transport error out of the PID
   statistics), 1 of them scrambled; 1 packet with a transport error.
+  `tsanalyze --table-analysis` gives 7 PATs and 6 PMTs, each with a maximum
+  repetition of 800 ms, as `psi_health` does.
   `tsdump --headers-only` shows `Error: 1` on packet 7 and `Scrambling: 2` on
   packet 11, both PID 0x1FFF.
 - `continuity`: `packet index: 25, PID: 0x0101 (257), missing 1 packets`.

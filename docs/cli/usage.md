@@ -22,6 +22,7 @@ In addition, it can dump various MPEG-2 TS internal structures for stream invest
 - `continuity_counter` validation with an always-on per-PID error summary
 - TS synchronization: an always-on check that reports packets without their sync byte and continues from the next confirmed alignment (see [TS synchronization](#ts-synchronization-always-on))
 - Transport errors (`transport_error_indicator`) and scrambled packets (`transport_scrambling_control`), counted per PID with an always-on summary; their payload (and the PCR of a packet with a transport error) is kept out of the analysis
+- PAT/PMT health: availability, repetition interval (500 ms, ETSI TR 101 290 1.3.a/1.5.a) and section errors of the PAT and of the PMT of every announced program, with an always-on summary
 - PID references: an always-on check that reports PMT, PCR and elementary-stream PIDs the PSI layout references but that are absent or silent for more than 5 s, and PIDs that carry packets without being referenced (see [PID references](#pid-references-always-on))
 
 Both 188-byte TS packets and 192-byte M2TS packets (BDAV format with TP_extra_header) are supported. The packet size is auto-detected from the stream.
@@ -115,6 +116,10 @@ Continuity Counter: no errors detected
 -----------------------------
 Transport Error Indicator: no packets with transport_error_indicator set
 Transport Scrambling: no scrambled packets
+-----------------------------
+PAT/PMT health: OK (repetition limit 500 ms, ETSI TR 101 290 1.3.a/1.5.a; time base: PCR PID 0x0100 of program 1)
+  PAT PID 0x0000 : 43 tables, 40 intervals, max 150.222 ms ending at 0x00020388 [OK]
+  PMT program 1 PID 0x1000 : 43 tables, 40 intervals, max 148.444 ms ending at 0x00020444 [OK]
 -----------------------------
 Referenced PIDs: 4 references, silence limit 5000 ms [OK]
 Unreferenced PIDs: none [OK]
@@ -454,6 +459,113 @@ whose header cannot be parsed at all (for example a reserved
 `adaptation_field_control`) still interrupts the analysis as any malformed
 packet does (it restarts at the next PAT), whether or not it has a transport
 error.
+
+## PAT and PMT health (always on)
+
+An always-on check reports, for the PAT and for the PMT of every program the
+PAT announces (not only the analyzed one), whether the table was found, how
+often it repeats, and what was wrong with the sections that could not be used.
+It covers every packet of the range from its first packet. A healthy stream
+prints one line for the check and one per table:
+
+```
+-----------------------------
+PAT/PMT health: OK (repetition limit 500 ms, ETSI TR 101 290 1.3.a/1.5.a; time base: PCR PID 0x0100 of program 1)
+  PAT PID 0x0000 : 43 tables, 40 intervals, max 150.222 ms ending at 0x00020388 [OK]
+  PMT program 1 PID 0x1000 : 43 tables, 40 intervals, max 148.444 ms ending at 0x00020444 [OK]
+```
+
+The sample `sample_data/sample_188byte_psi_health.ts` (see
+[Sample data](../development/sample-data.md)) has no PAT for 1.2 s, a PMT
+section on the PAT PID, a PMT with an invalid CRC_32 and a two-section PMT
+whose second section is never sent:
+
+```
+-----------------------------
+PAT/PMT health: NG (repetition limit 500 ms, ETSI TR 101 290 1.3.a/1.5.a; time base: PCR PID 0x0100 of program 1)
+  PAT PID 0x0000 : 12 tables, 8 intervals, max 1200.000 ms ending at 0x000048b4, first problem at 0x00002b54 [NG: late x1, wrong_table_id x1]
+  PMT program 1 PID 0x1000 : 15 tables, 12 intervals, max 400.000 ms ending at 0x0000359c, first problem at 0x00002e44 [NG: crc_error x1]
+  PMT program 2 PID 0x1010 : not found, 0 intervals, max 2840.000 ms ending at 0x00006cb0, first problem at 0x00006d6c [NG: missing, incomplete x1]
+```
+
+**What counts as a table.** A table is counted when every section of one
+version has arrived valid (CRC_32, syntax, `current_next_indicator` 1), at the
+packet that completes it. Sections are collected exactly as the analysis
+collects them ([Multi-section PAT and PMT](psi.md#multi-section-pat-and-pmt)),
+so a table counts when the analysis could use it. A PMT is read on the PID the
+applied PAT assigns to its program, from the packet after the PAT that
+announced it; a later PAT change that adds, removes or moves a program is
+followed (see [PAT and PMT version changes](psi.md#pat-and-pmt-version-changes)).
+
+**Which rules come from where.**
+
+| Rule | Source | Reason |
+| --- | --- | --- |
+| The PAT is on PID 0x0000 with `table_id` 0x00; each PMT has `table_id` 0x02 on the PID the PAT assigns | ISO/IEC 13818-1 §2.4.4 (generic MPEG-2) | `wrong_table_id` for any other `table_id` on PID 0x0000 |
+| Valid CRC_32, section syntax, every section of a table | ISO/IEC 13818-1 §2.4.4 and Annex A (generic MPEG-2) | `crc_error`, `malformed_section`, `incomplete` |
+| A PAT or PMT announced in the range is found | generic MPEG-2: a program cannot be decoded without them | `missing` |
+| At most 500 ms between two tables | ETSI TR 101 290 V1.4.1 §5.2.1, 1.3.a `PAT_error_2` and 1.5.a `PMT_error_2` (DVB measurement guideline); ISO/IEC 13818-1 sets no repetition interval | `late` |
+| PAT/PMT packets are not scrambled, and not damaged | TR 101 290 1.3.a / 1.5.a (scrambling); the trust policy of [transport errors and scrambled packets](#transport-errors-and-scrambled-packets-always-on) | `unusable_packets` |
+
+The 500 ms limit is the only profile-derived value. Other broadcast profiles
+require shorter intervals; the analyzer does not apply them, so a stream that
+passes may still fail a stricter profile.
+
+**Time.** A file has no packet-arrival times, so the time of a table is
+interpolated by byte position between the two PCRs around it on one
+reference `PCR_PID`: that of the analyzed program, or with
+`--output analysis` that of the first analyzed program (in `program_number`
+order) that has one. A PCR in a packet with `transport_error_indicator` is not
+used. The PCRs are classified into the same [PCR steps](#pcr-steps) as every
+other PCR-based result: only `continuous` and `wraparound` steps are
+measured, and every other step (`declared`, `pcr_pid_change`, `backward`,
+`forward_jump`) starts a new PCR segment; no interval spans two segments.
+
+**Intervals.** Within a segment, the time between two consecutive tables is a
+*complete* interval. The time from the start of a segment, or from the first
+PCR after a PMT was announced, to the first table, and from the last table to
+the last PCR of the segment, are *open* intervals: the table may have been
+sent just outside them, so they are lower bounds of the real interval. Both
+are compared with the limit, because an open interval over 500 ms proves a
+longer gap. A table must have at least one complete interval to be `OK`. A
+version change keeps the table's identity (it must still repeat on the same
+PID), so it does not restart the intervals; a PMT moved to another PID, or a
+program removed and announced again, does. The counts and the longest
+interval cover every identity of the program, but evidence does not carry
+over: a late or missing identity keeps the table `NG`, and the table is `OK`
+only when its latest identity has a complete interval of its own.
+
+**Status per table.**
+
+| Status | Meaning |
+| --- | --- |
+| `OK` | At least one complete interval, none over 500 ms, and no problem |
+| `NG` | At least one reason below |
+| `INSUFFICIENT DATA` | No problem, but the repetition could not be shown: no complete interval (for example a range shorter than two repetitions, or a table seen only once), or no PCR time base |
+
+| Reason | Meaning |
+| --- | --- |
+| `missing` | No table in the range, while it was followed with a time base for more than 500 ms |
+| `late` | An interval over 500 ms (`x` count) |
+| `crc_error` | Sections with an invalid CRC_32 |
+| `malformed_section` | Sections that cannot be read: too short, without `section_syntax_indicator`, `section_number` beyond `last_section_number`, an invalid `pointer_field`, or fields that do not parse |
+| `incomplete` | Collected sections discarded before the table completed (a section cut short by the next section start, or sections that changed without a version change), and once when the range ends while a table that never completed is being collected |
+| `wrong_table_id` | A section with a `table_id` other than 0x00 on PID 0x0000 (PAT only) |
+| `unusable_packets` | Packets of the table's PID not read because of `transport_error_indicator` or a scrambled payload; the tables they carried are also missing from the intervals |
+
+A continuity counter jump inside a section is reported by the
+[continuity counter summary](#continuity-counter-summary-always-on), not
+here; the table it breaks shows as a longer interval. A section that cannot be
+attributed to one program of a shared PMT PID counts for every program on that
+PID. Without a PCR time base (`no pcr time base`), the repetition is not
+measured and a table that was never found is `INSUFFICIENT DATA`, not
+`missing`. A range that starts in the middle of a stream measures the first
+interval from its first PCR, as an open interval.
+
+The check keeps one fixed-size record per table and one section reader per
+PMT PID, so its memory is bounded by the programs of the PAT, not by the
+length of the input. It does not take part in `--fail-on-error`. In JSON it is
+`psi_health` ([Machine-readable output](../reference/json-output.md#pat-and-pmt-health)).
 
 ## PID references (always on)
 

@@ -26,7 +26,8 @@ invalid**. They are not examples of a good stream: each carries deliberate
 defects so that every Overview transport-health check reports a problem in one
 analysis — a 160 ms PCR interval, a 1200 ms PCR → PTS/DTS gap, a backward PTS,
 one continuity-counter gap, a PCR that is 100 µs late, a null packet with
-`transport_error_indicator` set and a scrambled null packet. The stream is
+`transport_error_indicator` set, a scrambled null packet and an 800 ms gap
+between two PATs and between two PMTs. The stream is
 delivered at a constant 75.2 kbit/s for 2.4 s, long enough for two 1-second
 windows, so the PCR jitter analysis finds constant delivery and judges the
 late PCR (`NG`). Its packets are aligned and its PCR clock is continuous, so
@@ -118,6 +119,27 @@ go run ./tools/generate_transport_errors -m2ts -output sample_data/sample_192byt
 
 The packets, the expected results and the TSDuck cross-check are described in
 [`tools/generate_transport_errors`](https://github.com/small-teton/mpeg-ts-analyzer/tree/master/tools/generate_transport_errors).
+
+## PAT/PMT health sample
+
+`sample_data/sample_188byte_psi_health.ts` and its 192-byte M2TS twin
+`sample_data/sample_192byte_psi_health.ts` (28 KiB each) are also
+**intentionally invalid**. Two programs share one video PID; the stream has
+no PAT for 1.2 s, a PMT section on the PAT PID, a PMT with an invalid CRC_32
+and a version change, and a two-section PMT whose second section is never
+sent, so every table of the PAT/PMT health check is `NG` for a different
+reason.
+
+```bash
+go run ./tools/generate_psi_health -output sample_data/sample_188byte_psi_health.ts
+go run ./tools/generate_psi_health -m2ts -output sample_data/sample_192byte_psi_health.ts
+./mpeg-ts-analyzer sample_data/sample_188byte_psi_health.ts --program 1
+```
+
+The generator also writes one focused scenario at a time (`-scenario
+pat-late`, `pmt-missing`, `crc`, `no-pcr`, ...), which the tests use. The
+scenarios, the expected results and the TSDuck cross-check are described in
+[`tools/generate_psi_health`](https://github.com/small-teton/mpeg-ts-analyzer/tree/master/tools/generate_psi_health).
 
 ## PID-reference sample
 
