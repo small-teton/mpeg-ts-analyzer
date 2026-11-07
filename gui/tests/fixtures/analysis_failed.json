@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "output": "analysis",
   "input": {
     "path": "sample_data/sample_188byte_two_programs_mpeg2_160x120_25fps_mp2.ts",

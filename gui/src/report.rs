@@ -1,5 +1,5 @@
 //! Types for the CLI's JSON documents: `--output analysis`
-//! (docs/json-schema-analysis-v1.json) and `--capabilities`. Fields the
+//! (docs/json-schema-analysis-v2.json) and `--capabilities`. Fields the
 //! schemas require are required here too, so a malformed document is rejected;
 //! unknown fields are ignored, matching the schemas' additive-change policy.
 
@@ -41,18 +41,27 @@ fn schema_major(version: &str) -> Option<&str> {
     version.split('.').next()
 }
 
+/// The fields that identify a document, read before the rest so that a
+/// document of another schema version is reported as such rather than as
+/// malformed.
+#[derive(Deserialize)]
+struct Envelope {
+    output: String,
+    schema_version: String,
+}
+
 /// Parses an `--output analysis` document and checks that it is one this GUI
 /// reads: the analysis output with a schema of the given major version.
 pub fn parse_analysis(json: &[u8], major: &str) -> Result<AnalysisReport, String> {
-    let report: AnalysisReport =
+    let envelope: Envelope =
         serde_json::from_slice(json).map_err(|err| format!("Unreadable analysis output: {err}"))?;
-    if report.output != "analysis" || schema_major(&report.schema_version) != Some(major) {
+    if envelope.output != "analysis" || schema_major(&envelope.schema_version) != Some(major) {
         return Err(format!(
-            "Unsupported analysis document (output {:?}, schema {:?}); a CLI with analysis schema {major}.x is needed.",
-            report.output, report.schema_version
+            "Unsupported analysis document (output {:?}, schema {:?}); this GUI reads analysis schema {major}.x. Update the mpeg-ts-analyzer CLI to a version that writes it.",
+            envelope.output, envelope.schema_version
         ));
     }
-    Ok(report)
+    serde_json::from_slice(json).map_err(|err| format!("Unreadable analysis output: {err}"))
 }
 
 /// One progress event from `--progress json` on stderr.
@@ -295,13 +304,28 @@ pub struct TimestampAnomaly {
     pub message: String,
 }
 
+/// PCR jitter: an estimate, the delivery assessment that decides whether the
+/// CLI grades it, and the CLI's status (`ok`, `warning`, `ng`,
+/// `not_assessable` or `skipped`).
 #[derive(Debug, Deserialize)]
 pub struct PcrJitter {
     pub status: String,
     pub reason: Option<String>,
+    pub estimate: JitterEstimate,
+    pub delivery: Delivery,
+}
+
+/// The jitter estimated with one model (`byte_position`). The values are
+/// absent when no estimate could be made.
+#[derive(Debug, Deserialize)]
+pub struct JitterEstimate {
+    pub model: String,
+    pub pcr_pids: Vec<String>,
     pub sample_count: u64,
     pub segment_count: u64,
-    pub measured_sample_count: u64,
+    pub observations: u64,
+    pub max_abs_jitter_ns: Option<f64>,
+    pub max_abs_jitter_offset_bytes: Option<u64>,
     pub max_jitter_ns: Option<f64>,
     pub max_jitter_offset_bytes: Option<u64>,
     pub min_jitter_ns: Option<f64>,
@@ -309,6 +333,54 @@ pub struct PcrJitter {
     pub average_absolute_jitter_ns: Option<f64>,
     pub within_500ns_percent: Option<f64>,
     pub discontinuities: Vec<PcrDiscontinuity>,
+}
+
+/// Whether the stream shows the constant delivery the byte-position model
+/// needs (`constant`, `variable` or `unknown`), with the multiplex rates of
+/// its 1-second windows as evidence.
+#[derive(Debug, Deserialize)]
+pub struct Delivery {
+    pub assessment: String,
+    pub reason: String,
+    pub window_seconds: u32,
+    pub window_count: u64,
+    pub average_rate_bps: Option<f64>,
+    pub min_window_rate_bps: Option<f64>,
+    pub max_window_rate_bps: Option<f64>,
+    pub max_deviation_percent: Option<f64>,
+    pub tolerance_percent: f64,
+    pub plausible_jitter_limit_ns: f64,
+}
+
+impl Delivery {
+    /// The assessment and its window evidence in one line, such as
+    /// `delivery constant: 2 × 1 s windows, max deviation 0.00 % of 75.2 kbit/s`.
+    pub fn summary(&self) -> String {
+        let windows = match self.window_count {
+            1 => format!("1 × {} s window", self.window_seconds),
+            n => format!("{n} × {} s windows", self.window_seconds),
+        };
+        let evidence = match (self.max_deviation_percent, self.average_rate_bps) {
+            (Some(deviation), Some(rate)) => {
+                format!(
+                    "{windows}, max deviation {deviation:.2} % of {}",
+                    rate_text(rate)
+                )
+            }
+            (None, Some(rate)) => format!("{windows} at {}", rate_text(rate)),
+            _ => format!("no {} s window", self.window_seconds),
+        };
+        format!("delivery {}: {evidence}", self.assessment)
+    }
+}
+
+/// A bit rate in the unit that keeps it short.
+pub fn rate_text(bps: f64) -> String {
+    if bps < 1e6 {
+        format!("{:.1} kbit/s", bps / 1e3)
+    } else {
+        format!("{:.2} Mbit/s", bps / 1e6)
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -744,23 +816,36 @@ mod tests {
     #[test]
     fn rejects_malformed_or_unsupported_analysis_documents() {
         let valid = include_str!("../tests/fixtures/analysis_two_programs_188.json");
-        assert!(parse_analysis(valid.as_bytes(), "1").is_ok());
+        assert!(parse_analysis(valid.as_bytes(), "2").is_ok());
         let mut missing: serde_json::Value = serde_json::from_str(valid).unwrap();
         missing.as_object_mut().unwrap().remove("programs");
         let mut other_output: serde_json::Value = serde_json::from_str(valid).unwrap();
         other_output["output"] = "summary".into();
-        let mut schema_2: serde_json::Value = serde_json::from_str(valid).unwrap();
-        schema_2["schema_version"] = "2.0".into();
         let mut input_missing: serde_json::Value = serde_json::from_str(valid).unwrap();
         input_missing["input"]
             .as_object_mut()
             .unwrap()
             .remove("file_size_bytes");
         let mut jitter_missing: serde_json::Value = serde_json::from_str(valid).unwrap();
-        jitter_missing["programs"][0]["pcr_jitter"]
+        jitter_missing["programs"][0]["pcr_jitter"]["estimate"]
             .as_object_mut()
             .unwrap()
             .remove("sample_count");
+        let mut delivery_missing: serde_json::Value = serde_json::from_str(valid).unwrap();
+        delivery_missing["programs"][0]["pcr_jitter"]
+            .as_object_mut()
+            .unwrap()
+            .remove("delivery");
+        // A schema 1.0 document has the estimate fields at the top level of
+        // pcr_jitter and no delivery; it is rejected for its version.
+        let mut schema_1: serde_json::Value = serde_json::from_str(valid).unwrap();
+        schema_1["schema_version"] = "1.0".into();
+        schema_1["programs"][0]["pcr_jitter"] = serde_json::json!({
+            "status": "ng", "sample_count": 3, "segment_count": 1,
+            "measured_sample_count": 1, "discontinuities": []
+        });
+        let mut schema_3: serde_json::Value = serde_json::from_str(valid).unwrap();
+        schema_3["schema_version"] = "3.0".into();
         let mut bitrate_missing: serde_json::Value = serde_json::from_str(valid).unwrap();
         bitrate_missing["programs"][0]["bitrate"]
             .as_object_mut()
@@ -780,14 +865,24 @@ mod tests {
                 "Unreadable",
             ),
             (
+                "missing delivery",
+                delivery_missing.to_string(),
+                "Unreadable",
+            ),
+            (
                 "missing bitrate field",
                 bitrate_missing.to_string(),
                 "Unreadable",
             ),
             ("summary output", other_output.to_string(), "Unsupported"),
-            ("schema 2.0", schema_2.to_string(), "Unsupported"),
+            (
+                "schema 1.0",
+                schema_1.to_string(),
+                "Update the mpeg-ts-analyzer CLI",
+            ),
+            ("schema 3.0", schema_3.to_string(), "Unsupported"),
         ] {
-            let err = parse_analysis(document.as_bytes(), "1")
+            let err = parse_analysis(document.as_bytes(), "2")
                 .err()
                 .unwrap_or_else(|| panic!("{name} was accepted"));
             assert!(err.contains(expected), "{name}: {err}");
@@ -808,8 +903,9 @@ mod tests {
         let caps: Capabilities =
             serde_json::from_str(include_str!("../tests/fixtures/capabilities.json"))
                 .expect("fixture parses");
-        assert!(caps.supports_json("analysis", "1"));
-        assert!(!caps.supports_json("analysis", "2"));
+        assert!(caps.supports_json("analysis", "2"));
+        assert!(!caps.supports_json("analysis", "1"));
+        assert!(caps.supports_json("packets", "1"));
         assert!(!caps.supports_json("timeline", "1"));
         assert!(caps.supports_progress("json"));
         assert!(!caps.supports_progress("xml"));

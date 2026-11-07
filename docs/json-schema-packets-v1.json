@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/small-teton/mpeg-ts-analyzer/blob/master/docs/json-schema-packets-v1.json",
+  "$id": "https://small-teton.github.io/mpeg-ts-analyzer/json-schema-packets-v1.json",
   "title": "mpeg-ts-analyzer packet documents v1",
-  "description": "Schema for --format json --output packets (a page of packets) and --output packet (one packet decoded). Shared definitions come from the summary report schema (json-schema-v1.json). Objects permit additive fields and status strings permit additive lowercase values within schema version 1.",
+  "description": "Schema for --format json --output packets (a page of packets) and --output packet (one packet decoded). Shared definitions come from the summary report schema (json-schema-v2.json). Objects permit additive fields and status strings permit additive lowercase values within schema version 1.",
   "type": "object",
   "required": [
     "schema_version",
@@ -25,11 +25,11 @@
       "$ref": "#/$defs/input"
     },
     "status": {
-      "$ref": "json-schema-v1.json#/$defs/status",
+      "$ref": "json-schema-v2.json#/$defs/status",
       "description": "Current values: complete, failed."
     },
     "reason": {
-      "$ref": "json-schema-v1.json#/$defs/reasonCode"
+      "$ref": "json-schema-v2.json#/$defs/reasonCode"
     },
     "error": {
       "type": "string",
@@ -38,7 +38,7 @@
     "warnings": {
       "type": "array",
       "items": {
-        "$ref": "json-schema-v1.json#/$defs/warning"
+        "$ref": "json-schema-v2.json#/$defs/warning"
       }
     }
   },
@@ -61,7 +61,7 @@
   ],
   "$defs": {
     "offset": {
-      "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+      "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger"
     },
     "input": {
       "type": "object",
@@ -140,7 +140,7 @@
           "description": "False when the packet has no sync byte; the other fields are then absent or zero."
         },
         "pid": {
-          "$ref": "json-schema-v1.json#/$defs/pid"
+          "$ref": "json-schema-v2.json#/$defs/pid"
         },
         "pusi": {
           "type": "boolean"

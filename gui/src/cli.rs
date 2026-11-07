@@ -13,8 +13,9 @@ use crate::report::{self, AnalysisReport, Capabilities, ProgressEvent};
 /// Overrides the CLI location, mainly for development against a locally built CLI.
 const CLI_ENV: &str = "MPEG_TS_ANALYZER_CLI";
 const CLI_NAME: &str = "mpeg-ts-analyzer";
-/// Major schema version of `--output analysis` this GUI reads.
-const ANALYSIS_SCHEMA_MAJOR: &str = "1";
+/// Major schema version of `--output analysis` this GUI reads. Schema 2.0
+/// split PCR jitter into an estimate and a delivery assessment.
+const ANALYSIS_SCHEMA_MAJOR: &str = "2";
 /// Major schema version of `--output packets` and `--output packet`.
 pub const PACKETS_SCHEMA_MAJOR: &str = "1";
 
@@ -220,9 +221,19 @@ pub fn check_with_timeout(path: &Path, timeout: Duration) -> Result<Cli, String>
         .map_err(|err| format!("Unreadable --capabilities output: {err}"))?;
     // Start runs `--format json --output analysis --progress json`.
     if !caps.supports_json("analysis", ANALYSIS_SCHEMA_MAJOR) || !caps.supports_progress("json") {
+        let analysis = caps
+            .outputs
+            .iter()
+            .find(|o| o.name == "analysis" && o.format == "json")
+            .map_or("no".to_owned(), |o| format!("schema {}", o.schema_version));
         return Err(format!(
-            "CLI {} lacks JSON --output analysis (schema {ANALYSIS_SCHEMA_MAJOR}.x) or --progress json; a newer CLI is needed.",
-            caps.cli_version
+            "CLI {} writes {analysis} JSON --output analysis{}; this GUI needs analysis schema {ANALYSIS_SCHEMA_MAJOR}.x and --progress json. Update the mpeg-ts-analyzer CLI.",
+            caps.cli_version,
+            if caps.supports_progress("json") {
+                ""
+            } else {
+                " and no --progress json"
+            }
         ));
     }
     Ok(Cli {
@@ -538,12 +549,12 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn rejects_documents_that_are_not_analysis_schema_1() {
+    fn rejects_documents_that_are_not_analysis_schema_2() {
         let dir = tempfile_dir("documents");
         for (document, expected) in [
             ("{}", "Unreadable analysis output"),
             (
-                r#"{"schema_version":"2.0","output":"analysis","input":{"path":"a","file_size_bytes":0,"offset_bytes":0},"status":"complete","continuity_events":[],"programs":[],"warnings":[]}"#,
+                r#"{"schema_version":"1.0","output":"analysis","input":{"path":"a","file_size_bytes":0,"offset_bytes":0},"status":"complete","continuity_events":[],"programs":[],"warnings":[]}"#,
                 "Unsupported analysis document",
             ),
         ] {
@@ -560,13 +571,42 @@ mod tests {
     #[test]
     fn rejects_a_cli_without_json_progress() {
         let dir = tempfile_dir("caps");
-        let caps = r#"{"capabilities_version":"1.0","cli_version":"0.9","outputs":[{"name":"analysis","format":"json","schema_version":"1.0"}],"progress_formats":[]}"#;
+        let caps = r#"{"capabilities_version":"1.0","cli_version":"0.9","outputs":[{"name":"analysis","format":"json","schema_version":"2.0"}],"progress_formats":[]}"#;
         std::fs::write(dir.join("caps.json"), caps).unwrap();
         let cli = fake_cli(&dir, &format!("cat '{}'", dir.join("caps.json").display()));
         let Err(err) = check(&cli.path) else {
             panic!("accepted")
         };
-        assert!(err.contains("--progress json"), "{err}");
+        assert!(err.contains("and no --progress json"), "{err}");
+    }
+
+    /// A CLI from before schema 2.0 (such as 2.4.0) is rejected with a
+    /// request to update it; a CLI without the analysis output as well.
+    #[cfg(unix)]
+    #[test]
+    fn rejects_a_cli_with_analysis_schema_1() {
+        let dir = tempfile_dir("caps-1");
+        for (outputs, expected) in [
+            (
+                r#"[{"name":"analysis","format":"json","schema_version":"1.0"}]"#,
+                "CLI 2.4.0 writes schema 1.0 JSON --output analysis; this GUI needs analysis schema 2.x",
+            ),
+            (
+                "[]",
+                "CLI 2.4.0 writes no JSON --output analysis; this GUI needs analysis schema 2.x",
+            ),
+        ] {
+            let caps = format!(
+                r#"{{"capabilities_version":"1.0","cli_version":"2.4.0","outputs":{outputs},"progress_formats":["json"]}}"#
+            );
+            std::fs::write(dir.join("caps.json"), caps).unwrap();
+            let cli = fake_cli(&dir, &format!("cat '{}'", dir.join("caps.json").display()));
+            let Err(err) = check(&cli.path) else {
+                panic!("accepted")
+            };
+            assert!(err.contains(expected), "{err}");
+            assert!(err.contains("Update the mpeg-ts-analyzer CLI"), "{err}");
+        }
     }
 
     fn tempfile_dir(name: &str) -> std::path::PathBuf {

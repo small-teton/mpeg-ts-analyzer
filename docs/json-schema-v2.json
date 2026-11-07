@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/small-teton/mpeg-ts-analyzer/blob/master/docs/json-schema-v1.json",
-  "title": "mpeg-ts-analyzer JSON report v1",
-  "description": "Schema for --format json. Objects permit additive fields and status strings permit additive lowercase values within schema version 1.",
+  "$id": "https://small-teton.github.io/mpeg-ts-analyzer/json-schema-v2.json",
+  "title": "mpeg-ts-analyzer JSON report v2",
+  "description": "Schema for --format json. Objects permit additive fields and status strings permit additive lowercase values within schema version 2.",
   "type": "object",
   "required": [
     "schema_version",
@@ -13,7 +13,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.0"
+      "const": "2.0"
     },
     "input": {
       "$ref": "#/$defs/input"
@@ -350,21 +350,52 @@
     },
     "pcrJitter": {
       "type": "object",
+      "description": "PCR jitter: an estimate, the delivery assessment that decides whether the estimate can be judged, and the resulting status.",
       "required": [
         "status",
-        "sample_count",
-        "segment_count",
-        "measured_sample_count",
-        "discontinuities"
+        "estimate",
+        "delivery"
       ],
       "properties": {
         "status": {
           "$ref": "#/$defs/status",
-          "description": "Current values: ok, warning, ng, skipped."
+          "description": "Current values: ok, warning, ng (judged against ±500 ns / ±25 µs, only when delivery.assessment is constant), not_assessable (an estimate exists but delivery is not constant), skipped (no estimate could be made). skipped takes precedence over not_assessable."
         },
         "reason": {
           "type": "string",
-          "description": "Human-readable skip explanation; not a stable matching interface."
+          "description": "Human-readable explanation for skipped and not_assessable; not a stable matching interface."
+        },
+        "estimate": {
+          "$ref": "#/$defs/pcrJitterEstimate"
+        },
+        "delivery": {
+          "$ref": "#/$defs/pcrDelivery"
+        }
+      }
+    },
+    "pcrJitterEstimate": {
+      "type": "object",
+      "description": "The jitter estimated with one model. The value fields are present when the estimate was computed (status other than skipped).",
+      "required": [
+        "model",
+        "pcr_pids",
+        "sample_count",
+        "segment_count",
+        "observations",
+        "discontinuities"
+      ],
+      "properties": {
+        "model": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Current values: byte_position (the expected PCR is interpolated from its neighbors by byte position, which assumes constant delivery)."
+        },
+        "pcr_pids": {
+          "type": "array",
+          "description": "PIDs the PCRs were taken from, in order of first appearance.",
+          "items": {
+            "$ref": "#/$defs/pid"
+          }
         },
         "sample_count": {
           "$ref": "#/$defs/nonNegativeInteger"
@@ -372,8 +403,17 @@
         "segment_count": {
           "$ref": "#/$defs/nonNegativeInteger"
         },
-        "measured_sample_count": {
-          "$ref": "#/$defs/nonNegativeInteger"
+        "observations": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "PCRs with a neighbor on both sides in their segment, each giving one jitter value."
+        },
+        "max_abs_jitter_ns": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Largest |jitter|, the value the status is judged on."
+        },
+        "max_abs_jitter_offset_bytes": {
+          "type": "integer"
         },
         "max_jitter_ns": {
           "type": "number"
@@ -401,6 +441,62 @@
           "items": {
             "$ref": "#/$defs/pcrDiscontinuity"
           }
+        }
+      }
+    },
+    "pcrDelivery": {
+      "type": "object",
+      "description": "Whether the stream supports the constant-delivery premise of the byte_position model, from its multiplex rate over windows of at least window_seconds of PCR time.",
+      "required": [
+        "assessment",
+        "reason",
+        "window_seconds",
+        "window_count",
+        "tolerance_percent",
+        "plausible_jitter_limit_ns"
+      ],
+      "properties": {
+        "assessment": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: constant, variable, unknown."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Human-readable explanation of the assessment; not a stable matching interface."
+        },
+        "window_seconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "window_count": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "average_rate_bps": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Multiplex rate over all windows (transport-stream bytes, all PIDs). Present when window_count > 0."
+        },
+        "min_window_rate_bps": {
+          "type": "number",
+          "minimum": 0
+        },
+        "max_window_rate_bps": {
+          "type": "number",
+          "minimum": 0
+        },
+        "max_deviation_percent": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Largest deviation of a window rate from average_rate_bps. Present when window_count >= 2."
+        },
+        "tolerance_percent": {
+          "type": "number",
+          "minimum": 0
+        },
+        "plausible_jitter_limit_ns": {
+          "type": "number",
+          "minimum": 0,
+          "description": "A larger estimated |jitter| makes the delivery variable."
         }
       }
     },

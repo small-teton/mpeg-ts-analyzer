@@ -39,7 +39,7 @@ func TestPsiVersionChangeFixtures(t *testing.T) {
 		if pat.OffsetBytes != 1131*packetSize || len(pat.PMTPIDChanges) != 1 || pat.PMTPIDChanges[0].PMTPID != "0x1100" {
 			t.Errorf("%s PAT transition: %s", fixture.path, toJSON(t, pat))
 		}
-		if report.ContinuityCounter.Status != "ok" || report.PCRJitter.SegmentCount != 2 || report.Bitrate.SegmentCount != 2 || report.Compliance.MaxPCRInterval.Status != "ok" {
+		if report.ContinuityCounter.Status != "ok" || report.PCRJitter.Estimate.SegmentCount != 2 || report.Bitrate.SegmentCount != 2 || report.Compliance.MaxPCRInterval.Status != "ok" {
 			t.Errorf("%s analysis: %+v %+v %+v", fixture.path, report.ContinuityCounter, report.PCRJitter, report.Bitrate)
 		}
 		analysis, err := decodeRangeAnalysis(t, fixture.path, options.Options{})

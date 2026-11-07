@@ -21,12 +21,14 @@ ffmpeg -f lavfi -i "color=c=red:s=320x240:d=2,format=yuv420p" \
 ## Diagnostic sample with every Overview finding
 
 `sample_data/sample_188byte_all_findings.ts` and its 192-byte M2TS twin
-`sample_data/sample_192byte_all_findings.ts` (15 KiB each) are **intentionally
+`sample_data/sample_192byte_all_findings.ts` (23 KiB each) are **intentionally
 invalid**. They are not examples of a good stream: each carries deliberate
 defects so that every Overview compliance card reports a problem in one
 analysis — a 160 ms PCR interval, a 1200 ms PCR → PTS/DTS gap, a backward PTS,
-one continuity-counter gap and a PCR that is 100 µs late. Use the normal
-sample above for a first look at the analyzer.
+one continuity-counter gap and a PCR that is 100 µs late. The stream is
+delivered at a constant 75.2 kbit/s for 2.4 s, long enough for two 1-second
+windows, so the PCR jitter analysis finds constant delivery and judges the
+late PCR (`NG`). Use the normal sample above for a first look at the analyzer.
 
 ```bash
 go run ./tools/generate_all_findings -output sample_data/sample_188byte_all_findings.ts

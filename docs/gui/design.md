@@ -146,7 +146,8 @@ check cards, the elementary stream table, and findings.
 
 - **Cards**: Max PCR interval, PCR → PTS/DTS gap, PTS/DTS anomalies,
   Continuity counter and PCR jitter, each with the CLI's status as a badge,
-  the value and a short note (PCR jitter: `max |estimated jitter|`).
+  the value and a short note (PCR jitter: the CLI's delivery assessment and
+  its evidence, or the reason it is not assessable).
 - **Explanations**: a focusable information button next to each card title
   (accessible name and tooltip `About <card>`) opens a window titled with the
   card: what it measures, scope, value, every status with its threshold,
@@ -154,7 +155,8 @@ check cards, the elementary stream table, and findings.
   the close button or a click outside closes it; it keeps no other state. The
   texts live in one table, `gui/src/views/metric_help.rs`, and state the
   CLI's thresholds (100 ms, 1000 ms, ±500 ns, ±25 µs) and, for PCR jitter, the
-  byte-position model and its constant-rate assumption.
+  byte-position model, the delivery assessment (1-second window rates within
+  ±1 %, no estimate beyond 1 ms) and `not_assessable`.
 - **Layout**: the cards form a row-major grid. The column count is how many
   220-point cards with 8-point spacing fit in the visible width (at least one);
   cards in a row share the width equally, and below one card width the single
@@ -170,8 +172,9 @@ check cards, the elementary stream table, and findings.
   `skipped`, including one the GUI does not know, is a finding with the CLI's
   status as its badge, so an `NG` or `WARNING` card can never sit next to an
   empty list. Each finding names its scope (program or whole multiplex); its
-  metric link opens the card's explanation. `skipped` cards are listed under
-  "Unavailable analysis" with the CLI's reason.
+  metric link opens the card's explanation. `skipped` cards and a PCR jitter
+  card that is `not_assessable` are listed under "Unavailable analysis" with
+  their status as the badge and the CLI's reason; they are not findings.
 
 ### Timeline
 
@@ -481,7 +484,7 @@ GUI; the signed trusted comment must name exactly that file. Only then does
 | Explain each Overview card in a window opened by a focusable information button, from one table of texts | Works with keyboard and touch; long enough for limitations; one source for cards, findings and tests | Longer text on the cards; hover-only tooltips |
 | Overview cards in a responsive row-major grid | A narrow window must not hide a verdict | One wrapping row with fixed widths; a horizontal scroller |
 | One Findings list counting every non-OK card, events and warnings; skipped checks listed separately | The count must agree with the cards; an event counts once | The former Warnings list of parser events only |
-| The GUI shows the CLI's statuses as they are, including PCR jitter `ng` from the byte-position estimate, and only labels it an estimate | The CLI is the source of truth; whether a file-based estimate deserves a verdict is a CLI/JSON contract decision (#152) | Downgrading or hiding `ng` in the GUI |
+| The GUI shows the CLI's statuses as they are; PCR jitter `not_assessable` is unavailable analysis, not a finding | The CLI decides whether a file-based estimate deserves a verdict (schema 2.0, #152); a variable-rate file is not evidence of a PCR fault | Downgrading or hiding `ng` in the GUI; grading the estimate in the GUI |
 | Modal progress dialog during analysis | Results of every analysis screen are being replaced; one clear place to wait and cancel | Per-screen overlays while other screens stay usable |
 
 ## Open questions

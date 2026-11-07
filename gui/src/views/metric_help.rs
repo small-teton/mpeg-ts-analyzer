@@ -152,23 +152,27 @@ pub const HELP: [MetricHelp; 5] = [
         metric: Metric::PcrJitter,
         title: "PCR jitter",
         note: "max |estimated jitter|",
-        measures: "An estimate of how far each PCR value is from the time its packet would be delivered. A file has no packet-arrival timestamps, so the byte position stands in for time: each PCR is compared with the value interpolated from its two neighbors by byte position. This assumes the stream is delivered at an approximately constant rate.",
-        scope: "The selected program: the PCR PID named in its PMT.",
-        value: "The worst absolute estimated jitter (the largest deviation either way). It is an estimate from the file, not a measurement of the PCRs as they arrived.",
+        measures: "An estimate of how far each PCR value is from the time its packet would be delivered. A file has no packet-arrival timestamps, so the byte position stands in for time (the byte_position model): each PCR is compared with the value interpolated from its two neighbors by byte position. That is exact only when the stream is delivered at a constant rate, so the CLI first assesses the delivery from the stream itself. It groups the PCR intervals into windows of at least 1 s of PCR time and compares their multiplex rates: delivery is constant when every window is within ±1 % of the average rate and no estimated jitter exceeds 1 ms, variable when a window deviates more or the estimate reaches milliseconds (no PCR error is that large; only a varying rate explains it), and unknown with fewer than two windows.",
+        scope: "The selected program: the PCR PID named in its PMT. The delivery windows count every packet of the multiplex.",
+        value: "The worst absolute estimated jitter (the largest deviation either way). It is an estimate from the file, not a measurement of the PCRs as they arrived. The note gives the delivery assessment and its evidence: the number of 1-second windows, the largest deviation of a window's rate from the average, and the average rate.",
         statuses: &[
             (
                 "ok",
-                "Max |estimated jitter| is within ±500 ns (ISO/IEC 13818-1 PCR accuracy).",
+                "Delivery is constant and max |estimated jitter| is within ±500 ns (ISO/IEC 13818-1 PCR accuracy).",
             ),
             (
                 "warning",
-                "Beyond ±500 ns but within ±25 µs (the tolerance DVB expects receivers to handle).",
+                "Delivery is constant; beyond ±500 ns but within ±25 µs (the tolerance DVB expects receivers to handle).",
             ),
-            ("ng", "Beyond ±25 µs."),
+            ("ng", "Delivery is constant; beyond ±25 µs."),
+            (
+                "not_assessable",
+                "Delivery is variable or unknown, so the estimate is shown but not graded. Listed under Unavailable analysis, not as a finding.",
+            ),
             ("skipped", "Not estimated; see below."),
         ],
-        skipped: "Skipped with fewer than three PCRs, when no segment between discontinuities has three PCRs, or when more than 30% of the PCRs start a new segment.",
-        limitations: "This is not a direct hardware or TR 101 290 measurement. When the delivery rate varies between PCRs (variable-bitrate content on the PCR PID, or a stream that was remultiplexed), the byte position is a poor clock and the estimate can be milliseconds even if the PCRs were accurate on the wire. Read a WARNING or NG together with the delivery: it is meaningful for a constant-rate multiplex.",
+        skipped: "Skipped with fewer than three PCRs, when no segment between discontinuities has three PCRs, or when more than 30% of the PCRs start a new segment. Skipped takes precedence over not assessable.",
+        limitations: "This is not a direct hardware or TR 101 290 measurement. The delivery assessment can only support the constant-rate premise: a window rate within ±1 % does not rule out rate changes between two PCRs, so a graded estimate between 25 µs and 1 ms can still come from the delivery rather than the PCR values. A range shorter than about two seconds of PCR time is not assessable. Neither the file extension nor null packets are taken as evidence of constant delivery.",
         detail: Some((
             Screen::Bitrate,
             "Bitrate plots the estimated jitter over time and its histogram.",
@@ -208,7 +212,11 @@ pub fn window(ctx: &egui::Context, open: &mut Option<Metric>, just_opened: bool)
             ui.strong("Verdicts");
             for (status, meaning) in help.statuses {
                 ui.horizontal_top(|ui| {
-                    badge(ui, &status.to_uppercase(), status_verdict(status));
+                    badge(
+                        ui,
+                        &status.to_uppercase().replace('_', " "),
+                        status_verdict(status),
+                    );
                     ui.add(egui::Label::new(*meaning).wrap());
                 });
             }
@@ -288,17 +296,23 @@ mod tests {
             "±25 µs",
             "no packet-arrival timestamps",
             "byte position stands in for time",
-            "approximately constant rate",
+            "delivered at a constant rate",
+            "±1 %",
+            "1 ms",
+            "fewer than two windows",
             "not a direct hardware or TR 101 290 measurement",
         ] {
             assert!(jitter.contains(phrase), "{phrase}");
         }
-        assert!(
-            Metric::PcrJitter
-                .help()
-                .statuses
-                .iter()
-                .any(|(s, _)| *s == "skipped")
-        );
+        for status in ["skipped", "not_assessable"] {
+            assert!(
+                Metric::PcrJitter
+                    .help()
+                    .statuses
+                    .iter()
+                    .any(|(s, _)| *s == status),
+                "{status}"
+            );
+        }
     }
 }

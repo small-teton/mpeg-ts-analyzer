@@ -42,7 +42,7 @@ func TestRangeAnalysisMatchesPerProgramRuns(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", path, err)
 		}
-		if report.SchemaVersion != "1.0" || report.Output != "analysis" || report.Status != "complete" || len(report.Programs) != 2 {
+		if report.SchemaVersion != "2.0" || report.Output != "analysis" || report.Status != "complete" || len(report.Programs) != 2 {
 			t.Fatalf("%s: unexpected report header: %+v", path, report)
 		}
 		info, _ := os.Stat(path)

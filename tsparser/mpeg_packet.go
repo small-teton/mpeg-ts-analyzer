@@ -136,6 +136,7 @@ func trailingBytesAtEOF(reader io.Reader, buf []byte, rest int64) int {
 
 func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos []ProgramInfo, tables *trackedTables, options options.Options, packetSize int, endOffset int64, quiet bool) (*pesAnalysis, error) {
 	analyzer := newProgramAnalyzer(options, *pos, uint16(options.Program), pmtPid, pcrPid, programInfos, false)
+	analyzer.pcrJitter.packetSize = packetSize
 	continuity := newContinuityCounterSummary(pmtPid, pcrPid, programInfos)
 	var psi *psiTracker
 	if tables != nil {
@@ -327,7 +328,7 @@ func (a *programAnalyzer) observe(tsPacket *TsPacket, pos int64, duplicate bool)
 			tsPacket.adaptationField.DumpPcr(a.lastPcr)
 		}
 		if a.collectJitter {
-			a.pcrJitter.Add(pos, pcr, discontinuity)
+			a.pcrJitter.Add(pos, pid, pcr, discontinuity)
 		}
 		// Complete the PCR bracket for every active PES, including short PES
 		// packets which have no continuation packet after this PCR.

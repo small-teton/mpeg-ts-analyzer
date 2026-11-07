@@ -493,10 +493,20 @@ fn findings_account_for_every_card_that_is_not_ok() {
     harness.run();
     assert_eq!(harness.state().overview.help, Some(Metric::PcrJitter));
 
-    // The two-program sample: only PCR jitter is NG.
+    // The two-program sample is VBR: PCR jitter is not assessable, which is
+    // unavailable analysis with the CLI's reason, not a finding.
     let harness = self::harness(analyzed_app());
-    harness.get_by_label("Findings (1)");
-    harness.get_by_role_and_label(Role::Link, "PCR jitter (estimate)");
+    harness.get_by_label("Findings (0)");
+    harness.get_by_label("Unavailable analysis (1)");
+    // The badge of the card and of the unavailable analysis.
+    assert_eq!(harness.query_all_by_label("NOT ASSESSABLE").count(), 2);
+    harness.get_by_role_and_label(Role::Link, "PCR jitter");
+    harness.get_by_label_contains("Delivery variable: the estimated jitter reaches 55.082ms");
+    assert!(
+        harness
+            .query_by_role_and_label(Role::Link, "PCR jitter (estimate)")
+            .is_none()
+    );
 
     // Every card OK: no finding.
     let mut clean: serde_json::Value = serde_json::from_str(include_str!(
@@ -542,7 +552,7 @@ fn all_findings_fixture_matches_the_cli() {
     assert_eq!(output, fixture, "regenerate the fixture with the CLI");
 
     let m2ts = crate::cli::run_on_sample("sample_192byte_all_findings.ts", &args).unwrap();
-    let m2ts = crate::report::parse_analysis(&m2ts, "1").unwrap();
+    let m2ts = crate::report::parse_analysis(&m2ts, "2").unwrap();
     let report = all_findings_report();
     let summary = |report: &AnalysisReport| -> Vec<(String, String)> {
         crate::views::overview::findings(report, &report.programs[0])

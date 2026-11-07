@@ -153,8 +153,9 @@ func TestPsiTrackingAppliesPmtChange(t *testing.T) {
 		if c := report.Compliance.MaxPCRInterval; c.Observations != 10 || *c.ValueMs != 40 {
 			t.Errorf("m2ts=%v PCR interval: %+v", m2ts, c)
 		}
-		jitter := report.PCRJitter
-		if jitter.SampleCount != 12 || jitter.SegmentCount != 2 || len(jitter.Discontinuities) != 1 || jitter.Discontinuities[0].OffsetBytes != stream.offset(changeAt+2, m2ts) {
+		jitter := report.PCRJitter.Estimate
+		if jitter.SampleCount != 12 || jitter.SegmentCount != 2 || len(jitter.Discontinuities) != 1 || jitter.Discontinuities[0].OffsetBytes != stream.offset(changeAt+2, m2ts) ||
+			!jsonEqual(t, jitter.PCRPIDs, []string{"0x0100", "0x0200"}) {
 			t.Errorf("m2ts=%v jitter: %+v", m2ts, jitter)
 		}
 		bitrate := report.Bitrate

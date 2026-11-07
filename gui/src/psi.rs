@@ -460,7 +460,7 @@ pub(crate) mod tests {
 
     pub(crate) fn analyze(sample: &str) -> Option<AnalysisReport> {
         let json = run_on_sample(sample, &["--format", "json", "--output", "analysis"])?;
-        Some(parse_analysis(&json, "1").expect("analysis parses"))
+        Some(parse_analysis(&json, "2").expect("analysis parses"))
     }
 
     fn every_packet(sample: &str) -> PacketsPage {

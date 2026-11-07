@@ -132,6 +132,6 @@ Apache License 2.0; see [LICENSE](LICENSE).
 [docs-psi]: https://small-teton.github.io/mpeg-ts-analyzer/cli/psi/
 [docs-dumps]: https://small-teton.github.io/mpeg-ts-analyzer/cli/dumps/
 [docs-json-output]: https://small-teton.github.io/mpeg-ts-analyzer/reference/json-output/
-[docs-json-schema]: https://small-teton.github.io/mpeg-ts-analyzer/json-schema-v1.json
+[docs-json-schema]: https://small-teton.github.io/mpeg-ts-analyzer/json-schema-v2.json
 [docs-development]: https://small-teton.github.io/mpeg-ts-analyzer/development/
 [docs-release]: https://small-teton.github.io/mpeg-ts-analyzer/development/release/

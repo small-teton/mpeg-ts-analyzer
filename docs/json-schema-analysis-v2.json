@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/small-teton/mpeg-ts-analyzer/blob/master/docs/json-schema-analysis-v1.json",
-  "title": "mpeg-ts-analyzer range analysis v1",
-  "description": "Schema for --format json --output analysis: every program of the analyzed range in one document, with time series. Shared definitions come from the summary report schema (json-schema-v1.json). Objects permit additive fields and status strings permit additive lowercase values within schema version 1.",
+  "$id": "https://small-teton.github.io/mpeg-ts-analyzer/json-schema-analysis-v2.json",
+  "title": "mpeg-ts-analyzer range analysis v2",
+  "description": "Schema for --format json --output analysis: every program of the analyzed range in one document, with time series. Shared definitions come from the summary report schema (json-schema-v2.json). Objects permit additive fields and status strings permit additive lowercase values within schema version 2.",
   "type": "object",
   "required": [
     "schema_version",
@@ -15,7 +15,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.0"
+      "const": "2.0"
     },
     "output": {
       "const": "analysis"
@@ -24,11 +24,11 @@
       "$ref": "#/$defs/input"
     },
     "status": {
-      "$ref": "json-schema-v1.json#/$defs/status",
+      "$ref": "json-schema-v2.json#/$defs/status",
       "description": "Current values: complete, incomplete, failed."
     },
     "reason": {
-      "$ref": "json-schema-v1.json#/$defs/reasonCode",
+      "$ref": "json-schema-v2.json#/$defs/reasonCode",
       "description": "Stable machine-readable reason code. In addition to the summary report's codes: no_program_analyzed."
     },
     "error": {
@@ -36,15 +36,15 @@
       "description": "Human-readable error detail; not a stable matching interface."
     },
     "analysis_start_offset_bytes": {
-      "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger",
+      "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger",
       "description": "Offset where the scan started: the earliest program's analysis start. Absent when no program was analyzed."
     },
     "analysis_end_offset_bytes": {
-      "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger",
+      "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger",
       "description": "Offset where the scan ended."
     },
     "continuity_counter": {
-      "$ref": "json-schema-v1.json#/$defs/continuity",
+      "$ref": "json-schema-v2.json#/$defs/continuity",
       "description": "Continuity-counter summary for the whole multiplex."
     },
     "continuity_events": {
@@ -63,7 +63,7 @@
       "type": "array",
       "description": "PAT and PMT version changes applied during the scan, in stream order, for the PAT and the analyzed programs. Absent when no change was applied. programs describes the first complete PAT/PMT set.",
       "items": {
-        "$ref": "json-schema-v1.json#/$defs/psiTransition"
+        "$ref": "json-schema-v2.json#/$defs/psiTransition"
       }
     },
     "psi_layout": {
@@ -73,7 +73,7 @@
     "warnings": {
       "type": "array",
       "items": {
-        "$ref": "json-schema-v1.json#/$defs/warning"
+        "$ref": "json-schema-v2.json#/$defs/warning"
       }
     }
   },
@@ -90,7 +90,7 @@
           "type": "string"
         },
         "file_size_bytes": {
-          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+          "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger"
         },
         "packet_size_bytes": {
           "enum": [
@@ -99,10 +99,10 @@
           ]
         },
         "offset_bytes": {
-          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+          "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger"
         },
         "limit_bytes": {
-          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+          "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger"
         }
       }
     },
@@ -116,10 +116,10 @@
       ],
       "properties": {
         "offset_bytes": {
-          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+          "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger"
         },
         "pid": {
-          "$ref": "json-schema-v1.json#/$defs/pid"
+          "$ref": "json-schema-v2.json#/$defs/pid"
         },
         "expected_cc": {
           "type": "integer",
@@ -137,16 +137,16 @@
       "description": "A program of the summary report's program shape, plus its analysis. Analysis fields are absent for a program whose PMT was not found (status incomplete, reason pmt_parse_failed).",
       "allOf": [
         {
-          "$ref": "json-schema-v1.json#/$defs/program"
+          "$ref": "json-schema-v2.json#/$defs/program"
         }
       ],
       "properties": {
         "analysis_start_offset_bytes": {
-          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger",
+          "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger",
           "description": "Offset of the first packet analyzed for this program: just after its PMT."
         },
         "analysis_end_offset_bytes": {
-          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger",
+          "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger",
           "description": "Offset after the last packet analyzed for this program, when a PAT version change removed it before the end of the scan. Absent otherwise."
         },
         "average_bitrate_bps": {
@@ -154,16 +154,16 @@
           "minimum": 0
         },
         "compliance": {
-          "$ref": "json-schema-v1.json#/$defs/compliance"
+          "$ref": "json-schema-v2.json#/$defs/compliance"
         },
         "timestamp_anomalies": {
-          "$ref": "json-schema-v1.json#/$defs/timestampAnomalies"
+          "$ref": "json-schema-v2.json#/$defs/timestampAnomalies"
         },
         "pcr_jitter": {
-          "$ref": "json-schema-v1.json#/$defs/pcrJitter"
+          "$ref": "json-schema-v2.json#/$defs/pcrJitter"
         },
         "bitrate": {
-          "$ref": "json-schema-v1.json#/$defs/bitrate"
+          "$ref": "json-schema-v2.json#/$defs/bitrate"
         },
         "series": {
           "$ref": "#/$defs/series"
@@ -203,7 +203,8 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/jitterPoint"
-          }
+          },
+          "description": "The byte_position estimate of every measured PCR, in stream order (pcr_jitter.estimate.model)."
         },
         "bitrate": {
           "$ref": "#/$defs/bitrateWindows"
@@ -219,7 +220,7 @@
       ],
       "properties": {
         "offset_bytes": {
-          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+          "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger"
         },
         "elapsed_ms": {
           "type": "number",
@@ -249,10 +250,10 @@
       ],
       "properties": {
         "pid": {
-          "$ref": "json-schema-v1.json#/$defs/pid"
+          "$ref": "json-schema-v2.json#/$defs/pid"
         },
         "offset_bytes": {
-          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+          "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger"
         },
         "elapsed_ms": {
           "type": "number",
@@ -283,10 +284,10 @@
       ],
       "properties": {
         "pid": {
-          "$ref": "json-schema-v1.json#/$defs/pid"
+          "$ref": "json-schema-v2.json#/$defs/pid"
         },
         "offset_bytes": {
-          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+          "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger"
         },
         "kind": {
           "type": "string",
@@ -305,7 +306,7 @@
       ],
       "properties": {
         "offset_bytes": {
-          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+          "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger"
         },
         "jitter_ns": {
           "type": "number"
@@ -344,7 +345,7 @@
             ],
             "properties": {
               "pid": {
-                "$ref": "json-schema-v1.json#/$defs/pid"
+                "$ref": "json-schema-v2.json#/$defs/pid"
               },
               "label": {
                 "type": "string"
@@ -353,7 +354,7 @@
                 "type": "array",
                 "description": "Bytes of the PID in each window of duration_seconds. Their sum times 8, divided by the sum of duration_seconds, is the PID's average bitrate.",
                 "items": {
-                  "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+                  "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger"
                 }
               },
               "bps": {
@@ -414,11 +415,11 @@
       ],
       "properties": {
         "offset_bytes": {
-          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger",
+          "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger",
           "description": "Offset of the packet in which the first copy of the run starts."
         },
         "last_offset_bytes": {
-          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger",
+          "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger",
           "description": "Offset of the packet in which the last copy of the run starts."
         },
         "count": {
@@ -426,18 +427,18 @@
           "minimum": 1
         },
         "pid": {
-          "$ref": "json-schema-v1.json#/$defs/pid"
+          "$ref": "json-schema-v2.json#/$defs/pid"
         },
         "table": {
-          "$ref": "json-schema-v1.json#/$defs/status",
+          "$ref": "json-schema-v2.json#/$defs/status",
           "description": "Current values: pat, pmt."
         },
         "status": {
-          "$ref": "json-schema-v1.json#/$defs/status",
+          "$ref": "json-schema-v2.json#/$defs/status",
           "description": "Current values: applied (part of a table the analysis applied: the first complete PAT/PMT or a psi_transitions entry), retransmission (identical to a section of an applied table, including a late replay of a superseded version), not_applied (valid but never applied: an incomplete or conflicting version, current_next_indicator 0, or the PMT of a program that is not analyzed), invalid."
         },
         "invalid_reason": {
-          "$ref": "json-schema-v1.json#/$defs/status",
+          "$ref": "json-schema-v2.json#/$defs/status",
           "description": "Present when status is invalid. Current values: malformed, invalid_crc32, section_number_beyond_last, parse_error."
         },
         "transport_stream_id": {
@@ -488,11 +489,11 @@
       ],
       "properties": {
         "offset_bytes": {
-          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger",
+          "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger",
           "description": "First packet the layout applies to. The first layout starts at the first packet of the range, before its tables were complete; pat_offset_bytes and pmt_offset_bytes say where they were."
         },
         "end_offset_bytes": {
-          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger",
+          "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger",
           "description": "Offset where the next layout starts or the scan ended."
         },
         "transition_indices": {
@@ -509,7 +510,7 @@
           "maximum": 31
         },
         "pat_offset_bytes": {
-          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger",
+          "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger",
           "description": "Offset of the packet that completed the PAT in effect. For the first layout, the first complete PAT of the range."
         },
         "programs": {
@@ -535,7 +536,7 @@
           "maximum": 65535
         },
         "pmt_pid": {
-          "$ref": "json-schema-v1.json#/$defs/pid"
+          "$ref": "json-schema-v2.json#/$defs/pid"
         },
         "pmt_version": {
           "type": "integer",
@@ -543,16 +544,16 @@
           "maximum": 31
         },
         "pmt_offset_bytes": {
-          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger",
+          "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger",
           "description": "Offset of the packet that completed the PMT in effect. For the first layout, where discovery completed the PMT the analysis started from; discovery reads a PMT only after the first complete PAT, so an earlier copy can appear in sections."
         },
         "pcr_pid": {
-          "$ref": "json-schema-v1.json#/$defs/pid"
+          "$ref": "json-schema-v2.json#/$defs/pid"
         },
         "elementary_streams": {
           "type": "array",
           "items": {
-            "$ref": "json-schema-v1.json#/$defs/elementaryStream"
+            "$ref": "json-schema-v2.json#/$defs/elementaryStream"
           }
         }
       }
@@ -568,17 +569,17 @@
       ],
       "properties": {
         "pid": {
-          "$ref": "json-schema-v1.json#/$defs/pid"
+          "$ref": "json-schema-v2.json#/$defs/pid"
         },
         "packet_count": {
           "type": "integer",
           "minimum": 1
         },
         "first_offset_bytes": {
-          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+          "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger"
         },
         "last_offset_bytes": {
-          "$ref": "json-schema-v1.json#/$defs/nonNegativeInteger"
+          "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger"
         },
         "roles": {
           "type": "array",
@@ -597,7 +598,7 @@
       ],
       "properties": {
         "kind": {
-          "$ref": "json-schema-v1.json#/$defs/status",
+          "$ref": "json-schema-v2.json#/$defs/status",
           "description": "Current values: pat, pmt, pcr, elementary_stream, null, unannounced."
         },
         "program_number": {
@@ -607,7 +608,7 @@
           "description": "For pmt, pcr and elementary_stream."
         },
         "stream_type": {
-          "$ref": "json-schema-v1.json#/$defs/streamType",
+          "$ref": "json-schema-v2.json#/$defs/streamType",
           "description": "For elementary_stream."
         },
         "stream_type_description": {

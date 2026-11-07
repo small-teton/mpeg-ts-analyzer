@@ -84,22 +84,19 @@ pub fn show_report(
                     );
                 });
             columns[0].horizontal_wrapped(|ui| match jitter {
-                Some(j) if j.max_jitter_ns.is_some() => {
-                    let max_abs = j
-                        .max_jitter_ns
-                        .unwrap_or(0.0)
-                        .abs()
-                        .max(j.min_jitter_ns.unwrap_or(0.0).abs());
+                Some(j) if j.estimate.max_abs_jitter_ns.is_some() => {
+                    let max_abs = j.estimate.max_abs_jitter_ns.unwrap_or(0.0);
                     ui.weak("max |dev|");
                     ui.monospace(format!("{:.6} ms", max_abs / 1e6));
-                    if let Some(mean) = j.average_absolute_jitter_ns {
+                    if let Some(mean) = j.estimate.average_absolute_jitter_ns {
                         ui.weak("mean |dev|");
                         ui.monospace(format!("{:.6} ms", mean / 1e6));
                     }
-                    if let Some(within) = j.within_500ns_percent {
+                    if let Some(within) = j.estimate.within_500ns_percent {
                         ui.weak("within ±500 ns");
                         ui.monospace(format!("{within:.1} %"));
                     }
+                    ui.weak(j.delivery.summary());
                 }
                 Some(j) => {
                     ui.weak(j.reason.as_deref().unwrap_or("Not enough PCR samples."));

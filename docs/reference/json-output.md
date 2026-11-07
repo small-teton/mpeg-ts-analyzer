@@ -48,14 +48,16 @@ human-oriented output remains available in the default text mode.
 
 PID values are zero-padded hexadecimal strings such as `"0x0100"`. Numeric
 units are part of field names, for example `value_ms`, `offset_bytes`, and
-`average_bps`. The top-level `schema_version` is currently `"1.0"`. Within one
+`average_bps`. The top-level `schema_version` of the summary and analysis
+documents is currently `"2.0"` (packet documents: `"1.0"`). Within one
 schema version, new fields may be added, but existing fields will not be removed
 or change type or enum meaning. New enum values may be added, so consumers must
 treat unknown values as unrecognized. Removing or retyping a field, or changing
 an existing enum's meaning, requires a schema-version increment.
-See [JSON output](#json-output) for an annotated example.
+See [JSON output](#json-output) for an annotated example and
+[Changes in schema 2.0](#changes-in-schema-20) for what changed from 1.0.
 The machine-readable contract is published as
-[`docs/json-schema-v1.json`](../json-schema-v1.json) (JSON Schema Draft
+[`docs/json-schema-v2.json`](../json-schema-v2.json) (JSON Schema Draft
 2020-12).
 
 ## JSON output
@@ -66,12 +68,12 @@ same analysis is performed as in text mode; `--dump-pcr-jitter` and
 order, PID collections are sorted numerically, and PID values use zero-padded
 hexadecimal strings. Diagnostics and the final error message use stderr. The
 formal Draft 2020-12 specification is
-[`docs/json-schema-v1.json`](../json-schema-v1.json).
+[`docs/json-schema-v2.json`](../json-schema-v2.json).
 
 ```sh
 $ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts --format json
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "input": {
     "path": "sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts",
     "packet_size_bytes": 188,
@@ -148,7 +150,9 @@ Status and top-level reason values are:
 | `programs[].status` | `complete`, `incomplete` |
 | incomplete program `reason` | `pmt_parse_failed` |
 | `compliance.*.status` | `ok`, `ng`, `skipped` |
-| `pcr_jitter.status` | `ok`, `warning`, `ng`, `skipped` |
+| `pcr_jitter.status` | `ok`, `warning`, `ng`, `not_assessable`, `skipped` |
+| `pcr_jitter.estimate.model` | `byte_position` |
+| `pcr_jitter.delivery.assessment` | `constant`, `variable`, `unknown` |
 | `bitrate.status` | `ok`, `skipped` |
 | `continuity_counter.status` | `ok`, `errors` |
 | `timestamp_anomalies.status` | `ok`, `anomalies` |
@@ -183,16 +187,170 @@ program totals.
 JSON contains aggregate results only, not per-packet dumps, so output size does
 not scale with every packet in a large input. Packet-level dump flags are
 rejected with `--format json` instead of mixing human text into stdout. Schema
-`1.x` may gain fields and enum values. Consumers must treat unknown enum values
+`2.x` may gain fields and enum values. Consumers must treat unknown enum values
 as unrecognized. Existing fields are not removed or retyped, and existing enum
 meanings do not change; those incompatible changes increment `schema_version`.
+
+## PCR jitter
+
+`--dump-pcr-jitter` (and every `--output analysis` program) adds `pcr_jitter`.
+A file has no packet-arrival times, so the jitter of each PCR is **estimated**
+from its byte position: the PCR is compared with the value interpolated from
+its two neighbors, which is exact only when the multiplex is delivered at a
+constant rate. A PCR stamping error and a change of delivery rate look the same
+in a file, so the estimate is judged only when the stream itself shows constant
+delivery. The object has three parts:
+
+- **`estimate`** — the jitter estimated with one `model`. The only model is
+  `byte_position`; validated M2TS arrival timestamps may add another one later.
+  `pcr_pids` lists the PIDs the PCRs came from (several when a PMT version
+  changes the `PCR_PID`), `observations` the PCRs that have a neighbor on both
+  sides in their segment, and `max_abs_jitter_ns` / `max_abs_jitter_offset_bytes`
+  the worst value the status is judged on, next to the signed extremes, the
+  average `|jitter|`, the share within ±500 ns and the PCR discontinuities that
+  split the samples into segments. The value fields are absent when no
+  estimate could be made. `series.pcr_jitter` of `--output analysis` holds the
+  estimate of every observation.
+- **`delivery`** — whether the stream supports the constant-delivery premise.
+  The PCR intervals of each timing segment are grouped into consecutive windows
+  of at least `window_seconds` (1 s) of PCR time; each window starts and ends on
+  a PCR packet, so its multiplex rate (transport-stream bytes of all PIDs over
+  PCR time) is exact. `assessment` is
+  - `variable` when, with at least two windows, a window's rate deviates from
+    the range average (`average_rate_bps`) by more than `tolerance_percent`
+    (1 %), or when the estimate reaches more than `plausible_jitter_limit_ns`
+    (1 ms): a "jitter" that is a sizeable fraction of a PCR interval is not a
+    plausible PCR error, only a varying delivery rate explains it;
+  - `unknown` when there are fewer than two windows (a range shorter than about
+    two seconds of PCR time) and the estimate is plausible;
+  - `constant` otherwise.
+
+  `window_count`, `min_window_rate_bps` / `max_window_rate_bps` and
+  `max_deviation_percent` (present from two windows on) are the evidence, and
+  `reason` explains the assessment. Neither the file extension nor null packets
+  are used as evidence. A constant-bitrate multiplex measures 0.00 %; the
+  bundled VBR samples deviate by about 3 % and longer VBR encodes by more than
+  10 %.
+- **`status`** — `ok` (max `|jitter|` within ±500 ns, the ISO/IEC 13818-1 PCR
+  accuracy), `warning` (within ±25 µs, the DVB receiver tolerance) or `ng`
+  (beyond), **only when `delivery.assessment` is `constant`**. With a
+  `variable` or `unknown` delivery the status is `not_assessable`, and `reason`
+  says why; the estimate is still reported. `skipped` means no estimate could be
+  made (fewer than 3 PCRs, no segment of 3 PCRs, or more than 30 % of the PCRs
+  starting a new segment) and takes precedence over `not_assessable`.
+
+PCR jitter is not part of `--fail-on-error`, which covers only the
+`compliance` checks.
+
+The deterministic diagnostic stream `sample_data/sample_188byte_all_findings.ts`
+(2.4 s at a constant 75.2 kbit/s, one PCR 100 µs late) gives:
+
+```sh
+$ ./mpeg-ts-analyzer sample_data/sample_188byte_all_findings.ts --format json --dump-pcr-jitter
+```
+
+```json
+"pcr_jitter": {
+  "status": "ng",
+  "estimate": {
+    "model": "byte_position",
+    "pcr_pids": [
+      "0x0100"
+    ],
+    "sample_count": 55,
+    "segment_count": 1,
+    "observations": 53,
+    "max_abs_jitter_ns": 100000,
+    "max_abs_jitter_offset_bytes": 10904,
+    "max_jitter_ns": 100000,
+    "max_jitter_offset_bytes": 10904,
+    "min_jitter_ns": -50000,
+    "min_jitter_offset_bytes": 10528,
+    "average_absolute_jitter_ns": 3773.5849056603774,
+    "within_500ns_percent": 94.33962264150944,
+    "discontinuities": []
+  },
+  "delivery": {
+    "assessment": "constant",
+    "reason": "the multiplex rate of 2 one-second windows deviates up to 0.00% from the average 75,200 b/s (tolerance 1%)",
+    "window_seconds": 1,
+    "window_count": 2,
+    "average_rate_bps": 75200,
+    "min_window_rate_bps": 75200,
+    "max_window_rate_bps": 75200,
+    "max_deviation_percent": 0,
+    "tolerance_percent": 1,
+    "plausible_jitter_limit_ns": 1000000
+  }
+}
+```
+
+The bundled VBR sample is not assessable:
+
+```sh
+$ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts --format json --dump-pcr-jitter
+```
+
+```json
+"pcr_jitter": {
+  "status": "not_assessable",
+  "reason": "delivery rate is variable, so the byte-position estimate does not measure PCR accuracy",
+  "estimate": {
+    "model": "byte_position",
+    "pcr_pids": [
+      "0x0100"
+    ],
+    "sample_count": 60,
+    "segment_count": 1,
+    "observations": 58,
+    "max_abs_jitter_ns": 28679245.28301893,
+    "max_abs_jitter_offset_bytes": 34404,
+    "max_jitter_ns": 23333333.333333332,
+    "max_jitter_offset_bytes": 156228,
+    "min_jitter_ns": -28679245.28301893,
+    "min_jitter_offset_bytes": 34404,
+    "average_absolute_jitter_ns": 16822812.08050342,
+    "within_500ns_percent": 0,
+    "discontinuities": []
+  },
+  "delivery": {
+    "assessment": "variable",
+    "reason": "the multiplex rate of 4 one-second windows deviates up to 3.06% from the average 496,754 b/s (tolerance 1%)",
+    "window_seconds": 1,
+    "window_count": 4,
+    "average_rate_bps": 496753.8461538461,
+    "min_window_rate_bps": 481569.23076923075,
+    "max_window_rate_bps": 507600,
+    "max_deviation_percent": 3.0567685589519633,
+    "tolerance_percent": 1,
+    "plausible_jitter_limit_ns": 1000000
+  }
+}
+```
+
+## Changes in schema 2.0
+
+Schema 2.0 (summary and `--output analysis`) changes only `pcr_jitter`; the
+packet documents stay at 1.0. A 1.x consumer must be updated:
+
+| Schema 1.0 | Schema 2.0 |
+| --- | --- |
+| `pcr_jitter.status` `ok` / `warning` / `ng` for every estimate | the same values only when `pcr_jitter.delivery.assessment` is `constant`; otherwise `not_assessable` |
+| `sample_count`, `segment_count`, `discontinuities` | `estimate.sample_count`, `estimate.segment_count`, `estimate.discontinuities` |
+| `measured_sample_count` | `estimate.observations` |
+| `max_jitter_ns`, `min_jitter_ns` and their offsets, `average_absolute_jitter_ns`, `within_500ns_percent` | the same names under `estimate`, plus `estimate.max_abs_jitter_ns` / `max_abs_jitter_offset_bytes` |
+| — | `estimate.model`, `estimate.pcr_pids`, `delivery` |
+
+Everything else, including the `series.pcr_jitter` points, is unchanged.
+`--capabilities` reports the schema version of each output, so a caller can
+tell the two apart before running an analysis.
 
 ## Range analysis output (`--output analysis`)
 
 `--format json --output analysis` analyzes **every program** of the range in a
 single pass and adds time series, for callers that plot results (such as a GUI)
 rather than only checking verdicts. It is a separate document with its own
-schema, [`docs/json-schema-analysis-v1.json`](../json-schema-analysis-v1.json);
+schema, [`docs/json-schema-analysis-v2.json`](../json-schema-analysis-v2.json);
 the default `--output summary` report is unchanged.
 
 ```sh
@@ -203,7 +361,7 @@ Abridged output for the two-program sample:
 
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "output": "analysis",
   "input": {
     "path": "sample_data/sample_188byte_two_programs_mpeg2_160x120_25fps_mp2.ts",
@@ -264,7 +422,9 @@ Abridged output for the two-program sample:
 - Continuity counters are checked for the whole multiplex, from the earliest
   program start, and reported once (`continuity_counter`, `continuity_events`)
   rather than per program.
-- Bitrate and PCR jitter are always collected in this mode.
+- Bitrate and PCR jitter are always collected in this mode. `series.pcr_jitter`
+  is the `byte_position` estimate of each observation; see
+  [PCR jitter](#pcr-jitter).
 - `elapsed_ms` is PCR time since the program's first PCR in the range. It does
   not advance across a PCR discontinuity, which matches the 1-second bitrate
   windows (window `i` covers elapsed seconds `i` to `i+1`). A PES point uses the
@@ -637,17 +797,17 @@ incompatible CLI before running an analysis:
 $ mpeg-ts-analyzer --capabilities
 {
   "capabilities_version": "1.0",
-  "cli_version": "2.3.0",
+  "cli_version": "3.0.0",
   "outputs": [
     {
       "name": "summary",
       "format": "json",
-      "schema_version": "1.0"
+      "schema_version": "2.0"
     },
     {
       "name": "analysis",
       "format": "json",
-      "schema_version": "1.0"
+      "schema_version": "2.0"
     },
     {
       "name": "packets",

@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "output": "analysis",
   "input": {
     "path": "sample_data/sample_188byte_two_programs_mpeg2_160x120_25fps_mp2.ts",
@@ -61,17 +61,37 @@
         "items": []
       },
       "pcr_jitter": {
-        "status": "ng",
-        "sample_count": 23,
-        "segment_count": 1,
-        "measured_sample_count": 21,
-        "max_jitter_ns": 55081967.21311465,
-        "max_jitter_offset_bytes": 140248,
-        "min_jitter_ns": -51840000,
-        "min_jitter_offset_bytes": 159612,
-        "average_absolute_jitter_ns": 25614589.765517473,
-        "within_500ns_percent": 9.523809523809524,
-        "discontinuities": []
+        "status": "not_assessable",
+        "reason": "delivery rate is variable, so the byte-position estimate does not measure PCR accuracy",
+        "estimate": {
+          "model": "byte_position",
+          "pcr_pids": [
+            "0x0100"
+          ],
+          "sample_count": 23,
+          "segment_count": 1,
+          "observations": 21,
+          "max_abs_jitter_ns": 55081967.21311465,
+          "max_abs_jitter_offset_bytes": 140248,
+          "max_jitter_ns": 55081967.21311465,
+          "max_jitter_offset_bytes": 140248,
+          "min_jitter_ns": -51840000,
+          "min_jitter_offset_bytes": 159612,
+          "average_absolute_jitter_ns": 25614589.765517473,
+          "within_500ns_percent": 9.523809523809524,
+          "discontinuities": []
+        },
+        "delivery": {
+          "assessment": "variable",
+          "reason": "the estimated jitter reaches 55.082ms, beyond the 1ms a PCR error plausibly reaches; the delivery rate varies between PCRs",
+          "window_seconds": 1,
+          "window_count": 1,
+          "average_rate_bps": 767907.6923076923,
+          "min_window_rate_bps": 767907.6923076923,
+          "max_window_rate_bps": 767907.6923076923,
+          "tolerance_percent": 1,
+          "plausible_jitter_limit_ns": 1000000
+        }
       },
       "bitrate": {
         "status": "ok",
@@ -847,17 +867,37 @@
         "items": []
       },
       "pcr_jitter": {
-        "status": "ng",
-        "sample_count": 23,
-        "segment_count": 1,
-        "measured_sample_count": 21,
-        "max_jitter_ns": 40000000,
-        "max_jitter_offset_bytes": 172020,
-        "min_jitter_ns": -41318681.31868128,
-        "min_jitter_offset_bytes": 160364,
-        "average_absolute_jitter_ns": 18872438.866439767,
-        "within_500ns_percent": 4.761904761904762,
-        "discontinuities": []
+        "status": "not_assessable",
+        "reason": "delivery rate is variable, so the byte-position estimate does not measure PCR accuracy",
+        "estimate": {
+          "model": "byte_position",
+          "pcr_pids": [
+            "0x0102"
+          ],
+          "sample_count": 23,
+          "segment_count": 1,
+          "observations": 21,
+          "max_abs_jitter_ns": 41318681.31868128,
+          "max_abs_jitter_offset_bytes": 160364,
+          "max_jitter_ns": 40000000,
+          "max_jitter_offset_bytes": 172020,
+          "min_jitter_ns": -41318681.31868128,
+          "min_jitter_offset_bytes": 160364,
+          "average_absolute_jitter_ns": 18872438.866439767,
+          "within_500ns_percent": 4.761904761904762,
+          "discontinuities": []
+        },
+        "delivery": {
+          "assessment": "variable",
+          "reason": "the estimated jitter reaches 41.319ms, beyond the 1ms a PCR error plausibly reaches; the delivery rate varies between PCRs",
+          "window_seconds": 1,
+          "window_count": 1,
+          "average_rate_bps": 769353.8461538461,
+          "min_window_rate_bps": 769353.8461538461,
+          "max_window_rate_bps": 769353.8461538461,
+          "tolerance_percent": 1,
+          "plausible_jitter_limit_ns": 1000000
+        }
       },
       "bitrate": {
         "status": "ok",

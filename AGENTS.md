@@ -119,7 +119,7 @@ coverage target.
   `mkdocs.yml`, and link to files outside `docs/` with their GitHub URLs; the
   strict site build fails otherwise. See the documentation site section of
   `docs/development/index.md`.
-- When the JSON contract changes, update `docs/json-schema-v1.json`, the
+- When the JSON contract changes, update `docs/json-schema-v2.json`, the
   contract and the complete examples in `docs/reference/json-output.md`, and
   decoding/compatibility tests together. Preserve the documented additive-change policy within a
   schema version; breaking field, type, or enum-meaning changes require a

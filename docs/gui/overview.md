@@ -40,14 +40,20 @@ program or the analysis.
 | PCR → PTS/DTS gap | selected program | `OK` up to 1000 ms, `NG` above |
 | PTS/DTS anomalies | selected program, per PID | `OK` or `ANOMALIES` |
 | Continuity counter | whole multiplex | `OK` or `ERRORS` |
-| PCR jitter | selected program (its PCR PID) | `OK` within ±500 ns, `WARNING` within ±25 µs, `NG` beyond |
+| PCR jitter | selected program (its PCR PID) | `OK` within ±500 ns, `WARNING` within ±25 µs, `NG` beyond, when delivery is constant; otherwise `NOT ASSESSABLE` |
 
 PCR jitter is an **estimate**. A file has no packet-arrival timestamps, so the
-byte position stands in for time, assuming the stream is delivered at an
-approximately constant rate. It is not a direct hardware or TR 101 290
-measurement: a variable-bitrate stream can show milliseconds of estimated
-jitter, and an `NG`, even when its PCRs were accurate on the wire. The card's
-note says `max |estimated jitter|`.
+byte position stands in for time, which is exact only when the stream is
+delivered at a constant rate. The CLI therefore first assesses the delivery
+from the stream itself — its multiplex rate over 1-second windows must stay
+within ±1 % of the average, and no estimated jitter may reach 1 ms — and grades
+the estimate only when delivery is `constant`. For a `variable` or `unknown`
+delivery, such as a variable-bitrate stream without stuffing or a range shorter
+than about two seconds, the card shows `NOT ASSESSABLE` with the estimate as its
+value and the CLI's reason. Its note always gives the delivery assessment and
+evidence, for example `delivery constant: 2 × 1 s windows, max deviation 0.00 %
+of 75.2 kbit/s`. Even a graded estimate is not a direct hardware or TR 101 290
+measurement.
 
 The cards wrap to more rows as the window narrows, keeping their order, so no
 verdict is hidden off screen.
@@ -58,9 +64,10 @@ PID, each continuity error (with its offset), PCR jitter marked as an estimate,
 and the analyzer's warnings. Each row shows the verdict, the metric, the reason
 and whether it concerns the selected program or the whole multiplex; selecting
 the metric opens its explanation. A card counts once through its own events,
-not again for its total. A check the CLI skipped is listed under **Unavailable
-analysis** instead, with the CLI's reason. The GUI shows the CLI's verdicts as
-they are and never changes them.
+not again for its total. A check the CLI skipped, and a PCR jitter estimate the
+CLI found `not_assessable`, are listed under **Unavailable analysis** instead,
+with the CLI's reason; they are not findings. The GUI shows the CLI's verdicts
+as they are and never changes them.
 
 To see every verdict at once, open the intentionally invalid
 [diagnostic sample](../development/sample-data.md#diagnostic-sample-with-every-overview-finding):
