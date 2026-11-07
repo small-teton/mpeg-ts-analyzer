@@ -584,8 +584,24 @@ the input; a range that ends mid-packet inside the file reports nothing.
 `reason: "sync_lost"` means the analysis stopped at a loss of synchronization
 that could not be recovered; the results cover the input up to there.
 `reason: "sync_not_acquired"` (with `status: "failed"`) means the input has no
-188-byte or 192-byte packet alignment at all, while `analysis_failed` covers
-other failures, such as aligned packets without a PAT.
+188-byte, 192-byte or 204-byte packet alignment at all, while `analysis_failed`
+covers other failures, such as aligned packets without a PAT.
+
+`input.packet_size_bytes` is the physical packet size: 188 (TS), 192 (M2TS: a
+4-byte `TP_extra_header`, then the TS packet) or 204 (the TS packet, then a
+16-byte trailer). Only the 188 TS packet bytes are analyzed. Every
+`*_offset_bytes` value is a physical file offset of the first byte of a
+physical packet (or of a skipped or partial byte span), so packets are 188, 192
+or 204 bytes apart. `204` was added within schema 2.0 as an additive enum value.
+
+Every bitrate counts 188 bytes per TS packet, whatever the packet size: the
+program and per-PID `bitrate` rows, `average_bitrate_bps`, the bitrate series
+and the PCR jitter `delivery` rates. The M2TS header and the trailer of a
+204-byte packet are container data, not TS data. The physical input rate of the
+whole file is the TS rate × `packet_size_bytes` / 188; for the public TSDuck
+corpus file `test-170.ts` (204-byte ISDB-Tb), the PCR jitter
+`delivery.average_rate_bps` is 29,958,294 b/s, TSDuck's `tsanalyze` `bitrate`,
+and × 204/188 gives its `bitrate-204`, 32,507,936 b/s.
 
 `programs[].service` is the program's service from the DVB SDT, when the
 stream carries one; see [Service names (SDT)](../cli/psi.md#service-names-sdt).
@@ -2247,8 +2263,10 @@ $ mpeg-ts-analyzer sample_data/sample_188byte_two_programs_mpeg2_160x120_25fps_m
   at `end_of_file`. Paging this way visits every packet once. `--offset` equal
   to the file size, or an empty file, gives an empty page at `end_of_file`.
 - The packet size is detected from the bytes at `--offset`, or from the last
-  64 KiB of the file near its end; `--packet-size` can force it. For 192-byte
-  M2TS, offsets point at the 4-byte arrival timestamp that starts each packet.
+  64 KiB of the file near its end; `--packet-size` can force it (188, 192 or
+  204). For 192-byte M2TS, offsets point at the 4-byte arrival timestamp that
+  starts each packet; for 204-byte packets, at the sync byte, with the 16-byte
+  trailer at the end of the packet, so packets are 204 bytes apart.
 - A packet without a sync byte is listed with `"valid": false`, and so is a
   packet without `transport_error` whose header or adaptation field cannot be
   parsed (for example a reserved `adaptation_field_control`). A packet with
@@ -2289,9 +2307,21 @@ caller can highlight it, and `bits` when the value does not use every bit of
 that span (see [Field bits](#field-bits)). Layers are `m2ts_header` (192-byte
 packets), `ts_header`, `adaptation_field`, `payload`, and for a packet that
 starts a unit either `pes_header` or a section (`pat`, `pmt`, or `psi_section`
-for other tables). Table entries are in `rows`. A structure that continues in
-the next packet is marked `truncated`, and only fields inside this packet are
-listed.
+for other tables), then `trailer` (204-byte packets). Table entries are in
+`rows`. A structure that continues in the next packet is marked `truncated`,
+and only fields inside this packet are listed.
+
+For a 204-byte packet, `bytes` holds all 204 bytes: the TS packet at bytes
+0–187 and the 16-byte trailer at bytes 188–203. Only the TS packet is decoded:
+`payload`, sections and PES headers end at byte 187. The trailer is the last
+layer, `trailer`, with one field, `trailer_bytes` (`"16 bytes"`, `byte_offset`
+188, `byte_length` 16). It is commonly Reed-Solomon `RS(204,188)` parity, but
+the analyzer does not interpret, validate or correct it:
+
+```json
+{ "name": "trailer", "fields": [
+  { "name": "trailer_bytes", "value": "16 bytes", "byte_offset": 188, "byte_length": 16 } ] }
+```
 
 ```sh
 mpeg-ts-analyzer sample_data/sample_188byte_two_programs_mpeg2_160x120_25fps_mp2.ts \
@@ -2362,7 +2392,9 @@ Many fields occupy only part of a byte or cross byte boundaries. For those,
 packet-relative and count from the most significant bit: offset 0 is bit 7 of
 byte 0, and bit `b` (7 = MSB, 0 = LSB) of byte `i` is at offset
 `i * 8 + (7 - b)`. In a 192-byte packet every TS offset is 32 bits later,
-because the 4-byte `m2ts_header` comes first. Reading the ranges in order and
+because the 4-byte `m2ts_header` comes first; in a 204-byte packet the TS
+offsets are those of a 188-byte packet, and no field has `bits` in the
+trailer. Reading the ranges in order and
 concatenating their bits gives the value.
 
 `bits` is omitted when the value uses every bit of its `byte_offset` /

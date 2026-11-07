@@ -7,6 +7,7 @@ fixture, not an example of good multiplexing.
 ```sh
 go run ./tools/generate_packet_gaps -output sample_data/sample_188byte_packet_gaps.ts
 go run ./tools/generate_packet_gaps -m2ts -output sample_data/sample_192byte_packet_gaps.ts
+go run ./tools/generate_packet_gaps -trailer -output sample_data/sample_204byte_packet_gaps.ts
 ./mpeg-ts-analyzer sample_data/sample_188byte_packet_gaps.ts
 tsanalyze --json sample_data/sample_188byte_packet_gaps.ts
 tsanalyze --format m2ts --json sample_data/sample_192byte_packet_gaps.ts
@@ -36,14 +37,18 @@ adds it back. The analysis, and with it the PCR time basis, starts at packet
 | 0x01FF PCR | 100 | 7 packets, 40 ms |
 | 0x1000 PMT | 25 | 31 packets, 160 ms |
 
-`tsparser` tests pin these results for both packet sizes and check that the
-committed files equal the generator output. The timestamp anomaly check
+`tsparser` tests pin these results for every packet size and check that the
+committed files equal the generator output. The 204-byte form (`-trailer`)
+follows each packet with a 16-byte trailer of deterministic filler (never a
+sync byte); its gaps are the same numbers of packets and milliseconds, with
+offsets at 204·packet. The timestamp anomaly check
 reports the PTS jumps at the declared PCR discontinuity.
 
-Cross-check (both files):
+Cross-check (every file):
 
 - `tsanalyze --json` (TSDuck 3.45): the per-PID packet counts equal the
-  analyzer's `packet_count` for every PID.
+  analyzer's `packet_count` for every PID (800 packets, 300,800 b/s; for the
+  204-byte file also `bitrate-204` 326,400 b/s, the physical rate).
 - An independent raw scan (Python, packet index of each PID, packets with
   `transport_error_indicator` skipped, no analyzer code) gives the same
   `max_gap_packets` for every PID except 0x0102, where it finds 383 across the

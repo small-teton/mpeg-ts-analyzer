@@ -3,7 +3,8 @@ package analysis
 // SyncLoss is a packet boundary at which the parser expected a sync byte
 // (0x47) and found another value. Offset is the byte offset of the boundary:
 // the first byte of the packet, which for 192-byte M2TS input is the first byte
-// of its TP_extra_header.
+// of its TP_extra_header and for 204-byte input the sync byte (the 16-byte
+// trailer ends the packet).
 type SyncLoss struct {
 	Offset int64
 }

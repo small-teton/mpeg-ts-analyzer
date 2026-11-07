@@ -12,7 +12,7 @@ as a subprocess and contains no analysis logic; see the
 | `main`, `cmd` | Command-line parsing (Cobra), flag validation and the exit status. |
 | `options` | The options shared by the command and the parser. |
 | `bitbuffer` | Bit-level reading of byte buffers. |
-| `tsparser` | Packet-size detection (188-byte TS, 192-byte M2TS), synchronization and recovery, decoding of TS headers, adaptation fields, PSI (PAT, PMT, SDT) and PES headers, byte offsets, and the decision whether bytes can be parsed and trusted. It also orchestrates the single pass over the analyzed range (`scanPrograms`, `programAnalyzer`, `rangeAnalysis`) and holds the public report types and their text and JSON rendering. |
+| `tsparser` | Packet-size detection (188-byte TS, 192-byte M2TS, 204-byte TS with a 16-byte trailer) and physical framing (`framing.go`: only the 188 TS packet bytes reach the parser), synchronization and recovery, decoding of TS headers, adaptation fields, PSI (PAT, PMT, SDT) and PES headers, byte offsets, and the decision whether bytes can be parsed and trusted. It also orchestrates the single pass over the analyzed range (`scanPrograms`, `programAnalyzer`, `rangeAnalysis`) and holds the public report types and their text and JSON rendering. |
 | `internal/analysis` (package `analysis`) | Bounded state across observations, metrics, whether a check applies, thresholds and the status of each transport check. |
 
 Dependencies point one way:
@@ -44,7 +44,10 @@ a PMT is applied (`analysis.ProgramLayout`) or a continuity counter error
   returning.
 - **Offsets** are byte offsets in the input file of the first byte of the
   packet concerned. For 192-byte M2TS input that is the first byte of the
-  4-byte `TP_extra_header`, as everywhere else in the output.
+  4-byte `TP_extra_header`, as everywhere else in the output; for 204-byte
+  input it is the sync byte, since the 16-byte trailer ends the packet.
+  Packet indexes count physical packets, so offsets and indexes stay
+  consistent for every packet size.
 - **Units** are stated on each field: PIDs are 13-bit packet identifiers,
   stream types are PMT `stream_type` values, counts are numbers of events.
 - **Lifetime.** Observations are values, used during the call. A check keeps

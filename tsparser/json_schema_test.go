@@ -481,6 +481,11 @@ func summarySchemaCases() []schemaCase {
 			want:    map[string]any{"/status": "failed", "/reason": "analysis_failed", "/error": present{}},
 		},
 		{
+			name: "complete with every finding in 204-byte packets", schema: summarySchemaFile, path: fixedPath(allFindingsFixtures[2].path),
+			opts: options.Options{DumpPcrJitter: true, DumpBitrate: true},
+			want: map[string]any{"/status": "complete", "/input/packet_size_bytes": 204, "/pcr_jitter/delivery/average_rate_bps": 75200.0},
+		},
+		{
 			name: "complete after recovered sync losses", schema: summarySchemaFile, path: fixedPath(syncLossFixtures[0].path),
 			want: map[string]any{
 				"/status": "complete", "/sync/status": "recovered", "/sync/loss_count": 4, "/sync/resync_count": 4,
@@ -537,6 +542,21 @@ func analysisSchemaCases() []schemaCase {
 				"/status": "complete", "/sync/status": "recovered", "/sync/skipped_bytes": 1384, "/sync/max_skipped_bytes": 1000,
 				"/sync/trailing_partial_packet_offset_bytes": 39400,
 			},
+		},
+		{
+			name: "complete after recovered sync losses in 204-byte packets", schema: analysisSchemaFile, path: fixedPath(syncLossFixtures[2].path), opts: analysis,
+			want: map[string]any{
+				"/status": "complete", "/input/packet_size_bytes": 204, "/sync/status": "recovered", "/sync/skipped_bytes": 1408,
+				"/sync/trailing_partial_packet_offset_bytes": 200*204 + 1000,
+			},
+		},
+		{
+			name: "complete with mux lead in 204-byte packets", schema: analysisSchemaFile, path: fixedPath(muxLeadFixtures[2].path), opts: analysis,
+			want: map[string]any{"/status": "complete", "/input/packet_size_bytes": 204, "/multiplexing/mux_lead": present{}},
+		},
+		{
+			name: "complete with packet gaps in 204-byte packets", schema: analysisSchemaFile, path: fixedPath(packetGapsFixtures[2].path), opts: analysis,
+			want: map[string]any{"/status": "complete", "/input/packet_size_bytes": 204, "/multiplexing/packet_gaps/pids/0/max_gap_start_offset_bytes": 100 * 204},
 		},
 		{
 			name: "incomplete after an unrecovered sync loss", schema: analysisSchemaFile, opts: analysis,
@@ -665,6 +685,10 @@ func packetsSchemaCases() []schemaCase {
 			want: map[string]any{"/status": "complete", "/input/packet_size_bytes": 192},
 		},
 		{
+			name: "page of 204-byte packets", schema: packetsSchemaFile, path: fixedPath(allFindingsFixtures[2].path), opts: page(options.Options{Count: 3, Offset: 100}),
+			want: map[string]any{"/status": "complete", "/input/packet_size_bytes": 204, "/first_offset_bytes": 204, "/packets/1/offset_bytes": 408, "/next_offset_bytes": 816},
+		},
+		{
 			name: "page with invalid and truncated packets", schema: packetsSchemaFile, opts: page(options.Options{Count: 100}),
 			path: func(t *testing.T) string {
 				data := bytes.Repeat(buildStuffingPacket(), 2)
@@ -703,6 +727,13 @@ func packetsSchemaCases() []schemaCase {
 		{
 			name: "packet detail of a PES start with a PCR", schema: packetsSchemaFile, path: fixedPath(twoPrograms188Path), opts: detail(options.Options{Offset: 29892}),
 			want: map[string]any{"/status": "complete", "/packet/offset_bytes": 29892, "/packet/layers/2": present{}, "/unit": present{}},
+		},
+		{
+			name: "packet detail of a 204-byte packet with its trailer", schema: packetsSchemaFile, path: fixedPath(allFindingsFixtures[2].path), opts: detail(options.Options{Offset: 12 * 204}),
+			want: map[string]any{
+				"/status": "complete", "/input/packet_size_bytes": 204, "/packet/layers/4/name": "trailer",
+				"/packet/layers/4/fields/0/byte_offset": 188, "/packet/layers/4/fields/0/byte_length": 16, "/unit/kind": "pes",
+			},
 		},
 		{
 			name: "packet detail of a truncated PMT", schema: packetsSchemaFile, opts: detail(options.Options{Offset: 0}),
@@ -805,7 +836,7 @@ func TestJSONSchemaValidationRejectsMismatches(t *testing.T) {
 	}{
 		{schema: summarySchemaFile, pointer: "/programs", rename: "program_list", want: "missing property 'programs'"},
 		{schema: summarySchemaFile, pointer: "/input/offset_bytes", value: "0", want: "at '/input/offset_bytes' [S#/$defs/input/properties/offset_bytes/type]: got string, want integer"},
-		{schema: summarySchemaFile, pointer: "/input/packet_size_bytes", value: 204, want: "/input/packet_size_bytes"},
+		{schema: summarySchemaFile, pointer: "/input/packet_size_bytes", value: 200, want: "/input/packet_size_bytes"},
 		{schema: summarySchemaFile, pointer: "/bitrate/null_pid/pid", value: 8191, want: "/bitrate/null_pid/pid"},
 		{schema: summarySchemaFile, pointer: "/pcr_jitter/estimate/observations", value: -1, want: "/pcr_jitter/estimate/observations"},
 		{schema: summarySchemaFile, pointer: "/pcr_jitter/delivery", rename: "deliveries", want: "missing property 'delivery'"},

@@ -270,7 +270,7 @@ func observeLead(reader io.ReadSeeker, start, end int64, options options.Options
 			return fmt.Errorf("file read error: %w", err)
 		}
 		tsPacket.Initialize(pos, options)
-		tsPacket.Append(tsBuffer[packetSize-tsPayloadSize:])
+		tsPacket.Append(tsBytes(tsBuffer, packetSize))
 		if tsPacket.Parse() == nil {
 			for _, observe := range observers {
 				observe(tsPacket, pos)

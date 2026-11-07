@@ -9,6 +9,7 @@ example of a compliant stream.
 ```sh
 go run ./tools/generate_all_findings -output sample_data/sample_188byte_all_findings.ts
 go run ./tools/generate_all_findings -m2ts -output sample_data/sample_192byte_all_findings.ts
+go run ./tools/generate_all_findings -trailer -output sample_data/sample_204byte_all_findings.ts
 tsanalyze --json sample_data/sample_188byte_all_findings.ts
 tsp -I file sample_data/sample_188byte_all_findings.ts -P continuity -O drop
 tsp -I file sample_data/sample_188byte_all_findings.ts -P pcrextract --pcr --pts --csv -O drop
@@ -54,6 +55,16 @@ above for both packet sizes.
 
 The 192-byte form adds a TP_extra_header per packet whose arrival_time_stamp
 advances by one slot (540,000 ticks of 27 MHz), the intended constant delivery.
+The 204-byte form (`-trailer`) follows each packet with a 16-byte trailer of
+deterministic filler (0x80–0xBF, never a sync byte; not Reed-Solomon parity).
+Its analysis equals that of the 188-byte form with every offset at 204·slot,
+and its bitrates are the same (188 bytes per packet).
+
+TSDuck 3.45 gives the same results for the 204-byte file (`tsanalyze --json`,
+`-P continuity`, `-P pcrverify -b 75200 -j 1`): the same per-PID counts,
+75,200 b/s as `bitrate` and 81,600 b/s as `bitrate-204`, the same continuity
+error at packet index 25 and the same `52 PCR OK, 2 with jitter > 27`;
+`-P pcrextract` writes the same CSV as for the 188-byte file.
 
 TSDuck 3.45 agrees for both files:
 

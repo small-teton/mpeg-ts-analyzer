@@ -160,7 +160,7 @@ type pcrJitterPoint struct {
 // PCR depends on its neighbours, so the samples are analysed at the end).
 type PcrJitter struct {
 	samples []pcrSample
-	// packetSize is the size of a packet in the file (188 or 192), used to
+	// packetSize is the size of a packet in the file (188, 192 or 204), used to
 	// convert byte offsets to transport-stream bytes; 0 means 188.
 	packetSize int
 }

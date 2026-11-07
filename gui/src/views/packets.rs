@@ -405,6 +405,9 @@ pub(super) enum ByteLayer {
     PesHeader,
     Section,
     Payload,
+    /// The trailer after the TS packet in a 204-byte packet: raw bytes, not
+    /// decoded.
+    Trailer,
 }
 
 pub(super) fn layer_color(layer: ByteLayer) -> egui::Color32 {
@@ -414,6 +417,7 @@ pub(super) fn layer_color(layer: ByteLayer) -> egui::Color32 {
         ByteLayer::PesHeader => egui::Color32::from_rgb(0x8f, 0xe3, 0x9f),
         ByteLayer::Section => theme::PSI_COLOR,
         ByteLayer::Payload => egui::Color32::GRAY,
+        ByteLayer::Trailer => egui::Color32::from_rgb(0xe0, 0x8a, 0xb4),
     }
 }
 

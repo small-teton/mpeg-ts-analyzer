@@ -127,8 +127,9 @@ func (b *BitrateStats) setLayout(pmtPid, pcrPid uint16, programInfos []ProgramIn
 }
 
 // CountPacket records one TS packet of pid. Each transport packet contributes a
-// fixed 188 bytes: any 192-byte timestamped-packet (M2TS) header is container
-// overhead, not part of the PID's transport packet. PIDs outside the selected
+// fixed 188 bytes: the 4-byte header of a 192-byte timestamped packet (M2TS)
+// and the 16-byte trailer of a 204-byte packet are container overhead, not part
+// of the PID's transport packet. PIDs outside the selected
 // program's current layout are ignored.
 func (b *BitrateStats) CountPacket(pid uint16) {
 	if !b.counted[pid] {

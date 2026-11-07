@@ -175,10 +175,25 @@ func (b *fieldBuilder) field(fields *[]PacketField, name, format string, run Bit
 // value reads the concatenation of runs; see field.
 func (b *fieldBuilder) value(runs ...BitRange) uint64 { return readBits(b.raw, runs...) }
 
-// decodePacketLayers decodes every structure of the packet whose start lies in it.
+// decodePacketLayers decodes every structure of the physical packet raw whose
+// start lies in it. Only the 188 TS packet bytes are decoded; the trailer of a
+// 204-byte packet is listed as raw bytes in a final "trailer" layer.
 func decodePacketLayers(raw []byte) []PacketLayer {
+	t := tsOffset(len(raw))
+	end := t + tsPayloadSize
+	layers := decodeTSLayers(raw[:end], t)
+	if len(raw) > end {
+		var fields []PacketField
+		(&fieldBuilder{raw: raw}).add(&fields, "trailer_bytes", end, len(raw)-end, "%d bytes", len(raw)-end)
+		layers = append(layers, PacketLayer{Name: "trailer", Fields: fields})
+	}
+	return layers
+}
+
+// decodeTSLayers decodes the TS packet that starts t bytes into raw, after an
+// M2TS header when t is 4, and ends at the end of raw.
+func decodeTSLayers(raw []byte, t int) []PacketLayer {
 	b := &fieldBuilder{raw: raw}
-	t := len(raw) - tsPayloadSize
 	var layers []PacketLayer
 	if t == tpExtraHeaderSize {
 		var fields []PacketField

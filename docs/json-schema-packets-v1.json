@@ -80,8 +80,10 @@
         "packet_size_bytes": {
           "enum": [
             188,
-            192
-          ]
+            192,
+            204
+          ],
+          "description": "Physical packet size: 188 (TS), 192 (M2TS: 4-byte TP_extra_header, then the TS packet) or 204 (the TS packet, then a 16-byte trailer)."
         },
         "offset_bytes": {
           "type": "integer",
@@ -246,8 +248,8 @@
         },
         "bytes": {
           "type": "string",
-          "pattern": "^([0-9a-f]{376}|[0-9a-f]{384})$",
-          "description": "The 188 or 192 packet bytes in hex."
+          "pattern": "^([0-9a-f]{376}|[0-9a-f]{384}|[0-9a-f]{408})$",
+          "description": "The 188, 192 or 204 physical packet bytes in hex, including an M2TS header or a 204-byte packet's trailer."
         },
         "layers": {
           "type": "array",
@@ -266,7 +268,7 @@
       "properties": {
         "name": {
           "type": "string",
-          "description": "Current values: m2ts_header, ts_header, adaptation_field, payload, pes_header, pat, pmt, psi_section."
+          "description": "Current values: m2ts_header, ts_header, adaptation_field, payload, pes_header, pat, pmt, psi_section, trailer (the 16 raw trailer bytes of a 204-byte packet, after the TS packet; not decoded)."
         },
         "fields": {
           "type": "array",
@@ -307,13 +309,13 @@
         "byte_offset": {
           "type": "integer",
           "minimum": 0,
-          "maximum": 191,
+          "maximum": 203,
           "description": "First byte of the field within bytes."
         },
         "byte_length": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 192
+          "maximum": 204
         },
         "bits": {
           "type": "array",

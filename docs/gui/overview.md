@@ -225,5 +225,11 @@ is the same Byte and Bit inspector shown in Packets: the PID `0x1001` of a PMT
 packet is selected, so its bytes are highlighted and its 13 bits are marked
 across the two bytes they span.
 
+For 204-byte packets, the Byte inspector shows all 204 bytes: the 188-byte TS
+packet colored by layer, then the 16-byte trailer in its own color. The
+trailer is listed as "Trailer (after the TS packet; not decoded)"; selecting
+it highlights bytes 188–203. It is not decoded, validated or labeled as
+Reed-Solomon parity.
+
 Both images are rendered from fixtures by the GUI's tests rather than captured
 by hand; see [README screenshots](../development/index.md#readme-screenshots).

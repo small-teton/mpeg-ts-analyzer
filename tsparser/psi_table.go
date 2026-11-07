@@ -157,10 +157,7 @@ func acquireTable[T any](reader io.Reader, pos *int64, pid uint16, assembler *ps
 			return nil, 0, fmt.Errorf("%s buffering error: file read error: %w", assembler.name, err)
 		}
 
-		tsData := tsBuffer
-		if packetSize > tsPayloadSize {
-			tsData = tsBuffer[packetSize-tsPayloadSize:]
-		}
+		tsData := tsBytes(tsBuffer, packetSize)
 		packetPos := *pos
 		tsPacket.Initialize(packetPos, options)
 		tsPacket.Append(tsData)
