@@ -477,6 +477,76 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
                 reason: None,
             })
         }
+        Check::PesHeaders => {
+            let headers = report.pes_headers.as_ref()?;
+            let counts = &headers.counts;
+            let mut facts = vec![
+                ("Errors", counts.error_count.to_string()),
+                ("Checked", counts.checked_count.to_string()),
+            ];
+            if counts.unchecked_count > 0 {
+                facts.push(("Unchecked", counts.unchecked_count.to_string()));
+            }
+            facts.push(("Applies to", ALL_STREAMS.to_owned()));
+            if !counts.errors.is_empty() {
+                facts.push(("Problems", header_problems(&counts.errors)));
+            }
+            let pids: Vec<String> = headers
+                .pids
+                .iter()
+                .filter(|p| p.counts.error_count > 0)
+                .map(|p| format!("{}: {}", p.stream.describe(), p.counts.error_count))
+                .collect();
+            if !pids.is_empty() {
+                facts.push(("Affected PIDs", pids.join(", ")));
+            }
+            if let Some(first) = counts.first_error_offset_bytes {
+                facts.push(("First offset", format!("0x{first:08X}")));
+            }
+            facts.extend(counts.reason.clone().map(|r| ("Reason", r)));
+            Some(Row {
+                check,
+                status: counts.status.clone(),
+                value: counts.error_count.to_string(),
+                facts,
+                reason: counts.reason.clone(),
+            })
+        }
+        Check::PtsRepetition => {
+            let repetition = report.pts_repetition.as_ref()?;
+            let counts = &repetition.counts;
+            let value = counts.max_interval_ms.map(|ms| format!("{ms:.1} ms"));
+            let mut facts = Vec::new();
+            facts.extend(value.clone().map(|v| ("Value", v)));
+            facts.push(("Limit", format!("{:.0} ms", repetition.limit_ms)));
+            facts.push(("Applies to", ALL_STREAMS.to_owned()));
+            facts.push(("Intervals", counts.interval_count.to_string()));
+            facts.push(("PTS", counts.pts_count.to_string()));
+            facts.push(("Exceeded", counts.exceeded_count.to_string()));
+            if let (Some(start), Some(end)) = (
+                counts.max_interval_start_offset_bytes,
+                counts.max_interval_end_offset_bytes,
+            ) {
+                facts.push(("Worst interval", format!("0x{start:08X} → 0x{end:08X}")));
+            }
+            let pids: Vec<String> = repetition
+                .pids
+                .iter()
+                .filter(|p| p.counts.status == "ng")
+                .map(|p| p.stream.describe())
+                .collect();
+            if !pids.is_empty() {
+                facts.push(("Affected PIDs", pids.join(", ")));
+            }
+            facts.extend(counts.reason.clone().map(|r| ("Reason", r)));
+            Some(Row {
+                check,
+                status: counts.status.clone(),
+                value: value.unwrap_or_else(|| "—".to_owned()),
+                facts,
+                reason: counts.reason.clone(),
+            })
+        }
         Check::PcrJitter => {
             let jitter = program.pcr_jitter.as_ref()?;
             let estimate = &jitter.estimate;
@@ -505,6 +575,18 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
             })
         }
     }
+}
+
+/// What the PES checks apply to.
+const ALL_STREAMS: &str = "every elementary stream of the analyzed programs";
+
+/// Header problems as "kind count" pairs, in the CLI's order.
+fn header_problems(errors: &[crate::report::PesHeaderError]) -> String {
+    errors
+        .iter()
+        .map(|e| format!("{} {}", e.kind, e.count))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// The CLI's result of a transport-error or scrambling check.
@@ -917,12 +999,13 @@ pub(crate) struct Finding {
 }
 
 /// Whether a check status means its analysis is unavailable rather than a
-/// result: `skipped`, or a PCR jitter estimate the CLI did not grade
-/// (`not_assessable`, because delivery is not constant).
+/// result: `skipped`, `insufficient_data`, or a PCR jitter estimate the CLI
+/// did not grade (`not_assessable`, because delivery is not constant).
 /// Only a status this check describes counts: an unknown `not_assessable` on
 /// another check stays a finding, shown as the CLI reported it.
 pub(crate) fn is_unavailable(check: Check, status: &str) -> bool {
-    matches!(status, "skipped" | "not_assessable") && is_known_status(check, status)
+    matches!(status, "skipped" | "not_assessable" | "insufficient_data")
+        && is_known_status(check, status)
 }
 
 /// Whether a check status is a finding. Unavailable analysis is not a
@@ -1057,6 +1140,50 @@ pub(crate) fn findings(
                     ));
                 }
             }
+            Check::PesHeaders => {
+                // One finding per PID with errors, at its first one.
+                let pids = report.pes_headers.as_ref().map_or(&[][..], |h| &h.pids[..]);
+                for pid in pids.iter().filter(|p| p.counts.error_count > 0) {
+                    let counts = &pid.counts;
+                    findings.push(finding(
+                        format!(
+                            "PID {} ({}): {} of {} headers ({})",
+                            pid.stream.pid,
+                            pid.stream.label,
+                            counts.error_count,
+                            counts.checked_count,
+                            header_problems(&counts.errors)
+                        ),
+                        Scope::Program(pid.stream.program_number),
+                        counts.first_error_offset_bytes,
+                    ));
+                }
+            }
+            Check::PtsRepetition => {
+                // One finding per PID over the limit, at the first interval
+                // that exceeded it.
+                let pids = report
+                    .pts_repetition
+                    .as_ref()
+                    .map_or(&[][..], |r| &r.pids[..]);
+                for pid in pids.iter().filter(|p| p.counts.status == "ng") {
+                    let counts = &pid.counts;
+                    let exceeded = match counts.exceeded_count {
+                        1 => "1 interval".to_owned(),
+                        count => format!("{count} intervals"),
+                    };
+                    findings.push(finding(
+                        format!(
+                            "PID {} ({}): {exceeded} over 700 ms, longest {:.1} ms",
+                            pid.stream.pid,
+                            pid.stream.label,
+                            counts.max_interval_ms.unwrap_or_default()
+                        ),
+                        Scope::Program(pid.stream.program_number),
+                        counts.first_exceeded_offset_bytes,
+                    ));
+                }
+            }
             Check::PcrJitter => {
                 let jitter = program.pcr_jitter.as_ref();
                 let limit = match row.status.as_str() {
@@ -1142,6 +1269,8 @@ mod tests {
                 ),
                 ("ng", "PCR → PTS/DTS gap", Scope::Program(1), None),
                 ("anomalies", "PTS/DTS anomalies", Scope::Program(1), None),
+                ("errors", "PES headers", Scope::Program(1), Some(106 * 188)),
+                ("ng", "PTS repetition", Scope::Program(1), Some(101 * 188)),
                 (
                     "errors",
                     "Continuity counter",
@@ -1175,9 +1304,17 @@ mod tests {
         );
         assert_eq!(
             findings[4].reason,
+            "PID 0x0100 (video): 1 of 58 headers (bad_marker_bits 1)"
+        );
+        assert_eq!(
+            findings[5].reason,
+            "PID 0x0101 (audio): 1 interval over 700 ms, longest 800.0 ms"
+        );
+        assert_eq!(
+            findings[6].reason,
             "PID 0x0101: continuity_counter 6 (expected 5)"
         );
-        for finding in &findings[5..] {
+        for finding in &findings[7..] {
             assert_eq!(
                 finding.reason,
                 "PID 0x1fff (null): 1 packet, 0 excluded from analysis"
@@ -1208,6 +1345,9 @@ mod tests {
             "reason": "need a parsed PTS/DTS bracketed by PCR observations"
         });
         program["pcr_jitter"]["status"] = "indeterminate".into();
+        // Insufficient data is unavailable analysis with the CLI's reason.
+        document["pts_repetition"]["status"] = "insufficient_data".into();
+        document["pts_repetition"]["reason"] = "single_pts".into();
         let report = report(&document.to_string());
         let (findings, unavailable) = findings(&report, &report.programs[0]);
         let summary: Vec<_> = findings
@@ -1219,6 +1359,7 @@ mod tests {
             [
                 ("indeterminate", "PCR jitter estimate", Scope::Program(1)),
                 ("anomalies", "PTS/DTS anomalies", Scope::Program(1)),
+                ("errors", "PES headers", Scope::Program(1)),
                 ("errors", "Continuity counter", Scope::Multiplex),
                 ("affected", "Transport errors", Scope::Multiplex),
                 ("affected", "Scrambled packets", Scope::Multiplex),
@@ -1230,15 +1371,24 @@ mod tests {
                 .reason
                 .starts_with("max |estimated jitter| 100.0 µs;")
         );
-        assert_eq!(findings[2].reason, "1 error");
+        assert_eq!(findings[3].reason, "1 error");
         assert_eq!(
             unavailable,
-            [Unavailable {
-                check: Check::PcrPtsDtsGap,
-                status: "skipped".to_owned(),
-                reason: "need a parsed PTS/DTS bracketed by PCR observations".to_owned()
-            }]
+            [
+                Unavailable {
+                    check: Check::PcrPtsDtsGap,
+                    status: "skipped".to_owned(),
+                    reason: "need a parsed PTS/DTS bracketed by PCR observations".to_owned()
+                },
+                Unavailable {
+                    check: Check::PtsRepetition,
+                    status: "insufficient_data".to_owned(),
+                    reason: "single_pts".to_owned()
+                }
+            ]
         );
+        assert!(is_unavailable(Check::PesHeaders, "insufficient_data"));
+        assert!(!is_unavailable(Check::MaxPcrInterval, "insufficient_data"));
         assert!(!is_known_status(Check::PcrJitter, "indeterminate"));
         assert!(is_known_status(Check::PcrJitter, "not_assessable"));
         // Known for PCR jitter, but not a status Max PCR interval describes.
@@ -1323,6 +1473,8 @@ mod tests {
                 Check::MaxPcrInterval,
                 Check::PcrPtsDtsGap,
                 Check::TimestampAnomalies,
+                Check::PesHeaders,
+                Check::PtsRepetition,
                 Check::ContinuityCounter,
                 Check::TransportErrors,
                 Check::ScrambledPackets,
@@ -1334,13 +1486,34 @@ mod tests {
             ["Limit", "Program", "PCR PID", "Observations", "Reason"]
         );
         assert_eq!(rows[0].value, "—");
-        let continuity: Vec<&str> = rows[3].facts.iter().map(|(label, _)| *label).collect();
+        // Healthy PES checks: no problems, PIDs or first offset.
+        let headers: Vec<&str> = rows[3].facts.iter().map(|(label, _)| *label).collect();
+        assert_eq!(headers, ["Errors", "Checked", "Applies to"]);
+        assert_eq!(
+            (rows[3].status.as_str(), rows[3].value.as_str()),
+            ("ok", "0")
+        );
+        let repetition: Vec<&str> = rows[4].facts.iter().map(|(label, _)| *label).collect();
+        assert_eq!(
+            repetition,
+            [
+                "Value",
+                "Limit",
+                "Applies to",
+                "Intervals",
+                "PTS",
+                "Exceeded",
+                "Worst interval"
+            ]
+        );
+        assert_eq!(rows[4].value, "414.3 ms");
+        let continuity: Vec<&str> = rows[5].facts.iter().map(|(label, _)| *label).collect();
         assert_eq!(continuity, ["Errors", "Applies to"]);
         // A healthy transport check: no PID list and no first offset.
-        let tei: Vec<&str> = rows[4].facts.iter().map(|(label, _)| *label).collect();
+        let tei: Vec<&str> = rows[6].facts.iter().map(|(label, _)| *label).collect();
         assert_eq!(tei, ["Packets", "Excluded", "Applies to"]);
         assert_eq!(
-            (rows[4].status.as_str(), rows[4].value.as_str()),
+            (rows[6].status.as_str(), rows[6].value.as_str()),
             ("ok", "0")
         );
     }

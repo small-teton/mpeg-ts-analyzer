@@ -42,6 +42,8 @@ pub enum Check {
     PcrJitter,
     PcrPtsDtsGap,
     TimestampAnomalies,
+    PesHeaders,
+    PtsRepetition,
     ContinuityCounter,
     TransportErrors,
     ScrambledPackets,
@@ -108,7 +110,7 @@ pub struct CheckHelp {
 
 /// The explanations in table order: grouped by [`Category`], in
 /// [`Category::ALL`] order.
-pub const HELP: [CheckHelp; 7] = [
+pub const HELP: [CheckHelp; 9] = [
     CheckHelp {
         check: Check::MaxPcrInterval,
         category: Category::Timing,
@@ -206,6 +208,65 @@ pub const HELP: [CheckHelp; 7] = [
         navigation: Some((
             Screen::Timeline,
             "Timeline marks each anomaly at its position.",
+        )),
+    },
+    CheckHelp {
+        check: Check::PesHeaders,
+        category: Category::PesTimestamps,
+        title: "PES headers",
+        summary: "Malformed or truncated PES packet headers on the elementary streams.",
+        measures: "Whether each PES packet header can be trusted, checked against ISO/IEC 13818-1 (clause 2.4.3.6) from the header bytes alone: the analyzer keeps at most the 264-byte maximum header of each PES packet and never reads the elementary-stream payload. A header fails with bad_start_code when it does not start with packet_start_code_prefix 0x000001 and a PES stream_id; bad_flags when its optional header does not start with the bits '10' or PTS_DTS_flags is the forbidden '01'; inconsistent_length when PES_header_data_length is too small for the fields its flags announce or a non-zero PES_packet_length is too small for the header; bad_marker_bits when a PTS or DTS has a wrong 4-bit prefix or a marker_bit of 0; and truncated when the next PES packet of the PID starts before the header is complete. The timestamps of a failed header are not used by any other check.",
+        applies_to: "Every elementary stream of the analyzed programs, each PID separately.",
+        value: "The number of failed headers. Current result gives how many headers were checked, how many could not be checked, each problem with its count, the first offset and the affected PIDs.",
+        statuses: &[
+            ("ok", "Every checked header is valid."),
+            (
+                "errors",
+                "At least one header failed a check; see Findings.",
+            ),
+            (
+                "insufficient_data",
+                "No header could be checked; see When it is skipped.",
+            ),
+        ],
+        skipped: "Reported as insufficient data when no header was checked: no PES packet started in the range, the payload was not used because of transport errors or scrambling, or every PES packet ended before its header was complete. A PES packet whose header was still incomplete when the data ended (untrusted payload, a PMT change or the end of the range) is counted as unchecked, not as an error.",
+        limitations: "The elementary-stream payload, access units and codec syntax are not checked. A PES_packet_length of 0 (unbounded) is accepted for every stream, although ISO/IEC 13818-1 allows it only for video. The fields after the PTS and DTS are decoded without checking their marker bits. A header broken by a lost packet is reported as the problem it shows; the continuity counter check reports the loss.",
+        navigation: Some((
+            Screen::Packets,
+            "Packets decodes the PES header of the packet at each finding's offset.",
+        )),
+    },
+    CheckHelp {
+        check: Check::PtsRepetition,
+        category: Category::PesTimestamps,
+        title: "PTS repetition",
+        summary: "How long a video or audio stream goes without a PTS.",
+        measures: "The longest time between two PES packets that carry a PTS, on each video and audio stream. ISO/IEC 13818-1 (clause 2.7.4) requires a PTS at least every 0.7 s on video and audio streams, and ETSI TR 101 290 monitors it as PTS_error (indicator 2.5). The time of a PES packet is the program's PCR time at its first packet, interpolated by byte position between the PCRs before and after it, so the interval is how long the multiplex carried no PTS, not a difference of PTS values. PES packets without a PTS for longer than the limit also count, as an interval of at least that length.",
+        applies_to: "Every video and audio stream (by stream_type) of the analyzed programs, each PID separately. Other streams are skipped.",
+        value: "The largest interval in milliseconds. Current result gives the limit, the number of PTS and measured intervals, how many intervals exceeded the limit, and the offsets of the largest one.",
+        statuses: &[
+            (
+                "ok",
+                "Every measured interval is 700 ms or less. Exactly 700 ms is OK.",
+            ),
+            (
+                "ng",
+                "At least one stream went longer than 700 ms without a PTS; see Findings.",
+            ),
+            (
+                "insufficient_data",
+                "No interval could be measured; see When it is skipped.",
+            ),
+            (
+                "skipped",
+                "No analyzed program has a video or audio stream.",
+            ),
+        ],
+        skipped: "Reported as insufficient data when no two PES packets with a PTS could be compared on any video or audio stream: no PES packet in the range, payload not used because of transport errors or scrambling, only malformed headers, no PCR before and after the PES packets (for example a program without PCR), no PTS at all over less than 700 ms, or a single PTS. The CLI's JSON gives the reason of each PID.",
+        limitations: "No interval spans a PCR discontinuity, a malformed or incomplete header, untrusted payload, a continuity error or a PMT change, because a PTS may have been lost there. PES packets before the first PCR or after the last one are not placed. Still pictures, which TR 101 290 exempts, cannot be recognized without reading the elementary stream and are judged like other video. The PTS values themselves are checked by PTS/DTS anomalies, which does not report a jump over PES packets without a timestamp.",
+        navigation: Some((
+            Screen::Timeline,
+            "Timeline plots a point for every PES timestamp; a stretch without points is a stretch without PTS.",
         )),
     },
     CheckHelp {
@@ -327,6 +388,8 @@ mod tests {
                 Check::PcrJitter,
                 Check::PcrPtsDtsGap,
                 Check::TimestampAnomalies,
+                Check::PesHeaders,
+                Check::PtsRepetition,
                 Check::ContinuityCounter,
                 Check::TransportErrors,
                 Check::ScrambledPackets,
@@ -348,6 +411,21 @@ mod tests {
         };
         assert!(text(Check::MaxPcrInterval).contains("100 ms"));
         assert!(text(Check::PcrPtsDtsGap).contains("1000 ms"));
+        let repetition = text(Check::PtsRepetition);
+        for phrase in ["700 ms", "ISO/IEC 13818-1", "TR 101 290", "Still pictures"] {
+            assert!(repetition.contains(phrase), "{phrase}");
+        }
+        let headers = text(Check::PesHeaders);
+        for kind in [
+            "bad_start_code",
+            "bad_flags",
+            "inconsistent_length",
+            "bad_marker_bits",
+            "truncated",
+            "264-byte",
+        ] {
+            assert!(headers.contains(kind), "{kind}");
+        }
         assert!(
             Check::ContinuityCounter
                 .help()
