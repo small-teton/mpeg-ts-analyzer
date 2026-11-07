@@ -507,8 +507,9 @@ pub(crate) fn text_width(ui: &egui::Ui, text: egui::RichText) -> f32 {
 
 /// Width of a status badge.
 pub(crate) fn badge_width(ui: &egui::Ui, status: &str) -> f32 {
-    text_width(ui, crate::theme::badge_text(&status_label(status)))
-        + 2.0 * crate::theme::BADGE_MARGIN.x
+    (text_width(ui, crate::theme::badge_text(&status_label(status)))
+        + 2.0 * crate::theme::BADGE_MARGIN.x)
+        .max(crate::theme::BADGE_MIN_WIDTH)
 }
 
 /// Column widths of the Transport health table: Check takes what Value,
@@ -574,7 +575,7 @@ fn health_table(ui: &mut egui::Ui, rows: &[Row], state: &mut OverviewState) {
         ui.set_width(inner);
         accessible_scope(ui, builder, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
-            let header_fill = crate::theme::TABLE_HEADER_FILL;
+            let header_fill = crate::theme::table_header_fill(ui.visuals());
             table_row(ui, &columns, Some(header_fill), None, |ui, cell| {
                 ui.label(
                     egui::RichText::new(match cell {
@@ -584,7 +585,7 @@ fn health_table(ui: &mut egui::Ui, rows: &[Row], state: &mut OverviewState) {
                         Cell::Help => "Help",
                     })
                     .strong()
-                    .color(crate::theme::TABLE_HEADER_TEXT),
+                    .color(crate::theme::table_header_text(ui.visuals())),
                 );
             });
             let mut category = None;
@@ -774,7 +775,7 @@ const CELL_MAX_HEIGHT: f32 = 10_000.0;
 /// heading with its title as written.
 fn category_row(ui: &mut egui::Ui, title: &str, width: f32) {
     egui::Frame::new()
-        .fill(crate::theme::TABLE_CATEGORY_FILL)
+        .fill(crate::theme::table_category_fill(ui.visuals()))
         .inner_margin(egui::Margin::symmetric(CELL_PADDING as i8, 4))
         .show(ui, |ui| {
             ui.set_width(width - 2.0 * CELL_PADDING);
@@ -782,7 +783,7 @@ fn category_row(ui: &mut egui::Ui, title: &str, width: f32) {
                 egui::RichText::new(title.to_uppercase())
                     .small()
                     .strong()
-                    .color(crate::theme::TABLE_HEADER_TEXT),
+                    .color(crate::theme::table_header_text(ui.visuals())),
             );
             response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Heading, true, title));
         });

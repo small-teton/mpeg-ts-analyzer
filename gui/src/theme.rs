@@ -42,18 +42,33 @@ pub const VIDEO_COLOR: Color32 = Color32::from_rgb(0x4e, 0xa8, 0xff);
 pub const AUDIO_COLOR: Color32 = Color32::from_rgb(0x7f, 0xd6, 0x8a);
 pub const PSI_COLOR: Color32 = Color32::from_rgb(0xc7, 0x92, 0xea);
 pub const LIMIT_COLOR: Color32 = Color32::from_rgb(0xff, 0x7a, 0x7a);
-/// Fill of a table's column-header row, a step lighter than the panel.
-pub const TABLE_HEADER_FILL: Color32 = Color32::from_gray(0x30);
+/// Fill of a table's column-header row: a little apart from the panel in the
+/// current light or dark theme (never a fixed color, which would be a dark
+/// bar on a light panel or the reverse).
+pub fn table_header_fill(visuals: &egui::Visuals) -> Color32 {
+    visuals.widgets.noninteractive.weak_bg_fill
+}
+
 /// Fill of a category row inside a table, between the panel and the header.
-pub const TABLE_CATEGORY_FILL: Color32 = Color32::from_gray(0x28);
-/// Text of table header and category rows.
-pub const TABLE_HEADER_TEXT: Color32 = Color32::from_gray(0xf2);
+pub fn table_category_fill(visuals: &egui::Visuals) -> Color32 {
+    visuals.faint_bg_color
+}
+
+/// Text of table header and category rows: the theme's ordinary text color,
+/// quieter than strong text.
+pub fn table_header_text(visuals: &egui::Visuals) -> Color32 {
+    visuals.text_color()
+}
 
 /// Size of the text in a status badge: close to body text, so a verdict
 /// reads at a glance.
-pub const BADGE_TEXT_SIZE: f32 = 12.5;
+pub const BADGE_TEXT_SIZE: f32 = 14.0;
 /// Space around the text of a status badge.
-pub const BADGE_MARGIN: egui::Vec2 = egui::vec2(6.0, 2.0);
+pub const BADGE_MARGIN: egui::Vec2 = egui::vec2(10.0, 3.0);
+/// Narrowest status badge, so short verdicts (OK, NG) read as solid blocks.
+pub const BADGE_MIN_WIDTH: f32 = 48.0;
+/// Corner radius of a status badge.
+pub const BADGE_RADIUS: u8 = 4;
 
 /// The text of a status badge: semibold (the heading face), near body size.
 pub fn badge_text(text: &str) -> egui::RichText {

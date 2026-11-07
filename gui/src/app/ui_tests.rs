@@ -518,14 +518,16 @@ fn table_columns_are_compact_and_check_names_wrap() {
     let (narrow, narrow_titles, narrow_badge) = widths(NARROW);
     for compact in 1..4 {
         assert!(wide[compact] < wide[0], "{wide:?}");
-        assert!(narrow[compact] < narrow[0], "{narrow:?}");
         // Not stretched: the same width at both window sizes.
         assert!((wide[compact] - narrow[compact]).abs() < 0.5);
     }
     assert!(wide[0] > 2.0 * (wide[1] + wide[2] + wide[3]), "{wide:?}");
+    // Narrow: Check gives way (its names wrap) but keeps a readable width.
     assert!(narrow[0] < wide[0]);
-    // A badge is as large as its text.
-    assert!(wide_badge.width() < 40.0 && wide_badge.height() < 24.0);
+    assert!(narrow[0] >= 80.0, "{narrow:?}");
+    // A badge is its text plus padding, at least the minimum width.
+    assert!(wide_badge.width() >= crate::theme::BADGE_MIN_WIDTH);
+    assert!(wide_badge.width() < 64.0 && wide_badge.height() < 28.0);
     assert_eq!(wide_badge.size(), narrow_badge.size());
     // One line each when wide; some check name wraps when narrow.
     let line = wide_titles[0];

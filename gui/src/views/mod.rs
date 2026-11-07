@@ -60,12 +60,15 @@ pub fn badge(ui: &mut egui::Ui, text: &str, verdict: Verdict) -> egui::Response 
         egui::TextStyle::Body,
     );
     let margin = crate::theme::BADGE_MARGIN;
-    let (rect, response) =
-        ui.allocate_exact_size(galley.size() + 2.0 * margin, egui::Sense::hover());
+    let mut size = galley.size() + 2.0 * margin;
+    size.x = size.x.max(crate::theme::BADGE_MIN_WIDTH);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
     if ui.is_rect_visible(rect) {
         let painter = ui.painter();
-        painter.rect_filled(rect, 2, background);
-        painter.galley(rect.min + margin, galley, foreground);
+        painter.rect_filled(rect, crate::theme::BADGE_RADIUS, background);
+        // Centered, so a short verdict sits in the middle of the minimum width.
+        let text_pos = rect.center() - galley.size() / 2.0;
+        painter.galley(text_pos, galley, foreground);
     }
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, text));
     response
