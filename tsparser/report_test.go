@@ -58,8 +58,13 @@ func TestReportConversions(t *testing.T) {
 		t.Fatalf("warning: %s", toJSON(t, got))
 	}
 	ok := &PcrJitter{samples: cbrSamples(76, 0x0100)}
-	ok.samples[50].pid = 0x0200
-	if got := reportJitter(ok); got.Status != "ok" || !jsonEqual(t, got.Estimate.PCRPIDs, []string{"0x0100", "0x0200"}) || got.Delivery.WindowCount != 3 {
+	// The PCR_PID changes at sample 50: a pcr_pid_change discontinuity, with
+	// one window before and one after it.
+	for i := 50; i < len(ok.samples); i++ {
+		ok.samples[i].pid = 0x0200
+	}
+	if got := reportJitter(ok); got.Status != "ok" || !jsonEqual(t, got.Estimate.PCRPIDs, []string{"0x0100", "0x0200"}) || got.Delivery.WindowCount != 2 ||
+		len(got.Estimate.Discontinuities) != 1 || got.Estimate.Discontinuities[0].Kind != "pcr_pid_change" {
 		t.Fatalf("ok: %s", toJSON(t, got))
 	}
 	// One window: the evidence has rates but no deviation.

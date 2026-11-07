@@ -70,17 +70,15 @@ type Packet struct {
 	Offset int64
 }
 
-// PCR is one program_clock_reference of the reference program that the
-// parser uses for timing (not one from a packet with a transport error), in
-// 27 MHz ticks. Index is the index of the packet carrying it, as in Packet.
-// Discontinuity is set when the packet's discontinuity_indicator is set or
-// the parser starts a new timing segment for another reason (a PCR_PID
-// change).
-type PCR struct {
-	Index         int64
-	Offset        int64
-	PCR           uint64
-	Discontinuity bool
+// TimedPCR is one PCR of the reference program that the parser uses for
+// timing (see PCR), placed among the packets: Index is the index of the packet
+// carrying it, as in Packet, and Offset its byte offset. Step is the PCRStep
+// that the program's PCRCheck returned for it, so the time basis splits into
+// segments exactly where every other PCR-based result does.
+type TimedPCR struct {
+	Index  int64
+	Offset int64
+	Step   PCRStep
 }
 
 // ReferenceLayout is the PSI layout that applies from the packet at Index

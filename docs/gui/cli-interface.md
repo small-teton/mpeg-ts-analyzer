@@ -47,8 +47,9 @@ switching programs or screens never runs the CLI again.
 - **All programs.** Today the CLI analyzes one program and stops with
   `programs_listed` when there are several. The GUI needs every program's
   results from one scan:
-  - per program: the existing summary (compliance, continuity, timestamp
-    anomalies, PCR jitter, bitrate) and the average bitrate;
+  - per program: the existing summary (compliance, including the PCR
+    discontinuity check, continuity, timestamp anomalies, PCR jitter,
+    bitrate) and the average bitrate;
   - per program and PID: PCR samples and intervals, PES timestamps and the
     bracketed PCR → PTS/DTS gap, bitrate per 1-second window, PCR jitter
     samples, CC and timestamp events.
@@ -115,7 +116,9 @@ from its first one.
 An input-free command returning the CLI version, schema versions and supported
 outputs, so the GUI can reject an incompatible CLI found on `PATH`. `--version`
 is Cobra's built-in text output and is not used for this. The GUI reads analysis
-schema 2.x (PCR jitter with `estimate` and `delivery`) and packet schema 1.x; a
+schema 2.x (PCR jitter with `estimate` and `delivery`) and packet schema 1.x;
+`compliance.pcr_discontinuities`, added within 2.0, is optional, and an older
+2.0 CLI without it simply has no PCR discontinuities row. A
 CLI that writes analysis schema 1.x is rejected with a request to update the
 CLI.
 

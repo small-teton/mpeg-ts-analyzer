@@ -10,6 +10,7 @@ import (
 type stream struct {
 	check *PIDReferenceCheck
 	index int64
+	clock PCRClock // classifies the PCRs as the parser's PCRCheck does
 }
 
 func newStream() *stream { return &stream{check: NewPIDReferenceCheck()} }
@@ -34,7 +35,8 @@ func (s *stream) fill(pid uint16, n int) {
 // pcr applies a PCR at ms milliseconds carried by the next packet, which it
 // observes on PID 0x0100.
 func (s *stream) pcr(ms float64, discontinuity bool) {
-	s.check.ObservePCR(PCR{Index: s.index, Offset: s.offset(), PCR: uint64(ms * pcrTicksPerMs), Discontinuity: discontinuity})
+	step := s.clock.Observe(PCR{PID: 0x0100, Offset: s.offset(), Value: uint64(ms * PCRTicksPerMs), DiscontinuityIndicator: discontinuity})
+	s.check.ObservePCR(TimedPCR{Index: s.index, Offset: s.offset(), Step: step})
 	s.packets(0x0100)
 }
 
@@ -113,7 +115,7 @@ func TestPCRClockSegments(t *testing.T) {
 		discontinuity bool
 	}{
 		{"declared discontinuity", 140, true},
-		{"jump beyond 1 s", 2000, false},
+		{"forward jump beyond 1 s", 2000, false},
 		{"backward", 50, false},
 	} {
 		s := newStream()
@@ -132,12 +134,19 @@ func TestPCRClockSegments(t *testing.T) {
 		}
 	}
 
-	// A second PCR on the same packet index starts a new segment too.
-	var c pcrClock
-	c.observePCR(3, 0, false)
-	c.observePCR(3, 27_000, false)
-	if c.segment != 1 || c.ms != 0 {
-		t.Errorf("same index: segment %d ms %v", c.segment, c.ms)
+	// A wraparound is a normal interval: time keeps counting across it.
+	s := newStream()
+	top := float64(PCRWrapTicks-PCRTicksPerMs*10) / PCRTicksPerMs // 10 ms before the wrap
+	s.pcr(top, false)
+	s.packets(0x0200)
+	s.fill(0x1FFF, 2)
+	s.pcr(30, false) // 40 ms later across the wrap
+	s.packets(0x0200)
+	s.fill(0x1FFF, 2)
+	s.pcr(70, false)
+	s.finish()
+	if p, _ := s.check.Gaps().PID(0x0200); !p.MaxGapExact || !near(p.MaxGapMs, 40) {
+		t.Errorf("wraparound: %+v", p)
 	}
 }
 
@@ -157,7 +166,7 @@ func TestPacketGapsWithoutPCR(t *testing.T) {
 func TestLongestKeepsBoundedCandidates(t *testing.T) {
 	var c pcrClock
 	var l longest
-	c.observePCR(0, 0, false)
+	c.observePCR(0, PCRStep{Kind: PCRStepFirst})
 	a := c.take(1, 1)
 	b := c.take(2, 2)
 	d := c.take(9, 9)

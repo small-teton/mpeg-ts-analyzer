@@ -36,6 +36,7 @@ under categories that are always expanded:
 | Category | Check | Applies to | Verdicts |
 |---|---|---|---|
 | Timing | Max PCR interval | selected program (its PCR PID) | `OK` up to 100 ms, `NG` above |
+| Timing | PCR discontinuities | selected program (its PCR PID) | `OK` when every PCR clock jump is declared with `discontinuity_indicator`; `NG` for a backward step or a forward jump of more than 1000 ms without it |
 | Timing | PCR jitter estimate | selected program (its PCR PID) | `OK` within ±500 ns, `WARNING` within ±25 µs, `NG` beyond, when delivery is constant; otherwise `NOT ASSESSABLE` |
 | PES / Timestamps | PCR → PTS/DTS gap | selected program | `OK` up to 1000 ms, `NG` above |
 | PES / Timestamps | PTS/DTS anomalies | selected program, per PID | `OK` or `ANOMALIES` |
@@ -93,6 +94,17 @@ assessment and its evidence, for example `2 × 1 s windows, max deviation
 0.00 % of 75.2 kbit/s`. Even a graded estimate is not a direct hardware or
 TR 101 290 measurement.
 
+**PCR discontinuities** classifies each PCR against the previous one, in the
+same way the CLI uses for every PCR-based result: a 33-bit wraparound is a
+normal interval, a declared discontinuity or a `PCR_PID` change starts a new
+timing segment legally, and a backward step or a forward jump of more than
+1000 ms without `discontinuity_indicator` is a finding. Its page lists each
+kind with its count, first offset and how far the PCR jumped. Max PCR interval
+measures only the intervals within a segment, so a clean interval and an
+undeclared jump show as two separate rows rather than one `OK`. The
+intentionally invalid PCR-discontinuities sample
+(`sample_data/sample_188byte_pcr_discontinuities.ts`) shows every kind.
+
 TS synchronization covers every packet from the start of the analysis. When a
 packet does not start with the sync byte, the CLI skips ahead to the next
 offset where five consecutive packets do and continues there, so later checks
@@ -114,19 +126,22 @@ time, do not count. Times are estimated from byte positions between PCRs. The
 sample `sample_data/sample_188byte_pid_references.ts` shows each status.
 
 **Findings** lists everything that needs attention, and its count includes
-every check that is not `OK`: each failed check, each PTS/DTS anomaly kind per
-PID, each continuity error (with its offset), PCR jitter, each PID with
+every check that is not `OK`: each failed check, each kind of undeclared PCR
+discontinuity (at its first PCR), each PTS/DTS anomaly kind per PID, each continuity error (with its offset), PCR jitter, each PID with
 transport errors or scrambled packets (with its first offset), a loss of TS
 synchronization (at the offset of the first loss, with the number of losses
 and skipped bytes, and the CLI's reason when the analysis stopped), each
-referenced PID that is not `OK` (at the packet before its longest silence)
-and each unreferenced PID (at its first unreferenced packet), with their own
-status, and the analyzer's warnings. Each row shows the verdict, the check, the reason and whether it
+referenced PID that is `ABSENT` or `SILENT` (at the packet before its longest
+silence) and each `UNREFERENCED` PID (at its first unreferenced packet), with
+their own status, and the analyzer's warnings. Each row shows the verdict, the check, the reason and whether it
 concerns the selected program or the whole multiplex; selecting the check
 opens its page. A check counts once through its own events, not again for its
-total. A check the CLI skipped, and a PCR jitter estimate the CLI found
-`not_assessable`, are listed under **Unavailable analysis** instead, with the
-CLI's reason; they are not findings. The GUI shows the CLI's verdicts as they
+total. A check the CLI skipped, a PCR jitter estimate the CLI found
+`not_assessable`, and referenced or unreferenced PIDs the CLI could not judge
+(`INSUFFICIENT DATA`: a PID referenced too briefly, one that may be idle, one
+that appeared too close to the end of the range, or no PCR) are listed under
+**Unavailable analysis** instead, with the CLI's reason; they are not
+findings. The GUI shows the CLI's verdicts as they
 are and never changes them.
 
 To see every verdict at once, open the intentionally invalid
@@ -135,6 +150,9 @@ To see every verdict at once, open the intentionally invalid
 ```sh
 make gui-run GUI_ARGS='sample_data/sample_188byte_all_findings.ts'
 ```
+
+Its PCR clock is continuous, so PCR discontinuities stays `OK` there; open
+`sample_data/sample_188byte_pcr_discontinuities.ts` for that check.
 
 ## Open a file from the command line
 

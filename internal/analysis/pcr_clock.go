@@ -13,17 +13,11 @@ package analysis
 // PCR when the scan finishes, and stamps taken before the first PCR to the
 // first PCR. Durations measured this way are lower bounds: time outside the
 // PCR-covered part of the range is not counted, and neither is time across a
-// timing-segment boundary, which is a PCR with discontinuity_indicator, a PCR
-// not later than the previous one, or a step of more than
-// pcrSegmentJumpMs (the PCR jitter estimate uses the same rule).
-
-// pcrTicksPerMs is the number of 27 MHz PCR ticks in a millisecond.
-const pcrTicksPerMs = 27_000
-
-// pcrSegmentJumpMs is the largest PCR-to-PCR step counted as elapsed time.
-// ISO/IEC 13818-1 (2.7.2) caps the PCR interval at 100 ms, so a step beyond
-// 1000 ms is a reset or a loss of the time base, not an interval.
-const pcrSegmentJumpMs = 1000.0
+// timing-segment boundary. Whether two consecutive PCRs are comparable is the
+// PCRStep that PCRClock gives every PCR-based result (pcr.go): a continuous
+// or wraparound step adds its interval, and every other step (declared,
+// pcr_pid_change, backward, forward_jump) starts a new segment without adding
+// time.
 
 // stamp is the position of one packet, or of one event at a packet, and its
 // estimated time once resolved. ms is the PCR time elapsed since the first
@@ -52,8 +46,7 @@ type settler interface {
 type pcrClock struct {
 	seq   int // number of PCRs seen
 	has   bool
-	index int64 // packet index of the last PCR
-	pcr   uint64
+	index int64   // packet index of the last PCR
 	ms    float64 // elapsed time at the last PCR
 	// segment numbers the timing segment of the last PCR.
 	segment int
@@ -109,24 +102,18 @@ func (c *pcrClock) resolve(s *stamp) {
 }
 
 // observePCR applies one PCR of the reference program, carried by the packet
-// at index. discontinuity is a declared discontinuity or another reason the
-// parser starts a new timing segment (a PCR_PID change).
-func (c *pcrClock) observePCR(index int64, pcr uint64, discontinuity bool) {
-	c.nextIndex, c.nextMs, c.nextBoundary = index, 0, true
-	if c.has {
-		deltaMs := float64(int64(pcr)-int64(c.pcr)) / pcrTicksPerMs
-		c.nextBoundary = discontinuity || deltaMs <= 0 || deltaMs > pcrSegmentJumpMs || index <= c.index
-		c.nextMs = c.ms
-		if !c.nextBoundary {
-			c.nextMs += deltaMs
-		}
+// at index, with its step relative to the program's previous PCR.
+func (c *pcrClock) observePCR(index int64, step PCRStep) {
+	c.nextIndex, c.nextMs, c.nextBoundary = index, c.ms, !step.Comparable()
+	if !c.nextBoundary {
+		c.nextMs += float64(step.Ticks) / PCRTicksPerMs
 	}
 	c.settle()
 	if c.has && c.nextBoundary {
 		c.segment++
 	}
 	c.seq++
-	c.has, c.index, c.pcr, c.ms = true, index, pcr, c.nextMs
+	c.has, c.index, c.ms = true, index, c.nextMs
 }
 
 // finish resolves the stamps taken after the last PCR to its time.

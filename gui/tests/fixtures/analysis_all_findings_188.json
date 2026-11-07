@@ -179,6 +179,13 @@
           "limit_ms": 100,
           "observations": 54
         },
+        "pcr_discontinuities": {
+          "status": "ok",
+          "pcr_count": 55,
+          "undeclared_count": 0,
+          "jump_limit_ms": 1000,
+          "items": []
+        },
         "max_pcr_pts_dts_gap": {
           "status": "ng",
           "value_ms": 1200,

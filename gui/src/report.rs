@@ -427,7 +427,32 @@ pub struct ElementaryStream {
 #[derive(Debug, Deserialize)]
 pub struct Compliance {
     pub max_pcr_interval: Check,
+    /// Added within schema 2.0; absent from an earlier 2.0 CLI.
+    #[serde(default)]
+    pub pcr_discontinuities: Option<PcrDiscontinuities>,
     pub max_pcr_pts_dts_gap: Check,
+}
+
+/// The PCR discontinuity check: how each PCR of the program relates to the
+/// previous one. `ng` when a step has no discontinuity_indicator (`backward`
+/// or `forward_jump`), `skipped` with fewer than two PCRs.
+#[derive(Debug, Deserialize)]
+pub struct PcrDiscontinuities {
+    pub status: String,
+    pub reason: Option<String>,
+    pub pcr_count: u64,
+    pub undeclared_count: u64,
+    pub jump_limit_ms: f64,
+    pub items: Vec<PcrStep>,
+}
+
+/// How often one kind of PCR step occurred, and the first such PCR packet.
+#[derive(Debug, Deserialize)]
+pub struct PcrStep {
+    pub kind: String,
+    pub count: u64,
+    pub first_offset_bytes: u64,
+    pub first_jump_ms: f64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -540,6 +565,10 @@ pub fn rate_text(bps: f64) -> String {
 #[derive(Debug, Deserialize)]
 pub struct PcrDiscontinuity {
     pub offset_bytes: u64,
+    /// `declared`, `pcr_pid_change`, `backward` or `forward_jump`; absent
+    /// from an earlier 2.0 CLI.
+    #[serde(default)]
+    pub kind: Option<String>,
     pub jump_ms: f64,
     pub from_segment: u64,
     pub to_segment: u64,

@@ -165,7 +165,7 @@ func NewPIDReferenceCheck() *PIDReferenceCheck {
 func (c *PIDReferenceCheck) Gaps() *PacketGaps { return c.gaps }
 
 // ObservePCR applies one PCR of the reference program.
-func (c *PIDReferenceCheck) ObservePCR(o PCR) { c.gaps.ObservePCR(o) }
+func (c *PIDReferenceCheck) ObservePCR(o TimedPCR) { c.gaps.ObservePCR(o) }
 
 // ObservePacket counts one packet; see Packet.
 func (c *PIDReferenceCheck) ObservePacket(o Packet) {

@@ -58,9 +58,9 @@ func (p *pidPackets) resolve(c *pcrClock) {
 	p.worst.resolve(c)
 }
 
-// ObservePCR applies one PCR of the reference program; see PCR.
-func (g *PacketGaps) ObservePCR(o PCR) {
-	g.clock.observePCR(o.Index, o.PCR, o.Discontinuity)
+// ObservePCR applies one PCR of the reference program; see TimedPCR.
+func (g *PacketGaps) ObservePCR(o TimedPCR) {
+	g.clock.observePCR(o.Index, o.Step)
 }
 
 // Finish ends the scan: times not yet resolved are clamped to the last PCR.

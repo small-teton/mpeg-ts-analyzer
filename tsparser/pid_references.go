@@ -24,8 +24,10 @@ import (
 //     clear, so it proves that the PID carries packets.
 //   - The reference program, whose PCRs give the time basis, is the first
 //     analyzed program (in PAT order) whose PMT has a PCR_PID. Its PCRs are
-//     the ones the program analysis uses: not from a packet with a transport
-//     error, and a PCR_PID change starts a new timing segment. All program
+//     the ones the program analysis uses (not from a packet with a transport
+//     error), each passed with the analysis.PCRStep its PCRCheck returned, so
+//     the time basis splits into segments where every other PCR-based result
+//     does. All program
 //     clocks run at 27 MHz within 30 ppm (ISO/IEC 13818-1, 2.4.2.1), so one
 //     program's PCRs time the packets of every PID.
 //   - Layouts come from psiTracker: the programs of the applicable PAT, the
@@ -92,8 +94,8 @@ func (s *pidReferenceSummary) observe(tsPacket *TsPacket, pos int64, analyzers [
 
 // observePcr applies a PCR of the reference program carried by the packet at
 // pos.
-func (s *pidReferenceSummary) observePcr(pos int64, pcr uint64, discontinuity bool) {
-	s.check.ObservePCR(analysis.PCR{Index: s.scanIndex(pos), Offset: pos, PCR: pcr, Discontinuity: discontinuity})
+func (s *pidReferenceSummary) observePcr(pos int64, step analysis.PCRStep) {
+	s.check.ObservePCR(analysis.TimedPCR{Index: s.scanIndex(pos), Offset: pos, Step: step})
 }
 
 // finish ends the scan at pos, the offset after its last packet.

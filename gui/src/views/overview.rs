@@ -7,7 +7,9 @@ use crate::icons;
 use crate::plot_data::Timeline;
 use crate::psi;
 use crate::range_bar;
-use crate::report::{AffectedPackets, AnalysisReport, Program, ReferencedPid, stream_type_name};
+use crate::report::{
+    AffectedPackets, AnalysisReport, Program, ReferencedPid, UnreferencedPid, stream_type_name,
+};
 
 /// What Overview shows: the summary, or the full-page explanation of one
 /// check.
@@ -398,6 +400,40 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
                 reason: result.reason.clone(),
             })
         }
+        Check::PcrDiscontinuities => {
+            let result = program.compliance.as_ref()?.pcr_discontinuities.as_ref()?;
+            let mut facts = vec![
+                ("Undeclared", result.undeclared_count.to_string()),
+                ("PCRs", result.pcr_count.to_string()),
+                number,
+            ];
+            if let Some(pid) = &program.pcr_pid {
+                facts.push(("PCR PID", pid.clone()));
+            }
+            facts.push(("Jump limit", format!("{:.0} ms", result.jump_limit_ms)));
+            for item in &result.items {
+                facts.push((
+                    pcr_step_label(&item.kind),
+                    format!(
+                        "{}×, first at 0x{:08X} ({:+.3} ms)",
+                        item.count, item.first_offset_bytes, item.first_jump_ms
+                    ),
+                ));
+            }
+            facts.extend(result.reason.clone().map(|r| ("Reason", r)));
+            let value = if result.status == "skipped" {
+                "—".to_owned()
+            } else {
+                result.undeclared_count.to_string()
+            };
+            Some(Row {
+                check,
+                status: result.status.clone(),
+                value,
+                facts,
+                reason: result.reason.clone(),
+            })
+        }
         Check::TimestampAnomalies => {
             let anomalies = program.timestamp_anomalies.as_ref()?;
             let count: u64 = anomalies.items.iter().map(|a| a.count).sum();
@@ -557,7 +593,7 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
                 status: referenced.status.clone(),
                 value: format!("{not_ok} of {}", referenced.pids.len()),
                 facts,
-                reason: None,
+                reason: undetermined_references(report),
             })
         }
         Check::UnreferencedPids => {
@@ -596,7 +632,7 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
                 status: unreferenced.status.clone(),
                 value: unreferenced.pids.len().to_string(),
                 facts,
-                reason: unreferenced.reason.clone(),
+                reason: undetermined_unreferenced(report),
             })
         }
         Check::PcrJitter => {
@@ -637,6 +673,46 @@ fn packets(count: u64) -> String {
     }
 }
 
+/// The references the CLI could not judge (`insufficient_data`), with why:
+/// unavailable analysis rather than findings.
+fn undetermined_references(report: &AnalysisReport) -> Option<String> {
+    let pids: Vec<String> = report
+        .pid_references
+        .as_ref()?
+        .referenced
+        .pids
+        .iter()
+        .filter(|p| p.status == "insufficient_data")
+        .map(reference_text)
+        .collect();
+    (!pids.is_empty()).then(|| pids.join("; "))
+}
+
+/// Why unreferenced PIDs could not (all) be judged: the CLI's reason and the
+/// PIDs it could not judge.
+fn undetermined_unreferenced(report: &AnalysisReport) -> Option<String> {
+    let unreferenced = &report.pid_references.as_ref()?.unreferenced;
+    let mut parts: Vec<String> = unreferenced.reason.iter().cloned().collect();
+    parts.extend(
+        unreferenced
+            .pids
+            .iter()
+            .filter(|p| p.status == "insufficient_data")
+            .map(unreferenced_text),
+    );
+    (!parts.is_empty()).then(|| parts.join("; "))
+}
+
+/// One PID that carried unreferenced packets.
+fn unreferenced_text(p: &UnreferencedPid) -> String {
+    format!(
+        "PID {}: {} without a reference for {:.1} ms",
+        p.pid,
+        packets(p.packet_count),
+        p.longest_run_ms
+    )
+}
+
 /// One referenced PID: its program, role, PID and what the CLI found.
 fn reference_text(p: &ReferencedPid) -> String {
     let role = match (p.role.as_str(), &p.stream_type) {
@@ -653,6 +729,18 @@ fn reference_text(p: &ReferencedPid) -> String {
         (status, _, None) => status.replace('_', " "),
     };
     format!("program {} {} ({role}): {detail}", p.program_number, p.pid)
+}
+
+/// The label of a PCR step kind of the CLI; an unknown kind is shown as is.
+fn pcr_step_label(kind: &str) -> &'static str {
+    match kind {
+        "wraparound" => "Wraparound",
+        "declared" => "Declared",
+        "pcr_pid_change" => "PCR PID change",
+        "backward" => "Backward (undeclared)",
+        "forward_jump" => "Forward jump (undeclared)",
+        _ => "Other step",
+    }
 }
 
 /// The CLI's result of a transport-error or scrambling check.
@@ -1065,12 +1153,14 @@ pub(crate) struct Finding {
 }
 
 /// Whether a check status means its analysis is unavailable rather than a
-/// result: `skipped`, or a PCR jitter estimate the CLI did not grade
-/// (`not_assessable`, because delivery is not constant).
+/// result: `skipped`, a PCR jitter estimate the CLI did not grade
+/// (`not_assessable`, because delivery is not constant), or PID references
+/// the CLI could not judge (`insufficient_data`).
 /// Only a status this check describes counts: an unknown `not_assessable` on
 /// another check stays a finding, shown as the CLI reported it.
 pub(crate) fn is_unavailable(check: Check, status: &str) -> bool {
-    matches!(status, "skipped" | "not_assessable") && is_known_status(check, status)
+    matches!(status, "skipped" | "not_assessable" | "insufficient_data")
+        && is_known_status(check, status)
 }
 
 /// Whether a check status is a finding. Unavailable analysis is not a
@@ -1121,6 +1211,17 @@ pub(crate) fn findings(
         if !is_finding(row.check, &row.status) {
             continue;
         }
+        // A PID reference result with findings can still contain PIDs the CLI
+        // could not judge: those are unavailable analysis, with their reason.
+        if matches!(row.check, Check::ReferencedPids | Check::UnreferencedPids)
+            && let Some(reason) = &row.reason
+        {
+            unavailable.push(Unavailable {
+                check: row.check,
+                status: "insufficient_data".to_owned(),
+                reason: reason.clone(),
+            });
+        }
         let check = row.check;
         let finding = |reason: String, scope: Scope, offset: Option<u64>| Finding {
             status: row.status.clone(),
@@ -1143,6 +1244,32 @@ pub(crate) fn findings(
                     )
                 });
                 findings.push(finding(reason, in_program, None));
+            }
+            Check::PcrDiscontinuities => {
+                // One finding per undeclared kind, at its first PCR.
+                let items: Vec<_> = program
+                    .compliance
+                    .as_ref()
+                    .and_then(|c| c.pcr_discontinuities.as_ref())
+                    .map_or(&[][..], |d| &d.items[..])
+                    .iter()
+                    .filter(|item| matches!(item.kind.as_str(), "backward" | "forward_jump"))
+                    .collect();
+                if items.is_empty() {
+                    findings.push(finding(String::new(), in_program, None));
+                }
+                for item in items {
+                    findings.push(finding(
+                        format!(
+                            "{} without discontinuity_indicator · {}× · PCR jumped {:+.3} ms",
+                            item.kind.replace('_', " "),
+                            item.count,
+                            item.first_jump_ms
+                        ),
+                        in_program,
+                        Some(item.first_offset_bytes),
+                    ));
+                }
             }
             Check::TimestampAnomalies => {
                 let items = program
@@ -1225,13 +1352,14 @@ pub(crate) fn findings(
                 ));
             }
             Check::ReferencedPids => {
-                // One finding per reference that is not ok, with its own
-                // status, at the packet before its silence.
+                // One finding per reference with a finding status, with its
+                // own status, at the packet before its silence; references
+                // the CLI could not judge are unavailable analysis.
                 let pids = report
                     .pid_references
                     .as_ref()
                     .map_or(&[][..], |r| &r.referenced.pids[..]);
-                for pid in pids.iter().filter(|p| p.status != "ok") {
+                for pid in pids.iter().filter(|p| is_finding(check, &p.status)) {
                     findings.push(Finding {
                         status: pid.status.clone(),
                         ..finding(
@@ -1246,11 +1374,16 @@ pub(crate) fn findings(
                 }
             }
             Check::UnreferencedPids => {
-                // One finding per PID, at its first unreferenced packet.
-                let pids = report
+                // One finding per PID with a finding status, at its first
+                // unreferenced packet; PIDs the CLI could not judge are
+                // unavailable analysis.
+                let pids: Vec<&UnreferencedPid> = report
                     .pid_references
                     .as_ref()
-                    .map_or(&[][..], |r| &r.unreferenced.pids[..]);
+                    .map_or(&[][..], |r| &r.unreferenced.pids[..])
+                    .iter()
+                    .filter(|p| is_finding(check, &p.status))
+                    .collect();
                 if pids.is_empty() {
                     findings.push(finding(
                         row.reason.clone().unwrap_or_default(),
@@ -1262,12 +1395,7 @@ pub(crate) fn findings(
                     findings.push(Finding {
                         status: pid.status.clone(),
                         ..finding(
-                            format!(
-                                "PID {}: {} without a reference for {:.1} ms",
-                                pid.pid,
-                                packets(pid.packet_count),
-                                pid.longest_run_ms
-                            ),
+                            unreferenced_text(pid),
                             Scope::Multiplex,
                             Some(pid.first_offset_bytes),
                         )
@@ -1401,9 +1529,10 @@ mod tests {
             );
         }
         // Each row is non-OK and has its finding, except TS synchronization
-        // and the PID references: the packets of this sample are aligned and
-        // its PIDs are all referenced and present (see the sync-loss and
-        // PID-reference samples).
+        // (the packets of this sample are aligned; see the sync-loss sample),
+        // PCR discontinuities (its PCR clock is continuous; see the
+        // PCR-discontinuities sample) and the PID references (its PIDs are
+        // all referenced and present; see the PID-reference sample).
         for row in rows(&report, &report.programs[0]) {
             if matches!(
                 row.check,
@@ -1412,9 +1541,67 @@ mod tests {
                 assert_eq!(row.status, "ok");
                 continue;
             }
+            if row.check == Check::PcrDiscontinuities {
+                assert_eq!((row.status.as_str(), row.value.as_str()), ("ok", "0"));
+                continue;
+            }
             assert!(is_finding(row.check, &row.status), "{:?}", row.check);
             assert!(findings.iter().any(|f| f.check == Some(row.check)));
         }
+    }
+
+    /// The PCR-discontinuities sample: one finding per undeclared kind at its
+    /// first PCR; the legal kinds are listed in the row only.
+    #[test]
+    fn findings_of_the_pcr_discontinuities_sample() {
+        let report = report(include_str!(
+            "../../tests/fixtures/analysis_pcr_discontinuities_188.json"
+        ));
+        let program = &report.programs[0];
+        let (findings, _) = findings(&report, program);
+        let discontinuities: Vec<_> = findings
+            .iter()
+            .filter(|f| f.check == Some(Check::PcrDiscontinuities))
+            .map(|f| (f.status.as_str(), f.reason.as_str(), f.offset))
+            .collect();
+        assert_eq!(
+            discontinuities,
+            [
+                (
+                    "ng",
+                    "backward without discontinuity_indicator · 1× · PCR jumped -1960.000 ms",
+                    Some(140 * 188)
+                ),
+                (
+                    "ng",
+                    "forward jump without discontinuity_indicator · 1× · PCR jumped +4040.000 ms",
+                    Some(170 * 188)
+                ),
+            ]
+        );
+        let ng = row(&report, program, Check::PcrDiscontinuities).unwrap();
+        assert_eq!((ng.status.as_str(), ng.value.as_str()), ("ng", "2"));
+        let facts: Vec<(&str, &str)> = ng.facts.iter().map(|(l, v)| (*l, v.as_str())).collect();
+        for fact in [
+            ("Undeclared", "2"),
+            ("PCRs", "127"),
+            ("Wraparound", "1×, first at 0x000024B8 (+40.000 ms)"),
+            ("Declared", "2×, first at 0x00003AC0 (+5040.000 ms)"),
+            ("PCR PID change", "1×, first at 0x00009458 (+40.000 ms)"),
+        ] {
+            assert!(facts.contains(&fact), "{fact:?} in {facts:?}");
+        }
+        // An earlier 2.0 CLI without the check: no row.
+        let mut document: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/analysis_pcr_discontinuities_188.json"
+        ))
+        .unwrap();
+        document["programs"][0]["compliance"]
+            .as_object_mut()
+            .unwrap()
+            .remove("pcr_discontinuities");
+        let older: AnalysisReport = serde_json::from_value(document).unwrap();
+        assert!(row(&older, &older.programs[0], Check::PcrDiscontinuities).is_none());
     }
 
     /// Analyzer warnings, unknown statuses and skipped checks; a check without
@@ -1665,7 +1852,23 @@ mod tests {
         ));
 
         let (all, unavailable) = findings(&report, program);
-        assert!(unavailable.is_empty());
+        // What the CLI could not judge is unavailable analysis, not a finding.
+        assert_eq!(
+            unavailable,
+            [
+                Unavailable {
+                    check: Check::ReferencedPids,
+                    status: "insufficient_data".to_owned(),
+                    reason: "program 1 0x0102 (stream_type 0x06): intermittent stream type"
+                        .to_owned()
+                },
+                Unavailable {
+                    check: Check::UnreferencedPids,
+                    status: "insufficient_data".to_owned(),
+                    reason: "PID 0x0500: 2 packets without a reference for 350.0 ms".to_owned()
+                },
+            ]
+        );
         let pid_findings: Vec<_> = all
             .iter()
             .filter(|f| {
@@ -1686,12 +1889,6 @@ mod tests {
                     Some(0xAE0C)
                 ),
                 (
-                    "insufficient_data",
-                    "program 1 0x0102 (stream_type 0x06): intermittent stream type",
-                    Scope::Multiplex,
-                    Some(0x1F94)
-                ),
-                (
                     "absent",
                     "program 1 0x0103 (stream_type 0x04): no packet for 13175.0 ms",
                     Scope::Multiplex,
@@ -1702,12 +1899,6 @@ mod tests {
                     "PID 0x0300: 5 packets without a reference for 12750.0 ms",
                     Scope::Multiplex,
                     Some(0x5C88)
-                ),
-                (
-                    "insufficient_data",
-                    "PID 0x0500: 2 packets without a reference for 350.0 ms",
-                    Scope::Multiplex,
-                    Some(0x1C8C8)
                 ),
             ]
         );
@@ -1724,27 +1915,27 @@ mod tests {
         });
         references["referenced"]["pids"][1]["status"] = "unknown_status".into();
         let report = self::report(&edited.to_string());
-        let (all, _) = findings(&report, &report.programs[0]);
-        let unreferenced: Vec<_> = all
-            .iter()
-            .filter(|f| f.check == Some(Check::UnreferencedPids))
-            .map(|f| (f.status.as_str(), f.reason.as_str(), f.offset))
-            .collect();
-        assert_eq!(
-            unreferenced,
-            [("insufficient_data", "no_pcr_time_base", None)]
-        );
-        let pmt = all
-            .iter()
-            .find(|f| f.reason.starts_with("program 1 0x1000"))
-            .unwrap();
-        assert_eq!(
-            (pmt.reason.as_str(), pmt.offset),
-            ("program 1 0x1000 (PMT): insufficient data", Some(8084))
-        );
+        let (all, unavailable) = findings(&report, &report.programs[0]);
+        assert!(all.iter().all(|f| f.check != Some(Check::UnreferencedPids)
+            && !f.reason.starts_with("program 1 0x1000")));
         assert!(
             all.iter()
                 .any(|f| f.reason == "program 1 0x0100 (PCR): unknown status")
+        );
+        assert_eq!(
+            unavailable,
+            [
+                Unavailable {
+                    check: Check::ReferencedPids,
+                    status: "insufficient_data".to_owned(),
+                    reason: "program 1 0x1000 (PMT): insufficient data; program 1 0x0102 (stream_type 0x06): intermittent stream type".to_owned()
+                },
+                Unavailable {
+                    check: Check::UnreferencedPids,
+                    status: "insufficient_data".to_owned(),
+                    reason: "no_pcr_time_base".to_owned()
+                },
+            ]
         );
 
         edited["pid_references"]["unreferenced"] = serde_json::json!({
@@ -1752,14 +1943,11 @@ mod tests {
         });
         let report = self::report(&edited.to_string());
         let (_, unavailable) = findings(&report, &report.programs[0]);
-        assert_eq!(
-            unavailable,
-            [Unavailable {
-                check: Check::UnreferencedPids,
-                status: "skipped".to_owned(),
-                reason: "program_layouts_unknown".to_owned()
-            }]
-        );
+        assert!(unavailable.contains(&Unavailable {
+            check: Check::UnreferencedPids,
+            status: "skipped".to_owned(),
+            reason: "program_layouts_unknown".to_owned()
+        }));
         let reference = |role: &str, stream_type: Option<&str>| ReferencedPid {
             program_number: 2,
             role: role.to_owned(),

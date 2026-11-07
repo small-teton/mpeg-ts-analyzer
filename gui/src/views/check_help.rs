@@ -1,7 +1,8 @@
 //! Plain-language explanations of the Overview transport-health checks, kept
 //! in one table so the table rows, the check detail pages and the findings
 //! list all show the same text. The thresholds are the CLI's
-//! (tsparser/compliance.go and tsparser/pcr_jitter.go); the GUI only explains
+//! (internal/analysis/pcr.go, tsparser/compliance.go and tsparser/pcr_jitter.go);
+//! the GUI only explains
 //! them.
 //!
 //! A new check is one [`Check`] variant, one [`HELP`] entry (which also places
@@ -42,6 +43,7 @@ impl Category {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Check {
     MaxPcrInterval,
+    PcrDiscontinuities,
     PcrJitter,
     PcrPtsDtsGap,
     TimestampAnomalies,
@@ -114,13 +116,13 @@ pub struct CheckHelp {
 
 /// The explanations in table order: grouped by [`Category`], in
 /// [`Category::ALL`] order.
-pub const HELP: [CheckHelp; 10] = [
+pub const HELP: [CheckHelp; 11] = [
     CheckHelp {
         check: Check::MaxPcrInterval,
         category: Category::Timing,
         title: "Max PCR interval",
         summary: "The longest time the program goes without a PCR.",
-        measures: "How long the program goes without a PCR (program clock reference). The value is the largest difference between two consecutive PCRs, read from the PCR values themselves. A decoder needs a PCR at least every 100 ms to keep its clock locked to the encoder.",
+        measures: "How long the program goes without a PCR (program clock reference). The value is the largest difference between two consecutive comparable PCRs, read from the PCR values themselves; a stored file has no arrival times. A decoder needs a PCR at least every 100 ms to keep its clock locked to the encoder.",
         applies_to: "The selected program: the PCR PID named in its PMT.",
         value: "The longest interval in milliseconds. Current result gives the limit and how many intervals were measured (observations).",
         statuses: &[
@@ -132,10 +134,36 @@ pub const HELP: [CheckHelp; 10] = [
             ("skipped", "Not measured; see When it is skipped."),
         ],
         skipped: "Skipped when the range holds fewer than two comparable PCRs: no PCR, a single PCR, or PCRs that are all separated by discontinuities.",
-        limitations: "No interval is measured across a PCR packet with discontinuity_indicator set, or across an undeclared backward jump of the clock. A 33-bit wraparound is measured as a normal interval. An undeclared forward jump is measured as is, because a file cannot tell it apart from a genuinely late PCR.",
+        limitations: "Two consecutive PCRs are comparable when they come from the same PID, the second has no discontinuity_indicator, and it is 0 to 1000 ms later, counted across the 33-bit wraparound. Every other pair is a PCR discontinuity and is not measured; see PCR discontinuities. A step between 100 ms and 1000 ms is measured and fails: a file cannot tell a late PCR (ETSI TR 101 290 PCR_repetition_error) from a small undeclared jump. The first PCR of the range has no interval.",
         navigation: Some((
             Screen::Timeline,
             "Timeline plots every interval against the limit.",
+        )),
+    },
+    CheckHelp {
+        check: Check::PcrDiscontinuities,
+        category: Category::Timing,
+        title: "PCR discontinuities",
+        summary: "PCR clock jumps, and whether the stream declared them.",
+        measures: "How each PCR of the program relates to the one before it. A program may start a new time base, for example at a splice, but must signal it with discontinuity_indicator (ISO/IEC 13818-1, 2.4.3.5); an unsignalled jump makes a decoder's clock lose lock. Each PCR is one of: continuous (0 to 1000 ms later), wraparound (the 33-bit PCR counter wrapped to zero; a normal interval), declared (discontinuity_indicator on the PCR packet, or on an earlier packet of the PCR PID without a PCR), PCR PID change (a new PMT version moved the PCR), backward (smaller, without discontinuity_indicator) or forward jump (more than 1000 ms later, without discontinuity_indicator).",
+        applies_to: "The selected program: the PCR PID named in its PMT, following PMT version changes.",
+        value: "The number of undeclared discontinuities: backward steps and forward jumps. Current result gives the number of PCRs and each kind that occurred with its count, first offset and how far the PCR jumped there.",
+        statuses: &[
+            (
+                "ok",
+                "No undeclared discontinuity. Declared discontinuities, PCR PID changes and wraparounds are legal and only listed.",
+            ),
+            (
+                "ng",
+                "At least one PCR jumped backward, or more than 1000 ms forward, without discontinuity_indicator (ETSI TR 101 290 PCR_discontinuity_indicator_error).",
+            ),
+            ("skipped", "Not evaluated; see When it is skipped."),
+        ],
+        skipped: "Skipped when the range holds fewer than two PCRs of the program.",
+        limitations: "A forward step of 100 to 1000 ms without discontinuity_indicator is not counted here: a file cannot tell it from a PCR that arrived late, so it is measured as a PCR interval and fails Max PCR interval instead. Every discontinuity also splits the PCR jitter estimate, the bitrate time base and the elapsed time of the plots into segments, and no PCR → PTS/DTS gap is measured across one.",
+        navigation: Some((
+            Screen::Timeline,
+            "Timeline plots every measured PCR interval; its time axis stops at each discontinuity, so no interval is drawn across one.",
         )),
     },
     CheckHelp {
@@ -338,7 +366,7 @@ pub const HELP: [CheckHelp; 10] = [
             ),
         ],
         skipped: "This check is never skipped while a program is analyzed. Without any PCR in the reference program, durations are unknown and every judged reference is insufficient_data.",
-        limitations: "ETSI TR 101 290 (PID_error) leaves the limit to the user; 5000 ms is TSDuck's default for video and audio PIDs. Time before the first and after the last PCR of the range, and across a PCR discontinuity, is not counted, so silences there are lower bounds. Packets with transport_error_indicator set do not count, because their PID may be damaged; scrambled packets count. How often the PAT and PMT repeat is not judged here.",
+        limitations: "ETSI TR 101 290 (PID_error) leaves the limit to the user; 5000 ms is TSDuck's default for video and audio PIDs, and it is fixed in the CLI. A reference the CLI cannot judge (insufficient_data) is listed under Unavailable analysis, not as a finding. Time before the first and after the last PCR of the range, and across a PCR discontinuity, is not counted, so silences there are lower bounds. Packets with transport_error_indicator set do not count, because their PID may be damaged; scrambled packets count. How often the PAT and PMT repeat is not judged here.",
         navigation: Some((
             Screen::Packets,
             "Packets lists the packets around the offsets of a silence.",
@@ -371,7 +399,7 @@ pub const HELP: [CheckHelp; 10] = [
             ),
         ],
         skipped: "Skipped when the analysis never followed every program's PMT. The GUI analyzes every program, so this happens when a program's PMT was not found in the range.",
-        limitations: "ETSI TR 101 290 (Unreferenced_PID) allows 0.5 s for a reference. EMM PIDs announced only in the CAT, which is not parsed, appear as unreferenced. Whether unreferenced data is useful is not judged. Packets with transport_error_indicator set do not count, because their PID may be damaged.",
+        limitations: "ETSI TR 101 290 (Unreferenced_PID) allows 0.5 s for a reference; the CLI's 500 ms grace is fixed. A PID the CLI cannot judge (insufficient_data) is listed under Unavailable analysis, not as a finding. EMM PIDs announced only in the CAT, which is not parsed, appear as unreferenced. Whether unreferenced data is useful is not judged. Packets with transport_error_indicator set do not count, because their PID may be damaged.",
         navigation: Some((
             Screen::Packets,
             "Packets lists the packets around the first unreferenced packet of each PID.",
@@ -422,6 +450,7 @@ mod tests {
             Check::ALL,
             [
                 Check::MaxPcrInterval,
+                Check::PcrDiscontinuities,
                 Check::PcrJitter,
                 Check::PcrPtsDtsGap,
                 Check::TimestampAnomalies,
@@ -451,6 +480,15 @@ mod tests {
         assert!(text(Check::PcrPtsDtsGap).contains("1000 ms"));
         assert!(text(Check::ReferencedPids).contains("5000 ms"));
         assert!(text(Check::UnreferencedPids).contains("500 ms"));
+        let discontinuities = text(Check::PcrDiscontinuities);
+        for phrase in [
+            "discontinuity_indicator",
+            "wraparound",
+            "1000 ms",
+            "PCR_discontinuity_indicator_error",
+        ] {
+            assert!(discontinuities.contains(phrase), "{phrase}");
+        }
         let sync = text(Check::Synchronization);
         for phrase in ["0x47", "five consecutive packets", "1 MiB", "skipped"] {
             assert!(sync.contains(phrase), "{phrase}");

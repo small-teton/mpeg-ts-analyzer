@@ -167,7 +167,7 @@ check (`CheckDetail`).
 
 - **Transport health table**: one non-collapsible table with the columns
   Check, Value, Status and Help, grouped by category. The order is fixed:
-  Timing (Max PCR interval, PCR jitter estimate), PES / Timestamps
+  Timing (Max PCR interval, PCR discontinuities, PCR jitter estimate), PES / Timestamps
   (PCR → PTS/DTS gap, PTS/DTS anomalies), Integrity (Continuity counter,
   Transport errors, Scrambled packets, TS synchronization), Structure
   (Referenced PIDs, Unreferenced PIDs). Multiplexing joins as its checks land
@@ -194,7 +194,8 @@ check (`CheckDetail`).
   order. `overview::row` turns the report into a check's value, status and
   current result (only fields the CLI provided). A new check is one
   `check_help` entry and one `row` arm. The texts state the CLI's thresholds
-  (100 ms, 1000 ms, ±500 ns, ±25 µs) and, for PCR jitter, the byte-position
+  (100 ms, 1000 ms, ±500 ns, ±25 µs), the PCR step kinds and the 1000 ms jump
+  limit of PCR discontinuities, and, for PCR jitter, the byte-position
   model, the delivery assessment (1-second window rates within ±1 %, no
   estimate beyond 1 ms) and `not_assessable`.
 - **Detail page**: opened by the information button or a findings link, inside
@@ -223,21 +224,26 @@ check (`CheckDetail`).
   announced as `Status: <status>`; Back, the information buttons, the finding
   actions and the navigation buttons are named buttons reachable with Tab.
 - **Findings** are one normalized list built from the report
-  (`overview::findings`): a finding for each failed compliance check, each
+  (`overview::findings`): a finding for each failed compliance check (for PCR
+  discontinuities, one per undeclared kind at its first PCR), each
   PTS/DTS anomaly group, each continuity event (one finding for the check if
   the CLI reported errors without events), PCR jitter, each PID of
   `transport_errors` and `scrambled_packets` (at its first offset), TS
   synchronization (one finding at the first loss offset), each reference of
-  `pid_references.referenced` that is not `ok` (with its own status, at the
-  packet before its longest silence), each PID of
-  `pid_references.unreferenced` (with its own status, at its first
-  unreferenced packet) and each analyzer warning. Any status other than `ok`, `skipped` and `not_assessable`,
+  `pid_references.referenced` with a finding status such as `absent` or
+  `silent` (with its own status, at the packet before its longest silence),
+  each PID of `pid_references.unreferenced` that is `unreferenced` (at its
+  first unreferenced packet) and each analyzer warning. Any status other than
+  `ok`, `skipped`, `not_assessable` and, for the PID-reference checks,
+  `insufficient_data`,
   including one the GUI does not know, is a finding with the CLI's status as
   its badge, so an `NG` or `WARNING` row can never sit next to an empty list.
   Each finding names its scope (program or whole multiplex); its check link
-  opens the check's page. `skipped` checks and a PCR jitter estimate that is
-  `not_assessable` are listed under "Unavailable analysis" with their status
-  as the badge and the CLI's reason; they are not findings.
+  opens the check's page. `skipped` checks, a PCR jitter estimate that is
+  `not_assessable`, and PID references or unreferenced PIDs the CLI could not
+  judge (`insufficient_data`, whether the whole check or only some PIDs) are
+  listed under "Unavailable analysis" with their status as the badge and the
+  CLI's reason (for PIDs: which PIDs and why); they are not findings.
 
 ### Timeline
 
