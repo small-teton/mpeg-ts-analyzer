@@ -11,6 +11,8 @@ pub enum Verdict {
     Ok,
     Ng,
     Warn,
+    /// Not a verdict: skipped, not assessable, or a status this GUI does not know.
+    Neutral,
 }
 
 impl Verdict {
@@ -19,33 +21,96 @@ impl Verdict {
             Verdict::Ok => "OK",
             Verdict::Ng => "NG",
             Verdict::Warn => "WARN",
+            Verdict::Neutral => "N/A",
         }
     }
 
-    /// Foreground and background colors for a verdict badge.
+    /// Foreground and background colors for a verdict badge: white text on a
+    /// saturated fill, each at least 4.5:1 against white.
     pub fn colors(self) -> (Color32, Color32) {
-        match self {
-            Verdict::Ok => (
-                Color32::from_rgb(0x9b, 0xe8, 0xa9),
-                Color32::from_rgb(0x1d, 0x4a, 0x29),
-            ),
-            Verdict::Ng => (
-                Color32::from_rgb(0xff, 0xaa, 0xaa),
-                Color32::from_rgb(0x5c, 0x1f, 0x1f),
-            ),
-            Verdict::Warn => (
-                Color32::from_rgb(0xff, 0xd5, 0x83),
-                Color32::from_rgb(0x56, 0x42, 0x0e),
-            ),
-        }
+        let fill = match self {
+            Verdict::Ok => Color32::from_rgb(0x2e, 0x7d, 0x32),
+            Verdict::Ng => Color32::from_rgb(0xc6, 0x28, 0x28),
+            Verdict::Warn => Color32::from_rgb(0x9a, 0x67, 0x00),
+            Verdict::Neutral => Color32::from_rgb(0x59, 0x63, 0x6e),
+        };
+        (Color32::WHITE, fill)
     }
 }
 
+/// Fill of the Timeline's event markers (anomalies, continuity errors):
+/// the warning tone the badges used before they turned white-on-color.
+pub const EVENT_COLOR: Color32 = Color32::from_rgb(0xff, 0xd5, 0x83);
 pub const PCR_COLOR: Color32 = Color32::from_rgb(0xf0, 0xa4, 0x3c);
 pub const VIDEO_COLOR: Color32 = Color32::from_rgb(0x4e, 0xa8, 0xff);
 pub const AUDIO_COLOR: Color32 = Color32::from_rgb(0x7f, 0xd6, 0x8a);
 pub const PSI_COLOR: Color32 = Color32::from_rgb(0xc7, 0x92, 0xea);
 pub const LIMIT_COLOR: Color32 = Color32::from_rgb(0xff, 0x7a, 0x7a);
+// Table colors (Codex proposal): Material 3 tonal surfaces with Carbon/
+// Primer-like values, fixed per light and dark theme.
+fn by_theme(visuals: &egui::Visuals, light: u32, dark: u32) -> Color32 {
+    let rgb = if visuals.dark_mode { dark } else { light };
+    Color32::from_rgb((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8)
+}
+
+/// Text of a table's column headers: 15 px semibold.
+pub fn table_header_text(text: &str, visuals: &egui::Visuals) -> egui::RichText {
+    egui::RichText::new(text)
+        .size(15.0)
+        .family(FontFamily::Name(HEADING_FAMILY.into()))
+        .color(by_theme(visuals, 0x3C4043, 0xE0E0E0))
+}
+
+/// Fill of a table's header row.
+pub fn table_header_fill(visuals: &egui::Visuals) -> Color32 {
+    by_theme(visuals, 0xE5E7EA, 0x292B2E)
+}
+
+/// Fill of a category subheader row.
+pub fn table_category_fill(visuals: &egui::Visuals) -> Color32 {
+    by_theme(visuals, 0xF1F3F5, 0x222427)
+}
+
+/// The rule under a table's header row.
+pub fn table_header_rule(visuals: &egui::Visuals) -> egui::Stroke {
+    egui::Stroke::new(1.0, by_theme(visuals, 0xAEB4BC, 0x565A61))
+}
+
+/// The line between table rows.
+pub fn table_divider(visuals: &egui::Visuals) -> egui::Stroke {
+    egui::Stroke::new(1.0, by_theme(visuals, 0xD5D8DC, 0x383B40))
+}
+
+/// The outer border of a table, a little stronger than the dividers.
+pub fn table_border(visuals: &egui::Visuals) -> egui::Stroke {
+    egui::Stroke::new(1.0, by_theme(visuals, 0xB8BDC4, 0x4B4F56))
+}
+
+/// Text of a category subheader: 12 px semibold capitals in blue.
+pub fn table_category_text(text: &str, visuals: &egui::Visuals) -> egui::RichText {
+    egui::RichText::new(text.to_uppercase())
+        .size(12.0)
+        .family(FontFamily::Name(HEADING_FAMILY.into()))
+        .color(by_theme(visuals, 0x0969DA, 0x58A6FF))
+}
+
+/// Size of the text in a status badge: close to body text, so a verdict
+/// reads at a glance.
+pub const BADGE_TEXT_SIZE: f32 = 14.0;
+/// Space around the text of a status badge.
+pub const BADGE_MARGIN: egui::Vec2 = egui::vec2(10.0, 3.0);
+/// Narrowest status badge, so short verdicts (OK, NG) read as solid blocks.
+pub const BADGE_MIN_WIDTH: f32 = 48.0;
+/// Corner radius of a status badge.
+pub const BADGE_RADIUS: u8 = 4;
+
+/// The text of a status badge: semibold (the heading face), near body size.
+pub fn badge_text(text: &str) -> egui::RichText {
+    egui::RichText::new(text)
+        .size(BADGE_TEXT_SIZE)
+        .family(FontFamily::Name(HEADING_FAMILY.into()))
+}
+
 /// Fill of the buttons that start an analysis, with white text.
 pub const START_COLOR: Color32 = Color32::from_rgb(0x2e, 0x8b, 0x4f);
 

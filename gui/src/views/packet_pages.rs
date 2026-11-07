@@ -199,6 +199,12 @@ impl PacketPages {
         pages
     }
 
+    /// The offset of the selected packet.
+    #[cfg(test)]
+    pub(crate) fn selected_for_test(&self) -> Option<u64> {
+        self.selected
+    }
+
     /// Selects a field of the decoded packet, as a click on it does.
     #[cfg(all(test, feature = "screenshots"))]
     pub(crate) fn select_field_for_test(&mut self, name: &str) {

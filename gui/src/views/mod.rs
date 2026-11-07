@@ -1,5 +1,6 @@
 pub mod bitrate;
-pub mod metric_help;
+pub mod check_detail;
+pub mod check_help;
 pub mod overview;
 pub mod packet_pages;
 pub mod packets;
@@ -47,15 +48,30 @@ impl Screen {
     }
 }
 
-pub fn badge(ui: &mut egui::Ui, text: &str, verdict: Verdict) {
+/// A colored status badge, sized to its text plus padding with a 48-point
+/// minimum width, so it never stretches with the row or cell around it.
+/// Announced as a label with its text.
+pub fn badge(ui: &mut egui::Ui, text: &str, verdict: Verdict) -> egui::Response {
     let (foreground, background) = verdict.colors();
-    egui::Frame::new()
-        .fill(background)
-        .corner_radius(2)
-        .inner_margin(egui::Margin::symmetric(6, 1))
-        .show(ui, |ui| {
-            ui.label(egui::RichText::new(text).color(foreground).strong().small());
-        });
+    let galley = egui::WidgetText::from(crate::theme::badge_text(text)).into_galley(
+        ui,
+        Some(egui::TextWrapMode::Extend),
+        f32::INFINITY,
+        egui::TextStyle::Body,
+    );
+    let margin = crate::theme::BADGE_MARGIN;
+    let mut size = galley.size() + 2.0 * margin;
+    size.x = size.x.max(crate::theme::BADGE_MIN_WIDTH);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
+    if ui.is_rect_visible(rect) {
+        let painter = ui.painter();
+        painter.rect_filled(rect, crate::theme::BADGE_RADIUS, background);
+        // Centered, so a short verdict sits in the middle of the minimum width.
+        let text_pos = rect.center() - galley.size() / 2.0;
+        painter.galley(text_pos, galley, foreground);
+    }
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, text));
+    response
 }
 
 /// Program choice over the given labels. Returns true when it changed.
@@ -82,7 +98,8 @@ pub fn status_verdict(status: &str) -> Verdict {
     match status {
         "ok" | "complete" => Verdict::Ok,
         "ng" | "errors" | "failed" => Verdict::Ng,
-        _ => Verdict::Warn,
+        "warning" | "warn" | "anomalies" => Verdict::Warn,
+        _ => Verdict::Neutral,
     }
 }
 

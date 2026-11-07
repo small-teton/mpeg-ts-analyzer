@@ -141,40 +141,76 @@ not affected by it.
 
 Stream section first (program tree with PIDs and PCR PID; the PAT changes and
 the program's PMT changes in the range, with the PIDs they add, remove or
-retype and PMT PID moves; file information), then compliance
-check cards, the elementary stream table, and findings.
+retype and PMT PID moves; file information), then the Transport health table,
+the elementary stream table, findings and unavailable analysis. Overview has
+two pages (`OverviewPage`): the summary, and the full-page explanation of one
+check (`CheckDetail`).
 
-- **Cards**: Max PCR interval, PCR → PTS/DTS gap, PTS/DTS anomalies,
-  Continuity counter and PCR jitter, each with the CLI's status as a badge,
-  the value and a short note (PCR jitter: the CLI's delivery assessment and
-  its evidence, or the reason it is not assessable).
-- **Explanations**: a focusable information button next to each card title
-  (accessible name and tooltip `About <card>`) opens a window titled with the
-  card: what it measures, scope, value, every status with its threshold,
-  when it is skipped, limitations and a link to Timeline or Bitrate. Escape,
-  the close button or a click outside closes it; it keeps no other state. The
-  texts live in one table, `gui/src/views/metric_help.rs`, and state the
-  CLI's thresholds (100 ms, 1000 ms, ±500 ns, ±25 µs) and, for PCR jitter, the
-  byte-position model, the delivery assessment (1-second window rates within
-  ±1 %, no estimate beyond 1 ms) and `not_assessable`.
-- **Layout**: the cards form a row-major grid. The column count is how many
-  220-point cards with 8-point spacing fit in the visible width (at least one);
-  cards in a row share the width equally, and below one card width the single
-  card takes the available width and its text wraps. The title wraps beside
-  the badge and button instead of overlapping them. The stream section stacks
-  the program and the file information below 760 points, and the elementary
-  stream table scrolls horizontally on its own, so nothing widens the page.
+- **Transport health table**: one non-collapsible table with the columns
+  Check, Value, Status and Help, grouped by category. The order is fixed:
+  Timing (Max PCR interval, PCR jitter estimate), PES / Timestamps
+  (PCR → PTS/DTS gap, PTS/DTS anomalies), Integrity (Continuity counter).
+  Structure and Multiplexing join as their checks land (#157). A check is
+  listed when the CLI reported it. There is no scope column or badge: the
+  selected program is shown above, and exceptions (Continuity counter covers
+  the whole multiplex) are on the detail page. Status is the CLI's status
+  verbatim as a badge sized to its text (at least 48 points wide); a status
+  the GUI does not describe is shown in the neutral color with a tooltip
+  saying so. Help holds the focusable
+  information button (accessible name and tooltip `About <check>`).
+- **Layout**: Value, Status and Help are as wide as their widest cell,
+  measured from the text, and keep that width at every window size; Check
+  takes the rest and its name wraps. The other cells are centered on the
+  check name, Value right-aligned. The table uses the visible width, so a
+  narrow window never scrolls sideways for it. The stream section stacks the
+  program and the file information below 760 points, and the elementary
+  stream table scrolls horizontally on its own.
+- **Check model**: `gui/src/views/check_help.rs` holds one entry per check —
+  category, title, a one-line summary, what it measures, what it applies to,
+  what the value means, every status with its condition, when it is skipped,
+  limitations and the Timeline or Bitrate link — and its order is the table
+  order. `overview::row` turns the report into a check's value, status and
+  current result (only fields the CLI provided). A new check is one
+  `check_help` entry and one `row` arm. The texts state the CLI's thresholds
+  (100 ms, 1000 ms, ±500 ns, ±25 µs) and, for PCR jitter, the byte-position
+  model, the delivery assessment (1-second window rates within ±1 %, no
+  estimate beyond 1 ms) and `not_assessable`.
+- **Detail page**: opened by the information button or a findings link, inside
+  the Overview area (no window). Back to Overview stays above the page's own
+  scroll area. The page has the title and status, the summary line, Current
+  result (label and value, wrapping), the check's findings, Verdicts (the only
+  table: status badge and condition per status; the current status is
+  highlighted and its row marked selected), then What it measures, Applies
+  to, What the value means, When it is skipped, Limitations and Details with
+  `Open Timeline` / `Open Bitrate`, each a heading over a wrapped paragraph. A
+  finding with an offset has `Open packet`; one that Timeline marks as an
+  event (a continuity error on a PID of the program) also has
+  `Show on timeline`, which selects that event. Summary-only findings get no
+  offset.
+- **State**: `OverviewState` keeps the page, the summary's vertical scroll
+  offset and where focus goes. Opening a page focuses Back and starts the page
+  at its top; Back, or the Overview tile while Overview is shown, restores the
+  summary's offset and returns focus to the information button that opened
+  the page. The program selection is shared with Timeline and Bitrate and is
+  not touched. Navigation never reruns or rebuilds the analysis; a new
+  analysis shows its summary.
+- **Accessibility**: headings (Transport health, categories, the page title,
+  the page sections) are AccessKit headings; the tables, their rows (named
+  after the check, value and status, or the verdict and condition), column
+  headers and cells have table semantics with bounds; the page status is
+  announced as `Status: <status>`; Back, the information buttons, the finding
+  actions and the navigation buttons are named buttons reachable with Tab.
 - **Findings** are one normalized list built from the report
   (`overview::findings`): a finding for each failed compliance check, each
-  PTS/DTS anomaly group, each continuity event (one finding for the card if
-  the CLI reported errors without events), PCR jitter (labeled as an
-  estimate) and each analyzer warning. Any status other than `ok` and
-  `skipped`, including one the GUI does not know, is a finding with the CLI's
-  status as its badge, so an `NG` or `WARNING` card can never sit next to an
-  empty list. Each finding names its scope (program or whole multiplex); its
-  metric link opens the card's explanation. `skipped` cards and a PCR jitter
-  card that is `not_assessable` are listed under "Unavailable analysis" with
-  their status as the badge and the CLI's reason; they are not findings.
+  PTS/DTS anomaly group, each continuity event (one finding for the check if
+  the CLI reported errors without events), PCR jitter and each analyzer
+  warning. Any status other than `ok`, `skipped` and `not_assessable`,
+  including one the GUI does not know, is a finding with the CLI's status as
+  its badge, so an `NG` or `WARNING` row can never sit next to an empty list.
+  Each finding names its scope (program or whole multiplex); its check link
+  opens the check's page. `skipped` checks and a PCR jitter estimate that is
+  `not_assessable` are listed under "Unavailable analysis" with their status
+  as the badge and the CLI's reason; they are not findings.
 
 ### Timeline
 
@@ -289,6 +325,19 @@ Language, packets per page and cached pages are laid out but not applied yet.
 
 ## Look and feel
 
+- Status badges: white Inter SemiBold 14 px text on a solid fill, 10 × 3
+  points of padding, at least 48 points wide, 4-point radius. Fills by
+  class, the same in light and dark: success (`ok`, `complete`) `#2E7D32`,
+  failure (`ng`, `errors`, `failed`) `#C62828`, warning (`warning`,
+  `anomalies`) `#9A6700`, neutral (`not_assessable`, `skipped`, unknown)
+  `#59636E`; each is at least 4.5:1 against white.
+- Tables (Transport health, Verdicts) use Material 3-style tonal surfaces
+  with values fixed per appearance (light / dark): header row `#E5E7EA` /
+  `#292B2E` with 15 px semibold `#3C4043` / `#E0E0E0` text and a 1-point
+  `#AEB4BC` / `#565A61` rule below it; category rows `#F1F3F5` / `#222427`
+  with 12 px semibold capitals in `#0969DA` / `#58A6FF`; row dividers
+  `#D5D8DC` / `#383B40`; outer border `#B8BDC4` / `#4B4F56`. They follow the
+  OS appearance like the rest of the GUI.
 - Fonts: Inter (UI; SemiBold for headings), JetBrains Mono (data), Phosphor
   icons. All bundled under `gui/assets/fonts/` with their licenses.
 - Japanese file names and paths use a font the OS ships, added as the last
@@ -481,9 +530,10 @@ GUI; the signed trusted comment must name exactly that file. Only then does
 | In-app update with `cargo-packager-updater` (#150) | Avoids the macOS "Open Anyway" detour after the first install; already part of the packaging toolchain; verifies a minisign signature and handles `.app`, NSIS and AppImage | Own downloader and installer; Sparkle (macOS only); only linking to the release page |
 | Find updates through the Releases API and a manifest asset of each release | No extra hosting; works with GUI releases that are not "latest" | A fixed-URL manifest on GitHub Pages (the docs workflow owns the Pages deployment) |
 | Startup update check on by default, with a setting | Users learn about releases without action; one unauthenticated request | Manual check only |
-| Explain each Overview card in a window opened by a focusable information button, from one table of texts | Works with keyboard and touch; long enough for limitations; one source for cards, findings and tests | Longer text on the cards; hover-only tooltips |
-| Overview cards in a responsive row-major grid | A narrow window must not hide a verdict | One wrapping row with fixed widths; a horizontal scroller |
-| One Findings list counting every non-OK card, events and warnings; skipped checks listed separately | The count must agree with the cards; an event counts once | The former Warnings list of parser events only |
+| Overview checks in one grouped Transport health table (Check, Value, Status, Help) instead of cards (#159) | #157 adds more checks; a table scans and compares better than a card per check, and a new check is one row; compact columns keep every verdict visible in a narrow window | A card per check in a responsive grid (#156); collapsible categories; a Scope column or badge |
+| Explain each check on a page inside Overview instead of a popup window (#159) | Long, structured text reads better in the normal content area; no separate sizing, focus, dismissal or nested scrolling; Back restores the summary as it was | A popup window per check (#156); hover-only tooltips; a top-level Checks screen |
+| One table of check texts (`check_help.rs`) for the table, detail pages, findings and tests | One source of truth; a new check is one entry | Texts in the view code |
+| One Findings list counting every non-OK check, events and warnings; skipped checks listed separately | The count must agree with the table; an event counts once | The former Warnings list of parser events only |
 | The GUI shows the CLI's statuses as they are; PCR jitter `not_assessable` is unavailable analysis, not a finding | The CLI decides whether a file-based estimate deserves a verdict (schema 2.0, #152); a variable-rate file is not evidence of a PCR fault | Downgrading or hiding `ng` in the GUI; grading the estimate in the GUI |
 | Modal progress dialog during analysis | Results of every analysis screen are being replaced; one clear place to wait and cancel | Per-screen overlays while other screens stay usable |
 

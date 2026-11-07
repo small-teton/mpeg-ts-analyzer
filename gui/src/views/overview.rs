@@ -1,34 +1,99 @@
 use eframe::egui;
 
-use super::metric_help::{self, Metric};
+use super::check_detail;
+use super::check_help::Check;
 use super::{Screen, badge, program_selector_labels, status_verdict};
 use crate::icons;
+use crate::plot_data::Timeline;
 use crate::psi;
 use crate::range_bar;
-use crate::report::{AnalysisReport, Check, Program, stream_type_name};
+use crate::report::{AnalysisReport, Program, stream_type_name};
+
+/// What Overview shows: the summary, or the full-page explanation of one
+/// check.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum OverviewPage {
+    #[default]
+    Summary,
+    CheckDetail(Check),
+}
+
+/// What Overview asks the app to do.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OverviewAction {
+    /// Switch to another screen.
+    Open(Screen),
+    /// Show the packet at this offset in Packets.
+    OpenPacket(u64),
+    /// Select the Timeline event at this offset.
+    ShowOnTimeline(u64),
+}
+
+/// Where keyboard focus goes on the next frame.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Focus {
+    /// The back control of a detail page.
+    Back,
+    /// The information button of a check in the table.
+    Info(Check),
+}
 
 /// What the Overview keeps between frames.
 #[derive(Default)]
 pub struct OverviewState {
-    /// The card whose explanation is open.
-    pub help: Option<Metric>,
-    /// The explanation opened in this frame, so the click that opened it does
-    /// not count as a click outside it.
-    help_just_opened: bool,
+    page: OverviewPage,
+    /// Vertical scroll offset of the summary, kept while a detail page is shown.
+    summary_offset: f32,
+    /// The next frame of the page sets its scroll offset: the summary's saved
+    /// offset, or the top of a detail page.
+    scroll_pending: bool,
+    /// Focus to move on the next frame.
+    pub(crate) focus: Option<Focus>,
+    /// Focus to restore when the detail page is left.
+    return_focus: Option<Focus>,
+    /// The analysis the page belongs to; a new analysis shows the summary.
+    generation: u64,
 }
 
 impl OverviewState {
-    pub fn open_help(&mut self, metric: Metric) {
-        self.help = Some(metric);
-        self.help_just_opened = true;
+    #[cfg(test)]
+    pub fn page(&self) -> OverviewPage {
+        self.page
     }
 
-    /// The explanation window, drawn above the screens. Returns the screen
-    /// to open when its link is followed.
-    pub fn help_window(&mut self, ctx: &egui::Context) -> Option<Screen> {
-        let navigate = metric_help::window(ctx, &mut self.help, self.help_just_opened);
-        self.help_just_opened = false;
-        navigate
+    /// The vertical scroll offset of the summary.
+    #[cfg(test)]
+    pub fn summary_offset(&self) -> f32 {
+        self.summary_offset
+    }
+
+    /// Opens the detail page of `check`. `from` is the control that opened
+    /// it, which gets the focus back when the page is left.
+    pub(crate) fn open(&mut self, check: Check, from: Option<Focus>) {
+        if self.page == OverviewPage::Summary {
+            self.return_focus = from;
+        }
+        self.page = OverviewPage::CheckDetail(check);
+        self.scroll_pending = true;
+        self.focus = Some(Focus::Back);
+    }
+
+    /// Back to the summary, at the scroll position it had.
+    pub fn show_summary(&mut self) {
+        if self.page != OverviewPage::Summary {
+            self.page = OverviewPage::Summary;
+            self.scroll_pending = true;
+            self.focus = self.return_focus.take();
+        }
+    }
+
+    /// Takes the focus request for `target`, if there is one.
+    pub(crate) fn take_focus(&mut self, target: Focus) -> bool {
+        let take = self.focus == Some(target);
+        if take {
+            self.focus = None;
+        }
+        take
     }
 }
 
@@ -37,7 +102,16 @@ pub fn show_report(
     report: &AnalysisReport,
     program: &mut usize,
     state: &mut OverviewState,
-) -> Option<Screen> {
+    timelines: &[Timeline],
+    generation: u64,
+) -> Option<OverviewAction> {
+    if state.generation != generation {
+        // A new analysis: its checks and findings may differ.
+        *state = OverviewState {
+            generation,
+            ..OverviewState::default()
+        };
+    }
     let labels: Vec<String> = report.programs.iter().map(Program::label).collect();
     ui.horizontal_wrapped(|ui| {
         program_selector_labels(ui, &labels, program);
@@ -47,86 +121,115 @@ pub fn show_report(
         ui.weak("No program was found in this range.");
         return None;
     };
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        report_stream(ui, report, selected);
-        ui.add_space(12.0);
+    let scroll_pending = std::mem::take(&mut state.scroll_pending);
+    match state.page {
+        OverviewPage::Summary => {
+            let mut area = egui::ScrollArea::vertical().id_salt("overview_summary");
+            if scroll_pending {
+                area = area.vertical_scroll_offset(state.summary_offset);
+            }
+            let output = area.show(ui, |ui| summary(ui, report, selected, state));
+            state.summary_offset = output.state.clamped_offset().y;
+            output.inner
+        }
+        OverviewPage::CheckDetail(check) => {
+            let context = check_detail::Context {
+                report,
+                program: selected,
+                timeline: timelines.get(*program),
+            };
+            check_detail::show(ui, &context, check, state, scroll_pending)
+        }
+    }
+}
 
-        ui.horizontal_wrapped(|ui| {
-            ui.heading("Compliance");
-            ui.weak("ISO/IEC 13818-1 timing checks");
-        });
-        ui.add_space(6.0);
-        card_grid(ui, &cards(report, selected), state);
-        ui.add_space(10.0);
+fn summary(
+    ui: &mut egui::Ui,
+    report: &AnalysisReport,
+    selected: &Program,
+    state: &mut OverviewState,
+) -> Option<OverviewAction> {
+    report_stream(ui, report, selected);
+    ui.add_space(12.0);
 
-        ui.strong("Elementary streams");
-        // Scrolls on its own in a narrow window instead of widening the page.
-        egui::ScrollArea::horizontal()
-            .id_salt("overview_report_streams_scroll")
-            .show(ui, |ui| {
-                egui::Grid::new("overview_report_streams")
-                    .striped(true)
-                    .num_columns(4)
-                    .spacing([24.0, 4.0])
-                    .show(ui, |ui| {
-                        for header in ["PID", "Type", "Avg bitrate", "Peak bitrate (1 s)"] {
-                            ui.strong(header);
-                        }
-                        ui.end_row();
-                        for stream in &selected.elementary_streams {
-                            let rate = selected
-                                .bitrate
-                                .as_ref()
-                                .and_then(|b| b.pids.iter().find(|p| p.pid == stream.pid));
-                            ui.monospace(&stream.pid);
-                            ui.label(stream_type_name(&stream.stream_type));
-                            ui.monospace(rate.map_or("—".to_owned(), |r| mbps(r.average_bps)));
-                            ui.monospace(
-                                rate.and_then(|r| r.peak_1s_bps)
-                                    .map_or("—".to_owned(), mbps),
-                            );
-                            ui.end_row();
-                        }
-                    });
-            });
-        ui.add_space(10.0);
+    ui.horizontal_wrapped(|ui| {
+        heading(ui, "Transport health");
+        ui.weak("Lightweight TS / PSI / PES checks");
+    });
+    ui.add_space(6.0);
+    health_table(ui, &rows(report, selected), state);
+    ui.add_space(10.0);
 
-        let (findings, unavailable) = findings(report, selected);
-        egui::CollapsingHeader::new(format!("Findings ({})", findings.len()))
-            .id_salt("overview_findings")
-            .default_open(true)
-            .show(ui, |ui| {
-                if findings.is_empty() {
-                    ui.weak("None.");
-                }
-                for finding in &findings {
-                    finding_row(ui, finding, state);
-                }
-            });
-        if !unavailable.is_empty() {
-            egui::CollapsingHeader::new(format!("Unavailable analysis ({})", unavailable.len()))
-                .id_salt("overview_unavailable")
-                .default_open(true)
+    ui.strong("Elementary streams");
+    // Scrolls on its own in a narrow window instead of widening the page.
+    egui::ScrollArea::horizontal()
+        .id_salt("overview_report_streams_scroll")
+        .show(ui, |ui| {
+            egui::Grid::new("overview_report_streams")
+                .striped(true)
+                .num_columns(4)
+                .spacing([24.0, 4.0])
                 .show(ui, |ui| {
-                    for item in &unavailable {
-                        ui.horizontal_wrapped(|ui| {
-                            badge(
-                                ui,
-                                &status_label(&item.status),
-                                status_verdict(&item.status),
-                            );
-                            help_link(ui, item.metric.title(), item.metric, state);
-                            ui.add(egui::Label::new(&item.reason).wrap());
-                        });
+                    for header in ["PID", "Type", "Avg bitrate", "Peak bitrate (1 s)"] {
+                        ui.strong(header);
+                    }
+                    ui.end_row();
+                    for stream in &selected.elementary_streams {
+                        let rate = selected
+                            .bitrate
+                            .as_ref()
+                            .and_then(|b| b.pids.iter().find(|p| p.pid == stream.pid));
+                        ui.monospace(&stream.pid);
+                        ui.label(stream_type_name(&stream.stream_type));
+                        ui.monospace(rate.map_or("—".to_owned(), |r| mbps(r.average_bps)));
+                        ui.monospace(
+                            rate.and_then(|r| r.peak_1s_bps)
+                                .map_or("—".to_owned(), mbps),
+                        );
+                        ui.end_row();
                     }
                 });
-        }
-    });
+        });
+    ui.add_space(10.0);
+
+    let (findings, unavailable) = findings(report, selected);
+    egui::CollapsingHeader::new(format!("Findings ({})", findings.len()))
+        .id_salt("overview_findings")
+        .default_open(true)
+        .show(ui, |ui| {
+            if findings.is_empty() {
+                ui.weak("None.");
+            }
+            for finding in &findings {
+                finding_row(ui, finding, state);
+            }
+        });
+    if !unavailable.is_empty() {
+        egui::CollapsingHeader::new(format!("Unavailable analysis ({})", unavailable.len()))
+            .id_salt("overview_unavailable")
+            .default_open(true)
+            .show(ui, |ui| {
+                for item in &unavailable {
+                    ui.horizontal_wrapped(|ui| {
+                        status_badge(ui, &item.status, Some(item.check));
+                        help_link(ui, item.check.title(), item.check, state);
+                        ui.add(egui::Label::new(&item.reason).wrap());
+                    });
+                }
+            });
+    }
     None
 }
 
+/// A section heading, announced as a heading.
+pub(crate) fn heading(ui: &mut egui::Ui, text: &str) -> egui::Response {
+    let response = ui.heading(text);
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Heading, true, text));
+    response
+}
+
 fn report_stream(ui: &mut egui::Ui, report: &AnalysisReport, program: &Program) {
-    ui.heading("Stream");
+    heading(ui, "Stream");
     ui.add_space(4.0);
     // Side by side when both fit; otherwise the file information goes below,
     // so a narrow window does not widen the page.
@@ -242,87 +345,134 @@ fn mbps(bps: f64) -> String {
     format!("{:.3} Mbps", bps / 1e6)
 }
 
-/// One compliance card as the CLI reported it.
-pub(crate) struct Card {
-    pub metric: Metric,
+/// One row of the Transport health table: a check as the CLI reported it.
+pub(crate) struct Row {
+    pub check: Check,
+    /// The CLI's status, verbatim.
     pub status: String,
+    /// The value column; `—` when the CLI gave no value.
     pub value: String,
-    pub note: String,
+    /// The current result: only the fields the CLI provided, as label and value.
+    pub facts: Vec<(&'static str, String)>,
+    /// Why the CLI skipped or did not grade the check, if it said.
+    pub reason: Option<String>,
 }
 
-/// The compliance cards of a program, in Overview order. A card is left out
-/// when the CLI did not report its result.
-pub(crate) fn cards(report: &AnalysisReport, program: &Program) -> Vec<Card> {
-    let mut cards = Vec::new();
-    if let Some(compliance) = &program.compliance {
-        cards.push(check_card(
-            Metric::MaxPcrInterval,
-            &compliance.max_pcr_interval,
-        ));
-        cards.push(check_card(
-            Metric::PcrPtsDtsGap,
-            &compliance.max_pcr_pts_dts_gap,
-        ));
-    }
-    if let Some(anomalies) = &program.timestamp_anomalies {
-        let count: u64 = anomalies.items.iter().map(|a| a.count).sum();
-        cards.push(Card {
-            metric: Metric::TimestampAnomalies,
-            status: anomalies.status.clone(),
-            value: count.to_string(),
-            note: Metric::TimestampAnomalies.help().note.to_owned(),
-        });
-    }
-    if let Some(continuity) = &report.continuity_counter {
-        cards.push(Card {
-            metric: Metric::ContinuityCounter,
-            status: continuity.status.clone(),
-            value: continuity.total_error_count.to_string(),
-            note: Metric::ContinuityCounter.help().note.to_owned(),
-        });
-    }
-    if let Some(jitter) = &program.pcr_jitter {
-        // A skipped estimate has only its reason; otherwise the note gives the
-        // delivery assessment that decided whether the estimate is graded.
-        let note = match (jitter.status.as_str(), &jitter.reason) {
-            ("skipped", Some(reason)) => reason.clone(),
-            _ => format!(
-                "{} · {}",
-                Metric::PcrJitter.help().note,
-                jitter.delivery.summary()
-            ),
-        };
-        cards.push(Card {
-            metric: Metric::PcrJitter,
-            status: jitter.status.clone(),
-            value: jitter
-                .estimate
-                .max_abs_jitter_ns
-                .map_or("—".to_owned(), duration_ns),
-            note,
-        });
-    }
-    cards
+/// The rows of a program in table order. A check is left out when the CLI
+/// did not report it.
+pub(crate) fn rows(report: &AnalysisReport, program: &Program) -> Vec<Row> {
+    Check::ALL
+        .into_iter()
+        .filter_map(|check| row(report, program, check))
+        .collect()
 }
 
-fn check_card(metric: Metric, check: &Check) -> Card {
-    let value = check
-        .value_ms
-        .map_or("—".to_owned(), |ms| format!("{ms:.1} ms"));
-    let note = match &check.reason {
-        Some(reason) => reason.clone(),
-        None => format!(
-            "{} · limit {:.0} ms · {} observations",
-            metric.help().note,
-            check.limit_ms,
-            check.observations
-        ),
-    };
-    Card {
-        metric,
-        status: check.status.clone(),
-        value,
-        note,
+/// The row of one check, if the CLI reported it.
+pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> Option<Row> {
+    let number = ("Program", program.program_number.to_string());
+    match check {
+        Check::MaxPcrInterval | Check::PcrPtsDtsGap => {
+            let compliance = program.compliance.as_ref()?;
+            let result = if check == Check::MaxPcrInterval {
+                &compliance.max_pcr_interval
+            } else {
+                &compliance.max_pcr_pts_dts_gap
+            };
+            let value = result.value_ms.map(|ms| format!("{ms:.1} ms"));
+            let mut facts = Vec::new();
+            facts.extend(value.clone().map(|v| ("Value", v)));
+            facts.push(("Limit", format!("{:.0} ms", result.limit_ms)));
+            facts.push(number);
+            if check == Check::MaxPcrInterval
+                && let Some(pid) = &program.pcr_pid
+            {
+                facts.push(("PCR PID", pid.clone()));
+            }
+            facts.push(("Observations", result.observations.to_string()));
+            facts.extend(result.reason.clone().map(|r| ("Reason", r)));
+            Some(Row {
+                check,
+                status: result.status.clone(),
+                value: value.unwrap_or_else(|| "—".to_owned()),
+                facts,
+                reason: result.reason.clone(),
+            })
+        }
+        Check::TimestampAnomalies => {
+            let anomalies = program.timestamp_anomalies.as_ref()?;
+            let count: u64 = anomalies.items.iter().map(|a| a.count).sum();
+            let mut facts = vec![("Anomalies", count.to_string()), number];
+            let mut pids: Vec<&str> = anomalies.items.iter().map(|a| a.pid.as_str()).collect();
+            pids.dedup();
+            if !pids.is_empty() {
+                facts.push(("Affected PIDs", pids.join(", ")));
+            }
+            Some(Row {
+                check,
+                status: anomalies.status.clone(),
+                value: count.to_string(),
+                facts,
+                reason: None,
+            })
+        }
+        Check::ContinuityCounter => {
+            let continuity = report.continuity_counter.as_ref()?;
+            let mut facts = vec![
+                ("Errors", continuity.total_error_count.to_string()),
+                ("Applies to", "the whole multiplex".to_owned()),
+            ];
+            let pids: Vec<String> = continuity
+                .pids
+                .iter()
+                .filter(|p| p.error_count > 0)
+                .map(|p| format!("{} ({}): {}", p.pid, p.label, p.error_count))
+                .collect();
+            if !pids.is_empty() {
+                facts.push(("Affected PIDs", pids.join(", ")));
+            }
+            if let Some(first) = report
+                .continuity_events
+                .iter()
+                .map(|e| e.offset_bytes)
+                .min()
+            {
+                facts.push(("First offset", format!("0x{first:08X}")));
+            }
+            Some(Row {
+                check,
+                status: continuity.status.clone(),
+                value: continuity.total_error_count.to_string(),
+                facts,
+                reason: None,
+            })
+        }
+        Check::PcrJitter => {
+            let jitter = program.pcr_jitter.as_ref()?;
+            let estimate = &jitter.estimate;
+            let value = estimate.max_abs_jitter_ns.map(duration_ns);
+            let mut facts = Vec::new();
+            facts.extend(value.clone().map(|v| ("Value", v)));
+            facts.push(number);
+            if !estimate.pcr_pids.is_empty() {
+                facts.push(("PCR PID", estimate.pcr_pids.join(", ")));
+            }
+            facts.push(("Observations", estimate.observations.to_string()));
+            if let Some(offset) = estimate.max_abs_jitter_offset_bytes {
+                facts.push(("Worst offset", format!("0x{offset:08X}")));
+            }
+            facts.push(("Model", estimate.model.clone()));
+            facts.push(("Delivery", jitter.delivery.assessment.clone()));
+            facts.push(("Delivery evidence", jitter.delivery.evidence()));
+            facts.push(("Delivery reason", jitter.delivery.reason.clone()));
+            facts.extend(jitter.reason.clone().map(|r| ("Reason", r)));
+            Some(Row {
+                check,
+                status: jitter.status.clone(),
+                value: value.unwrap_or_else(|| "—".to_owned()),
+                facts,
+                reason: jitter.reason.clone(),
+            })
+        }
     }
 }
 
@@ -337,75 +487,363 @@ pub(crate) fn duration_ns(ns: f64) -> String {
     }
 }
 
-/// Preferred width of a card and the space between cards.
-const CARD_WIDTH: f32 = 220.0;
-const CARD_SPACING: f32 = 8.0;
+/// Horizontal padding inside a table cell.
+pub(crate) const CELL_PADDING: f32 = 8.0;
+/// Vertical padding inside a table cell.
+const CELL_PADDING_Y: f32 = 5.0;
 
-/// How many cards fit side by side in `available` points, at least one.
-pub(crate) fn card_columns(available: f32, cards: usize) -> usize {
-    let fit = ((available + CARD_SPACING) / (CARD_WIDTH + CARD_SPACING)).floor();
-    (fit.max(1.0) as usize).min(cards.max(1))
+/// Width of `text` on one line.
+pub(crate) fn text_width(ui: &egui::Ui, text: egui::RichText) -> f32 {
+    egui::WidgetText::from(text)
+        .into_galley(
+            ui,
+            Some(egui::TextWrapMode::Extend),
+            f32::INFINITY,
+            egui::TextStyle::Body,
+        )
+        .size()
+        .x
 }
 
-/// The cards in rows of equal-width cards, in order. Narrower than one
-/// preferred card width, each card takes the available width and its text
-/// wraps.
-fn card_grid(ui: &mut egui::Ui, cards: &[Card], state: &mut OverviewState) {
-    // The visible width: content wider than the window must not widen the cards.
-    let available = ui
-        .available_width()
-        .min(ui.clip_rect().right() - ui.cursor().left());
-    let columns = card_columns(available, cards.len());
-    let width = ((available - CARD_SPACING * (columns - 1) as f32) / columns as f32).floor();
-    for row in cards.chunks(columns) {
-        ui.horizontal_top(|ui| {
-            ui.spacing_mut().item_spacing.x = CARD_SPACING;
-            for card in row {
-                card_ui(ui, card, width, state);
-            }
-        });
+/// Width of a status badge.
+pub(crate) fn badge_width(ui: &egui::Ui, status: &str) -> f32 {
+    (text_width(ui, crate::theme::badge_text(&status_label(status)))
+        + 2.0 * crate::theme::BADGE_MARGIN.x)
+        .max(crate::theme::BADGE_MIN_WIDTH)
+}
+
+/// Column widths of the Transport health table: Check takes what Value,
+/// Status and Help leave, and those three are as wide as their widest cell.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Columns {
+    pub check: f32,
+    pub value: f32,
+    pub status: f32,
+    pub help: f32,
+}
+
+/// The narrowest the Check column gets; below it the table is cut off rather
+/// than widening the page.
+const MIN_CHECK_WIDTH: f32 = 64.0;
+
+impl Columns {
+    fn of(ui: &egui::Ui, rows: &[Row], width: f32) -> Self {
+        let pad = 2.0 * CELL_PADDING;
+        let header = |text: &str| text_width(ui, egui::RichText::new(text).strong());
+        let value = rows
+            .iter()
+            .map(|r| text_width(ui, egui::RichText::new(&r.value)))
+            .fold(header("Value"), f32::max)
+            + pad;
+        let status = rows
+            .iter()
+            .map(|r| badge_width(ui, &r.status))
+            .fold(header("Status"), f32::max)
+            + pad;
+        let button = text_width(ui, icons::text(icons::INFO).size(INFO_SIZE))
+            + 2.0 * ui.spacing().button_padding.x;
+        let help = button.max(header("Help")) + pad;
+        Self {
+            check: (width - value - status - help).max(MIN_CHECK_WIDTH),
+            value,
+            status,
+            help,
+        }
     }
 }
 
-fn card_ui(ui: &mut egui::Ui, card: &Card, width: f32, state: &mut OverviewState) {
-    let frame = egui::Frame::group(ui.style());
+/// Size of the information icon.
+const INFO_SIZE: f32 = 16.0;
+
+/// The Transport health table: a header, then each category with its rows.
+fn health_table(ui: &mut egui::Ui, rows: &[Row], state: &mut OverviewState) {
+    // The visible width: content wider than the window must not widen the table.
+    let width = ui
+        .available_width()
+        .min(ui.clip_rect().right() - ui.cursor().left());
+    let stroke = crate::theme::table_border(ui.visuals());
+    let frame = egui::Frame::new()
+        .stroke(stroke)
+        .corner_radius(4)
+        .inner_margin(egui::Margin::same(stroke.width.ceil() as i8));
     let inner = (width - frame.total_margin().sum().x).max(0.0);
+    let columns = Columns::of(ui, rows, inner);
+    let builder = egui::UiBuilder::new()
+        .accessibility_role(egui::Role::Table)
+        .accessibility_label("Transport health");
     frame.show(ui, |ui| {
         ui.set_width(inner);
-        ui.vertical(|ui| {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                badge(
-                    ui,
-                    &status_label(&card.status),
-                    status_verdict(&card.status),
-                );
-                if info_button(ui, card.metric).clicked() {
-                    state.open_help(card.metric);
-                }
-                ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
-                    ui.add(egui::Label::new(card.metric.title()).wrap());
-                });
+        accessible_scope(ui, builder, |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            let header_fill = crate::theme::table_header_fill(ui.visuals());
+            table_row(ui, &columns, Some(header_fill), None, |ui, cell| {
+                let title = match cell {
+                    Cell::Check => "Check",
+                    Cell::Value => "Value",
+                    Cell::Status => "Status",
+                    Cell::Help => "Help",
+                };
+                ui.label(crate::theme::table_header_text(title, ui.visuals()));
             });
-            ui.add(egui::Label::new(egui::RichText::new(&card.value).size(24.0).strong()).wrap());
-            ui.add(egui::Label::new(egui::RichText::new(&card.note).small().weak()).wrap());
+            rule(ui, inner, crate::theme::table_header_rule(ui.visuals()));
+            let mut category = None;
+            for row in rows {
+                if category != Some(row.check.category()) {
+                    if category.is_some() {
+                        separator(ui, inner);
+                    }
+                    category = Some(row.check.category());
+                    category_row(ui, row.check.category().title(), inner);
+                }
+                separator(ui, inner);
+                let label = format!(
+                    "{}: {}, {}",
+                    row.check.title(),
+                    row.value,
+                    status_label(&row.status)
+                );
+                table_row(ui, &columns, None, Some(&label), |ui, cell| match cell {
+                    Cell::Check => {
+                        ui.add(egui::Label::new(row.check.title()).wrap());
+                    }
+                    Cell::Value => {
+                        ui.label(&row.value);
+                    }
+                    Cell::Status => {
+                        status_badge(ui, &row.status, Some(row.check));
+                    }
+                    Cell::Help => {
+                        let button = info_button(ui, row.check);
+                        if state.take_focus(Focus::Info(row.check)) {
+                            button.request_focus();
+                        }
+                        if button.clicked() {
+                            state.open(row.check, Some(Focus::Info(row.check)));
+                        }
+                    }
+                });
+            }
         });
     });
 }
 
-/// The focusable button that opens the explanation of a card.
-fn info_button(ui: &mut egui::Ui, metric: Metric) -> egui::Response {
-    let name = metric.about();
-    let button = egui::Button::new(icons::text(icons::INFO).size(16.0)).frame(false);
+/// A cell of the Transport health table.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Cell {
+    Check,
+    Value,
+    Status,
+    Help,
+}
+
+/// One table row: the header row without `label`, otherwise a row named
+/// `label`. The check name wraps; the other cells are centered on its
+/// height, and Value is right-aligned.
+fn table_row(
+    ui: &mut egui::Ui,
+    columns: &Columns,
+    fill: Option<egui::Color32>,
+    label: Option<&str>,
+    mut add: impl FnMut(&mut egui::Ui, Cell),
+) {
+    let background = ui.painter().add(egui::Shape::Noop);
+    let mut builder = egui::UiBuilder::new()
+        .layout(egui::Layout::left_to_right(egui::Align::Min))
+        .accessibility_role(egui::Role::Row);
+    if let Some(label) = label {
+        builder = builder.accessibility_label(label);
+    }
+    let role = if label.is_some() {
+        egui::Role::Cell
+    } else {
+        egui::Role::ColumnHeader
+    };
+    // A one-line check name is as tall as the information button and its
+    // padding, so a one-line row is centered as a whole.
+    let min_height = ui.spacing().interact_size.y + 2.0 * CELL_PADDING_Y;
+    let text_height = ui.text_style_height(&egui::TextStyle::Body);
+    let padding_y = ((min_height - text_height) / 2.0).max(CELL_PADDING_Y);
+    let response = accessible_scope(ui, builder, |ui| {
+        ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
+        let check = table_cell(
+            ui,
+            role,
+            egui::vec2(columns.check, 0.0),
+            egui::Layout::top_down(egui::Align::Min),
+            |ui| {
+                egui::Frame::new()
+                    .inner_margin(egui::Margin::symmetric(
+                        CELL_PADDING as i8,
+                        padding_y.round() as i8,
+                    ))
+                    .show(ui, |ui| {
+                        ui.set_width(columns.check - 2.0 * CELL_PADDING);
+                        add(ui, Cell::Check);
+                    });
+            },
+        );
+        // The other cells are centered on the check name.
+        let height = check.rect.height().max(min_height);
+        for (cell, width, layout) in [
+            (
+                Cell::Value,
+                columns.value,
+                egui::Layout::right_to_left(egui::Align::Center),
+            ),
+            (
+                Cell::Status,
+                columns.status,
+                egui::Layout::left_to_right(egui::Align::Center),
+            ),
+            (
+                Cell::Help,
+                columns.help,
+                egui::Layout::left_to_right(egui::Align::Center),
+            ),
+        ] {
+            table_cell(ui, role, egui::vec2(width, height), layout, |ui| {
+                ui.add_space(CELL_PADDING);
+                add(ui, cell);
+            });
+        }
+    });
+    if let Some(fill) = fill {
+        ui.painter().set(
+            background,
+            egui::Shape::rect_filled(response.response.rect, 0, fill),
+        );
+    }
+}
+
+/// A table cell of exactly `size` at the cursor of a left-to-right row; a
+/// zero height grows with the content. Announced with `role`, so its bounds
+/// are the cell's.
+pub(crate) fn table_cell(
+    ui: &mut egui::Ui,
+    role: egui::Role,
+    size: egui::Vec2,
+    layout: egui::Layout,
+    add: impl FnOnce(&mut egui::Ui),
+) -> egui::Response {
+    let height = if size.y > 0.0 {
+        size.y
+    } else {
+        CELL_MAX_HEIGHT
+    };
+    let rect = egui::Rect::from_min_size(ui.cursor().min, egui::vec2(size.x, height));
+    let builder = egui::UiBuilder::new()
+        .max_rect(rect)
+        .layout(layout)
+        .accessibility_role(role);
+    accessible_scope(ui, builder, |ui| {
+        ui.set_min_size(size);
+        add(ui);
+    })
+    .response
+}
+
+/// `ui.scope_builder`, with the bounds of the scope on its accessibility
+/// node, so a table, row or cell can be located like a widget.
+pub(crate) fn accessible_scope<R>(
+    ui: &mut egui::Ui,
+    builder: egui::UiBuilder,
+    add: impl FnOnce(&mut egui::Ui) -> R,
+) -> egui::InnerResponse<R> {
+    let mut id = None;
+    let inner = ui.scope_builder(builder, |ui| {
+        id = Some(ui.unique_id());
+        add(ui)
+    });
+    if let Some(id) = id {
+        let rect = inner.response.rect;
+        ui.ctx().accesskit_node_builder(id, |node| {
+            node.set_bounds(egui::accesskit::Rect {
+                x0: rect.min.x.into(),
+                y0: rect.min.y.into(),
+                x1: rect.max.x.into(),
+                y1: rect.max.y.into(),
+            });
+        });
+    }
+    inner
+}
+
+/// Room a growing cell may take; any real cell is far shorter.
+const CELL_MAX_HEIGHT: f32 = 10_000.0;
+
+/// A category subheader: the title in accent capitals across the table, with
+/// room above it, announced as a heading with its title as written.
+fn category_row(ui: &mut egui::Ui, title: &str, width: f32) {
+    egui::Frame::new()
+        .fill(crate::theme::table_category_fill(ui.visuals()))
+        .inner_margin(egui::Margin {
+            left: CELL_PADDING as i8,
+            right: CELL_PADDING as i8,
+            top: 6,
+            bottom: 5,
+        })
+        .show(ui, |ui| {
+            ui.set_width(width - 2.0 * CELL_PADDING);
+            let response = ui.label(crate::theme::table_category_text(title, ui.visuals()));
+            response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Heading, true, title));
+        });
+}
+
+/// A line between table rows.
+fn separator(ui: &mut egui::Ui, width: f32) {
+    rule(ui, width, crate::theme::table_divider(ui.visuals()));
+}
+
+/// A horizontal line across the table.
+pub(crate) fn rule(ui: &mut egui::Ui, width: f32, stroke: egui::Stroke) {
+    let (rect, _) =
+        ui.allocate_exact_size(egui::vec2(width, stroke.width.ceil()), egui::Sense::hover());
+    ui.painter().hline(rect.x_range(), rect.center().y, stroke);
+}
+
+/// The focusable button that opens the detail page of a check.
+fn info_button(ui: &mut egui::Ui, check: Check) -> egui::Response {
+    let name = check.about();
+    let button = egui::Button::new(icons::text(icons::INFO).size(INFO_SIZE)).frame(false);
     let response = ui.add(button).on_hover_text(&name);
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &name));
     response
 }
 
-/// A link that opens the explanation of `metric`.
-fn help_link(ui: &mut egui::Ui, text: &str, metric: Metric, state: &mut OverviewState) {
-    if ui.link(text).on_hover_text(metric.about()).clicked() {
-        state.open_help(metric);
+/// A link that opens the detail page of `check`.
+fn help_link(ui: &mut egui::Ui, text: &str, check: Check, state: &mut OverviewState) {
+    if ui.link(text).on_hover_text(check.about()).clicked() {
+        state.open(check, None);
     }
+}
+
+/// A status as a badge text: upper case, with spaces for underscores.
+pub(crate) fn status_label(status: &str) -> String {
+    status.to_uppercase().replace('_', " ")
+}
+
+/// The CLI's status of `check` as a badge, verbatim. A status this GUI does
+/// not describe for that check says so in its tooltip. Analyzer warnings
+/// (`check` is `None`) carry the GUI's own `warning`.
+pub(crate) fn status_badge(
+    ui: &mut egui::Ui,
+    status: &str,
+    check: Option<Check>,
+) -> egui::Response {
+    let response = badge(ui, &status_label(status), status_verdict(status));
+    if check.is_none_or(|check| is_known_status(check, status)) {
+        response
+    } else {
+        response.on_hover_text(format!(
+            "Status \"{status}\" as the CLI reported it; this GUI does not describe it for this check."
+        ))
+    }
+}
+
+/// Whether this GUI describes `status` for `check`. A status another check
+/// knows (such as `warning`) is still unknown for a check without it.
+pub(crate) fn is_known_status(check: Check, status: &str) -> bool {
+    check.verdict_meaning(status).is_some()
 }
 
 /// Where a finding applies.
@@ -417,49 +855,55 @@ pub(crate) enum Scope {
     Multiplex,
 }
 
+impl Scope {
+    pub fn text(self) -> String {
+        match self {
+            Scope::Program(number) => format!("program {number}"),
+            Scope::Multiplex => "whole multiplex".to_owned(),
+        }
+    }
+}
+
 /// One user-visible problem of the analysis.
 #[derive(Debug, PartialEq)]
 pub(crate) struct Finding {
     /// The CLI's status, shown as it is; `warning` for an analyzer warning.
     pub status: String,
-    /// The card it belongs to; analyzer warnings belong to none.
-    pub metric: Option<Metric>,
+    /// The check it belongs to; analyzer warnings belong to none.
+    pub check: Option<Check>,
     pub label: String,
     pub reason: String,
     pub scope: Scope,
     pub offset: Option<u64>,
 }
 
-/// A status as a badge text: upper case, with spaces for underscores.
-fn status_label(status: &str) -> String {
-    status.to_uppercase().replace('_', " ")
-}
-
-/// Whether a card status means its analysis is unavailable rather than a
+/// Whether a check status means its analysis is unavailable rather than a
 /// result: `skipped`, or a PCR jitter estimate the CLI did not grade
 /// (`not_assessable`, because delivery is not constant).
-fn is_unavailable(status: &str) -> bool {
-    matches!(status, "skipped" | "not_assessable")
+/// Only a status this check describes counts: an unknown `not_assessable` on
+/// another check stays a finding, shown as the CLI reported it.
+pub(crate) fn is_unavailable(check: Check, status: &str) -> bool {
+    matches!(status, "skipped" | "not_assessable") && is_known_status(check, status)
 }
 
-/// Whether a card status is a finding. Unavailable analysis is not a finding;
-/// any other status than `ok`, including one this GUI does not know, is shown
-/// as the CLI reported it.
-fn is_finding(status: &str) -> bool {
-    status != "ok" && !is_unavailable(status)
+/// Whether a check status is a finding. Unavailable analysis is not a
+/// finding; any other status than `ok`, including one this GUI does not know,
+/// is shown as the CLI reported it.
+pub(crate) fn is_finding(check: Check, status: &str) -> bool {
+    status != "ok" && !is_unavailable(check, status)
 }
 
-/// A card whose analysis is unavailable, with the CLI's status and reason.
+/// A check whose analysis is unavailable, with the CLI's status and reason.
 #[derive(Debug, PartialEq)]
 pub(crate) struct Unavailable {
-    pub metric: Metric,
+    pub check: Check,
     pub status: String,
     pub reason: String,
 }
 
-/// Every finding of the selected program and the multiplex, and the cards
+/// Every finding of the selected program and the multiplex, and the checks
 /// whose analysis is unavailable with the CLI's reason. Each underlying event
-/// is one finding: a card with events (anomaly groups, continuity errors) is
+/// is one finding: a check with events (anomaly groups, continuity errors) is
 /// represented by those events, not counted again.
 pub(crate) fn findings(
     report: &AnalysisReport,
@@ -468,63 +912,61 @@ pub(crate) fn findings(
     let mut findings = Vec::new();
     let mut unavailable = Vec::new();
     let in_program = Scope::Program(program.program_number);
-    for card in cards(report, program) {
-        if is_unavailable(&card.status) {
-            let reason = match (card.metric, program.pcr_jitter.as_ref()) {
+    for row in rows(report, program) {
+        if is_unavailable(row.check, &row.status) {
+            let reason = match (row.check, program.pcr_jitter.as_ref()) {
                 // The status reason, then the delivery assessment behind it.
-                (Metric::PcrJitter, Some(jitter)) if card.status == "not_assessable" => format!(
+                (Check::PcrJitter, Some(jitter)) if row.status == "not_assessable" => format!(
                     "{}. Delivery {}: {}",
                     jitter.reason.as_deref().unwrap_or("not assessable"),
                     jitter.delivery.assessment,
                     jitter.delivery.reason
                 ),
-                (Metric::MaxPcrInterval | Metric::PcrPtsDtsGap | Metric::PcrJitter, _) => card.note,
-                _ => String::new(),
+                _ => row.reason.unwrap_or_default(),
             };
             unavailable.push(Unavailable {
-                metric: card.metric,
-                status: card.status,
+                check: row.check,
+                status: row.status,
                 reason,
             });
             continue;
         }
-        if !is_finding(&card.status) {
+        if !is_finding(row.check, &row.status) {
             continue;
         }
-        let metric = card.metric;
-        let finding = |label: &str, reason: String, scope: Scope, offset: Option<u64>| Finding {
-            status: card.status.clone(),
-            metric: Some(metric),
-            label: label.to_owned(),
+        let check = row.check;
+        let finding = |reason: String, scope: Scope, offset: Option<u64>| Finding {
+            status: row.status.clone(),
+            check: Some(check),
+            label: check.title().to_owned(),
             reason,
             scope,
             offset,
         };
-        match metric {
-            Metric::MaxPcrInterval | Metric::PcrPtsDtsGap => {
-                let check = program.compliance.as_ref().map(|c| match metric {
-                    Metric::MaxPcrInterval => &c.max_pcr_interval,
+        match check {
+            Check::MaxPcrInterval | Check::PcrPtsDtsGap => {
+                let result = program.compliance.as_ref().map(|c| match check {
+                    Check::MaxPcrInterval => &c.max_pcr_interval,
                     _ => &c.max_pcr_pts_dts_gap,
                 });
-                let reason = check.map_or(String::new(), |check| {
-                    check.value_ms.map_or_else(
-                        || check.reason.clone().unwrap_or_default(),
-                        |ms| format!("{ms:.1} ms, limit {:.0} ms", check.limit_ms),
+                let reason = result.map_or(String::new(), |result| {
+                    result.value_ms.map_or_else(
+                        || result.reason.clone().unwrap_or_default(),
+                        |ms| format!("{ms:.1} ms, limit {:.0} ms", result.limit_ms),
                     )
                 });
-                findings.push(finding(metric.title(), reason, in_program, None));
+                findings.push(finding(reason, in_program, None));
             }
-            Metric::TimestampAnomalies => {
+            Check::TimestampAnomalies => {
                 let items = program
                     .timestamp_anomalies
                     .as_ref()
                     .map_or(&[][..], |a| &a.items[..]);
                 if items.is_empty() {
-                    findings.push(finding(metric.title(), String::new(), in_program, None));
+                    findings.push(finding(String::new(), in_program, None));
                 }
                 for item in items {
                     findings.push(finding(
-                        metric.title(),
                         format!(
                             "PID {} · {} · {}× · {}",
                             item.pid,
@@ -537,11 +979,10 @@ pub(crate) fn findings(
                     ));
                 }
             }
-            Metric::ContinuityCounter => {
+            Check::ContinuityCounter => {
                 if report.continuity_events.is_empty() {
                     findings.push(finding(
-                        metric.title(),
-                        match card.value.as_str() {
+                        match row.value.as_str() {
                             "1" => "1 error".to_owned(),
                             count => format!("{count} errors"),
                         },
@@ -551,7 +992,6 @@ pub(crate) fn findings(
                 }
                 for event in &report.continuity_events {
                     findings.push(finding(
-                        metric.title(),
                         format!(
                             "PID {}: continuity_counter {} (expected {})",
                             event.pid, event.actual_cc, event.expected_cc
@@ -561,9 +1001,9 @@ pub(crate) fn findings(
                     ));
                 }
             }
-            Metric::PcrJitter => {
+            Check::PcrJitter => {
                 let jitter = program.pcr_jitter.as_ref();
-                let limit = match card.status.as_str() {
+                let limit = match row.status.as_str() {
                     "ng" => " beyond ±25 µs",
                     "warning" => " beyond ±500 ns",
                     _ => "",
@@ -578,7 +1018,6 @@ pub(crate) fn findings(
                     })
                 });
                 findings.push(finding(
-                    "PCR jitter (estimate)",
                     reason,
                     in_program,
                     jitter.and_then(|j| j.estimate.max_abs_jitter_offset_bytes),
@@ -589,7 +1028,7 @@ pub(crate) fn findings(
     for warning in &report.warnings {
         findings.push(Finding {
             status: "warning".to_owned(),
-            metric: None,
+            check: None,
             label: "Analyzer warning".to_owned(),
             reason: warning.message.clone(),
             scope: Scope::Multiplex,
@@ -601,21 +1040,14 @@ pub(crate) fn findings(
 
 fn finding_row(ui: &mut egui::Ui, finding: &Finding, state: &mut OverviewState) {
     ui.horizontal_wrapped(|ui| {
-        badge(
-            ui,
-            &status_label(&finding.status),
-            status_verdict(&finding.status),
-        );
-        match finding.metric {
-            Some(metric) => help_link(ui, &finding.label, metric, state),
+        status_badge(ui, &finding.status, finding.check);
+        match finding.check {
+            Some(check) => help_link(ui, &finding.label, check, state),
             None => {
                 ui.strong(&finding.label);
             }
         }
-        ui.weak(match finding.scope {
-            Scope::Program(number) => format!("program {number}"),
-            Scope::Multiplex => "whole multiplex".to_owned(),
-        });
+        ui.weak(finding.scope.text());
         if let Some(offset) = finding.offset {
             ui.monospace(format!("0x{offset:08X}"));
         }
@@ -646,6 +1078,12 @@ mod tests {
             summary,
             [
                 ("ng", "Max PCR interval", Scope::Program(1), None),
+                (
+                    "ng",
+                    "PCR jitter estimate",
+                    Scope::Program(1),
+                    Some(58 * 188)
+                ),
                 ("ng", "PCR → PTS/DTS gap", Scope::Program(1), None),
                 ("anomalies", "PTS/DTS anomalies", Scope::Program(1), None),
                 (
@@ -654,37 +1092,31 @@ mod tests {
                     Scope::Multiplex,
                     Some(25 * 188)
                 ),
-                (
-                    "ng",
-                    "PCR jitter (estimate)",
-                    Scope::Program(1),
-                    Some(58 * 188)
-                ),
             ]
         );
         assert_eq!(findings[0].reason, "160.0 ms, limit 100 ms");
-        assert_eq!(findings[1].reason, "1200.0 ms, limit 1000 ms");
+        assert_eq!(
+            findings[1].reason,
+            "max |estimated jitter| 100.0 µs beyond ±25 µs; estimated from byte position, delivery constant: 2 × 1 s windows, max deviation 0.00 % of 75.2 kbit/s"
+        );
+        assert_eq!(findings[2].reason, "1200.0 ms, limit 1000 ms");
         assert!(
-            findings[2]
+            findings[3]
                 .reason
                 .starts_with("PID 0x0100 · backward · 1× · PTS went backward")
         );
         assert_eq!(
-            findings[3].reason,
+            findings[4].reason,
             "PID 0x0101: continuity_counter 6 (expected 5)"
         );
-        assert_eq!(
-            findings[4].reason,
-            "max |estimated jitter| 100.0 µs beyond ±25 µs; estimated from byte position, delivery constant: 2 × 1 s windows, max deviation 0.00 % of 75.2 kbit/s"
-        );
-        // Each card is non-OK and has its finding.
-        for card in cards(&report, &report.programs[0]) {
-            assert!(is_finding(&card.status), "{:?}", card.metric);
-            assert!(findings.iter().any(|f| f.metric == Some(card.metric)));
+        // Each row is non-OK and has its finding.
+        for row in rows(&report, &report.programs[0]) {
+            assert!(is_finding(row.check, &row.status), "{:?}", row.check);
+            assert!(findings.iter().any(|f| f.check == Some(row.check)));
         }
     }
 
-    /// Analyzer warnings, unknown statuses and skipped cards; a card without
+    /// Analyzer warnings, unknown statuses and skipped checks; a check without
     /// its events still counts once.
     #[test]
     fn findings_follow_the_cli_statuses() {
@@ -711,30 +1143,44 @@ mod tests {
         assert_eq!(
             summary,
             [
+                ("indeterminate", "PCR jitter estimate", Scope::Program(1)),
                 ("anomalies", "PTS/DTS anomalies", Scope::Program(1)),
                 ("errors", "Continuity counter", Scope::Multiplex),
-                ("indeterminate", "PCR jitter (estimate)", Scope::Program(1)),
                 ("warning", "Analyzer warning", Scope::Multiplex),
             ]
         );
-        assert_eq!(findings[1].reason, "1 error");
         assert!(
-            findings[2]
+            findings[0]
                 .reason
                 .starts_with("max |estimated jitter| 100.0 µs;")
         );
+        assert_eq!(findings[2].reason, "1 error");
         assert_eq!(
             unavailable,
             [Unavailable {
-                metric: Metric::PcrPtsDtsGap,
+                check: Check::PcrPtsDtsGap,
                 status: "skipped".to_owned(),
                 reason: "need a parsed PTS/DTS bracketed by PCR observations".to_owned()
             }]
         );
+        assert!(!is_known_status(Check::PcrJitter, "indeterminate"));
+        assert!(is_known_status(Check::PcrJitter, "not_assessable"));
+        // Known for PCR jitter, but not a status Max PCR interval describes.
+        assert!(is_known_status(Check::PcrJitter, "warning"));
+        assert!(!is_known_status(Check::MaxPcrInterval, "warning"));
+        assert!(!is_known_status(Check::MaxPcrInterval, "not_assessable"));
+        // Unavailable only where the check describes the status; elsewhere
+        // an unknown status stays a finding.
+        assert!(is_unavailable(Check::PcrJitter, "not_assessable"));
+        assert!(is_unavailable(Check::MaxPcrInterval, "skipped"));
+        assert!(!is_unavailable(Check::MaxPcrInterval, "not_assessable"));
+        assert!(is_finding(Check::MaxPcrInterval, "not_assessable"));
+        assert!(!is_unavailable(Check::ContinuityCounter, "skipped"));
+        assert!(is_finding(Check::ContinuityCounter, "skipped"));
     }
 
     /// A PCR jitter estimate the CLI did not grade is unavailable analysis
-    /// with the CLI's reasons, not a finding; the card keeps the estimate.
+    /// with the CLI's reasons, not a finding; the row keeps the estimate.
     #[test]
     fn not_assessable_jitter_is_unavailable() {
         let report = report(include_str!(
@@ -742,9 +1188,9 @@ mod tests {
         ));
         let program = &report.programs[0];
         let (findings, unavailable) = findings(&report, program);
-        assert!(findings.iter().all(|f| f.metric != Some(Metric::PcrJitter)));
+        assert!(findings.iter().all(|f| f.check != Some(Check::PcrJitter)));
         assert_eq!(unavailable.len(), 1);
-        assert_eq!(unavailable[0].metric, Metric::PcrJitter);
+        assert_eq!(unavailable[0].check, Check::PcrJitter);
         assert_eq!(unavailable[0].status, "not_assessable");
         assert!(
             unavailable[0].reason.starts_with(
@@ -753,31 +1199,65 @@ mod tests {
             "{}",
             unavailable[0].reason
         );
-        let card = cards(&report, program)
-            .into_iter()
-            .find(|c| c.metric == Metric::PcrJitter)
-            .unwrap();
-        assert_eq!(card.value, "55.08 ms");
+        let row = row(&report, program, Check::PcrJitter).unwrap();
+        assert_eq!(row.value, "55.08 ms");
+        assert_eq!(status_label(&row.status), "NOT ASSESSABLE");
+        let fact = |name: &str| {
+            row.facts
+                .iter()
+                .find(|(label, _)| *label == name)
+                .map(|(_, value)| value.as_str())
+        };
+        assert_eq!(fact("Delivery"), Some("variable"));
         assert_eq!(
-            card.note,
-            "max |estimated jitter| · delivery variable: 1 × 1 s window at 767.9 kbit/s"
+            fact("Delivery evidence"),
+            Some("1 × 1 s window at 767.9 kbit/s")
         );
-        assert_eq!(status_label(&card.status), "NOT ASSESSABLE");
+        assert_eq!(fact("Worst offset"), Some("0x000223D8"));
+        assert_eq!(fact("PCR PID"), Some("0x0100"));
+        assert_eq!(fact("Observations"), Some("21"));
+        assert!(
+            fact("Reason")
+                .unwrap()
+                .starts_with("delivery rate is variable")
+        );
+        // No threshold: the CLI does not report one for PCR jitter.
+        assert_eq!(fact("Limit"), None);
     }
 
+    /// The current result lists only what the CLI reported.
     #[test]
-    fn card_columns_follow_the_width() {
-        assert_eq!(card_columns(1200.0, 5), 5);
-        assert_eq!(card_columns(5.0 * CARD_WIDTH + 4.0 * CARD_SPACING, 5), 5);
+    fn rows_list_only_reported_fields() {
+        let mut document: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/analysis_two_programs_188.json"
+        ))
+        .unwrap();
+        document["programs"][0]["compliance"]["max_pcr_interval"] = serde_json::json!({
+            "status": "skipped", "limit_ms": 100.0, "observations": 0,
+            "reason": "need at least two PCRs"
+        });
+        document["programs"][0]["pcr_jitter"] = serde_json::Value::Null;
+        let report = report(&document.to_string());
+        let program = &report.programs[0];
+        let rows = rows(&report, program);
+        // A check the CLI did not report has no row.
         assert_eq!(
-            card_columns(5.0 * CARD_WIDTH + 4.0 * CARD_SPACING - 1.0, 5),
-            4
+            rows.iter().map(|r| r.check).collect::<Vec<_>>(),
+            [
+                Check::MaxPcrInterval,
+                Check::PcrPtsDtsGap,
+                Check::TimestampAnomalies,
+                Check::ContinuityCounter,
+            ]
         );
-        assert_eq!(card_columns(700.0, 5), 3);
-        assert_eq!(card_columns(300.0, 5), 1);
-        assert_eq!(card_columns(100.0, 5), 1);
-        assert_eq!(card_columns(1200.0, 2), 2);
-        assert_eq!(card_columns(1200.0, 0), 1);
+        let labels: Vec<&str> = rows[0].facts.iter().map(|(label, _)| *label).collect();
+        assert_eq!(
+            labels,
+            ["Limit", "Program", "PCR PID", "Observations", "Reason"]
+        );
+        assert_eq!(rows[0].value, "—");
+        let continuity: Vec<&str> = rows[3].facts.iter().map(|(label, _)| *label).collect();
+        assert_eq!(continuity, ["Errors", "Applies to"]);
     }
 
     #[test]

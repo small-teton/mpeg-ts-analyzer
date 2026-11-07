@@ -156,6 +156,43 @@ impl TimelineView {
         navigate
     }
 
+    /// Selects the event at `offset` of the given program's Timeline, as if
+    /// it had been clicked. Returns false when the Timeline has no event
+    /// there.
+    pub fn show_event(
+        &mut self,
+        generation: u64,
+        program: usize,
+        data: &Timeline,
+        offset: u64,
+    ) -> bool {
+        self.sync_report_context(generation, program);
+        let Some(event) = data.events.iter().find(|e| e.offset_bytes == offset) else {
+            return false;
+        };
+        self.show_events = true;
+        self.selection = Some(Selection {
+            series: "Event".to_owned(),
+            pid: event.pid.clone(),
+            point: Point {
+                seconds: event.seconds,
+                value: 0.0,
+                offset_bytes: event.offset_bytes,
+            },
+            value: Some(event.label.clone()),
+            verdict: None,
+        });
+        true
+    }
+
+    /// The selected point's series and offset.
+    #[cfg(test)]
+    pub fn selected_for_test(&self) -> Option<(&str, u64)> {
+        self.selection
+            .as_ref()
+            .map(|s| (s.series.as_str(), s.point.offset_bytes))
+    }
+
     /// The packet "Open packet" asked for, once.
     pub fn take_open_request(&mut self) -> Option<u64> {
         self.open_request.take()
@@ -352,7 +389,7 @@ impl TimelineView {
                             .collect::<Vec<_>>(),
                     )
                     .shape(MarkerShape::Diamond)
-                    .color(Verdict::Warn.colors().0)
+                    .color(crate::theme::EVENT_COLOR)
                     .radius(6.0)
                     .filled(true),
                 );
