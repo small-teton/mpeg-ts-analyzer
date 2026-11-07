@@ -276,3 +276,14 @@ For large files, dump options can produce a huge amount of output. Use `--limit`
 ```bash
 mpeg-ts-analyzer large.ts --dump-ts-header --limit 1000000 > dump.txt
 ```
+
+Memory use does not grow with the size of a PES packet. PES analysis reads only
+the PES header (start code, `stream_id`, `PES_packet_length`, flags, PTS/DTS and
+the other optional header fields), so for each elementary stream being analyzed
+the analyzer keeps at most the first 264 bytes of the current PES packet: the
+largest header ISO/IEC 13818-1 allows (6 + 3 + 255 bytes of
+`PES_header_data_length`). Payload beyond that is counted but not stored. A
+large video PES, a PES with `PES_packet_length` 0, or a malformed stream whose
+PID never starts another PES therefore needs no more memory than a short one,
+while continuity counters, PCR observations and bitrate counting still cover
+every packet.

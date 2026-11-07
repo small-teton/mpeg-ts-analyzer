@@ -704,3 +704,98 @@ func TestTrailingBytesAtEOFReadError(t *testing.T) {
 		t.Errorf("trailingBytesAtEOF = %d, want 0", n)
 	}
 }
+
+// continuationReader yields the packets in head, then n payload-only
+// continuation packets on pid 0x31 without another payload_unit_start_indicator
+// (continuity_counter from 3 on), without materializing the stream in memory.
+type continuationReader struct {
+	head []byte
+	n    int
+	cc   uint8
+	pkt  []byte
+	off  int
+}
+
+func newContinuationReader(head []byte, n int) *continuationReader {
+	return &continuationReader{head: head, n: n, cc: 3}
+}
+
+func (r *continuationReader) Read(p []byte) (int, error) {
+	if r.off == len(r.pkt) {
+		switch {
+		case len(r.head) > 0:
+			r.pkt, r.head = r.head[:tsPayloadSize], r.head[tsPayloadSize:]
+		case r.n > 0:
+			r.pkt = buildContinuationPacket(0x0031, r.cc, 0x5A)
+			r.cc = (r.cc + 1) & 0x0F
+			r.n--
+		default:
+			return 0, io.EOF
+		}
+		r.off = 0
+	}
+	n := copy(p, r.pkt[r.off:])
+	r.off += n
+	return n, nil
+}
+
+// buildContinuationPacket builds a payload-only, non-PUSI packet whose payload
+// bytes are all fill.
+func buildContinuationPacket(pid uint16, cc uint8, fill byte) []byte {
+	pkt := bytes.Repeat([]byte{fill}, tsPayloadSize)
+	pkt[0], pkt[1], pkt[2], pkt[3] = 0x47, byte(pid>>8)&0x1F, byte(pid), 0x10|cc&0x0F
+	return pkt
+}
+
+func TestScanBoundsPesRetentionForLongContinuation(t *testing.T) {
+	// A PID that never starts another PES must not make the analyzer retain
+	// input-sized memory, while the header split across the first two packets
+	// still parses and continuity tracking covers the whole run.
+	const pid = 0x0031
+	header := encodePtsOnlyPes(90000) // 14 bytes, PTS = 1000 ms
+	// PUSI packet: an adaptation field of stuffing leaves only 4 payload bytes,
+	// so the PES header continues in the next packet.
+	first := make([]byte, tsPayloadSize)
+	first[0], first[1], first[2], first[3] = 0x47, 0x40|byte(pid>>8), byte(pid), 0x30|1
+	first[4] = tsPayloadSize - tsHeaderSize - 1 - 4 // adaptation_field_length
+	first[5] = 0x00
+	for i := 6; i < tsPayloadSize-4; i++ {
+		first[i] = 0xFF
+	}
+	copy(first[tsPayloadSize-4:], header[:4])
+	second := buildContinuationPacket(pid, 2, 0xAB)
+	copy(second[4:], header[4:])
+	head := bytes.Join([][]byte{buildPcrPacket(pid, 27_000_000), first, second}, nil)
+
+	const continuation = 100_000 // about 18.8 MB of payload
+	programInfos := []ProgramInfo{{streamType: 0x02, elementaryPid: pid}}
+	analyzer := newProgramAnalyzer(options.Options{}, 0, 1, 0x30, pid, programInfos, false)
+	continuity := newContinuityCounterSummary(0x30, pid, programInfos)
+	var pos int64
+	result, err := scanPrograms(newContinuationReader(head, continuation), &pos, []*programAnalyzer{analyzer}, continuity, nil, options.Options{}, tsPayloadSize, 0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.continuityEvents) != 0 {
+		t.Errorf("continuity events = %v", result.continuityEvents)
+	}
+	if want := int64(continuation+3) * tsPayloadSize; pos != want {
+		t.Errorf("pos = %d, want %d", pos, want)
+	}
+	pes := analyzer.pesMap[pid]
+	if pes == nil {
+		t.Fatal("no active PES")
+	}
+	if cap(pes.buf) > maxPesHeaderSize {
+		t.Errorf("cap(buf) = %d, want at most %d", cap(pes.buf), maxPesHeaderSize)
+	}
+	if want := int64(4 + (continuation+1)*(tsPayloadSize-tsHeaderSize)); pes.received != want {
+		t.Errorf("received = %d, want %d", pes.received, want)
+	}
+	if err := pes.Parse(); err != nil {
+		t.Fatalf("Parse() = %v", err)
+	}
+	if pes.ptsDtsFlags != 2 || pes.pts != 90000 {
+		t.Errorf("ptsDtsFlags = %d, pts = %d, want 2, 90000", pes.ptsDtsFlags, pes.pts)
+	}
+}
