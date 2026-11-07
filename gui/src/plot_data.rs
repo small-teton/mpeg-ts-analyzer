@@ -486,7 +486,7 @@ mod tests {
     fn fixture() -> AnalysisReport {
         crate::report::parse_analysis(
             include_bytes!("../tests/fixtures/analysis_two_programs_188.json"),
-            "1",
+            "2",
         )
         .expect("fixture parses")
     }
@@ -781,7 +781,7 @@ mod tests {
             event(&added, low + 1),
             event(&audio, high + 1),
         ]);
-        let report = crate::report::parse_analysis(document.to_string().as_bytes(), "1").unwrap();
+        let report = crate::report::parse_analysis(document.to_string().as_bytes(), "2").unwrap();
         let timeline = timeline(&report, &report.programs[0]);
         let audio = timeline
             .gaps
@@ -827,7 +827,7 @@ mod tests {
         .unwrap();
         report["programs"][0]["series"]["pcr"] =
             serde_json::from_str(&format!("[{}]", pcr.join(","))).unwrap();
-        let report = crate::report::parse_analysis(report.to_string().as_bytes(), "1").unwrap();
+        let report = crate::report::parse_analysis(report.to_string().as_bytes(), "2").unwrap();
         let timeline = timeline(&report, &report.programs[0]);
         assert_eq!(timeline.pcr_interval.len(), 20_000);
         assert!(timeline.pcr_drawn.len() <= MAX_PLOT_POINTS);

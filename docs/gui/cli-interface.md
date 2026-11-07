@@ -111,7 +111,10 @@ from its first one.
 
 An input-free command returning the CLI version, schema versions and supported
 outputs, so the GUI can reject an incompatible CLI found on `PATH`. `--version`
-is Cobra's built-in text output and is not used for this.
+is Cobra's built-in text output and is not used for this. The GUI reads analysis
+schema 2.x (PCR jitter with `estimate` and `delivery`) and packet schema 1.x; a
+CLI that writes analysis schema 1.x is rejected with a request to update the
+CLI.
 
 ## Related issues
 

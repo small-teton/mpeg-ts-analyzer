@@ -108,11 +108,15 @@ pub fn show_report(
                 .id_salt("overview_unavailable")
                 .default_open(true)
                 .show(ui, |ui| {
-                    for (metric, reason) in &unavailable {
+                    for item in &unavailable {
                         ui.horizontal_wrapped(|ui| {
-                            badge(ui, "SKIPPED", status_verdict("skipped"));
-                            help_link(ui, metric.title(), *metric, state);
-                            ui.label(reason);
+                            badge(
+                                ui,
+                                &status_label(&item.status),
+                                status_verdict(&item.status),
+                            );
+                            help_link(ui, item.metric.title(), item.metric, state);
+                            ui.add(egui::Label::new(&item.reason).wrap());
                         });
                     }
                 });
@@ -278,14 +282,24 @@ pub(crate) fn cards(report: &AnalysisReport, program: &Program) -> Vec<Card> {
         });
     }
     if let Some(jitter) = &program.pcr_jitter {
+        // A skipped estimate has only its reason; otherwise the note gives the
+        // delivery assessment that decided whether the estimate is graded.
+        let note = match (jitter.status.as_str(), &jitter.reason) {
+            ("skipped", Some(reason)) => reason.clone(),
+            _ => format!(
+                "{} · {}",
+                Metric::PcrJitter.help().note,
+                jitter.delivery.summary()
+            ),
+        };
         cards.push(Card {
             metric: Metric::PcrJitter,
             status: jitter.status.clone(),
-            value: max_abs_jitter_ns(jitter).map_or("—".to_owned(), duration_ns),
-            note: jitter
-                .reason
-                .clone()
-                .unwrap_or_else(|| Metric::PcrJitter.help().note.to_owned()),
+            value: jitter
+                .estimate
+                .max_abs_jitter_ns
+                .map_or("—".to_owned(), duration_ns),
+            note,
         });
     }
     cards
@@ -310,13 +324,6 @@ fn check_card(metric: Metric, check: &Check) -> Card {
         value,
         note,
     }
-}
-
-fn max_abs_jitter_ns(jitter: &crate::report::PcrJitter) -> Option<f64> {
-    jitter
-        .max_jitter_ns
-        .zip(jitter.min_jitter_ns)
-        .map(|(max, min)| max.abs().max(min.abs()))
 }
 
 /// A duration in nanoseconds, in the unit that keeps it short.
@@ -369,7 +376,7 @@ fn card_ui(ui: &mut egui::Ui, card: &Card, width: f32, state: &mut OverviewState
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
                 badge(
                     ui,
-                    &card.status.to_uppercase(),
+                    &status_label(&card.status),
                     status_verdict(&card.status),
                 );
                 if info_button(ui, card.metric).clicked() {
@@ -423,31 +430,62 @@ pub(crate) struct Finding {
     pub offset: Option<u64>,
 }
 
-/// Whether a card status is a finding. `skipped` is unavailable analysis,
-/// not a finding; any other status than `ok`, including one this GUI does not
-/// know, is shown as the CLI reported it.
+/// A status as a badge text: upper case, with spaces for underscores.
+fn status_label(status: &str) -> String {
+    status.to_uppercase().replace('_', " ")
+}
+
+/// Whether a card status means its analysis is unavailable rather than a
+/// result: `skipped`, or a PCR jitter estimate the CLI did not grade
+/// (`not_assessable`, because delivery is not constant).
+fn is_unavailable(status: &str) -> bool {
+    matches!(status, "skipped" | "not_assessable")
+}
+
+/// Whether a card status is a finding. Unavailable analysis is not a finding;
+/// any other status than `ok`, including one this GUI does not know, is shown
+/// as the CLI reported it.
 fn is_finding(status: &str) -> bool {
-    !matches!(status, "ok" | "skipped")
+    status != "ok" && !is_unavailable(status)
+}
+
+/// A card whose analysis is unavailable, with the CLI's status and reason.
+#[derive(Debug, PartialEq)]
+pub(crate) struct Unavailable {
+    pub metric: Metric,
+    pub status: String,
+    pub reason: String,
 }
 
 /// Every finding of the selected program and the multiplex, and the cards
-/// whose analysis was skipped with the CLI's reason. Each underlying event is
-/// one finding: a card with events (anomaly groups, continuity errors) is
+/// whose analysis is unavailable with the CLI's reason. Each underlying event
+/// is one finding: a card with events (anomaly groups, continuity errors) is
 /// represented by those events, not counted again.
 pub(crate) fn findings(
     report: &AnalysisReport,
     program: &Program,
-) -> (Vec<Finding>, Vec<(Metric, String)>) {
+) -> (Vec<Finding>, Vec<Unavailable>) {
     let mut findings = Vec::new();
     let mut unavailable = Vec::new();
     let in_program = Scope::Program(program.program_number);
     for card in cards(report, program) {
-        if card.status == "skipped" {
-            let reason = match card.metric {
-                Metric::MaxPcrInterval | Metric::PcrPtsDtsGap | Metric::PcrJitter => card.note,
+        if is_unavailable(&card.status) {
+            let reason = match (card.metric, program.pcr_jitter.as_ref()) {
+                // The status reason, then the delivery assessment behind it.
+                (Metric::PcrJitter, Some(jitter)) if card.status == "not_assessable" => format!(
+                    "{}. Delivery {}: {}",
+                    jitter.reason.as_deref().unwrap_or("not assessable"),
+                    jitter.delivery.assessment,
+                    jitter.delivery.reason
+                ),
+                (Metric::MaxPcrInterval | Metric::PcrPtsDtsGap | Metric::PcrJitter, _) => card.note,
                 _ => String::new(),
             };
-            unavailable.push((card.metric, reason));
+            unavailable.push(Unavailable {
+                metric: card.metric,
+                status: card.status,
+                reason,
+            });
             continue;
         }
         if !is_finding(&card.status) {
@@ -530,25 +568,20 @@ pub(crate) fn findings(
                     "warning" => " beyond ±500 ns",
                     _ => "",
                 };
-                let reason = jitter.and_then(max_abs_jitter_ns).map_or(String::new(), |ns| {
-                    format!(
-                        "max |estimated jitter| {}{limit}; estimated from byte position, assuming a constant delivery rate",
-                        duration_ns(ns)
-                    )
+                let reason = jitter.map_or(String::new(), |j| {
+                    j.estimate.max_abs_jitter_ns.map_or(String::new(), |ns| {
+                        format!(
+                            "max |estimated jitter| {}{limit}; estimated from byte position, {}",
+                            duration_ns(ns),
+                            j.delivery.summary()
+                        )
+                    })
                 });
                 findings.push(finding(
                     "PCR jitter (estimate)",
                     reason,
                     in_program,
-                    jitter.and_then(|j| {
-                        if j.max_jitter_ns.unwrap_or(0.0).abs()
-                            >= j.min_jitter_ns.unwrap_or(0.0).abs()
-                        {
-                            j.max_jitter_offset_bytes
-                        } else {
-                            j.min_jitter_offset_bytes
-                        }
-                    }),
+                    jitter.and_then(|j| j.estimate.max_abs_jitter_offset_bytes),
                 ));
             }
         }
@@ -570,7 +603,7 @@ fn finding_row(ui: &mut egui::Ui, finding: &Finding, state: &mut OverviewState) 
     ui.horizontal_wrapped(|ui| {
         badge(
             ui,
-            &finding.status.to_uppercase(),
+            &status_label(&finding.status),
             status_verdict(&finding.status),
         );
         match finding.metric {
@@ -619,7 +652,7 @@ mod tests {
                     "errors",
                     "Continuity counter",
                     Scope::Multiplex,
-                    Some(44 * 188)
+                    Some(25 * 188)
                 ),
                 (
                     "ng",
@@ -640,10 +673,9 @@ mod tests {
             findings[3].reason,
             "PID 0x0101: continuity_counter 6 (expected 5)"
         );
-        assert!(
-            findings[4]
-                .reason
-                .starts_with("max |estimated jitter| 100.0 µs beyond ±25 µs")
+        assert_eq!(
+            findings[4].reason,
+            "max |estimated jitter| 100.0 µs beyond ±25 µs; estimated from byte position, delivery constant: 2 × 1 s windows, max deviation 0.00 % of 75.2 kbit/s"
         );
         // Each card is non-OK and has its finding.
         for card in cards(&report, &report.programs[0]) {
@@ -693,11 +725,44 @@ mod tests {
         );
         assert_eq!(
             unavailable,
-            [(
-                Metric::PcrPtsDtsGap,
-                "need a parsed PTS/DTS bracketed by PCR observations".to_owned()
-            )]
+            [Unavailable {
+                metric: Metric::PcrPtsDtsGap,
+                status: "skipped".to_owned(),
+                reason: "need a parsed PTS/DTS bracketed by PCR observations".to_owned()
+            }]
         );
+    }
+
+    /// A PCR jitter estimate the CLI did not grade is unavailable analysis
+    /// with the CLI's reasons, not a finding; the card keeps the estimate.
+    #[test]
+    fn not_assessable_jitter_is_unavailable() {
+        let report = report(include_str!(
+            "../../tests/fixtures/analysis_two_programs_188.json"
+        ));
+        let program = &report.programs[0];
+        let (findings, unavailable) = findings(&report, program);
+        assert!(findings.iter().all(|f| f.metric != Some(Metric::PcrJitter)));
+        assert_eq!(unavailable.len(), 1);
+        assert_eq!(unavailable[0].metric, Metric::PcrJitter);
+        assert_eq!(unavailable[0].status, "not_assessable");
+        assert!(
+            unavailable[0].reason.starts_with(
+                "delivery rate is variable, so the byte-position estimate does not measure PCR accuracy. Delivery variable: the estimated jitter reaches 55.082ms"
+            ),
+            "{}",
+            unavailable[0].reason
+        );
+        let card = cards(&report, program)
+            .into_iter()
+            .find(|c| c.metric == Metric::PcrJitter)
+            .unwrap();
+        assert_eq!(card.value, "55.08 ms");
+        assert_eq!(
+            card.note,
+            "max |estimated jitter| · delivery variable: 1 × 1 s window at 767.9 kbit/s"
+        );
+        assert_eq!(status_label(&card.status), "NOT ASSESSABLE");
     }
 
     #[test]

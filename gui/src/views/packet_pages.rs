@@ -964,7 +964,7 @@ mod tests {
     fn labels_pids_from_the_analysis() {
         let report = crate::report::parse_analysis(
             include_bytes!("../../tests/fixtures/analysis_two_programs_188.json"),
-            "1",
+            "2",
         )
         .unwrap();
         // Without psi_layout, labels come from the tables the analysis started with.
