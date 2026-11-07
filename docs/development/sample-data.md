@@ -256,8 +256,9 @@ The layout, the expected results and the TSDuck cross-check are described in
 
 ## PCR-to-PTS/DTS gap wraparound sample
 
-`sample_data/sample_188byte_pts_gap_wraparound.ts` and its 192-byte M2TS twin
-`sample_data/sample_192byte_pts_gap_wraparound.ts` (37 and 38 KiB) cross the
+`sample_data/sample_188byte_pts_gap_wraparound.ts`, its 192-byte M2TS twin
+`sample_data/sample_192byte_pts_gap_wraparound.ts` and its 204-byte twin
+`sample_data/sample_204byte_pts_gap_wraparound.ts` (37, 38 and 40 KiB) cross the
 33-bit wraparounds in both orders: a video DTS (lead 700 ms) and an audio PTS
 (lead 30 ms) that wrap before the PCR, and an AAC PTS (lead −150 ms) that wraps
 after it, with PES packets whose bracketing PCRs span the PCR wrap. Every
@@ -268,6 +269,7 @@ PCR-to-PTS/DTS gap stays its stream's lead, and the gap check is `ok` at
 ```bash
 go run ./tools/generate_pts_gap_wraparound -output sample_data/sample_188byte_pts_gap_wraparound.ts
 go run ./tools/generate_pts_gap_wraparound -m2ts -output sample_data/sample_192byte_pts_gap_wraparound.ts
+go run ./tools/generate_pts_gap_wraparound -trailer -output sample_data/sample_204byte_pts_gap_wraparound.ts
 ./mpeg-ts-analyzer sample_data/sample_188byte_pts_gap_wraparound.ts --dump-timestamp
 ```
 

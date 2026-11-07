@@ -32,7 +32,9 @@
 //     PCR that has wrapped and a PTS that has not.
 //
 // With -m2ts, each packet gets a 4-byte TP_extra_header whose
-// arrival_time_stamp advances by one 20 ms slot per packet.
+// arrival_time_stamp advances by one 20 ms slot per packet. With -trailer,
+// each packet is followed by a 16-byte trailer, making 204-byte packets; the
+// trailer is deterministic filler that is never a sync byte.
 package main
 
 import (
@@ -258,17 +260,35 @@ func m2ts(data []byte) []byte {
 	return out
 }
 
+// withTrailers follows every 188-byte packet with a 16-byte trailer, making
+// 204-byte packets. The trailer of packet n is deterministic filler in
+// 0x80..0xBF: never a sync byte, and not Reed-Solomon parity.
+func withTrailers(data []byte) []byte {
+	out := make([]byte, 0, len(data)/tsPacketSize*(tsPacketSize+16))
+	for i := 0; i+tsPacketSize <= len(data); i += tsPacketSize {
+		out = append(out, data[i:i+tsPacketSize]...)
+		for k := range 16 {
+			out = append(out, 0x80|byte((i/tsPacketSize+k)&0x3F))
+		}
+	}
+	return out
+}
+
 func main() {
 	output := flag.String("output", "", "output transport stream")
 	asM2TS := flag.Bool("m2ts", false, "write 192-byte M2TS packets")
+	withTrailer := flag.Bool("trailer", false, "write 204-byte packets: each TS packet followed by a 16-byte trailer")
 	flag.Parse()
-	if *output == "" {
-		fmt.Fprintln(os.Stderr, "usage: generate_pts_gap_wraparound -output <out.ts> [-m2ts]")
+	if *output == "" || *asM2TS && *withTrailer {
+		fmt.Fprintln(os.Stderr, "usage: generate_pts_gap_wraparound -output <out.ts> [-m2ts | -trailer]")
 		os.Exit(2)
 	}
 	data := generate()
 	if *asM2TS {
 		data = m2ts(data)
+	}
+	if *withTrailer {
+		data = withTrailers(data)
 	}
 	if err := os.WriteFile(*output, data, 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)

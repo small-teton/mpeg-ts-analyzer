@@ -11,8 +11,10 @@ an example of a compliant stream.
 ```sh
 go run ./tools/generate_pts_gap_wraparound -output sample_data/sample_188byte_pts_gap_wraparound.ts
 go run ./tools/generate_pts_gap_wraparound -m2ts -output sample_data/sample_192byte_pts_gap_wraparound.ts
+go run ./tools/generate_pts_gap_wraparound -trailer -output sample_data/sample_204byte_pts_gap_wraparound.ts
 tsp -I file sample_data/sample_188byte_pts_gap_wraparound.ts -P pcrextract --pcr --pts --dts --csv -O drop
 tsp -I file --format m2ts sample_data/sample_192byte_pts_gap_wraparound.ts -P pcrextract --pcr --pts --dts --csv -O drop
+tsp -I file --format rs204 sample_data/sample_204byte_pts_gap_wraparound.ts -P pcrextract --pcr --pts --dts --csv -O drop
 ```
 
 200 packets of one 20 ms slot each (75.2 kbit/s, 4 s): program 1 (PMT PID
@@ -23,7 +25,11 @@ in packets 20, 40, … and the PMT in 28, 48, …. Video takes the packets 4k+2
 from 6 (every 80 ms, each with a PCR), AAC the packets 4k+1 from 5 and audio
 the packets 4k+3 from 7. Every PES packet fits in one TS packet; the other
 packets are null packets. With `-m2ts` each packet gets a `TP_extra_header`
-whose `arrival_time_stamp` advances by one slot.
+whose `arrival_time_stamp` advances by one slot; with `-trailer` each packet is
+followed by a 16-byte trailer of deterministic filler (never a sync byte),
+making 204-byte packets. The lead is interpolated by file position between
+PCRs and every packet has the same size, so the leads are the same for all
+three packet sizes.
 
 The 90 kHz clock of packet s is 2^33 − 100 × 1800 + s × 1800 (modulo 2^33), so
 the PCR wraps at packet 100, between the PCRs of packets 98 and 102. Every
@@ -35,7 +41,7 @@ PTS/DTS is the clock of its packet plus a constant lead:
 | 0x0101 audio | PTS 30 ms (small positive) | packet 99 | PTS before PCR, within the PCR bracket 98 to 102 that spans the PCR wrap |
 | 0x0102 AAC | PTS −150 ms (negative) | packet 109 | PCR before PTS: packets 101 (bracket 98 to 102) and 105 (bracket 102 to 106) have a wrapped PCR and a PTS that has not wrapped |
 
-Expected analysis (both packet sizes; `tsparser` tests pin it and check that
+Expected analysis (all three packet sizes; `tsparser` tests pin it and check that
 the committed files equal the generator output):
 
 - Every delay of `--dump-timestamp` is its stream's lead: 700 ms (video),
@@ -54,7 +60,8 @@ Before #193 the analyzer compared raw values: the PES packets of packets 66 to
 AAC PES packet of packet 105 a gap of +95443567.688889 ms, which failed the
 check (`ng`), and PES packets whose PCRs straddle the wrap were not measured.
 
-TSDuck 3.45 (`pcrextract --pcr --pts --dts`) for both files: its PCR and
+TSDuck 3.45 (`pcrextract --pcr --pts --dts`; `--format m2ts` and
+`--format rs204` for the 192- and 204-byte files) for all three files: its PCR and
 PTS/DTS rows, interpolated by packet index between the PCRs before and after
 each PES packet by an independent script (a step outside 0 to 1000 ms modulo
 2^33 × 300 starts a new segment; the lead is read modulo 2^33 × 300 as the
@@ -65,4 +72,5 @@ which it fills for the PES packets that carry a PCR (the video PID), is 63000
 (DTS, 700 ms) and 66600 (PTS, 740 ms) for 40 video PES packets; for the other 9
 (packets 66 to 98, whose DTS has wrapped while the PCR has not) it prints the
 plain difference, 63000 − 2^33 and 66600 − 2^33, which is the same 700 ms and
-740 ms modulo 2^33.
+740 ms modulo 2^33. For the 204-byte file `pcrextract` writes exactly the same
+CSV as for the 188-byte file.
