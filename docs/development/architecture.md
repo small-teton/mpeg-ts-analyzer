@@ -113,7 +113,9 @@ parser decodes.
 
 **Report** (`tsparser` report code, `cmd`): convert the result into the text
 summary and JSON fields, and update the schema and documentation as for any
-public output change.
+public output change. Add a case for the new JSON shape to
+`tsparser/json_schema_test.go`, which validates the emitted documents against
+the schemas.
 
 Test the check in `internal/analysis` with observations built directly, and the
 scan and report in `tsparser`. `bitbuffer`, `tsparser` and `analysis` each keep
