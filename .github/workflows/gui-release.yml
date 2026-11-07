@@ -455,15 +455,15 @@ jobs:
   # manifest (docs/gui/release-security.md, "Update signing"). The only job
   # that uses the gui-release environment, whose secrets hold the signing key;
   # it runs after the version job required the commit to be on master. Its
-  # artifact, gui-updates, joins the packages in the release job. Ubuntu 22.04
-  # like the Linux packaging job, which shares the cargo-packager cache key.
+  # artifact, gui-updates, joins the packages in the release job. Ubuntu 24.04:
+  # 22.04 has no minisign package.
   sign-updates:
     needs: [version, package]
     if: >-
       github.event_name != 'pull_request' &&
       needs.version.outputs.state != 'published' &&
       needs.package.result == 'success'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     environment: gui-release
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -507,7 +507,7 @@ jobs:
   sign-updates-dry-run:
     needs: [version, package]
     if: github.event_name == 'pull_request' && needs.package.result == 'success'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     env:
       VERSION: ${{ needs.version.outputs.version }}
       TAG: ${{ needs.version.outputs.tag }}
@@ -520,12 +520,14 @@ jobs:
       working-directory: gui
       run: rustup toolchain install
 
+    # Not the packaging jobs' key: their Linux binary is built on Ubuntu 22.04,
+    # and one built here could need a newer glibc than 22.04 has.
     - name: Restore cargo-packager
       id: cargo-packager
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.cargo/bin/cargo-packager*
-        key: cargo-packager-${{ runner.os }}-${{ env.CARGO_PACKAGER_VERSION }}
+        key: cargo-packager-ubuntu-24.04-${{ env.CARGO_PACKAGER_VERSION }}
 
     - name: Install cargo-packager
       if: steps.cargo-packager.outputs.cache-hit != 'true'
