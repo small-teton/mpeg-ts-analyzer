@@ -21,6 +21,54 @@ Packages for macOS, Linux and Windows are described in
 - **Packets** pages through the packets of the range and decodes the selected
   one, with the PES or section it belongs to.
 
+## Read the Overview verdicts
+
+Overview shows five compliance cards for the selected program. Each card has a
+title, the verdict the CLI reported (`OK`, `NG`, `WARNING`, `ANOMALIES`,
+`ERRORS` or `SKIPPED`), the value and a short note. The **ⓘ** button next to
+the title opens an explanation of the card: what it measures, whether it covers
+the selected program or the whole multiplex, what the value means, the
+threshold behind every verdict, why it can be skipped, its limitations, and a
+link to the Timeline or Bitrate view with the details. The button can be
+reached with Tab and opened with Enter or Space; Escape, the close button or a
+click outside the window closes it. Opening it does not change the selected
+program or the analysis.
+
+| Card | Scope | Verdicts |
+|---|---|---|
+| Max PCR interval | selected program (its PCR PID) | `OK` up to 100 ms, `NG` above |
+| PCR → PTS/DTS gap | selected program | `OK` up to 1000 ms, `NG` above |
+| PTS/DTS anomalies | selected program, per PID | `OK` or `ANOMALIES` |
+| Continuity counter | whole multiplex | `OK` or `ERRORS` |
+| PCR jitter | selected program (its PCR PID) | `OK` within ±500 ns, `WARNING` within ±25 µs, `NG` beyond |
+
+PCR jitter is an **estimate**. A file has no packet-arrival timestamps, so the
+byte position stands in for time, assuming the stream is delivered at an
+approximately constant rate. It is not a direct hardware or TR 101 290
+measurement: a variable-bitrate stream can show milliseconds of estimated
+jitter, and an `NG`, even when its PCRs were accurate on the wire. The card's
+note says `max |estimated jitter|`.
+
+The cards wrap to more rows as the window narrows, keeping their order, so no
+verdict is hidden off screen.
+
+**Findings** lists everything that needs attention, and its count includes
+every card that is not `OK`: each failed check, each PTS/DTS anomaly kind per
+PID, each continuity error (with its offset), PCR jitter marked as an estimate,
+and the analyzer's warnings. Each row shows the verdict, the metric, the reason
+and whether it concerns the selected program or the whole multiplex; selecting
+the metric opens its explanation. A card counts once through its own events,
+not again for its total. A check the CLI skipped is listed under **Unavailable
+analysis** instead, with the CLI's reason. The GUI shows the CLI's verdicts as
+they are and never changes them.
+
+To see every verdict at once, open the intentionally invalid
+[diagnostic sample](../development/sample-data.md#diagnostic-sample-with-every-overview-finding):
+
+```sh
+make gui-run GUI_ARGS='sample_data/sample_188byte_all_findings.ts'
+```
+
 ## Open a file from the command line
 
 The GUI normally opens with a file picker. For repeatable inspection, pass a
