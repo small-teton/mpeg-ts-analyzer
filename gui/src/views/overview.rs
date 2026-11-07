@@ -561,7 +561,7 @@ fn health_table(ui: &mut egui::Ui, rows: &[Row], state: &mut OverviewState) {
     let width = ui
         .available_width()
         .min(ui.clip_rect().right() - ui.cursor().left());
-    let stroke = ui.visuals().widgets.noninteractive.bg_stroke;
+    let stroke = crate::theme::table_border(ui.visuals());
     let frame = egui::Frame::new()
         .stroke(stroke)
         .corner_radius(4)
@@ -780,7 +780,7 @@ fn category_row(ui: &mut egui::Ui, title: &str, width: f32) {
             left: CELL_PADDING as i8,
             right: CELL_PADDING as i8,
             top: 6,
-            bottom: 4,
+            bottom: 5,
         })
         .show(ui, |ui| {
             ui.set_width(width - 2.0 * CELL_PADDING);
@@ -791,7 +791,7 @@ fn category_row(ui: &mut egui::Ui, title: &str, width: f32) {
 
 /// A line between table rows.
 fn separator(ui: &mut egui::Ui, width: f32) {
-    rule(ui, width, ui.visuals().widgets.noninteractive.bg_stroke);
+    rule(ui, width, crate::theme::table_divider(ui.visuals()));
 }
 
 /// A horizontal line across the table.

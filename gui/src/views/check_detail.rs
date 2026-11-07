@@ -221,7 +221,8 @@ fn icon_button(ui: &mut egui::Ui, glyph: &str, text: &str, name: &str) -> egui::
 /// the same as in any other row.
 fn verdict_table(ui: &mut egui::Ui, statuses: &[(&str, &str)], current: Option<&str>) {
     let width = ui.available_width();
-    let stroke = ui.visuals().widgets.noninteractive.bg_stroke;
+    let stroke = crate::theme::table_border(ui.visuals());
+    let divider = crate::theme::table_divider(ui.visuals());
     let frame = egui::Frame::new()
         .stroke(stroke)
         .corner_radius(4)
@@ -263,7 +264,7 @@ fn verdict_table(ui: &mut egui::Ui, statuses: &[(&str, &str)], current: Option<&
                 if index > 0 {
                     let rect = ui.allocate_exact_size(egui::vec2(inner, 1.0), egui::Sense::hover());
                     ui.painter()
-                        .hline(rect.0.x_range(), rect.0.center().y, stroke);
+                        .hline(rect.0.x_range(), rect.0.center().y, divider);
                 }
                 let selected = current == Some(*status);
                 let label = format!("{}: {meaning}", status_label(status));

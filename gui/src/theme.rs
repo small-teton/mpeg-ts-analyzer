@@ -11,6 +11,8 @@ pub enum Verdict {
     Ok,
     Ng,
     Warn,
+    /// Not a verdict: skipped, not assessable, or a status this GUI does not know.
+    Neutral,
 }
 
 impl Verdict {
@@ -19,6 +21,7 @@ impl Verdict {
             Verdict::Ok => "OK",
             Verdict::Ng => "NG",
             Verdict::Warn => "WARN",
+            Verdict::Neutral => "N/A",
         }
     }
 
@@ -29,6 +32,7 @@ impl Verdict {
             Verdict::Ok => Color32::from_rgb(0x2e, 0x7d, 0x32),
             Verdict::Ng => Color32::from_rgb(0xc6, 0x28, 0x28),
             Verdict::Warn => Color32::from_rgb(0x9a, 0x67, 0x00),
+            Verdict::Neutral => Color32::from_rgb(0x59, 0x63, 0x6e),
         };
         (Color32::WHITE, fill)
     }
@@ -42,54 +46,52 @@ pub const VIDEO_COLOR: Color32 = Color32::from_rgb(0x4e, 0xa8, 0xff);
 pub const AUDIO_COLOR: Color32 = Color32::from_rgb(0x7f, 0xd6, 0x8a);
 pub const PSI_COLOR: Color32 = Color32::from_rgb(0xc7, 0x92, 0xea);
 pub const LIMIT_COLOR: Color32 = Color32::from_rgb(0xff, 0x7a, 0x7a);
-// Tables loosely follow Material Design 3's data tables: a lightly tinted
-// header row with medium-emphasis semibold text and a stronger rule below it,
-// thin dividers between rows, and categories as accent subheaders on a
-// fainter tint. Every color comes from the current light or dark visuals,
-// never a fixed value.
+// Table colors (Codex proposal): Material 3 tonal surfaces with Carbon/
+// Primer-like values, fixed per light and dark theme.
+fn by_theme(visuals: &egui::Visuals, light: u32, dark: u32) -> Color32 {
+    let rgb = if visuals.dark_mode { dark } else { light };
+    Color32::from_rgb((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8)
+}
 
-/// Text of a table's column headers: semibold, in the theme's ordinary
-/// (medium-emphasis) text color.
+/// Text of a table's column headers: 15 px semibold.
 pub fn table_header_text(text: &str, visuals: &egui::Visuals) -> egui::RichText {
     egui::RichText::new(text)
+        .size(15.0)
         .family(FontFamily::Name(HEADING_FAMILY.into()))
-        .color(visuals.text_color())
+        .color(by_theme(visuals, 0x3C4043, 0xE0E0E0))
 }
 
-/// `base` moved `amount` (0–1) of the way toward `toward`.
-fn mix(base: Color32, toward: Color32, amount: f32) -> Color32 {
-    let channel =
-        |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * amount).round() as u8;
-    Color32::from_rgb(
-        channel(base.r(), toward.r()),
-        channel(base.g(), toward.g()),
-        channel(base.b(), toward.b()),
-    )
-}
-
-/// Fill of a table's header row: the panel tinted slightly toward the text
-/// color, so it stands apart by the same small step in light and dark.
+/// Fill of a table's header row.
 pub fn table_header_fill(visuals: &egui::Visuals) -> Color32 {
-    mix(visuals.panel_fill, visuals.text_color(), 0.12)
+    by_theme(visuals, 0xE5E7EA, 0x292B2E)
 }
 
-/// Fill of a category subheader row: half the header's tint.
+/// Fill of a category subheader row.
 pub fn table_category_fill(visuals: &egui::Visuals) -> Color32 {
-    mix(visuals.panel_fill, visuals.text_color(), 0.06)
+    by_theme(visuals, 0xF1F3F5, 0x222427)
 }
 
-/// The rule under a table's header row, stronger than the row dividers.
+/// The rule under a table's header row.
 pub fn table_header_rule(visuals: &egui::Visuals) -> egui::Stroke {
-    egui::Stroke::new(1.5, visuals.text_color().gamma_multiply(0.45))
+    egui::Stroke::new(1.0, by_theme(visuals, 0xAEB4BC, 0x565A61))
 }
 
-/// Text of a category subheader inside a table: small semibold capitals in
-/// the accent color.
+/// The line between table rows.
+pub fn table_divider(visuals: &egui::Visuals) -> egui::Stroke {
+    egui::Stroke::new(1.0, by_theme(visuals, 0xD5D8DC, 0x383B40))
+}
+
+/// The outer border of a table, a little stronger than the dividers.
+pub fn table_border(visuals: &egui::Visuals) -> egui::Stroke {
+    egui::Stroke::new(1.0, by_theme(visuals, 0xB8BDC4, 0x4B4F56))
+}
+
+/// Text of a category subheader: 12 px semibold capitals in blue.
 pub fn table_category_text(text: &str, visuals: &egui::Visuals) -> egui::RichText {
     egui::RichText::new(text.to_uppercase())
-        .small()
+        .size(12.0)
         .family(FontFamily::Name(HEADING_FAMILY.into()))
-        .color(visuals.hyperlink_color)
+        .color(by_theme(visuals, 0x0969DA, 0x58A6FF))
 }
 
 /// Size of the text in a status badge: close to body text, so a verdict

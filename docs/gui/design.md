@@ -154,8 +154,9 @@ check (`CheckDetail`).
   listed when the CLI reported it. There is no scope column or badge: the
   selected program is shown above, and exceptions (Continuity counter covers
   the whole multiplex) are on the detail page. Status is the CLI's status
-  verbatim as a badge sized to its text; a status the GUI does not describe
-  keeps the warning color and a tooltip saying so. Help holds the focusable
+  verbatim as a badge sized to its text (at least 48 points wide); a status
+  the GUI does not describe is shown in the neutral color with a tooltip
+  saying so. Help holds the focusable
   information button (accessible name and tooltip `About <check>`).
 - **Layout**: Value, Status and Help are as wide as their widest cell,
   measured from the text, and keep that width at every window size; Check
@@ -324,6 +325,19 @@ Language, packets per page and cached pages are laid out but not applied yet.
 
 ## Look and feel
 
+- Status badges: white Inter SemiBold 14 px text on a solid fill, 10 × 3
+  points of padding, at least 48 points wide, 4-point radius. Fills by
+  class, the same in light and dark: success (`ok`, `complete`) `#2E7D32`,
+  failure (`ng`, `errors`, `failed`) `#C62828`, warning (`warning`,
+  `anomalies`) `#9A6700`, neutral (`not_assessable`, `skipped`, unknown)
+  `#59636E`; each is at least 4.5:1 against white.
+- Tables (Transport health, Verdicts) use Material 3-style tonal surfaces
+  with values fixed per appearance (light / dark): header row `#E5E7EA` /
+  `#292B2E` with 15 px semibold `#3C4043` / `#E0E0E0` text and a 1-point
+  `#AEB4BC` / `#565A61` rule below it; category rows `#F1F3F5` / `#222427`
+  with 12 px semibold capitals in `#0969DA` / `#58A6FF`; row dividers
+  `#D5D8DC` / `#383B40`; outer border `#B8BDC4` / `#4B4F56`. They follow the
+  OS appearance like the rest of the GUI.
 - Fonts: Inter (UI; SemiBold for headings), JetBrains Mono (data), Phosphor
   icons. All bundled under `gui/assets/fonts/` with their licenses.
 - Japanese file names and paths use a font the OS ships, added as the last

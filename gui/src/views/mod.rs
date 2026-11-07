@@ -98,7 +98,8 @@ pub fn status_verdict(status: &str) -> Verdict {
     match status {
         "ok" | "complete" => Verdict::Ok,
         "ng" | "errors" | "failed" => Verdict::Ng,
-        _ => Verdict::Warn,
+        "warning" | "warn" | "anomalies" => Verdict::Warn,
+        _ => Verdict::Neutral,
     }
 }
 
