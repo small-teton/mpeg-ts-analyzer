@@ -389,7 +389,7 @@ impl TimelineView {
                             .collect::<Vec<_>>(),
                     )
                     .shape(MarkerShape::Diamond)
-                    .color(Verdict::Warn.colors().0)
+                    .color(crate::theme::EVENT_COLOR)
                     .radius(6.0)
                     .filled(true),
                 );
