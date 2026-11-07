@@ -39,6 +39,9 @@
     "selected_program_number": {
       "$ref": "#/$defs/nonNegativeInteger"
     },
+    "sync": {
+      "$ref": "#/$defs/sync"
+    },
     "compliance": {
       "$ref": "#/$defs/compliance"
     },
@@ -271,6 +274,74 @@
           "type": "string"
         },
         "error_count": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        }
+      }
+    },
+    "sync": {
+      "type": "object",
+      "description": "TS synchronization of the analyzed packets: packet boundaries without the sync byte 0x47 and the realignment after each. Offsets are absolute byte offsets in the input.",
+      "required": [
+        "status",
+        "required_sync_bytes",
+        "max_resync_scan_bytes",
+        "loss_count",
+        "resync_count",
+        "skipped_bytes",
+        "trailing_partial_packet_bytes"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: ok, recovered, lost. lost means the analysis stopped at an unrecovered loss (top-level status incomplete, reason sync_lost)."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Present for lost: why no alignment was found. Human-readable; not a stable matching interface."
+        },
+        "required_sync_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Consecutive packets, one packet size apart, that must start with the sync byte to accept a new alignment."
+        },
+        "max_resync_scan_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How far after a lost boundary a new alignment may start."
+        },
+        "loss_count": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "resync_count": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "skipped_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Bytes skipped by the recovered losses; they were not analyzed."
+        },
+        "first_loss_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "first_resync_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "max_skipped_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "The largest span skipped by one recovered loss."
+        },
+        "max_skipped_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Offset of the loss with the largest skipped span."
+        },
+        "unrecovered_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "The lost boundary where the analysis stopped; present for lost."
+        },
+        "trailing_partial_packet_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Size of an incomplete packet at the end of the input; 0 when there is none. Not a loss of synchronization."
+        },
+        "trailing_partial_packet_offset_bytes": {
           "$ref": "#/$defs/nonNegativeInteger"
         }
       }

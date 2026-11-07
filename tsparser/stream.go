@@ -93,6 +93,9 @@ func parseTsFileJSONTo(filename string, options options.Options, output io.Write
 			reader, finish := withProgress(newBufferedReadSeeker(file), file, options)
 			parseErr = parseTsReaderReport(reader, options, report)
 			finish()
+			if errors.Is(parseErr, errSyncNotAcquired) {
+				reason = syncNotAcquiredReason
+			}
 		}
 	}
 	if parseErr != nil {
@@ -124,6 +127,8 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 	const bufSize = 65536
 	var fileOffset int64
 	patDetected := false
+	// aligned is set once a read contains a packet alignment.
+	aligned := false
 	buf := make([]byte, bufSize)
 	packetSize := 0
 
@@ -166,6 +171,9 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 			}
 		}
 
+		// Either size counts: detection falls back to 188 bytes when the
+		// first read has no alignment, and a later one may hold M2TS packets.
+		aligned = aligned || hasAlignment(buf[:size], tsPayloadSize) || hasAlignment(buf[:size], tsPayloadSize+tpExtraHeaderSize)
 		patOffset, err := findPat(buf[:size], packetSize)
 		if err != nil {
 			continue
@@ -303,9 +311,13 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 			if analysis.truncatedBytes > 0 {
 				report.Warnings = append(report.Warnings, ReportWarning{analysis.truncatedPos, truncatedPacketMessage(analysis.truncatedBytes)})
 			}
+			report.Sync = reportSync(analysis.sync)
 			report.Status = "complete"
 			report.Reason = ""
 			report.Error = ""
+			if syncLost(analysis.sync) {
+				report.Status, report.Reason = "incomplete", syncLostReason
+			}
 		}
 		if err != nil {
 			var complianceErr *ComplianceError
@@ -326,6 +338,9 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 	// Reaching EOF is fine once a PAT was seen (the tool degrades gracefully on
 	// later errors); but a stream with no PAT at all is not a transport stream.
 	if !patDetected {
+		if !aligned {
+			return errSyncNotAcquired
+		}
 		return errors.New("no valid transport stream found (PAT not detected)")
 	}
 	if report != nil {

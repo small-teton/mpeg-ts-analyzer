@@ -402,7 +402,28 @@ func summarySchemaCases() []schemaCase {
 			name: "failed without a transport stream", schema: summarySchemaFile,
 			path:    func(t *testing.T) string { return writeFixture(t, "garbage.ts", bytes.Repeat([]byte{0xFF}, 4096)) },
 			wantErr: true,
+			want:    map[string]any{"/status": "failed", "/reason": "sync_not_acquired", "/error": present{}, "/sync": absent{}},
+		},
+		{
+			name: "failed with packets but without a PAT", schema: summarySchemaFile,
+			path:    func(t *testing.T) string { return writeFixture(t, "no-pat.ts", syncTestStream(nil, 20)[4*188:]) },
+			wantErr: true,
 			want:    map[string]any{"/status": "failed", "/reason": "analysis_failed", "/error": present{}},
+		},
+		{
+			name: "complete after recovered sync losses", schema: summarySchemaFile, path: fixedPath(syncLossFixtures[0].path),
+			want: map[string]any{
+				"/status": "complete", "/sync/status": "recovered", "/sync/loss_count": 4, "/sync/resync_count": 4,
+				"/sync/first_loss_offset_bytes": 7520, "/sync/unrecovered_offset_bytes": absent{}, "/sync/trailing_partial_packet_bytes": 100,
+			},
+		},
+		{
+			name: "incomplete after an unrecovered sync loss", schema: summarySchemaFile,
+			path: func(t *testing.T) string { return writeFixture(t, "lost.ts", syncTestStream(make([]byte, 50), 3)) },
+			want: map[string]any{
+				"/status": "incomplete", "/reason": "sync_lost", "/sync/status": "lost", "/sync/reason": present{},
+				"/sync/unrecovered_offset_bytes": present{}, "/sync/resync_count": 0, "/compliance": present{},
+			},
 		},
 	}
 }
@@ -439,6 +460,18 @@ func analysisSchemaCases() []schemaCase {
 				"/pes_headers/status": "errors", "/pts_repetition/status": "ng",
 				"/continuity_events/0/expected_cc": 5, "/programs/0/series/timestamp_events/0": present{},
 			},
+		},
+		{
+			name: "complete after recovered sync losses in M2TS", schema: analysisSchemaFile, path: fixedPath(syncLossFixtures[1].path), opts: analysis,
+			want: map[string]any{
+				"/status": "complete", "/sync/status": "recovered", "/sync/skipped_bytes": 1384, "/sync/max_skipped_bytes": 1000,
+				"/sync/trailing_partial_packet_offset_bytes": 39400,
+			},
+		},
+		{
+			name: "incomplete after an unrecovered sync loss", schema: analysisSchemaFile, opts: analysis,
+			path: synthetic(func() []byte { return syncTestStream(make([]byte, 50), 3) }),
+			want: map[string]any{"/status": "incomplete", "/reason": "sync_lost", "/sync/status": "lost", "/programs/0/series": present{}},
 		},
 		{
 			name: "complete with transport errors and scrambled packets in M2TS", schema: analysisSchemaFile, path: fixedPath(transportErrorsFixtures[1].path), opts: analysis,

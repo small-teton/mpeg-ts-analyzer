@@ -47,6 +47,7 @@ pub enum Check {
     ContinuityCounter,
     TransportErrors,
     ScrambledPackets,
+    Synchronization,
 }
 
 impl Check {
@@ -110,7 +111,7 @@ pub struct CheckHelp {
 
 /// The explanations in table order: grouped by [`Category`], in
 /// [`Category::ALL`] order.
-pub const HELP: [CheckHelp; 9] = [
+pub const HELP: [CheckHelp; 10] = [
     CheckHelp {
         check: Check::MaxPcrInterval,
         category: Category::Timing,
@@ -340,6 +341,32 @@ pub const HELP: [CheckHelp; 9] = [
         limitations: "Scrambling is not an error in itself; an encrypted service is normal in a broadcast capture. The analyzer does not decrypt, and it does not tell even-key from odd-key packets. PAT and PMT are never scrambled in a valid stream, and neither are null packets.",
         navigation: Some((Screen::Packets, "Packets marks each scrambled packet.")),
     },
+    CheckHelp {
+        check: Check::Synchronization,
+        category: Category::Integrity,
+        title: "TS synchronization",
+        summary: "Packets that do not start with the sync byte, and how the analysis realigned.",
+        measures: "Whether every packet starts with the sync byte 0x47 (in 192-byte M2TS, after the 4-byte TP_extra_header). At a packet boundary with another value, synchronization is lost: the CLI then looks for the next offset where five consecutive packets, one packet size apart, start with 0x47, and continues the analysis from there. The bytes in between are skipped, never read as packets.",
+        applies_to: "The whole multiplex: every packet from the start of the analysis, not only the selected program.",
+        value: "The number of losses. Current result gives the realignments, the bytes skipped, the first loss and the largest skipped span with their offsets, and an incomplete packet at the end of the input. Every offset is a position in the file.",
+        statuses: &[
+            ("ok", "Every packet started with the sync byte."),
+            (
+                "recovered",
+                "Synchronization was lost at least once and the analysis realigned after each loss; the skipped bytes were not analyzed.",
+            ),
+            (
+                "lost",
+                "Synchronization was lost and no new alignment was found, so the analysis stopped there and is incomplete.",
+            ),
+        ],
+        skipped: "This check is never skipped. A file without any packet alignment is not analyzed at all; the analysis fails instead.",
+        limitations: "A new alignment must start within 1 MiB of the loss; after that, or when fewer than five aligned packets remain, the analysis stops. A single corrupted sync byte counts as a loss and its packet is skipped. Packets lost in a skipped span usually also cause continuity errors, and timing measured across the span includes it. Counting starts after the PAT and PMTs are complete, so the lead of the range is not checked. An incomplete packet at the end of the input is not a loss.",
+        navigation: Some((
+            Screen::Packets,
+            "Packets lists the packets of the range at the alignment of its start, so packets after a realignment can appear there as invalid.",
+        )),
+    },
 ];
 
 #[cfg(test)]
@@ -393,6 +420,7 @@ mod tests {
                 Check::ContinuityCounter,
                 Check::TransportErrors,
                 Check::ScrambledPackets,
+                Check::Synchronization,
             ]
         );
     }
@@ -425,6 +453,10 @@ mod tests {
             "264-byte",
         ] {
             assert!(headers.contains(kind), "{kind}");
+        }
+        let sync = text(Check::Synchronization);
+        for phrase in ["0x47", "five consecutive packets", "1 MiB", "skipped"] {
+            assert!(sync.contains(phrase), "{phrase}");
         }
         assert!(
             Check::ContinuityCounter

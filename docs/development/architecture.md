@@ -60,6 +60,8 @@ observations it needs through focused methods.
 | Decision | Where |
 | --- | --- |
 | Whether a packet is synchronized, which PID it belongs to, where its payload starts | `tsparser` |
+| Where synchronization was lost, how far to search and which alignment to accept | `tsparser` (`packetReader`), reported as `analysis.SyncLoss`, `analysis.Resync` and `analysis.SyncUnrecovered` |
+| How losses, skipped bytes and the first and worst offsets are aggregated, the sync status | `analysis` (`SyncCheck`) |
 | Whether a packet is an exact duplicate that must not be appended to PES data twice, and how counters resynchronize after an error | `tsparser` (`continuityTracker`) |
 | Whether a continuity counter error occurred | `tsparser`, reported as `analysis.ContinuityError` |
 | How errors are counted per PID, how each PID is labeled, the check's status | `analysis` (`ContinuityCheck`) |

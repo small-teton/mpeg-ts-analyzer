@@ -107,6 +107,15 @@ $ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_
     }
   ],
   "selected_program_number": 1,
+  "sync": {
+    "status": "ok",
+    "required_sync_bytes": 5,
+    "max_resync_scan_bytes": 1048576,
+    "loss_count": 0,
+    "resync_count": 0,
+    "skipped_bytes": 0,
+    "trailing_partial_packet_bytes": 0
+  },
   "compliance": {
     "max_pcr_interval": {
       "status": "ok",
@@ -227,9 +236,10 @@ Status and reason values are:
 | Field | Values |
 | --- | --- |
 | top-level `status` | `complete`, `programs_listed`, `incomplete`, `failed` |
-| top-level `reason` | `program_selection_required`, `program_listing_requested`, `end_of_input_before_complete_analysis`, `incompatible_options`, `input_open_failed`, `analysis_failed` |
+| top-level `reason` | `program_selection_required`, `program_listing_requested`, `end_of_input_before_complete_analysis`, `sync_lost`, `incompatible_options`, `input_open_failed`, `sync_not_acquired`, `analysis_failed` |
 | `programs[].status` | `complete`, `incomplete` |
 | incomplete program `reason` | `pmt_parse_failed` |
+| `sync.status` | `ok`, `recovered`, `lost` |
 | `compliance.*.status` | `ok`, `ng`, `skipped` |
 | `pcr_jitter.status` | `ok`, `warning`, `ng`, `not_assessable`, `skipped` |
 | `pcr_jitter.estimate.model` | `byte_position` |
@@ -255,9 +265,18 @@ An input that ends with an incomplete packet, such as a capture cut off
 mid-packet, is analyzed up to the last complete packet. The leftover bytes are
 reported as a warning at the offset where the incomplete packet starts (in text
 mode as a line such as `0x0004c0dc ignored 100 trailing bytes (incomplete packet
-at end of input)`) and do not change the analysis result. With `--limit`, this
-applies when the range reaches the end of the input; a range that ends
-mid-packet inside the file reports nothing.
+at end of input)`) and in `sync.trailing_partial_packet_bytes`, and do not
+change the analysis result: an incomplete packet is not a loss of
+synchronization. With `--limit`, this applies when the range reaches the end of
+the input; a range that ends mid-packet inside the file reports nothing.
+
+`sync` is the TS synchronization result of the analyzed packets; see
+[TS synchronization](#ts-synchronization). `status: "incomplete"` with
+`reason: "sync_lost"` means the analysis stopped at a loss of synchronization
+that could not be recovered; the results cover the input up to there.
+`reason: "sync_not_acquired"` (with `status: "failed"`) means the input has no
+188-byte or 192-byte packet alignment at all, while `analysis_failed` covers
+other failures, such as aligned packets without a PAT.
 
 `programs[].service` is the program's service from the DVB SDT, when the
 stream carries one; see [Service names (SDT)](../cli/psi.md#service-names-sdt).
@@ -846,9 +865,56 @@ $ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_
 }
 ```
 
+## TS synchronization
+
+`sync` reports packet boundaries that did not start with the sync byte `0x47`
+during the analysis, and how the analyzer realigned. It is present when the
+analysis scanned packets (with `continuity_counter`), in both the summary and
+the `--output analysis` document. Like the continuity check, it covers the
+whole multiplex from the analysis start. Example for
+`sample_data/sample_188byte_sync_loss.ts`:
+
+```json
+"sync": {
+  "status": "recovered",
+  "required_sync_bytes": 5,
+  "max_resync_scan_bytes": 1048576,
+  "loss_count": 4,
+  "resync_count": 4,
+  "skipped_bytes": 1376,
+  "first_loss_offset_bytes": 7520,
+  "first_resync_offset_bytes": 7708,
+  "max_skipped_bytes": 1000,
+  "max_skipped_offset_bytes": 22748,
+  "trailing_partial_packet_bytes": 100,
+  "trailing_partial_packet_offset_bytes": 38600
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `status` | `ok`: every packet boundary had its sync byte. `recovered`: synchronization was lost at least once and every loss was followed by a new alignment; the analysis is complete apart from the skipped bytes. `lost`: the last loss was not recovered and the analysis stopped there (top-level `status: "incomplete"`, `reason: "sync_lost"`). |
+| `reason` | Present for `lost`: why no alignment was found (the search limit, the end of the input, or the end of the `--limit` range). Explanatory text, not for matching. |
+| `required_sync_bytes` | Consecutive packets, one packet size apart, that must start with `0x47` to accept a new alignment (5). |
+| `max_resync_scan_bytes` | How far after a lost boundary a new alignment may start (1,048,576). |
+| `loss_count` | Packet boundaries without a sync byte, each followed by a search. |
+| `resync_count` | Searches that found a new alignment. Equal to `loss_count` unless `status` is `lost` (then one less). |
+| `skipped_bytes` | Bytes skipped by the recovered losses, from each lost boundary to its new alignment. They were not analyzed. |
+| `first_loss_offset_bytes`, `first_resync_offset_bytes` | Offset of the first lost boundary and of the first packet of the first new alignment. Absent when there was none. |
+| `max_skipped_bytes`, `max_skipped_offset_bytes` | The largest span skipped by one recovered loss and the offset of that loss (the worst). Absent without a recovery. |
+| `unrecovered_offset_bytes` | The lost boundary where the analysis stopped (`status: "lost"`); `analysis_end_offset_bytes` equals it. |
+| `trailing_partial_packet_bytes`, `trailing_partial_packet_offset_bytes` | An incomplete packet at the end of the input and where it starts; 0 and absent when there is none. |
+
+Every offset is an absolute byte offset in the input file, also after a
+recovery, and points at the first byte of the packet boundary (for 192-byte
+M2TS, the first byte of the `TP_extra_header`). Offsets of later results
+(continuity events, PCR and PES points, warnings) stay absolute too. The
+search, its bounds and the cases it does not cover are described in
+[TS synchronization](../cli/usage.md#ts-synchronization-always-on).
+
 ## Changes in schema 2.0
 
-Schema 2.0 (summary and `--output analysis`) changes only `pcr_jitter`; the
+Schema 2.0 (summary and `--output analysis`) changes `pcr_jitter`; the
 packet documents stay at 1.0. A 1.x consumer must be updated:
 
 | Schema 1.0 | Schema 2.0 |
@@ -858,6 +924,13 @@ packet documents stay at 1.0. A 1.x consumer must be updated:
 | `measured_sample_count` | `estimate.observations` |
 | `max_jitter_ns`, `min_jitter_ns` and their offsets, `average_absolute_jitter_ns`, `within_500ns_percent` | the same names under `estimate`, plus `estimate.max_abs_jitter_ns` / `max_abs_jitter_offset_bytes` |
 | — | `estimate.model`, `estimate.pcr_pids`, `delivery` |
+
+Schema 2.0 also adds the `sync` object ([TS synchronization](#ts-synchronization))
+and the top-level reasons `sync_lost` and `sync_not_acquired`. An input with no
+packet alignment, which 1.x reported as `analysis_failed`, now fails with
+`sync_not_acquired`; a packet without its sync byte after the analysis started,
+which 1.x let end the scan and restart the PAT search, is now skipped and
+counted in `sync`.
 
 Everything else, including the `series.pcr_jitter` points, is unchanged.
 Within 2.0, `transport_errors`, `scrambled_packets`, `pes_headers` and
@@ -892,6 +965,7 @@ Abridged output for the two-program sample:
   "status": "complete",
   "analysis_start_offset_bytes": 25380,
   "analysis_end_offset_bytes": 202852,
+  "sync": { "status": "ok", "required_sync_bytes": 5, "max_resync_scan_bytes": 1048576, "loss_count": 0, "resync_count": 0, "skipped_bytes": 0, "trailing_partial_packet_bytes": 0 },
   "continuity_counter": { "status": "ok", "total_error_count": 0, "pids": [] },
   "continuity_events": [],
   "transport_errors": { "status": "ok", "packet_count": 0, "excluded_packet_count": 0, "pids": [] },
@@ -945,7 +1019,9 @@ Abridged output for the two-program sample:
   `status: "incomplete"` and `reason: "no_program_analyzed"`.
 - Continuity counters are checked for the whole multiplex, from the earliest
   program start, and reported once (`continuity_counter`, `continuity_events`)
-  rather than per program.
+  rather than per program. So is TS synchronization (`sync`); after an
+  unrecovered loss the document has `status: "incomplete"`, `reason:
+  "sync_lost"`, and `analysis_end_offset_bytes` is the lost boundary.
 - `transport_errors` and `scrambled_packets` are reported once for the whole
   multiplex, from the first packet of the range, as in the summary
   ([Transport errors and scrambled packets](#transport-errors-and-scrambled-packets)).

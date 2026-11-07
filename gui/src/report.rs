@@ -41,27 +41,75 @@ fn schema_major(version: &str) -> Option<&str> {
     version.split('.').next()
 }
 
-/// The fields that identify a document, read before the rest so that a
-/// document of another schema version is reported as such rather than as
-/// malformed.
-#[derive(Deserialize)]
-struct Envelope {
-    output: String,
-    schema_version: String,
+/// The fields that identify a document, picked out of output that did not
+/// parse as a whole, so that a document of another schema version is reported
+/// as such rather than as malformed. Only these two values are kept; the rest
+/// is skipped, and a document cut short (such as the start of a streamed one)
+/// still yields what came before the cut.
+#[derive(Default)]
+struct EnvelopeProbe {
+    output: Option<String>,
+    schema_version: Option<String>,
 }
 
-/// Parses an `--output analysis` document and checks that it is one this GUI
-/// reads: the analysis output with a schema of the given major version.
-pub fn parse_analysis(json: &[u8], major: &str) -> Result<AnalysisReport, String> {
-    let envelope: Envelope =
-        serde_json::from_slice(json).map_err(|err| format!("Unreadable analysis output: {err}"))?;
-    if envelope.output != "analysis" || schema_major(&envelope.schema_version) != Some(major) {
+impl<'de> serde::de::Visitor<'de> for &mut EnvelopeProbe {
+    type Value = ();
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a JSON object")
+    }
+
+    fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
+        while let Some(key) = map.next_key::<String>()? {
+            match key.as_str() {
+                "output" => self.output = Some(map.next_value()?),
+                "schema_version" => self.schema_version = Some(map.next_value()?),
+                _ => {
+                    map.next_value::<serde::de::IgnoredAny>()?;
+                }
+            }
+            if self.output.is_some() && self.schema_version.is_some() {
+                // Nothing more is needed; stop reading.
+                return Err(serde::de::Error::custom("envelope found"));
+            }
+        }
+        Ok(())
+    }
+}
+
+fn check_analysis_envelope(output: &str, schema_version: &str, major: &str) -> Result<(), String> {
+    if output != "analysis" || schema_major(schema_version) != Some(major) {
         return Err(format!(
-            "Unsupported analysis document (output {:?}, schema {:?}); this GUI reads analysis schema {major}.x. Update the mpeg-ts-analyzer CLI to a version that writes it.",
-            envelope.output, envelope.schema_version
+            "Unsupported analysis document (output {output:?}, schema {schema_version:?}); this GUI reads analysis schema {major}.x. Update the mpeg-ts-analyzer CLI to a version that writes it."
         ));
     }
-    serde_json::from_slice(json).map_err(|err| format!("Unreadable analysis output: {err}"))
+    Ok(())
+}
+
+/// For analysis output that did not parse: the error for a document of
+/// another output or schema version, when the start of the output (`json`,
+/// possibly cut short) says it is one.
+pub fn unsupported_analysis(json: &[u8], major: &str) -> Option<String> {
+    use serde::Deserializer as _;
+    let mut probe = EnvelopeProbe::default();
+    let _ = serde_json::Deserializer::from_slice(json).deserialize_map(&mut probe);
+    check_analysis_envelope(&probe.output?, &probe.schema_version?, major).err()
+}
+
+/// Parses an `--output analysis` document as it is read, without holding the
+/// raw document, and checks that it is one this GUI reads: the analysis
+/// output with a schema of the given major version.
+pub fn read_analysis(json: impl std::io::Read, major: &str) -> Result<AnalysisReport, String> {
+    let report: AnalysisReport = serde_json::from_reader(json)
+        .map_err(|err| format!("Unreadable analysis output: {err}"))?;
+    check_analysis_envelope(&report.output, &report.schema_version, major)?;
+    Ok(report)
+}
+
+/// [`read_analysis`] of a document in memory; a document of another schema
+/// version is reported as such even when it does not parse as this one.
+pub fn parse_analysis(json: &[u8], major: &str) -> Result<AnalysisReport, String> {
+    read_analysis(json, major).map_err(|err| unsupported_analysis(json, major).unwrap_or(err))
 }
 
 /// One progress event from `--progress json` on stderr.
@@ -85,6 +133,10 @@ pub struct AnalysisReport {
     pub error: Option<String>,
     pub analysis_start_offset_bytes: Option<u64>,
     pub analysis_end_offset_bytes: Option<u64>,
+    /// TS synchronization of the scan; absent before the CLI reported it and
+    /// when no program was analyzed.
+    #[serde(default)]
+    pub sync: Option<Sync>,
     pub continuity_counter: Option<Continuity>,
     pub continuity_events: Vec<ContinuityEvent>,
     /// Packets with transport_error_indicator set; absent from a CLI without
@@ -224,6 +276,26 @@ pub struct Input {
     pub packet_size_bytes: Option<u32>,
     pub offset_bytes: u64,
     pub limit_bytes: Option<u64>,
+}
+
+/// `sync`: packet boundaries without a sync byte and the realignment after
+/// each (docs/reference/json-output.md, "TS synchronization").
+#[derive(Debug, Deserialize)]
+pub struct Sync {
+    pub status: String,
+    pub reason: Option<String>,
+    pub required_sync_bytes: u64,
+    pub max_resync_scan_bytes: u64,
+    pub loss_count: u64,
+    pub resync_count: u64,
+    pub skipped_bytes: u64,
+    pub first_loss_offset_bytes: Option<u64>,
+    pub first_resync_offset_bytes: Option<u64>,
+    pub max_skipped_bytes: Option<u64>,
+    pub max_skipped_offset_bytes: Option<u64>,
+    pub unrecovered_offset_bytes: Option<u64>,
+    pub trailing_partial_packet_bytes: u64,
+    pub trailing_partial_packet_offset_bytes: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -735,13 +807,13 @@ impl DecodedPacket {
 /// Parses a packet document of the given output and returns it only when it
 /// completed; a failed document becomes its error message.
 fn parse_packets_document<T: for<'de> Deserialize<'de>>(
-    json: &[u8],
+    json: impl std::io::Read,
     output: &str,
     major: &str,
     envelope: impl Fn(&T) -> (&str, &str, &str, Option<&String>),
 ) -> Result<T, String> {
-    let document: T =
-        serde_json::from_slice(json).map_err(|err| format!("Unreadable {output} output: {err}"))?;
+    let document: T = serde_json::from_reader(json)
+        .map_err(|err| format!("Unreadable {output} output: {err}"))?;
     let (doc_output, schema, status, error) = envelope(&document);
     if doc_output != output || schema_major(schema) != Some(major) {
         return Err(format!(
@@ -756,13 +828,15 @@ fn parse_packets_document<T: for<'de> Deserialize<'de>>(
     Ok(document)
 }
 
-pub fn parse_packets_page(json: &[u8], major: &str) -> Result<PacketsPage, String> {
+/// Parses an `--output packets` document as it is read.
+pub fn parse_packets_page(json: impl std::io::Read, major: &str) -> Result<PacketsPage, String> {
     parse_packets_document(json, "packets", major, |d: &PacketsPage| {
         (&d.output, &d.schema_version, &d.status, d.error.as_ref())
     })
 }
 
-pub fn parse_packet_detail(json: &[u8], major: &str) -> Result<PacketDetail, String> {
+/// Parses an `--output packet` document as it is read.
+pub fn parse_packet_detail(json: impl std::io::Read, major: &str) -> Result<PacketDetail, String> {
     parse_packets_document(json, "packet", major, |d: &PacketDetail| {
         (&d.output, &d.schema_version, &d.status, d.error.as_ref())
     })

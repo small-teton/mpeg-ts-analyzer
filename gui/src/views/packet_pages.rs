@@ -3,6 +3,7 @@
 //! `--output packet`. Only the pages near the current one are kept.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::ffi::OsString;
 use std::ops::RangeInclusive;
 use std::path::PathBuf;
 
@@ -13,7 +14,9 @@ use super::packets::{
     bit_inspector, byte_span_text, field_tree, header_row, hex_dump_bytes, key_values, layer_color,
     paint_cells, paint_row_background, row_text_color, span_table,
 };
-use crate::cli::{self, Cli, Request};
+#[cfg(test)]
+use crate::cli;
+use crate::cli::{Cli, Reply, Request};
 use crate::icons;
 use crate::psi::{NULL_PID, PsiLayout};
 use crate::range_bar;
@@ -313,23 +316,25 @@ impl PacketPages {
         }
     }
 
-    fn args(&self, output: &str, offset: u64) -> Vec<String> {
+    /// The CLI arguments; the input path is passed as is, never through a
+    /// lossy UTF-8 conversion.
+    fn args(&self, output: &str, offset: u64) -> Vec<OsString> {
         vec![
-            self.input.to_string_lossy().into_owned(),
+            self.input.clone().into_os_string(),
             "--format".into(),
             "json".into(),
             "--output".into(),
             output.into(),
             "--offset".into(),
-            offset.to_string(),
+            offset.to_string().into(),
             "--packet-size".into(),
-            self.packet_size.to_string(),
+            self.packet_size.to_string().into(),
         ]
     }
 
-    fn page_args(&self, offset: u64, count: u64) -> Vec<String> {
+    fn page_args(&self, offset: u64, count: u64) -> Vec<OsString> {
         let mut args = self.args("packets", offset);
-        args.extend(["--count".into(), count.to_string()]);
+        args.extend(["--count".into(), count.to_string().into()]);
         args
     }
 
@@ -342,8 +347,10 @@ impl PacketPages {
         let Some(geometry) = self.geometry else {
             match &mut self.probe {
                 None => {
-                    let args = self.page_args(self.range_offset, self.paging.page_size());
-                    self.probe = Some(start(cli, args, parse_page, repaint));
+                    let count = self.paging.page_size();
+                    let args = self.page_args(self.range_offset, count);
+                    let reply = Reply::packets_page(count);
+                    self.probe = Some(start(cli, args, reply, repaint));
                 }
                 Some(probe) => {
                     probe.poll();
@@ -361,8 +368,9 @@ impl PacketPages {
         if !self.pages.contains_key(&self.page) {
             let (offset, count) = geometry.page_request(self.page);
             let args = self.page_args(offset, count);
+            let reply = Reply::packets_page(count);
             self.pages
-                .insert(self.page, start(cli, args, parse_page, repaint.clone()));
+                .insert(self.page, start(cli, args, reply, repaint.clone()));
         }
         self.keep_recent_pages();
         for page in self.pages.values_mut() {
@@ -376,11 +384,12 @@ impl PacketPages {
                     let mut args = self.args("packet", offset);
                     args.extend([
                         "--range-offset".into(),
-                        self.range_offset.to_string(),
+                        self.range_offset.to_string().into(),
                         "--range-limit".into(),
-                        (self.range_end - self.range_offset).to_string(),
+                        (self.range_end - self.range_offset).to_string().into(),
                     ]);
-                    self.detail = Some((offset, start(cli, args, parse_detail, repaint)));
+                    let reply = Reply::packet_detail();
+                    self.detail = Some((offset, start(cli, args, reply, repaint)));
                 }
             }
         }
@@ -685,22 +694,14 @@ fn field_selection(packet: &DecodedPacket, name: &str) -> Option<FieldSelection>
 
 fn start<T: Send + 'static>(
     cli: &Cli,
-    args: Vec<String>,
-    parse: fn(&[u8]) -> Result<T, String>,
+    args: Vec<OsString>,
+    reply: Reply<T>,
     repaint: impl Fn() + Send + 'static,
 ) -> Fetch<T> {
-    match Request::start(cli, args, parse, repaint) {
+    match Request::start(cli, args, reply, repaint) {
         Ok(request) => Fetch::Loading(request),
         Err(err) => Fetch::Failed(err),
     }
-}
-
-fn parse_page(json: &[u8]) -> Result<PacketsPage, String> {
-    crate::report::parse_packets_page(json, cli::PACKETS_SCHEMA_MAJOR)
-}
-
-fn parse_detail(json: &[u8]) -> Result<PacketDetail, String> {
-    crate::report::parse_packet_detail(json, cli::PACKETS_SCHEMA_MAJOR)
 }
 
 /// What the PSI layout says about a packet.
@@ -1198,7 +1199,7 @@ mod tests {
                     Request::start(
                         &cli,
                         pages.page_args(0, paging.page_size()),
-                        parse_page,
+                        Reply::packets_page(paging.page_size()),
                         || {},
                     )
                     .unwrap(),
@@ -1211,8 +1212,13 @@ mod tests {
                 for page in 0..geometry.pages() {
                     let (offset, count) = geometry.page_request(page);
                     let result = wait(
-                        Request::start(&cli, pages.page_args(offset, count), parse_page, || {})
-                            .unwrap(),
+                        Request::start(
+                            &cli,
+                            pages.page_args(offset, count),
+                            Reply::packets_page(count),
+                            || {},
+                        )
+                        .unwrap(),
                     )
                     .unwrap();
                     assert_eq!(result.packets.len() as u64, count, "{name} page {page}");
@@ -1237,7 +1243,8 @@ mod tests {
             pages.range_offset = 0;
             let mut args = pages.args("packet", offset);
             args.extend(["--range-offset".into(), "0".into()]);
-            let detail = wait(Request::start(&cli, args, parse_detail, || {}).unwrap()).unwrap();
+            let detail =
+                wait(Request::start(&cli, args, Reply::packet_detail(), || {}).unwrap()).unwrap();
             let packet = detail.packet.unwrap();
             assert_eq!(packet.raw().len() as u64, packet_size);
             for field in packet
@@ -1266,6 +1273,118 @@ mod tests {
         }
     }
 
+    /// A Unix file name need not be UTF-8: the packet page and detail
+    /// requests give the CLI the same name the analysis opened.
+    #[cfg(unix)]
+    #[test]
+    fn page_and_detail_requests_keep_a_non_utf8_input_path() {
+        use std::os::unix::ffi::{OsStrExt, OsStringExt};
+        let dir =
+            std::env::temp_dir().join(format!("mtsa-gui-test-non-utf8-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let input = dir.join(std::ffi::OsString::from_vec(b"caf\xe9.ts".to_vec()));
+        assert!(input.to_str().is_none());
+        let pages = PacketPages::new_for_test(input.clone());
+        for (output, fixture) in [
+            ("packets", "packets_page_188.json"),
+            ("packet", "packet_detail_pat_188.json"),
+        ] {
+            let document = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures")
+                .join(fixture);
+            let recorded = dir.join(format!("{output}-arg"));
+            let cli = cli::fake_cli(
+                &dir,
+                &format!(
+                    "printf '%s' \"$1\" > '{}'\ncat '{}'",
+                    recorded.display(),
+                    document.display()
+                ),
+            );
+            if output == "packets" {
+                let reply = Reply::packets_page(Paging::default().page_size());
+                let request = Request::start(
+                    &cli,
+                    pages.page_args(0, Paging::default().page_size()),
+                    reply,
+                    || {},
+                );
+                wait(request.unwrap()).expect("a page");
+            } else {
+                let reply = Reply::packet_detail();
+                let request = Request::start(&cli, pages.args("packet", 0), reply, || {});
+                wait(request.unwrap()).expect("a detail");
+            }
+            assert_eq!(
+                std::fs::read(&recorded).unwrap(),
+                input.as_os_str().as_bytes(),
+                "{output}"
+            );
+        }
+    }
+
+    /// Against the real CLI (MPEG_TS_ANALYZER_CLI, e.g. via `make gui-test`):
+    /// a sample under a non-UTF-8 name is analyzed, paged and decoded. Skipped
+    /// where the file system refuses such names (macOS APFS does).
+    #[cfg(unix)]
+    #[test]
+    fn analyzes_and_pages_a_file_with_a_non_utf8_name() {
+        use std::os::unix::ffi::OsStringExt;
+        let Some(path) = std::env::var_os("MPEG_TS_ANALYZER_CLI") else {
+            return;
+        };
+        let cli = cli::check(std::path::Path::new(&path)).expect("capabilities");
+        let dir =
+            std::env::temp_dir().join(format!("mtsa-gui-test-non-utf8-cli-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let input = dir.join(std::ffi::OsString::from_vec(b"caf\xe9.ts".to_vec()));
+        let sample = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../sample_data/sample_188byte_two_programs_mpeg2_160x120_25fps_mp2.ts");
+        if std::fs::copy(&sample, &input).is_err() {
+            return;
+        }
+        let size = std::fs::metadata(&input).unwrap().len();
+        let mut job = cli::AnalysisJob::start(&cli, &input, 0, size, || {}).expect("start");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        let report = loop {
+            match job.poll() {
+                cli::JobUpdate::Finished(result) => break result.expect("report"),
+                cli::JobUpdate::Running(_) => {
+                    assert!(std::time::Instant::now() < deadline, "analysis timed out");
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+            }
+        };
+        assert_eq!(report.status, "complete");
+        assert_eq!(report.programs.len(), 2);
+        let pages = PacketPages {
+            range_end: size,
+            ..PacketPages::new_for_test(input.clone())
+        };
+        let page = wait(
+            Request::start(
+                &cli,
+                pages.page_args(0, Paging::default().page_size()),
+                Reply::packets_page(Paging::default().page_size()),
+                || {},
+            )
+            .unwrap(),
+        )
+        .expect("a page");
+        let offset = page.packets[0].offset_bytes;
+        let detail = wait(
+            Request::start(
+                &cli,
+                pages.args("packet", offset),
+                Reply::packet_detail(),
+                || {},
+            )
+            .unwrap(),
+        )
+        .expect("a detail");
+        assert!(detail.packet.is_some());
+    }
+
     /// A page that drops out of the cache while its CLI run is still going
     /// is cancelled without waiting, even when the CLI closed its output.
     #[test]
@@ -1274,8 +1393,12 @@ mod tests {
             .join(format!("mtsa-gui-test-evict-{}", std::process::id()))
             .join("closed");
         std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
-        let request =
-            Request::spawn(cli::closes_output_and_hangs(&marker), parse_page, || {}).unwrap();
+        let request = Request::spawn(
+            cli::closes_output_and_hangs(&marker),
+            Reply::packets_page(Paging::default().page_size()),
+            || {},
+        )
+        .unwrap();
         let child = request.child();
         cli::wait_for_closed_output(&marker);
         // A non-default cache of 3 pages, full: the loading page 0 is the oldest.
@@ -1375,8 +1498,13 @@ mod tests {
             };
             let decode = |offset: u64| {
                 wait(
-                    Request::start(&cli, pages.args("packet", offset), parse_detail, || {})
-                        .unwrap(),
+                    Request::start(
+                        &cli,
+                        pages.args("packet", offset),
+                        Reply::packet_detail(),
+                        || {},
+                    )
+                    .unwrap(),
                 )
                 .unwrap()
                 .packet
