@@ -199,10 +199,10 @@ func TestWriteCapabilities(t *testing.T) {
 	}
 	if got.CapabilitiesVersion != "1.0" || got.CLIVersion != "9.9.9" ||
 		!reflect.DeepEqual(got.Outputs, []CapabilityOutput{
-			{Name: "summary", Format: "json", SchemaVersion: jsonSchemaVersion},
-			{Name: "analysis", Format: "json", SchemaVersion: analysisSchemaVersion},
-			{Name: "packets", Format: "json", SchemaVersion: packetsSchemaVersion},
-			{Name: "packet", Format: "json", SchemaVersion: packetsSchemaVersion},
+			{Name: "summary", Format: "json", SchemaVersion: "2.0"},
+			{Name: "analysis", Format: "json", SchemaVersion: "2.0"},
+			{Name: "packets", Format: "json", SchemaVersion: "1.0"},
+			{Name: "packet", Format: "json", SchemaVersion: "1.0"},
 		}) ||
 		len(got.ProgressFormats) != 1 || got.ProgressFormats[0] != "json" {
 		t.Errorf("capabilities = %+v", got)

@@ -3,6 +3,7 @@ package tsparser
 import (
 	"math"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -17,6 +18,131 @@ func linearSamples(n int, posStep int64, pcr0, pcrStep uint64) []pcrSample {
 		s[i] = pcrSample{pos: int64(i) * posStep, pcr: pcr0 + uint64(i)*pcrStep}
 	}
 	return s
+}
+
+// cbrSamples builds n PCR samples of one PID, 40 ms apart, delivered at a
+// constant 75.2 kbit/s (one 188-byte packet every 20 ms): n = 76 spans 3 s.
+func cbrSamples(n int, pid uint16) []pcrSample {
+	s := linearSamples(n, 2*188, 27_000_000, 40*pcrTicksPerMs)
+	for i := range s {
+		s[i].pid = pid
+	}
+	return s
+}
+
+func TestDeliveryWindows(t *testing.T) {
+	// 76 samples at 40 ms: 75 intervals, 3 s, three windows of 25 intervals.
+	samples := cbrSamples(76, 0x100)
+	windows := deliveryWindows(samples, 188)
+	if len(windows) != 3 || windows[0] != (deliveryWindow{bytes: 25 * 2 * 188, ticks: pcrClockHz}) {
+		t.Fatalf("windows = %+v", windows)
+	}
+	// 192-byte packets count as 188 transport-stream bytes, and 0 means 188.
+	m2ts := cbrSamples(76, 0x100)
+	for i := range m2ts {
+		m2ts[i].pos = m2ts[i].pos / 188 * 192
+	}
+	if got := deliveryWindows(m2ts, 192); !slices.Equal(got, windows) {
+		t.Errorf("192-byte windows = %+v", got)
+	}
+	if got := deliveryWindows(samples, 0); !slices.Equal(got, windows) {
+		t.Errorf("default packet size windows = %+v", got)
+	}
+	// A discontinuity drops the interval across it and the partial window
+	// before it: 30 intervals, then 45 in the next segment.
+	broken := cbrSamples(76, 0x100)
+	broken[30].discontinuity = true
+	if got := deliveryWindows(broken, 188); len(got) != 2 || got[1].ticks != pcrClockHz {
+		t.Errorf("windows across a discontinuity = %+v", got)
+	}
+}
+
+func TestAssessDelivery(t *testing.T) {
+	constant := assessDelivery(cbrSamples(76, 0x100), 188, 0)
+	if constant.assessment != deliveryConstant || constant.windows != 3 || constant.averageBps != 75_200 || constant.minBps != 75_200 ||
+		constant.maxBps != 75_200 || constant.maxDeviationPct != 0 || !strings.Contains(constant.reason, "deviates up to 0.00% from the average 75,200 b/s") {
+		t.Errorf("constant: %+v", constant)
+	}
+	// The second second carries 3 % more bytes than the others.
+	variable := cbrSamples(76, 0x100)
+	for i := 26; i < len(variable); i++ {
+		variable[i].pos += 3 * 188
+		if i >= 51 {
+			variable[i].pos -= 3 * 188
+		}
+	}
+	got := assessDelivery(variable, 188, 0)
+	if got.assessment != deliveryVariable || got.maxDeviationPct < 1 || !strings.Contains(got.reason, "tolerance 1%") {
+		t.Errorf("variable windows: %+v", got)
+	}
+	// Window rates within the tolerance, but a jitter of more than 1 ms.
+	if got := assessDelivery(cbrSamples(76, 0x100), 188, 1_500_000); got.assessment != deliveryVariable || !strings.Contains(got.reason, "1.500ms") {
+		t.Errorf("implausible jitter: %+v", got)
+	}
+	// It applies with too few windows as well.
+	if got := assessDelivery(cbrSamples(10, 0x100), 188, 1_500_000); got.assessment != deliveryVariable {
+		t.Errorf("implausible jitter, one window: %+v", got)
+	}
+	if got := assessDelivery(cbrSamples(30, 0x100), 188, pcrPlausibleJitterNs); got.assessment != deliveryUnknown || got.windows != 1 ||
+		!strings.Contains(got.reason, "got 1") {
+		t.Errorf("one window: %+v", got)
+	}
+	if got := assessDelivery(nil, 188, -1); got.assessment != deliveryUnknown || got.windows != 0 {
+		t.Errorf("no samples: %+v", got)
+	}
+}
+
+func TestPcrJitterEvaluate(t *testing.T) {
+	jitterAt := func(n int, ticks uint64) *PcrJitter {
+		j := &PcrJitter{samples: cbrSamples(n, 0x100)}
+		j.samples[n/2].pcr += ticks
+		return j
+	}
+	cases := []struct {
+		name   string
+		j      *PcrJitter
+		status string
+		reason string
+	}{
+		{"ok", jitterAt(76, 0), jitterStatusOk, ""},
+		{"warning", jitterAt(76, 27), jitterStatusWarning, ""},
+		{"ng", jitterAt(76, 2700), jitterStatusNg, ""},
+		{"ng at the plausibility limit", jitterAt(76, 27_000), jitterStatusNg, ""},
+		{"variable", jitterAt(76, 27_001), jitterStatusNotAssessable, "delivery rate is variable"},
+		{"unknown", jitterAt(30, 2700), jitterStatusNotAssessable, "delivery rate is unknown"},
+		{"skipped", &PcrJitter{samples: cbrSamples(2, 0x100)}, jitterStatusSkipped, "need at least 3 PCR samples"},
+	}
+	for _, c := range cases {
+		e := c.j.evaluate()
+		if e.status != c.status || !strings.HasPrefix(e.reason, c.reason) {
+			t.Errorf("%s: status %q reason %q", c.name, e.status, e.reason)
+		}
+	}
+	// skipped takes precedence over a variable delivery.
+	broken := &PcrJitter{samples: cbrSamples(76, 0x100)}
+	for i := 3; i < len(broken.samples); i += 3 {
+		broken.samples[i].discontinuity = true
+	}
+	if e := broken.evaluate(); e.status != jitterStatusSkipped || e.reason != "too many discontinuities" || e.estimated {
+		t.Errorf("broken: %+v", e)
+	}
+}
+
+func TestPcrJitterDump_NotAssessable(t *testing.T) {
+	j := &PcrJitter{samples: cbrSamples(30, 0x100)}
+	out := captureStdout(t, j.Dump)
+	for _, want := range []string{"Delivery         : UNKNOWN - need at least 2 one-second windows", "Status           : NOT ASSESSABLE (delivery rate is unknown"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+	j = &PcrJitter{samples: cbrSamples(76, 0x100)}
+	out = captureStdout(t, j.Dump)
+	for _, want := range []string{"Delivery         : CONSTANT - the multiplex rate of 3 one-second windows", "Status           : OK"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
 }
 
 func TestPcrTickNs(t *testing.T) {
@@ -114,8 +240,8 @@ func TestAnalyzePcrJitter_DiscontinuitySegments(t *testing.T) {
 
 func TestPcrJitterDump_TooFewSamples(t *testing.T) {
 	var j PcrJitter
-	j.Add(0, 0, false)
-	j.Add(1000, 1000, false)
+	j.Add(0, 0x0100, 0, false)
+	j.Add(1000, 0x0100, 1000, false)
 	out := captureStdout(t, j.Dump)
 	if !strings.Contains(out, "need at least 3 PCR samples") {
 		t.Errorf("expected too-few-samples message, got:\n%s", out)
@@ -125,10 +251,11 @@ func TestPcrJitterDump_TooFewSamples(t *testing.T) {
 func TestPcrJitterDump_Normal(t *testing.T) {
 	var j PcrJitter
 	for _, s := range linearSamples(5, 1000, 0, 1000) {
-		j.Add(s.pos, s.pcr, s.discontinuity)
+		j.Add(s.pos, 0x0100, s.pcr, s.discontinuity)
 	}
 	out := captureStdout(t, j.Dump)
-	for _, want := range []string{"Max jitter", "Avg |jitter|", "Within +/-500ns", "Status           : OK", "Discontinuities  : 0"} {
+	// Too short to establish the delivery rate.
+	for _, want := range []string{"Max jitter", "Avg |jitter|", "Within +/-500ns", "Status           : NOT ASSESSABLE", "Discontinuities  : 0"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}
@@ -158,11 +285,11 @@ func TestPcrJitterDump_NormalWithDiscontinuity(t *testing.T) {
 	// Two clean 6-sample segments split by one discontinuity (ratio 1/12, measurable).
 	seg1 := linearSamples(6, 1000, 0, 1000)
 	for _, s := range seg1 {
-		j.Add(s.pos, s.pcr, s.discontinuity)
+		j.Add(s.pos, 0x0100, s.pcr, s.discontinuity)
 	}
-	j.Add(6000, 10, true) // discontinuity
+	j.Add(6000, 0x0100, 10, true) // discontinuity
 	for i := 1; i < 6; i++ {
-		j.Add(6000+int64(i)*1000, 10+uint64(i)*1000, false)
+		j.Add(6000+int64(i)*1000, 0x0100, 10+uint64(i)*1000, false)
 	}
 	out := captureStdout(t, j.Dump)
 	if !strings.Contains(out, "Discontinuities  : 1") {
@@ -176,10 +303,10 @@ func TestPcrJitterDump_NormalWithDiscontinuity(t *testing.T) {
 func TestPcrJitterDump_NoSegmentLongEnough(t *testing.T) {
 	var j PcrJitter
 	// Every sample after the first starts a new segment -> no interior samples.
-	j.Add(0, 0, false)
-	j.Add(1000, 1000, true)
-	j.Add(2000, 2000, true)
-	j.Add(3000, 3000, true)
+	j.Add(0, 0x0100, 0, false)
+	j.Add(1000, 0x0100, 1000, true)
+	j.Add(2000, 0x0100, 2000, true)
+	j.Add(3000, 0x0100, 3000, true)
 	out := captureStdout(t, j.Dump)
 	if !strings.Contains(out, "no segment long enough") {
 		t.Errorf("expected no-segment message:\n%s", out)
@@ -191,10 +318,10 @@ func TestPcrJitterDump_TooManyDiscontinuities(t *testing.T) {
 	// One measurable 3-sample segment, then four single-sample segments:
 	// measured>0 but discontinuity ratio 4/7 > 0.30.
 	for _, s := range linearSamples(3, 1000, 0, 1000) {
-		j.Add(s.pos, s.pcr, s.discontinuity)
+		j.Add(s.pos, 0x0100, s.pcr, s.discontinuity)
 	}
 	for i := 0; i < 4; i++ {
-		j.Add(3000+int64(i)*1000, 3000+uint64(i)*1000, true)
+		j.Add(3000+int64(i)*1000, 0x0100, 3000+uint64(i)*1000, true)
 	}
 	out := captureStdout(t, j.Dump)
 	if !strings.Contains(out, "too many discontinuities") {

@@ -58,14 +58,14 @@ func TestAllFindingsFixtures(t *testing.T) {
 		}
 		p := report.Programs[0]
 
-		// Max PCR interval: slots 26, 30 and 34 carry no PCR.
+		// Max PCR interval: slots 22, 24 and 26 carry no PCR.
 		interval := p.Compliance.MaxPCRInterval
-		if *interval.ValueMs != 160 || interval.LimitMs != 100 || interval.Observations != 15 {
+		if *interval.ValueMs != 160 || interval.LimitMs != 100 || interval.Observations != 54 {
 			t.Errorf("%s: max PCR interval %s", fixture.path, toJSON(t, interval))
 		}
 		// PCR-PTS/DTS gap: every audio PTS is 1200 ms ahead.
 		gap := p.Compliance.MaxPCRPTSDTSGap
-		if *gap.ValueMs != 1200 || gap.LimitMs != 1000 || gap.Observations != 23 {
+		if *gap.ValueMs != 1200 || gap.LimitMs != 1000 || gap.Observations != 82 {
 			t.Errorf("%s: PCR-PTS/DTS gap %s", fixture.path, toJSON(t, gap))
 		}
 		// PTS/DTS anomalies: the video PTS in slot 46 goes back 40 ms.
@@ -75,21 +75,29 @@ func TestAllFindingsFixtures(t *testing.T) {
 			len(events) != 1 || events[0].OffsetBytes != at(46) {
 			t.Errorf("%s: timestamp anomalies %s %s", fixture.path, toJSON(t, anomalies), toJSON(t, events))
 		}
-		// Continuity counter: the audio packet in slot 44 skips counter 5,
+		// Continuity counter: the audio packet in slot 25 skips counter 5,
 		// for the whole multiplex.
 		cc := report.ContinuityCounter
-		wantEvents := []ReportContinuityEvent{{OffsetBytes: at(44), PID: "0x0101", ExpectedCC: 5, ActualCC: 6}}
+		wantEvents := []ReportContinuityEvent{{OffsetBytes: at(25), PID: "0x0101", ExpectedCC: 5, ActualCC: 6}}
 		if cc.TotalErrorCount != 1 || len(cc.PIDs) != 1 || cc.PIDs[0] != (ReportContinuityPID{PID: "0x0101", Label: "audio", ErrorCount: 1}) ||
 			!jsonEqual(t, report.ContinuityEvents, wantEvents) {
 			t.Errorf("%s: continuity %s %s", fixture.path, toJSON(t, cc), toJSON(t, report.ContinuityEvents))
 		}
 		// PCR jitter: the PCR in slot 58 is 100 µs late; its neighbors in
-		// slots 54 and 62 read -50 µs.
+		// slots 56 and 60 read -50 µs. The 2.4 s stream gives two 1-second
+		// windows at exactly 75.2 kbit/s, so delivery is constant and the
+		// estimate is judged.
 		jitter := p.PCRJitter
-		if jitter.SampleCount != 16 || jitter.SegmentCount != 1 || jitter.MeasuredSampleCount != 14 || len(jitter.Discontinuities) != 0 ||
-			*jitter.MaxJitterNs != 100_000 || *jitter.MaxJitterOffsetBytes != at(58) ||
-			*jitter.MinJitterNs != -50_000 || *jitter.MinJitterOffsetBytes != at(54) {
-			t.Errorf("%s: PCR jitter %s", fixture.path, toJSON(t, jitter))
+		est := jitter.Estimate
+		if est.Model != "byte_position" || !jsonEqual(t, est.PCRPIDs, []string{"0x0100"}) || est.SampleCount != 55 || est.SegmentCount != 1 || est.Observations != 53 ||
+			len(est.Discontinuities) != 0 || *est.MaxAbsJitterNs != 100_000 || *est.MaxAbsJitterOffsetBytes != at(58) ||
+			*est.MaxJitterNs != 100_000 || *est.MaxJitterOffsetBytes != at(58) ||
+			*est.MinJitterNs != -50_000 || *est.MinJitterOffsetBytes != at(56) {
+			t.Errorf("%s: PCR jitter estimate %s", fixture.path, toJSON(t, est))
+		}
+		if d := jitter.Delivery; d.Assessment != "constant" || d.WindowCount != 2 || *d.AverageRateBPS != 75_200 || *d.MinWindowRateBPS != 75_200 ||
+			*d.MaxWindowRateBPS != 75_200 || *d.MaxDeviationPercent != 0 || jitter.Reason != "" {
+			t.Errorf("%s: PCR jitter delivery %s", fixture.path, toJSON(t, jitter))
 		}
 	}
 }
@@ -139,7 +147,7 @@ func TestAllFindingsFixtureGenerator(t *testing.T) {
 		if !bytes.Equal(generated, committed) {
 			t.Errorf("%s does not match the generator output", fixture.path)
 		}
-		if len(committed) >= 16*1024 {
+		if len(committed) >= 32*1024 {
 			t.Errorf("%s is %d bytes", fixture.path, len(committed))
 		}
 	}
@@ -167,7 +175,7 @@ func TestAllFindingsDefectsAreIndependent(t *testing.T) {
 	if got := cardStatuses(t, report); got != ok {
 		t.Errorf("without defects: %v", got)
 	}
-	if jitter := report.Programs[0].PCRJitter; *jitter.MaxJitterNs != 0 || *jitter.MinJitterNs != 0 {
+	if jitter := report.Programs[0].PCRJitter; jitter.Delivery.Assessment != "constant" || *jitter.Estimate.MaxJitterNs != 0 || *jitter.Estimate.MinJitterNs != 0 {
 		t.Errorf("constant-rate stream without defects: %s", toJSON(t, jitter))
 	}
 	if output, err := exec.Command("go", "run", "../tools/generate_all_findings", "-output", filepath.Join(t.TempDir(), "x.ts"), "-omit", "nope").CombinedOutput(); err == nil {

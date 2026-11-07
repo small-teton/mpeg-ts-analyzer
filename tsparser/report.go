@@ -4,12 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math"
 	"sort"
 	"strings"
 )
 
-const jsonSchemaVersion = "1.0"
+const jsonSchemaVersion = "2.0"
 
 // AnalysisReport is the stable, machine-readable result emitted by
 // --format json. New fields and enum values may be added within a schema
@@ -104,12 +103,27 @@ type ReportPCRDiscontinuity struct {
 	ToSegment   int     `json:"to_segment"`
 }
 
+// ReportPCRJitter is the PCR jitter result: the byte-position estimate, the
+// delivery assessment that decides whether the estimate can be judged, and the
+// resulting status (ok, warning, ng, not_assessable or skipped).
 type ReportPCRJitter struct {
-	Status                  string                   `json:"status"`
-	Reason                  string                   `json:"reason,omitempty"`
+	Status   string                  `json:"status"`
+	Reason   string                  `json:"reason,omitempty"`
+	Estimate ReportPCRJitterEstimate `json:"estimate"`
+	Delivery ReportPCRDelivery       `json:"delivery"`
+}
+
+// ReportPCRJitterEstimate is the jitter estimated with one model. The value
+// fields are present when the estimate was computed (status other than
+// skipped).
+type ReportPCRJitterEstimate struct {
+	Model                   string                   `json:"model"`
+	PCRPIDs                 []string                 `json:"pcr_pids"`
 	SampleCount             int                      `json:"sample_count"`
 	SegmentCount            int                      `json:"segment_count"`
-	MeasuredSampleCount     int                      `json:"measured_sample_count"`
+	Observations            int                      `json:"observations"`
+	MaxAbsJitterNs          *float64                 `json:"max_abs_jitter_ns,omitempty"`
+	MaxAbsJitterOffsetBytes *int64                   `json:"max_abs_jitter_offset_bytes,omitempty"`
 	MaxJitterNs             *float64                 `json:"max_jitter_ns,omitempty"`
 	MaxJitterOffsetBytes    *int64                   `json:"max_jitter_offset_bytes,omitempty"`
 	MinJitterNs             *float64                 `json:"min_jitter_ns,omitempty"`
@@ -117,6 +131,21 @@ type ReportPCRJitter struct {
 	AverageAbsoluteJitterNs *float64                 `json:"average_absolute_jitter_ns,omitempty"`
 	Within500NsPercent      *float64                 `json:"within_500ns_percent,omitempty"`
 	Discontinuities         []ReportPCRDiscontinuity `json:"discontinuities"`
+}
+
+// ReportPCRDelivery is the delivery assessment and its evidence: the
+// multiplex rate over 1-second windows of PCR time.
+type ReportPCRDelivery struct {
+	Assessment             string   `json:"assessment"`
+	Reason                 string   `json:"reason"`
+	WindowSeconds          int      `json:"window_seconds"`
+	WindowCount            int      `json:"window_count"`
+	AverageRateBPS         *float64 `json:"average_rate_bps,omitempty"`
+	MinWindowRateBPS       *float64 `json:"min_window_rate_bps,omitempty"`
+	MaxWindowRateBPS       *float64 `json:"max_window_rate_bps,omitempty"`
+	MaxDeviationPercent    *float64 `json:"max_deviation_percent,omitempty"`
+	TolerancePercent       float64  `json:"tolerance_percent"`
+	PlausibleJitterLimitNs float64  `json:"plausible_jitter_limit_ns"`
 }
 
 type ReportBitratePID struct {
@@ -330,34 +359,47 @@ func reportAnomalies(a *TimestampAnomaly) *ReportTimestampAnomalies {
 }
 
 func reportJitter(j *PcrJitter) *ReportPCRJitter {
-	r := &ReportPCRJitter{Status: "skipped", SampleCount: len(j.samples), Discontinuities: []ReportPCRDiscontinuity{}}
-	if len(j.samples) < 3 {
-		r.Reason = "need at least 3 PCR samples"
+	e := j.evaluate()
+	r := &ReportPCRJitter{
+		Status: e.status,
+		Reason: e.reason,
+		Estimate: ReportPCRJitterEstimate{
+			Model: "byte_position", PCRPIDs: []string{}, SampleCount: len(j.samples), Discontinuities: []ReportPCRDiscontinuity{},
+		},
+		Delivery: reportDelivery(e.delivery),
+	}
+	for _, pid := range j.pcrPids() {
+		r.Estimate.PCRPIDs = append(r.Estimate.PCRPIDs, reportPID(pid))
+	}
+	if !e.analyzed {
 		return r
 	}
-	res := analyzePcrJitter(j.samples)
-	r.SegmentCount = res.segments
-	r.MeasuredSampleCount = res.measured
+	res := e.res
+	r.Estimate.SegmentCount = res.segments
+	r.Estimate.Observations = res.measured
 	for _, d := range res.discontinuities {
-		r.Discontinuities = append(r.Discontinuities, ReportPCRDiscontinuity{d.pos, d.jumpMs, d.fromSeg, d.toSeg})
+		r.Estimate.Discontinuities = append(r.Estimate.Discontinuities, ReportPCRDiscontinuity{d.pos, d.jumpMs, d.fromSeg, d.toSeg})
 	}
-	if res.measured == 0 {
-		r.Reason = "no segment long enough for a stable estimate"
-		return r
+	if e.estimated {
+		est := &r.Estimate
+		est.MaxAbsJitterNs, est.MaxAbsJitterOffsetBytes = &e.maxAbsNs, &e.maxAbsPos
+		est.MaxJitterNs, est.MinJitterNs, est.AverageAbsoluteJitterNs, est.Within500NsPercent = &res.maxNs, &res.minNs, &res.avgAbsNs, &res.within500Pct
+		est.MaxJitterOffsetBytes, est.MinJitterOffsetBytes = &res.maxPos, &res.minPos
 	}
-	if float64(len(res.discontinuities))/float64(len(j.samples)) > pcrJitterGiveUpRatio {
-		r.Reason = "too many discontinuities"
-		return r
+	return r
+}
+
+func reportDelivery(d deliveryAssessment) ReportPCRDelivery {
+	r := ReportPCRDelivery{
+		Assessment: d.assessment, Reason: d.reason, WindowSeconds: deliveryWindowTicks / pcrClockHz, WindowCount: d.windows,
+		TolerancePercent: deliveryTolerancePercent, PlausibleJitterLimitNs: pcrPlausibleJitterNs,
 	}
-	r.Status = "ok"
-	maxAbs := math.Max(math.Abs(res.maxNs), math.Abs(res.minNs))
-	if maxAbs > pcrDvbLimitNs {
-		r.Status = "ng"
-	} else if maxAbs > pcrAccuracyLimitNs {
-		r.Status = "warning"
+	if d.windows > 0 {
+		r.AverageRateBPS, r.MinWindowRateBPS, r.MaxWindowRateBPS = &d.averageBps, &d.minBps, &d.maxBps
 	}
-	r.MaxJitterNs, r.MinJitterNs, r.AverageAbsoluteJitterNs, r.Within500NsPercent = &res.maxNs, &res.minNs, &res.avgAbsNs, &res.within500Pct
-	r.MaxJitterOffsetBytes, r.MinJitterOffsetBytes = &res.maxPos, &res.minPos
+	if d.windows >= deliveryMinWindows {
+		r.MaxDeviationPercent = &d.maxDeviationPct
+	}
 	return r
 }
 

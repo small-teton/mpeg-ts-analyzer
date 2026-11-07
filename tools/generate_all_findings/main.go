@@ -5,31 +5,35 @@
 //
 // The stream has one program (program_number 1, PMT PID 0x1000) with MPEG-2
 // video on PID 0x0100, which also carries the PCR, and MPEG-1 audio on PID
-// 0x0101. Every packet occupies one 10 ms slot of a constant-rate multiplex
-// (150.4 kbit/s). The PAT is sent in slots 0, 1 and 40 and the PMT in slots
-// 2, 3 and 41: the analyzer treats a table as complete at the next copy, so
-// the analysis starts at slot 4, and the repetition keeps PSI intervals below
-// 500 ms. Video PES packets start every 40 ms from slot 6, audio PES packets
-// every 80 ms from slot 4, and the remaining slots are null packets. Each PES packet fits in one TS packet;
-// the elementary-stream payload is filler. PCR and PTS values follow the slot
-// clock (10 s + slot × 10 ms), so byte position is an exact time proxy.
+// 0x0101. Every packet occupies one 20 ms slot of a constant-rate multiplex
+// (75.2 kbit/s); the 120 slots last 2.4 s, so the PCRs span two full 1-second
+// windows and the PCR jitter analysis can establish constant delivery. The
+// PAT is sent in slots 0 and 1 and the PMT in slots 2 and 3: the analyzer
+// treats a table as complete at the next copy, so the analysis starts at slot
+// 4. Both are repeated every 400 ms (PAT in slots 19, 39, ..., PMT in slots
+// 23, 43, ...), so PSI intervals stay below 500 ms. From slot 4, video PES
+// packets take the even slots (every 40 ms), audio PES packets the slots
+// 4k+1 (every 80 ms), and the slots 4k+3 not used by PSI are null packets.
+// Each PES packet fits in one TS packet; the elementary-stream payload is
+// filler. PCR and PTS values follow the slot clock (10 s + slot × 20 ms), so
+// byte position is an exact time proxy.
 //
 // Five deliberate defects, each of which can be left out with -omit:
 //
-//   - pcr-interval: the video packets in slots 26, 30 and 34 carry no PCR, so
-//     the PCRs in slots 22 and 38 are 160 ms apart (limit 100 ms).
+//   - pcr-interval: the video packets in slots 22, 24 and 26 carry no PCR, so
+//     the PCRs in slots 20 and 28 are 160 ms apart (limit 100 ms).
 //   - pcr-pts-gap: every audio PTS is 1200 ms ahead of the PCR time of its
 //     packet (limit 1000 ms) instead of 200 ms.
 //   - pts-backward: the video PES in slot 46 has a PTS 40 ms before the
 //     previous video PTS instead of 40 ms after it.
-//   - cc-gap: the audio packet in slot 44 skips continuity_counter 5 (it
+//   - cc-gap: the audio packet in slot 25 skips continuity_counter 5 (it
 //     carries 6); later audio packets continue from 6, so the error does not
 //     cascade.
 //   - pcr-jitter: the PCR in slot 58 is 100 µs (2700 ticks of 27 MHz) late
 //     relative to its byte position (DVB tolerance ±25 µs).
 //
 // With -m2ts, each packet gets a 4-byte TP_extra_header whose
-// arrival_time_stamp advances by one 10 ms slot per packet, matching the
+// arrival_time_stamp advances by one 20 ms slot per packet, matching the
 // intended constant delivery.
 package main
 
@@ -42,13 +46,15 @@ import (
 
 const (
 	tsPacketSize = 188
-	slots        = 80
+	slots        = 120
 	pmtPid       = 0x1000
 	videoPid     = 0x0100
 	audioPid     = 0x0101
 	nullPid      = 0x1FFF
-	// slotTicks27 is one 10 ms slot of the 27 MHz system clock.
-	slotTicks27 = 270_000
+	// slotMs is the duration of one slot (one packet).
+	slotMs = 20
+	// slotTicks27 is one slot of the 27 MHz system clock.
+	slotTicks27 = slotMs * 27_000
 	// baseMs is the PCR time of slot 0.
 	baseMs = 10_000
 	// esPayload is the filler elementary-stream payload of each PES packet.
@@ -183,7 +189,7 @@ func pesPacket(pid uint16, cc byte, streamID byte, pts uint64, pcr uint64, hasPc
 func slotPcr(slot int) uint64 { return uint64(baseMs*27_000) + uint64(slot)*slotTicks27 }
 
 // slotPts is the 90 kHz value of a slot's clock plus offsetMs.
-func slotPts(slot, offsetMs int) uint64 { return uint64(baseMs+slot*10+offsetMs) * 90 }
+func slotPts(slot, offsetMs int) uint64 { return uint64(baseMs+slot*slotMs+offsetMs) * 90 }
 
 // generate returns the 188-byte stream without the defects named in omit.
 func generate(omit map[string]bool) []byte {
@@ -193,26 +199,26 @@ func generate(omit map[string]bool) []byte {
 	for slot := range slots {
 		var p []byte
 		switch {
-		case slot == 0 || slot == 1 || slot == 40:
+		case slot == 0 || slot == 1 || slot%20 == 19:
 			p = psiPacket(0x0000, patCC, patSection())
 			patCC++
-		case slot == 2 || slot == 3 || slot == 41:
+		case slot == 2 || slot%20 == 3:
 			p = psiPacket(pmtPid, pmtCC, pmtSection())
 			pmtCC++
-		case slot%4 == 2: // video, every 40 ms
-			hasPcr := !with(defectPcrInterval) || (slot != 26 && slot != 30 && slot != 34)
+		case slot%2 == 0: // video, every 40 ms
+			hasPcr := !with(defectPcrInterval) || (slot != 22 && slot != 24 && slot != 26)
 			pcr := slotPcr(slot)
 			if with(defectPcrJitter) && slot == 58 {
 				pcr += 2700 // 100 µs late
 			}
 			pts := slotPts(slot, 100)
 			if with(defectPtsBackward) && slot == 46 {
-				pts = slotPts(slot-4, 100-40)
+				pts = slotPts(slot-2, 100-40)
 			}
 			p = pesPacket(videoPid, videoCC, 0xE0, pts, pcr, hasPcr)
 			videoCC++
-		case slot%8 == 4: // audio, every 80 ms
-			if with(defectCcGap) && slot == 44 {
+		case slot%4 == 1: // audio, every 80 ms
+			if with(defectCcGap) && slot == 25 {
 				audioCC++ // skip one continuity_counter value
 			}
 			offsetMs := 200

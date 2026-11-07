@@ -11,7 +11,7 @@ import (
 )
 
 func TestJSONSchemaDocument(t *testing.T) {
-	for _, path := range []string{"../docs/json-schema-v1.json", "../docs/json-schema-analysis-v1.json", "../docs/json-schema-packets-v1.json"} {
+	for _, path := range []string{"../docs/json-schema-v2.json", "../docs/json-schema-analysis-v2.json", "../docs/json-schema-packets-v1.json"} {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -50,24 +50,36 @@ func TestReportConversions(t *testing.T) {
 		t.Fatalf("anomalies: %+v", anomalyReport)
 	}
 
-	if got := reportJitter(&PcrJitter{}); got.Status != "skipped" || got.Reason == "" {
+	if got := reportJitter(&PcrJitter{}); got.Status != "skipped" || got.Reason == "" || got.Estimate.Model != "byte_position" ||
+		len(got.Estimate.PCRPIDs) != 0 || got.Delivery.Assessment != "unknown" || got.Delivery.AverageRateBPS != nil {
 		t.Fatalf("few samples: %+v", got)
 	}
 	noInterior := &PcrJitter{samples: []pcrSample{{pcr: 1}, {pcr: 2, discontinuity: true}, {pcr: 3, discontinuity: true}}}
-	if got := reportJitter(noInterior); got.MeasuredSampleCount != 0 || len(got.Discontinuities) != 2 {
+	if got := reportJitter(noInterior); got.Estimate.Observations != 0 || len(got.Estimate.Discontinuities) != 2 || got.Estimate.MaxAbsJitterNs != nil {
 		t.Fatalf("no interior: %+v", got)
 	}
 	tooMany := &PcrJitter{samples: []pcrSample{{pos: 0, pcr: 1000}, {pos: 1, pcr: 2000}, {pos: 2, pcr: 3000}, {pos: 3, pcr: 4000, discontinuity: true}, {pos: 4, pcr: 5000, discontinuity: true}, {pos: 5, pcr: 6000, discontinuity: true}}}
 	if got := reportJitter(tooMany); got.Reason != "too many discontinuities" {
 		t.Fatalf("too many: %+v", got)
 	}
-	warning := &PcrJitter{samples: []pcrSample{{pos: 0, pcr: 1000}, {pos: 1, pcr: 2027}, {pos: 2, pcr: 3000}}}
-	if got := reportJitter(warning); got.Status != "warning" {
-		t.Fatalf("warning: %+v", got)
+	// Three seconds of constant delivery (two full windows) with a 1 µs error
+	// in one PCR.
+	warning := &PcrJitter{samples: cbrSamples(76, 0x0100)}
+	warning.samples[40].pcr += 27
+	if got := reportJitter(warning); got.Status != "warning" || got.Reason != "" || *got.Estimate.MaxAbsJitterNs != 1000 ||
+		*got.Estimate.MaxAbsJitterOffsetBytes != warning.samples[40].pos || got.Delivery.Assessment != "constant" || *got.Delivery.MaxDeviationPercent > 0.01 {
+		t.Fatalf("warning: %s", toJSON(t, got))
 	}
-	ok := &PcrJitter{samples: []pcrSample{{pos: 0, pcr: 1000}, {pos: 1, pcr: 2000}, {pos: 2, pcr: 3000}}}
-	if got := reportJitter(ok); got.Status != "ok" {
-		t.Fatalf("ok: %+v", got)
+	ok := &PcrJitter{samples: cbrSamples(76, 0x0100)}
+	ok.samples[50].pid = 0x0200
+	if got := reportJitter(ok); got.Status != "ok" || !jsonEqual(t, got.Estimate.PCRPIDs, []string{"0x0100", "0x0200"}) || got.Delivery.WindowCount != 3 {
+		t.Fatalf("ok: %s", toJSON(t, got))
+	}
+	// One window: the evidence has rates but no deviation.
+	oneWindow := &PcrJitter{samples: cbrSamples(30, 0x0100)}
+	if got := reportJitter(oneWindow); got.Status != "not_assessable" || got.Delivery.Assessment != "unknown" || got.Delivery.WindowCount != 1 ||
+		*got.Delivery.AverageRateBPS != 75_200 || got.Delivery.MaxDeviationPercent != nil || !strings.Contains(got.Reason, "unknown") {
+		t.Fatalf("one window: %s", toJSON(t, got))
 	}
 
 	skippedBitrate := reportBitrate(NewBitrateStats(0, 0x20, 0x31, nil))

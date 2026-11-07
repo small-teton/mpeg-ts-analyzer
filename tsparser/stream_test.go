@@ -38,7 +38,7 @@ func TestParseTsFileJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.SchemaVersion != "1.0" || report.Status != "complete" || report.Input.PacketSizeBytes != 188 {
+	if report.SchemaVersion != "2.0" || report.Status != "complete" || report.Input.PacketSizeBytes != 188 {
 		t.Fatalf("unexpected report header: %+v", report)
 	}
 	if len(report.Programs) != 1 || report.Programs[0].PMTPID != "0x1000" || report.Programs[0].ElementaryStreams[0].PID != "0x0100" {
@@ -53,7 +53,8 @@ func TestParseTsFileJSON(t *testing.T) {
 	if report.TimestampAnomalies == nil || report.TimestampAnomalies.Status != "ok" {
 		t.Fatalf("unexpected anomaly report: %+v", report.TimestampAnomalies)
 	}
-	if report.PCRJitter == nil || report.PCRJitter.MeasuredSampleCount == 0 {
+	// The bundled sample is VBR: its 1-second rates vary by about 3 %.
+	if report.PCRJitter == nil || report.PCRJitter.Estimate.Observations == 0 || report.PCRJitter.Status != "not_assessable" || report.PCRJitter.Delivery.Assessment != "variable" {
 		t.Fatalf("unexpected jitter report: %+v", report.PCRJitter)
 	}
 	if report.Bitrate == nil || report.Bitrate.Status != "ok" || len(report.Bitrate.PIDs) == 0 {

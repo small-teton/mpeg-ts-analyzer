@@ -11,7 +11,7 @@ import (
 
 // analysisSchemaVersion versions the document written by --output analysis,
 // independently of the summary report's schema_version.
-const analysisSchemaVersion = "1.0"
+const analysisSchemaVersion = "2.0"
 
 // rangeAnalysis is the state of an --output analysis run: every program of the
 // first complete PAT/PMT set, analyzed in one pass over the range.
@@ -65,6 +65,7 @@ func analyzeAllPrograms(reader io.ReadSeeker, pat *patTable, leadStart, programS
 		} else {
 			entry.pmt, entry.table = pmt.Pmt, pmt
 			entry.analyzer = newProgramAnalyzer(options, pos, prog.ProgramNumber, prog.PmtPid, pmt.PcrPid(), pmt.ProgramInfos(), true)
+			entry.analyzer.pcrJitter.packetSize = packetSize
 			analysis.continuity.addProgramLabels(prog.PmtPid, pmt.PcrPid(), pmt.ProgramInfos())
 			analysis.psi.addProgram(prog.ProgramNumber, prog.PmtPid, pmt, entry.analyzer)
 			analyzers = append(analyzers, entry.analyzer)
