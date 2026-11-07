@@ -116,7 +116,7 @@ func TestPacketsOutputErrors(t *testing.T) {
 	}{
 		{options.Options{Count: 0}, sample188Path, "analysis_failed", "--count must be between 1 and 10000"},
 		{options.Options{Count: 10001}, sample188Path, "analysis_failed", "--count must be between"},
-		{options.Options{Count: 1, PacketSize: 204}, sample188Path, "analysis_failed", "unsupported packet size 204"},
+		{options.Options{Count: 1, PacketSize: 200}, sample188Path, "analysis_failed", "unsupported packet size 200 (expected 188, 192 or 204)"},
 		{options.Options{Count: 1, Offset: 1 << 40}, sample188Path, "analysis_failed", "outside the file"},
 		{options.Options{Count: 1}, "/no/such/file.ts", "input_open_failed", "file open error"},
 	} {
@@ -523,7 +523,7 @@ func TestPacketsPageOfAnEmptyFile(t *testing.T) {
 	if err != nil || page.Status != "complete" || !page.EndOfFile || len(page.Packets) != 0 || page.TotalPackets != 0 || page.Input.PacketSizeBytes != 0 {
 		t.Errorf("empty file page = %+v %v", page, err)
 	}
-	if page, err := decodePacketsPage(t, path, options.Options{Count: 1, PacketSize: 204}); err == nil || !strings.Contains(page.Error, "unsupported packet size 204") {
+	if page, err := decodePacketsPage(t, path, options.Options{Count: 1, PacketSize: 200}); err == nil || !strings.Contains(page.Error, "unsupported packet size 200") {
 		t.Errorf("empty file with a bad hint = %+v %v", page, err)
 	}
 	if page, err := decodePacketDetail(t, path, options.Options{}); err == nil || !strings.Contains(page.Error, "outside the file") {

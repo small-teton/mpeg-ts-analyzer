@@ -9,6 +9,7 @@ compliant stream.
 ```sh
 go run ./tools/generate_sync_loss -output sample_data/sample_188byte_sync_loss.ts
 go run ./tools/generate_sync_loss -m2ts -output sample_data/sample_192byte_sync_loss.ts
+go run ./tools/generate_sync_loss -trailer -output sample_data/sample_204byte_sync_loss.ts
 ./mpeg-ts-analyzer sample_data/sample_188byte_sync_loss.ts
 tsp -I file sample_data/sample_188byte_sync_loss.ts -P count -O drop
 tsresync -c -m 960 -s 1024 -v -d3 -k -o resynced.ts sample_data/sample_188byte_sync_loss.ts
@@ -22,7 +23,7 @@ starts at slot 4) and then every 500 ms (PAT in slots 25, 75, ..., PMT in
 slots 27, 77, ...). From slot 4 the other even slots carry one video PES packet
 each with a PCR and a PTS, and the other odd slots are null packets. The
 damage, by slot of the undamaged stream, with the result for 188-byte packets
-(`ps` is the packet size, 188 or 192; offsets are in the damaged file):
+(`ps` is the packet size, 188, 192 or 204; offsets are in the damaged file):
 
 | Damage | What is written | Loss at | Skipped |
 |---|---|---|---|
@@ -33,7 +34,7 @@ damage, by slot of the undamaged stream, with the result for 188-byte packets
 | `truncated-tail` | the first 100 bytes of a null packet after slot 199 | — | trailing partial packet at 200·ps + 1000 |
 
 The analyzer reports `sync.status` `recovered`: 4 losses, 4 resyncs, 2·ps +
-1000 skipped bytes (1376 or 1384), the largest 1000 at 121·ps, and a 100-byte
+1000 skipped bytes (1376, 1384 or 1408), the largest 1000 at 121·ps, and a 100-byte
 trailing partial packet. The video packets lost in slots 40 and 82 give one
 continuity error each, at slots 42 and 84 (42·ps and 84·ps: the inserted and
 deleted bytes cancel out). The four false sync bytes in the garbage block are
@@ -50,10 +51,25 @@ With `-m2ts`, each packet gets a 4-byte TP_extra_header whose
 arrival_time_stamp advances by one slot; the damage is at the same positions
 relative to the sync byte.
 
-TSDuck 3.45 agrees for both files:
+With `-trailer`, each packet is followed by a 16-byte trailer, making 204-byte
+packets. The trailer is deterministic filler in 0x80–0xBF (not Reed-Solomon
+parity), except that byte 5 of the trailers of slots 82 to 85 is a false sync
+byte: four `0x47` bytes 204 bytes apart, one fewer than a new alignment needs.
+The search after the `delete-byte` loss starts in slot 82 and passes over them,
+so the 204-byte file gives the same results with `ps` = 204: losses at
+0x1fe0, 0x3168, 0x4159 and 0x606c, 204, 1, 203 and 1000 skipped bytes, and
+continuity errors at 42·204 and 84·204.
+
+TSDuck 3.45 agrees for all three files:
 
 - `tsp` (which does not resynchronize) stops with `synchronization lost after
   40 packets, got 0x00 instead of 0x47`, the analyzer's first loss at 40·ps.
+- For the 204-byte file, `tsresync -c -m 1020 -s 1024` (five 204-byte packets)
+  detects `Packet size is 204 bytes` and reports the same four losses after 40,
+  61, 81 and 119 packets, finding synchronization again after 204, 1, 203 and
+  1000 bytes, and writes 198 188-byte packets; on its output `tsp -P
+  continuity -P count` gives the same continuity errors and per-PID counts as
+  below.
 - `tsresync -c -m 960` (`--continue` after each loss, at least 960 bytes of
   contiguous packets, which is five 192-byte packets) reports losses after 40,
   61, 81 and 119 output packets, finding synchronization again after 188 (192),

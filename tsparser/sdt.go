@@ -177,7 +177,7 @@ func findSdt(reader io.ReadSeeker, start int64, options options.Options, packetS
 			break
 		}
 		tsPacket.Initialize(pos, options)
-		tsPacket.Append(tsBuffer[packetSize-tsPayloadSize:])
+		tsPacket.Append(tsBytes(tsBuffer, packetSize))
 		if tsPacket.Parse() != nil || collector.observe(tsPacket, pos) {
 			break
 		}

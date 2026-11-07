@@ -94,15 +94,19 @@ from its first one.
 - Per packet: offset, PID, PUSI, TEI, scrambling control, adaptation field
   control, CC, PCR presence, and the headers of the PSI sections that start in
   the packet (from the packet's own bytes).
-- Metadata: packet size (188/192), the synchronized start offset,
+- Metadata: packet size (188/192/204), the synchronized start offset,
   `next_offset_bytes`, end of file, file size and total packet count.
 - Defined behavior for offsets that are not on a packet boundary, for the M2TS
-  4-byte header, and for a truncated last packet.
+  4-byte header, for the 16-byte trailer of a 204-byte packet (offsets inside
+  it are not packet boundaries), and for a truncated last packet.
 
 ### Packet detail
 
 - TS header, adaptation field (PCR, flags), payload kind, PAT/PMT section
-  fields and tables, PES header fields, and the 188/192 raw bytes.
+  fields and tables, PES header fields, and the 188/192/204 raw bytes. Only
+  the 188 TS packet bytes are decoded; the trailer of a 204-byte packet comes
+  as a final `trailer` layer of raw bytes (bytes 188–203), which the GUI shows
+  and colors apart from the TS packet without interpreting it.
 - The request includes the scan range, so the CLI can search back for the
   unit's first packet within it.
 - The **unit** the packet belongs to: the PES packet or PSI section, its first

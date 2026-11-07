@@ -5,8 +5,10 @@
 use eframe::egui;
 
 /// The range is kept in bytes. It is not snapped to packets: the packet size
-/// (188 or 192) is unknown until the CLI has read the file, and the CLI
-/// synchronizes on packet boundaries itself.
+/// (188, 192 or 204) is unknown until the CLI has read the file, and the CLI
+/// synchronizes on packet boundaries itself. The minimum stays 192 bytes so
+/// that short 188-byte and 192-byte inputs remain analyzable; a 204-byte range
+/// that short holds no complete packet, which the CLI reports.
 const MIN_LIMIT: u64 = 192;
 const BAR_HEIGHT: f32 = 22.0;
 /// How far from a handle (in pixels) a press still grabs it.

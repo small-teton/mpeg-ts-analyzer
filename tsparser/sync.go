@@ -55,7 +55,7 @@ type packetReader struct {
 }
 
 func newPacketReader(src io.Reader, pos int64, packetSize int, end int64) *packetReader {
-	return &packetReader{src: src, pos: pos, packetSize: packetSize, syncOffset: packetSize - tsPayloadSize, end: end}
+	return &packetReader{src: src, pos: pos, packetSize: packetSize, syncOffset: tsOffset(packetSize), end: end}
 }
 
 // buffered returns the number of bytes read ahead of pos.
@@ -211,7 +211,7 @@ func (r *packetReader) trailingAtEOF(packet []byte, rest int64) int {
 // hasAlignment reports whether data contains three consecutive sync bytes
 // one packet apart, the alignment PAT discovery also requires.
 func hasAlignment(data []byte, packetSize int) bool {
-	syncOffset := packetSize - tsPayloadSize
+	syncOffset := tsOffset(packetSize)
 	for i := syncOffset; i+2*packetSize < len(data); i++ {
 		if data[i] == syncByteValue && data[i+packetSize] == syncByteValue && data[i+2*packetSize] == syncByteValue {
 			return true

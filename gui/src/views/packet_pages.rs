@@ -252,6 +252,7 @@ impl PacketPages {
     #[cfg(test)]
     pub(crate) fn loaded_for_test(page: PacketsPage, offset: u64, detail: PacketDetail) -> Self {
         let mut pages = Self::new_for_test(PathBuf::from("fixture.ts"));
+        pages.packet_size = u64::from(page.input.packet_size_bytes.unwrap_or(188));
         pages.range_end = page.next_offset_bytes.unwrap_or_default();
         pages.accept_first_page(page);
         pages.select(offset);
@@ -899,6 +900,7 @@ fn byte_layer(name: &str) -> ByteLayer {
         "adaptation_field" => ByteLayer::AdaptationField,
         "pes_header" => ByteLayer::PesHeader,
         "payload" => ByteLayer::Payload,
+        "trailer" => ByteLayer::Trailer,
         _ => ByteLayer::Section,
     }
 }
@@ -913,6 +915,9 @@ fn layer_title(layer: &PacketLayer) -> String {
         "pat" => "PAT",
         "pmt" => "PMT",
         "psi_section" => "PSI section",
+        // The 16 bytes after the TS packet of a 204-byte packet; often
+        // Reed-Solomon parity, but nothing here checks that.
+        "trailer" => "Trailer (after the TS packet; not decoded)",
         other => other,
     };
     if layer.truncated {
@@ -1153,6 +1158,24 @@ mod tests {
         assert_eq!(colors[0], layer_color(ByteLayer::TsHeader));
         assert_eq!(colors[5], layer_color(ByteLayer::PesHeader));
         assert_eq!(colors[100], layer_color(ByteLayer::Payload));
+
+        // A 204-byte packet: the trailer after the TS packet has its own color.
+        let layers = [
+            layer("ts_header", vec![field(0, 4)]),
+            layer("payload", vec![field(4, 184)]),
+            layer("trailer", vec![field(188, 16)]),
+        ];
+        let colors = byte_colors(204, &layers);
+        assert_eq!(colors[187], layer_color(ByteLayer::Payload));
+        assert!((188..204).all(|i| colors[i] == layer_color(ByteLayer::Trailer)));
+        assert_ne!(
+            layer_color(ByteLayer::Trailer),
+            layer_color(ByteLayer::Payload)
+        );
+        assert_eq!(
+            layer_title(&layers[2]),
+            "Trailer (after the TS packet; not decoded)"
+        );
     }
 
     fn wait<T: Send + 'static>(request: Request<T>) -> Result<T, String> {
@@ -1184,6 +1207,7 @@ mod tests {
                 "sample_192byte_two_programs_mpeg2_160x120_25fps_mp2.ts",
                 192,
             ),
+            ("sample_204byte_all_findings.ts", 204),
         ] {
             let input = samples.join(name);
             let size = std::fs::metadata(&input).unwrap().len();
@@ -1257,6 +1281,24 @@ mod tests {
                     "{field:?}"
                 );
             }
+            // Only the 188 TS packet bytes are decoded; a 204-byte packet's
+            // trailer follows them as a layer of its own.
+            let ts = if packet_size == 192 { 4 } else { 0 };
+            for layer in packet.layers.iter().filter(|l| l.name != "trailer") {
+                for field in layer.fields.iter().chain(layer.rows.iter().flatten()) {
+                    assert!(
+                        field.byte_offset + field.byte_length <= ts + 188,
+                        "{field:?}"
+                    );
+                }
+            }
+            let trailer = packet.layers.iter().find(|l| l.name == "trailer");
+            if packet_size == 204 {
+                let field = &trailer.expect("a trailer layer").fields[0];
+                assert_eq!((field.byte_offset, field.byte_length), (188, 16));
+            } else {
+                assert!(trailer.is_none(), "{name}");
+            }
             let header = packet
                 .layers
                 .iter()
@@ -1264,7 +1306,6 @@ mod tests {
                 .unwrap();
             let pid = header.fields.iter().find(|f| f.name == "PID").unwrap();
             let raw = packet.raw();
-            let ts = (packet_size - 188) as usize;
             let decoded = format!(
                 "0x{:04x}",
                 (u16::from(raw[ts + 1] & 0x1f) << 8) | u16::from(raw[ts + 2])
@@ -1491,6 +1532,7 @@ mod tests {
                 "sample_192byte_two_programs_mpeg2_160x120_25fps_mp2.ts",
                 192,
             ),
+            ("sample_204byte_all_findings.ts", 204),
         ] {
             let pages = PacketPages {
                 packet_size,
@@ -1527,7 +1569,7 @@ mod tests {
                         acc << 1 | u64::from(raw[bit / 8] >> (7 - bit % 8) & 1)
                     })
             };
-            let shift = (packet_size as usize - 188) * 8;
+            let shift = if packet_size == 192 { 4 * 8 } else { 0 };
 
             // The PAT is the second packet of the sample.
             let pat = decode(packet_size);

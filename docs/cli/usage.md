@@ -27,7 +27,28 @@ In addition, it can dump various MPEG-2 TS internal structures for stream invest
 - PES header health per elementary stream (truncated headers, bad start codes, bad flags, inconsistent lengths, bad PTS/DTS marker bits), with an always-on summary; timestamps of a malformed header are not used
 - PID references: an always-on check that reports PMT, PCR and elementary-stream PIDs the PSI layout references but that are absent or silent for more than 5 s, and PIDs that carry packets without being referenced (see [PID references](#pid-references-always-on))
 
-Both 188-byte TS packets and 192-byte M2TS packets (BDAV format with TP_extra_header) are supported. The packet size is auto-detected from the stream.
+Three physical packet sizes are supported, and the size is auto-detected from the stream:
+
+| Packet size | Layout | Parsed |
+| --- | --- | --- |
+| 188 bytes | MPEG-2 TS packet | all 188 bytes |
+| 192 bytes | 4-byte `TP_extra_header` (M2TS/BDAV), then the TS packet | bytes 4–191 |
+| 204 bytes | TS packet, then a 16-byte trailer | bytes 0–187 |
+
+The trailer of a 204-byte packet is commonly Reed-Solomon `RS(204,188)` parity
+in broadcast systems (for example ISDB-T captures). The analyzer never parses it
+as TS data and never validates or corrects it; `--output packet` lists it as raw
+bytes (see [Packet detail](../reference/json-output.md#packet-detail---output-packet)).
+Every offset the analyzer reports is a physical file offset of the first byte
+of a physical packet, so consecutive packets are 188, 192 or 204 bytes apart.
+
+Detection takes 188 bytes when three sync bytes (`0x47`) are 188 bytes apart
+and 192 bytes when they are 192 bytes apart (the sync byte after the
+4-byte header), as before 204-byte support. 204 bytes needs a stricter match:
+five sync bytes 204 bytes apart, at a position where a 188-byte or 192-byte
+alignment does not also start, so payload bytes of a 188-byte or 192-byte
+stream are not taken for 204-byte packets. Bitrates count 188 bytes per packet
+for every packet size (see [Dump bitrate](dumps.md#dump-bitrate)).
 
 **Note:** The accuracy of the output is not guaranteed.
 
@@ -59,7 +80,7 @@ Flags:
       --list-programs           List every program (program_number, PMT PID, service name, elementary streams) and exit.
       --offset int              Start reading from this byte offset.
       --output string           JSON output: summary, analysis (every program with time series), packets (a page of packets) or packet (one packet decoded); needs --format json. (default "summary")
-      --packet-size int         With --output packets or packet: packet size 188 or 192 (0 = detect).
+      --packet-size int         With --output packets or packet: packet size 188, 192 or 204 (0 = detect).
       --program int             Analyze only this program_number (default: the sole program; a multi-program stream is listed instead).
       --progress string         Write progress events to stderr in this format: json.
       --range-limit int         With --output packet: length of that scan range in bytes (0 = to the end of the file).
@@ -87,7 +108,7 @@ Flags:
 | `--limit` | `0` (unlimited) | Stop after the specified number of bytes. Negative values are rejected. |
 | `--output` | `summary` | With `--format json`, select the summary report, the `analysis` of every program with time series, a page of `packets`, or one decoded `packet`. |
 | `--count` | `100` | With `--output packets`, the maximum number of packets in the page. |
-| `--packet-size` | `0` (detect) | With `--output packets` or `packet`, force 188 or 192. |
+| `--packet-size` | `0` (detect) | With `--output packets` or `packet`, force 188, 192 or 204. |
 | `--range-offset` | `0` | With `--output packet`, start of the scan range searched for the packet's PES or section. Negative values are rejected. |
 | `--range-limit` | `0` (to the end) | With `--output packet`, length of that scan range. Negative values are rejected. |
 | `--progress` | off | Write progress events to stderr (`json`). |
@@ -323,13 +344,17 @@ receive labels; any other included PID is labeled `unknown`.
 ## TS synchronization (always on)
 
 Every packet of the analysis must start with the sync byte `0x47` (for
-192-byte M2TS input, the fifth byte, after the 4-byte `TP_extra_header`). When
+192-byte M2TS input, the fifth byte, after the 4-byte `TP_extra_header`; for
+204-byte input, the first byte, with the 16-byte trailer at the end of the
+packet). When
 a packet boundary has another value, synchronization is lost there. The
 analyzer then looks for the next offset at which **five** consecutive packets,
 one packet size apart, start with `0x47`, and continues from there. The bytes
 in between are skipped: they are never read as packets, so they cannot add PIDs,
 PCRs or timestamps. A single `0x47` inside a payload, or fewer than five in a
-row, is not accepted. The packet size does not change during the search. Five
+row, is not accepted; for 204-byte input that includes a `0x47` in a trailer.
+The packet size does not change during the search, so 204-byte input is
+searched with a 204-byte stride. Five
 is the reacquisition count that monitors of the ETSI TR 101 290 `TS_sync_loss`
 indicator commonly use; it is a fixed policy of this analyzer, not a claim of
 TR 101 290 conformance. TR 101 290 also distinguishes a single corrupted sync
@@ -435,7 +460,8 @@ Transport Scrambling: 6 packets in 5 PIDs, first at 0x00000524, 5 excluded from 
 ```
 
 A packet with both conditions counts in both. Offsets are those of the first
-byte of the packet (for M2TS, of its `TP_extra_header`). The status is:
+byte of the packet (for M2TS, of its `TP_extra_header`; for 204-byte packets,
+the sync byte, which is also the first byte). The status is:
 
 | Status | Meaning |
 | --- | --- |

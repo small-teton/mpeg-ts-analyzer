@@ -88,15 +88,15 @@ type packetFile struct {
 }
 
 func checkPacketSizeHint(hint int) error {
-	if hint != 0 && hint != tsPayloadSize && hint != tsPayloadSize+tpExtraHeaderSize {
-		return fmt.Errorf("unsupported packet size %d (expected 188 or 192)", hint)
+	if hint != 0 && !isPacketSize(hint) {
+		return fmt.Errorf("unsupported packet size %d (expected 188, 192 or 204)", hint)
 	}
 	return nil
 }
 
 // openPacketFile detects the packet size and packet boundaries around offset,
 // which may be the end of a non-empty file. hint forces the packet size when
-// it is 188 or 192.
+// it is 188, 192 or 204.
 func openPacketFile(r io.ReaderAt, size, offset int64, hint int) (*packetFile, error) {
 	if err := checkPacketSizeHint(hint); err != nil {
 		return nil, err
@@ -130,7 +130,7 @@ func openPacketFile(r io.ReaderAt, size, offset int64, hint int) (*packetFile, e
 // line up on sync bytes. It requires up to three consecutive sync bytes, fewer
 // when data ends sooner.
 func findSync(data []byte, packetSize int) (int, bool) {
-	syncOffset := packetSize - tsPayloadSize
+	syncOffset := tsOffset(packetSize)
 	for i := 0; i+syncOffset < len(data); i++ {
 		ok := true
 		for k := 0; k < 3; k++ {
@@ -189,7 +189,7 @@ func (f *packetFile) readPacket(offset int64) ([]byte, error) {
 func (f *packetFile) parsePacket(raw []byte, offset int64) (*TsPacket, error) {
 	tp := NewTsPacket()
 	tp.Initialize(offset, options.Options{})
-	tp.Append(raw[f.packetSize-tsPayloadSize:])
+	tp.Append(tsBytes(raw, f.packetSize))
 	if err := tp.Parse(); err != nil {
 		return nil, err
 	}

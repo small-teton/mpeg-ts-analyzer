@@ -516,6 +516,58 @@ fn selecting_a_field_shows_its_bytes_and_bits() {
     harness.get_by_label("Click a field to see its bits.");
 }
 
+/// A 204-byte packet keeps its 16-byte trailer out of the decoded TS packet:
+/// the trailer is listed as a layer of its own, and its bytes can be selected
+/// like any field. The page and the video packet at offset 2448 (slot 12) are
+/// what the CLI writes for `sample_data/sample_204byte_all_findings.ts`.
+#[test]
+fn packet_detail_shows_the_trailer_of_a_204_byte_packet() {
+    let page: PacketsPage =
+        serde_json::from_str(include_str!("../../tests/fixtures/packets_page_204.json")).unwrap();
+    let detail: PacketDetail = serde_json::from_str(include_str!(
+        "../../tests/fixtures/packet_detail_video_204.json"
+    ))
+    .unwrap();
+    let mut app = analyzed_app();
+    app.screen = Screen::Packets;
+    app.packet_pages = Some(PacketPages::loaded_for_test(page, 2448, detail));
+    let mut harness = harness(app);
+    harness.get_by_label("Packet #13");
+    harness.get_by_label("Trailer (after the TS packet; not decoded)");
+    click_field(&mut harness, "trailer_bytes");
+    harness.get_by_label("bytes 188–203 selected");
+    harness.get_by_label("128 bits · bits 1504–1631");
+    // The decoded TS fields stay within the first 188 bytes.
+    click_field(&mut harness, "PID");
+    harness.get_by_label("bytes 1–2 selected");
+}
+
+/// The 204-byte packet fixtures are what the CLI writes for their sample.
+/// Runs only against a CLI named by MPEG_TS_ANALYZER_CLI (e.g. via `make gui-test`).
+#[test]
+fn packet_fixtures_204_match_the_cli() {
+    for (args, fixture) in [
+        (
+            ["--output", "packets", "--count", "40"],
+            include_str!("../../tests/fixtures/packets_page_204.json"),
+        ),
+        (
+            ["--output", "packet", "--offset", "2448"],
+            include_str!("../../tests/fixtures/packet_detail_video_204.json"),
+        ),
+    ] {
+        let mut all = vec!["--format", "json"];
+        all.extend(args);
+        let Some(json) = crate::cli::run_on_sample("sample_204byte_all_findings.ts", &all) else {
+            return;
+        };
+        let fixture: serde_json::Value = serde_json::from_str(fixture).unwrap();
+        let mut output: serde_json::Value = serde_json::from_slice(&json).unwrap();
+        output["input"]["path"] = fixture["input"]["path"].clone();
+        assert_eq!(output, fixture, "regenerate the fixture with the CLI");
+    }
+}
+
 /// The decoded PMT packet of program 2 (PID 0x1001) at offset 564, whose PID
 /// has set bits in both bytes it spans.
 pub(super) fn pmt_packet_detail() -> PacketDetail {

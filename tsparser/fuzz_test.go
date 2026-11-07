@@ -10,8 +10,10 @@ import (
 
 const (
 	maxFuzzSectionSize = 4096
-	maxFuzzPacketData  = 3*(tsPayloadSize+tpExtraHeaderSize) + 64
-	maxFuzzStreamData  = maxFuzzSectionSize + 3*(tsPayloadSize+tpExtraHeaderSize)
+	// maxFuzzPacketData holds six 204-byte packets: 204-byte detection needs
+	// five sync bytes.
+	maxFuzzPacketData = 6*trailerPacketSize + 64
+	maxFuzzStreamData = maxFuzzSectionSize + 3*trailerPacketSize
 )
 
 func FuzzTsPacketAndAdaptationField(f *testing.F) {
@@ -125,29 +127,26 @@ func FuzzPsiBuffering(f *testing.F) {
 		0xE0, 0x31, 0xF0, 0x00, 0x1B, 0xE0, 0x31, 0xF0,
 		0x00, 0xB5, 0x9E, 0xA0, 0xB0,
 	}
-	f.Add(fuzzPSIStream(tsPayloadSize, 0x0000, validPAT), false)
-	f.Add(fuzzPSIStream(tsPayloadSize+tpExtraHeaderSize, 0x0000, validPAT), true)
-	f.Add(fuzzPSIStream(tsPayloadSize, 0x003F, validPMT), false)
-	f.Add(fuzzPSIStream(tsPayloadSize+tpExtraHeaderSize, 0x003F, validPMT), true)
 	largePMT := fuzzLargePMT()
-	f.Add(fuzzPSIContinuationStream(tsPayloadSize, 0x003F, largePMT), false)
-	f.Add(fuzzPSIContinuationStream(tsPayloadSize+tpExtraHeaderSize, 0x003F, largePMT), true)
+	for framing, packetSize := range supportedPacketSizes {
+		f.Add(fuzzPSIStream(packetSize, 0x0000, validPAT), uint8(framing))
+		f.Add(fuzzPSIStream(packetSize, 0x003F, validPMT), uint8(framing))
+		f.Add(fuzzPSIContinuationStream(packetSize, 0x003F, largePMT), uint8(framing))
+	}
 	invalidPointer := make([]byte, tsPayloadSize)
 	invalidPointer[0] = 0x47
 	invalidPointer[1] = 0x40
 	invalidPointer[3] = 0x10
 	invalidPointer[4] = 0xFF
-	f.Add(invalidPointer, false)
+	f.Add(invalidPointer, uint8(0))
 
-	f.Fuzz(func(t *testing.T, data []byte, m2ts bool) {
+	// framing selects the packet size: 188, 192 or 204 bytes.
+	f.Fuzz(func(t *testing.T, data []byte, framing uint8) {
 		if len(data) > maxFuzzStreamData {
 			return
 		}
 
-		packetSize := tsPayloadSize
-		if m2ts {
-			packetSize += tpExtraHeaderSize
-		}
+		packetSize := supportedPacketSizes[int(framing)%len(supportedPacketSizes)]
 		for _, target := range []struct {
 			pid    uint16
 			packet MpegPacket
@@ -219,6 +218,7 @@ func FuzzPacketDiscovery(f *testing.F) {
 	packet192 := fuzzPATPackets(tsPayloadSize + tpExtraHeaderSize)
 	f.Add(packet188)
 	f.Add(packet192)
+	f.Add(withTestTrailers(bytes.Repeat(packet188, 2)))
 	f.Add(packet188[:2*tsPayloadSize])
 	f.Add([]byte{})
 
@@ -281,7 +281,7 @@ func mustParse[T any](f *testing.F, parse func([]byte) (T, error), data []byte) 
 
 func fuzzPATPackets(packetSize int) []byte {
 	data := make([]byte, 3*packetSize)
-	syncOffset := packetSize - tsPayloadSize
+	syncOffset := tsOffset(packetSize)
 	for offset := syncOffset; offset < len(data); offset += packetSize {
 		data[offset] = 0x47
 		data[offset+1] = 0x40
@@ -293,7 +293,7 @@ func fuzzPATPackets(packetSize int) []byte {
 
 func fuzzPSIStream(packetSize int, pid uint16, section []byte) []byte {
 	data := make([]byte, 2*packetSize)
-	syncOffset := packetSize - tsPayloadSize
+	syncOffset := tsOffset(packetSize)
 	for packet := 0; packet < 2; packet++ {
 		offset := packet*packetSize + syncOffset
 		for i := offset; i < offset+tsPayloadSize; i++ {
@@ -328,7 +328,7 @@ func fuzzLargePMT() []byte {
 
 func fuzzPSIContinuationStream(packetSize int, pid uint16, section []byte) []byte {
 	data := make([]byte, 2*packetSize)
-	syncOffset := packetSize - tsPayloadSize
+	syncOffset := tsOffset(packetSize)
 	first := syncOffset
 	second := packetSize + syncOffset
 	for i := first; i < first+tsPayloadSize; i++ {
@@ -353,8 +353,8 @@ func fuzzPSIContinuationStream(packetSize int, pid uint16, section []byte) []byt
 	return data
 }
 
-// FuzzSyncRecovery scans arbitrary bytes as 188-byte TS and 192-byte M2TS
-// packets: every loss of synchronization is either recovered or ends the
+// FuzzSyncRecovery scans arbitrary bytes as 188-byte TS, 192-byte M2TS and
+// 204-byte packets: every loss of synchronization is either recovered or ends the
 // scan, and the scan never reads a skipped byte as a packet.
 func FuzzSyncRecovery(f *testing.F) {
 	stream := syncTestStream(nil, 6)
@@ -362,13 +362,14 @@ func FuzzSyncRecovery(f *testing.F) {
 	f.Add(append(append([]byte{0x00}, stream...), 0x47))
 	f.Add(syncTestStream(bytes.Repeat([]byte{0x47}, 400), 6))
 	f.Add(fuzzPATPackets(tsPayloadSize + tpExtraHeaderSize))
+	f.Add(withTestTrailers(stream))
 	f.Add([]byte{})
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		if len(data) > 64*(tsPayloadSize+tpExtraHeaderSize) {
+		if len(data) > 64*trailerPacketSize {
 			return
 		}
-		for _, packetSize := range []int{tsPayloadSize, tsPayloadSize + tpExtraHeaderSize} {
+		for _, packetSize := range supportedPacketSizes {
 			var pos int64
 			scan, err := scanPrograms(bytes.NewReader(data), &pos, nil, newEmptyContinuitySummary(), newTransportTrustSummary(), nil, options.Options{}, packetSize, 0, true)
 			if err != nil {

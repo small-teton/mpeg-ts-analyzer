@@ -17,10 +17,12 @@ import (
 var allFindingsFixtures = []struct {
 	path       string
 	packetSize int64
-	m2ts       bool
+	// flag selects the packet size of the generator: none, -m2ts or -trailer.
+	flag string
 }{
-	{"../sample_data/sample_188byte_all_findings.ts", 188, false},
-	{"../sample_data/sample_192byte_all_findings.ts", 192, true},
+	{"../sample_data/sample_188byte_all_findings.ts", 188, ""},
+	{"../sample_data/sample_192byte_all_findings.ts", 192, "-m2ts"},
+	{"../sample_data/sample_204byte_all_findings.ts", 204, "-trailer"},
 }
 
 // cardStatuses returns the statuses of the ten Overview checks of the only
@@ -186,8 +188,8 @@ func generateAllFindings(t *testing.T, args ...string) string {
 func TestAllFindingsFixtureGenerator(t *testing.T) {
 	for _, fixture := range allFindingsFixtures {
 		var args []string
-		if fixture.m2ts {
-			args = append(args, "-m2ts")
+		if fixture.flag != "" {
+			args = append(args, fixture.flag)
 		}
 		generated, err := os.ReadFile(generateAllFindings(t, args...))
 		if err != nil {

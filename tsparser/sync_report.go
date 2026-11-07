@@ -12,12 +12,12 @@ import (
 const syncLostReason = "sync_lost"
 
 // syncNotAcquiredReason is the top-level reason of a failed report whose input
-// has no 188-byte or 192-byte packet alignment at all.
+// has no 188-byte, 192-byte or 204-byte packet alignment at all.
 const syncNotAcquiredReason = "sync_not_acquired"
 
 // errSyncNotAcquired is returned when no read of the input contains three
 // consecutive sync bytes one packet apart.
-var errSyncNotAcquired = errors.New("no TS synchronization found: no 188-byte or 192-byte packet alignment (three sync bytes one packet apart)")
+var errSyncNotAcquired = errors.New("no TS synchronization found: no 188-byte, 192-byte or 204-byte packet alignment (three sync bytes one packet apart, five for 204 bytes)")
 
 // ReportSync is the transport-stream synchronization result of the scan: how
 // often a packet boundary had no sync byte, how the parser realigned and how
