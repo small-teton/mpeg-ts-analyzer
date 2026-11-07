@@ -8,7 +8,7 @@
 [![Mentioned in Awesome Go](https://awesome.re/mentioned-badge.svg)](https://github.com/avelino/awesome-go)
 
 mpeg-ts-analyzer is an MPEG-2 Transport Stream analyzer (ISO/IEC 13818-1) for
-188-byte TS and 192-byte M2TS files. It checks transport-layer timing and gives
+188-byte TS, 192-byte M2TS and 204-byte TS (with a 16-byte trailer) files. It checks transport-layer timing and gives
 a direct pass/fail answer, and it decodes every packet down to its fields and
 bits.
 

@@ -94,8 +94,8 @@ separate Analyze step per screen.
 ### Scan range
 
 - Byte based; maps directly to the CLI's `--offset` / `--limit`. Values stay
-  inside the file but are not snapped to packets: the packet size (188 or 192)
-  is unknown until the CLI has read the file, and the CLI synchronizes on
+  inside the file but are not snapped to packets: the packet size (188, 192 or
+  204) is unknown until the CLI has read the file, and the CLI synchronizes on
   packets itself. After Start the GUI uses the packet size and sync offset the
   CLI reports. A file shorter than one 192-byte packet, or one whose size cannot
   be read, is shown with the reason and Start stays disabled.
@@ -355,9 +355,13 @@ the whole range is never held in memory.
     PTS/DTS, and First / Previous / Next to move within that unit only
     (switching pages as needed).
   - "This packet": TS header, adaptation field (PCR and interval verdict),
-    payload kind, PAT/PMT section fields and tables, PES header fields.
-  - Byte inspector: the hex dump colored by layer. Clicking a field (or a
-    PAT/PMT table row) highlights its bytes.
+    payload kind, PAT/PMT section fields and tables, PES header fields, and
+    for a 204-byte packet the "Trailer (after the TS packet; not decoded)"
+    with its 16 bytes. The trailer is not interpreted: it is often
+    Reed-Solomon parity, but nothing checks that.
+  - Byte inspector: the hex dump colored by layer, with the trailer of a
+    204-byte packet in its own color after the 188 TS bytes. Clicking a field
+    (or a PAT/PMT table row) highlights its bytes.
   - Bit inspector below it: one row per byte of the selected field, in packet
     order, with bits 7 to 0 (MSB to LSB) and the hex value; only the field's
     bits are marked, using the `bits` ranges of the packet detail (#109). A

@@ -110,8 +110,9 @@ The `bitbuffer`, `tsparser` and `internal/analysis` packages must each maintain
 
 ## Compatibility and documentation
 
-- Preserve support for both 188-byte TS packets and 192-byte M2TS packets,
-  including automatic packet-size detection.
+- Preserve support for 188-byte TS packets, 192-byte M2TS packets and
+  204-byte TS packets (16-byte trailer), including automatic packet-size
+  detection.
 - Preserve the multi-program default: list available programs and stop unless
   the user selects one with `--program`; `--list-programs` must remain a
   lightweight listing path.

@@ -9,6 +9,7 @@ report-only mux lead, never as an example of a compliant stream.
 ```sh
 go run ./tools/generate_mux_lead -output sample_data/sample_188byte_mux_lead.ts
 go run ./tools/generate_mux_lead -m2ts -output sample_data/sample_192byte_mux_lead.ts
+go run ./tools/generate_mux_lead -trailer -output sample_data/sample_204byte_mux_lead.ts
 tsp -I file sample_data/sample_188byte_mux_lead.ts -P pcrextract --pcr --pts --dts --csv -O drop
 tsp -I file --format m2ts sample_data/sample_192byte_mux_lead.ts -P pcrextract --pcr --pts --dts --csv -O drop
 ```
@@ -35,8 +36,9 @@ packet 150 the clock is 10 s later and the PCR of packet 150 carries
 | 0x0102 | PTS 650 ms, except packet 51 (−20 ms) and packet 67 (no PTS) |
 | 0x0103 | PTS 300 ms |
 
-Expected analysis (both packet sizes; `tsparser` tests pin it and check that
-the committed files equal the generator output), `multiplexing.mux_lead`:
+Expected analysis (every packet size, with offsets at packet × 188, 192 or
+204; `tsparser` tests pin it and check that the committed files equal the
+generator output), `multiplexing.mux_lead`:
 
 | PID | Samples | Unbracketed | Min (packet) | Max (packet) | Spread |
 | --- | --- | --- | --- | --- | --- |
@@ -59,7 +61,14 @@ PCR about 2^33 / 90 kHz off); `--fail-on-error` names only that check, and the
 mux lead adds no verdict. The timestamp anomaly report lists the wraps, the
 10 s jump and the −20 ms AAC PTS that goes backward.
 
-TSDuck 3.45 (`pcrextract --pcr --pts --dts`) for both files: its PCR and
+The 204-byte form (`-trailer`) follows each packet with a 16-byte trailer of
+deterministic filler (never a sync byte). The lead is interpolated by file
+position between PCRs, and every packet is 204 bytes, so the leads are the
+same as for the 188-byte file; TSDuck's `pcrextract --pcr --pts --dts` writes
+the same CSV for the 204-byte and the 188-byte files, and `tsanalyze --json`
+the same per-PID counts (75,200 b/s; `bitrate-204` 81,600 b/s).
+
+TSDuck 3.45 (`pcrextract --pcr --pts --dts`) for the 188- and 192-byte files: its PCR and
 PTS/DTS rows, interpolated by packet index between the PCRs before and after
 each PES packet by an independent script (a step outside 0 to 1000 ms starts a
 new segment; the lead is read modulo 2^33 × 300), give exactly the analyzer's

@@ -18,6 +18,23 @@ ffmpeg -f lavfi -i "color=c=red:s=320x240:d=2,format=yuv420p" \
        -f mpegts -mpegts_m2ts_mode 1 sample_data/sample_192byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
 ```
 
+## 204-byte packets
+
+Four samples have a 204-byte twin, `sample_data/sample_204byte_*.ts`: the
+[all-findings sample](#diagnostic-sample-with-every-overview-finding), the
+[sync-loss sample](#diagnostic-sample-with-ts-synchronization-loss), the
+[packet-gap sample](#packet-gap-sample) and the [mux lead sample](#mux-lead-sample). Their generators' `-trailer` flag
+follows every 188-byte TS packet with a 16-byte trailer, the layout of 204-byte
+broadcast streams whose trailer is commonly `RS(204,188)` parity. The trailer
+is deterministic filler (bytes 0x80–0xBF, never a sync byte), not real parity;
+the sync-loss twin adds false sync bytes to four trailers. The analyzer gives
+the same results as for the 188-byte files, with offsets 204 bytes per packet,
+and tests also run every other aligned 188-byte sample with trailers added and
+compare the analysis and summary documents. The public TSDuck corpus file
+[`test-170.ts`](https://github.com/tsduck/tsduck-test/blob/f42b2f2b14c27a065eece1fd329d171a9b79c86f/input/test-170.ts)
+(a 204-byte ISDB-Tb capture, not committed here) was used to cross-check the
+analyzer with TSDuck.
+
 ## Diagnostic sample with every Overview finding
 
 `sample_data/sample_188byte_all_findings.ts` and its 192-byte M2TS twin
@@ -40,6 +57,7 @@ analyzer.
 ```bash
 go run ./tools/generate_all_findings -output sample_data/sample_188byte_all_findings.ts
 go run ./tools/generate_all_findings -m2ts -output sample_data/sample_192byte_all_findings.ts
+go run ./tools/generate_all_findings -trailer -output sample_data/sample_204byte_all_findings.ts
 ./mpeg-ts-analyzer sample_data/sample_188byte_all_findings.ts --dump-pcr-jitter
 make gui-run GUI_ARGS='sample_data/sample_188byte_all_findings.ts'
 ```
@@ -66,6 +84,7 @@ the skipped bytes, and continues the analysis after each
 ```bash
 go run ./tools/generate_sync_loss -output sample_data/sample_188byte_sync_loss.ts
 go run ./tools/generate_sync_loss -m2ts -output sample_data/sample_192byte_sync_loss.ts
+go run ./tools/generate_sync_loss -trailer -output sample_data/sample_204byte_sync_loss.ts
 ./mpeg-ts-analyzer sample_data/sample_188byte_sync_loss.ts
 make gui-run GUI_ARGS='sample_data/sample_188byte_sync_loss.ts'
 ```
@@ -207,6 +226,7 @@ single-packet PID 0x0012 complete it. The capture starts before the first PAT.
 ```bash
 go run ./tools/generate_packet_gaps -output sample_data/sample_188byte_packet_gaps.ts
 go run ./tools/generate_packet_gaps -m2ts -output sample_data/sample_192byte_packet_gaps.ts
+go run ./tools/generate_packet_gaps -trailer -output sample_data/sample_204byte_packet_gaps.ts
 ./mpeg-ts-analyzer sample_data/sample_188byte_packet_gaps.ts
 ```
 
@@ -227,6 +247,7 @@ PCR-PTS/DTS gap check.
 ```bash
 go run ./tools/generate_mux_lead -output sample_data/sample_188byte_mux_lead.ts
 go run ./tools/generate_mux_lead -m2ts -output sample_data/sample_192byte_mux_lead.ts
+go run ./tools/generate_mux_lead -trailer -output sample_data/sample_204byte_mux_lead.ts
 ./mpeg-ts-analyzer sample_data/sample_188byte_mux_lead.ts
 ```
 

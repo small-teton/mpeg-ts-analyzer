@@ -36,6 +36,13 @@
 // applied to the 192-byte packets at the same byte positions within the
 // 188-byte packet, so the inserted and deleted bytes are in the same places
 // relative to the sync byte.
+//
+// With -trailer, each packet is followed by a 16-byte trailer, making 204-byte
+// packets: deterministic filler (not Reed-Solomon parity) in 0x80..0xBF, except
+// that byte 5 of the trailers of slots 82 to 85 is a false sync byte (0x47),
+// four 204 bytes apart, one fewer than a new alignment requires. The
+// resynchronization after the delete-byte damage scans across them. The
+// damage is at the same positions relative to the sync byte.
 package main
 
 import (
@@ -63,6 +70,8 @@ const (
 	garbageBytes = 1000
 	// tailBytes is the length of the truncated packet at the end.
 	tailBytes = 100
+	// trailerSize is the length of the trailer of a 204-byte packet.
+	trailerSize = 16
 )
 
 // Damage names accepted by -omit.
@@ -218,9 +227,23 @@ func m2ts(slot int, p []byte) []byte {
 	return append([]byte{byte(ats >> 24), byte(ats >> 16), byte(ats >> 8), byte(ats)}, p...)
 }
 
+// trailer returns the 16-byte trailer that follows the packet of slot in a
+// 204-byte stream: filler in 0x80..0xBF, never a sync byte, except for the
+// false sync bytes in slots 82 to 85.
+func trailer(slot int) []byte {
+	t := make([]byte, trailerSize)
+	for k := range t {
+		t[k] = 0x80 | byte((slot+k)&0x3F)
+	}
+	if slot >= 82 && slot <= 85 {
+		t[5] = 0x47
+	}
+	return t
+}
+
 // generate returns the damaged stream. omit leaves damage out; unrecoverable
 // adds the final loss.
-func generate(omit map[string]bool, asM2TS, unrecoverable bool) []byte {
+func generate(omit map[string]bool, asM2TS, withTrailer, unrecoverable bool) []byte {
 	with := func(damage string) bool { return !omit[damage] }
 	header := 0
 	if asM2TS {
@@ -230,6 +253,9 @@ func generate(omit map[string]bool, asM2TS, unrecoverable bool) []byte {
 	for slot, p := range packets() {
 		if asM2TS {
 			p = m2ts(slot, p)
+		}
+		if withTrailer {
+			p = append(p, trailer(slot)...)
 		}
 		switch {
 		case slot == 40 && with(damageSyncByte), slot == 197 && unrecoverable:
@@ -253,6 +279,9 @@ func generate(omit map[string]bool, asM2TS, unrecoverable bool) []byte {
 		tail := nullPacket()
 		if asM2TS {
 			tail = m2ts(slots, tail)
+		}
+		if withTrailer {
+			tail = append(tail, trailer(slots)...)
 		}
 		out = append(out, tail[:tailBytes]...)
 	}
@@ -286,16 +315,17 @@ func parseOmit(value string) (map[string]bool, error) {
 func main() {
 	output := flag.String("output", "", "output transport stream")
 	asM2TS := flag.Bool("m2ts", false, "write 192-byte M2TS packets")
+	withTrailer := flag.Bool("trailer", false, "write 204-byte packets: each TS packet followed by a 16-byte trailer")
 	omitFlag := flag.String("omit", "", "comma-separated damage to leave out ("+strings.Join(damages, ", ")+", or all)")
 	unrecoverable := flag.Bool("unrecoverable", false, "also damage slot 197 so that the last loss is not recovered")
 	flag.Parse()
-	if *output == "" {
-		fmt.Fprintln(os.Stderr, "usage: generate_sync_loss -output <out.ts> [-m2ts] [-omit damage,...] [-unrecoverable]")
+	if *output == "" || *asM2TS && *withTrailer {
+		fmt.Fprintln(os.Stderr, "usage: generate_sync_loss -output <out.ts> [-m2ts | -trailer] [-omit damage,...] [-unrecoverable]")
 		os.Exit(2)
 	}
 	omit, err := parseOmit(*omitFlag)
 	if err == nil {
-		err = os.WriteFile(*output, generate(omit, *asM2TS, *unrecoverable), 0o644)
+		err = os.WriteFile(*output, generate(omit, *asM2TS, *withTrailer, *unrecoverable), 0o644)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

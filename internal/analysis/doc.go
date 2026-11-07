@@ -37,7 +37,8 @@
 //     before returning, so the caller may reuse the slice afterwards.
 //   - Offsets are byte offsets in the input file of the first byte of the
 //     packet concerned. For 192-byte M2TS input this is the first byte of the
-//     4-byte TP_extra_header, as in the rest of the analyzer's output.
+//     4-byte TP_extra_header, as in the rest of the analyzer's output; for
+//     204-byte input it is the sync byte, before the 16-byte trailer.
 //   - A PID is the 13-bit packet identifier; stream types are the PMT
 //     stream_type values. Counts are numbers of events, not of bytes.
 //

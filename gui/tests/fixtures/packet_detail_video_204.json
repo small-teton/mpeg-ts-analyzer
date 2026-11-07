@@ -1,0 +1,342 @@
+{
+  "schema_version": "1.0",
+  "output": "packet",
+  "input": {
+    "path": "sample_data/sample_204byte_all_findings.ts",
+    "file_size_bytes": 24480,
+    "packet_size_bytes": 204,
+    "offset_bytes": 2448
+  },
+  "status": "complete",
+  "packet": {
+    "offset_bytes": 2448,
+    "bytes": "474100349910000708007e00ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff000001e000188080052100396651a0a1a2a3a4a5a6a7a8a9aaabacadaeaf8c8d8e8f909192939495969798999a9b",
+    "layers": [
+      {
+        "name": "ts_header",
+        "fields": [
+          {
+            "name": "sync_byte",
+            "value": "0x47",
+            "byte_offset": 0,
+            "byte_length": 1
+          },
+          {
+            "name": "transport_error_indicator",
+            "value": "0",
+            "byte_offset": 1,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 8,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "payload_unit_start_indicator",
+            "value": "1",
+            "byte_offset": 1,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 9,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "transport_priority",
+            "value": "0",
+            "byte_offset": 1,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 10,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "PID",
+            "value": "0x0100",
+            "byte_offset": 1,
+            "byte_length": 2,
+            "bits": [
+              {
+                "bit_offset": 11,
+                "bit_length": 13
+              }
+            ]
+          },
+          {
+            "name": "transport_scrambling_control",
+            "value": "0",
+            "byte_offset": 3,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 24,
+                "bit_length": 2
+              }
+            ]
+          },
+          {
+            "name": "adaptation_field_control",
+            "value": "3 (adaptation field and payload)",
+            "byte_offset": 3,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 26,
+                "bit_length": 2
+              }
+            ]
+          },
+          {
+            "name": "continuity_counter",
+            "value": "4",
+            "byte_offset": 3,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 28,
+                "bit_length": 4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "adaptation_field",
+        "fields": [
+          {
+            "name": "adaptation_field_length",
+            "value": "153",
+            "byte_offset": 4,
+            "byte_length": 1
+          },
+          {
+            "name": "discontinuity_indicator",
+            "value": "0",
+            "byte_offset": 5,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 40,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "random_access_indicator",
+            "value": "0",
+            "byte_offset": 5,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 41,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "elementary_stream_priority_indicator",
+            "value": "0",
+            "byte_offset": 5,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 42,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "PCR_flag",
+            "value": "1",
+            "byte_offset": 5,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 43,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "OPCR_flag",
+            "value": "0",
+            "byte_offset": 5,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 44,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "splicing_point_flag",
+            "value": "0",
+            "byte_offset": 5,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 45,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "transport_private_data_flag",
+            "value": "0",
+            "byte_offset": 5,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 46,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "adaptation_field_extension_flag",
+            "value": "0",
+            "byte_offset": 5,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 47,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "program_clock_reference",
+            "value": "276480000 (10.240000 s)",
+            "byte_offset": 6,
+            "byte_length": 6,
+            "bits": [
+              {
+                "bit_offset": 48,
+                "bit_length": 33
+              },
+              {
+                "bit_offset": 87,
+                "bit_length": 9
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "payload",
+        "fields": [
+          {
+            "name": "payload",
+            "value": "30 bytes",
+            "byte_offset": 158,
+            "byte_length": 30
+          }
+        ]
+      },
+      {
+        "name": "pes_header",
+        "fields": [
+          {
+            "name": "packet_start_code_prefix",
+            "value": "0x000001",
+            "byte_offset": 158,
+            "byte_length": 3
+          },
+          {
+            "name": "stream_id",
+            "value": "0xe0",
+            "byte_offset": 161,
+            "byte_length": 1
+          },
+          {
+            "name": "PES_packet_length",
+            "value": "24",
+            "byte_offset": 162,
+            "byte_length": 2
+          },
+          {
+            "name": "PES_scrambling_control",
+            "value": "0",
+            "byte_offset": 164,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 1314,
+                "bit_length": 2
+              }
+            ]
+          },
+          {
+            "name": "PTS_DTS_flags",
+            "value": "2",
+            "byte_offset": 165,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 1320,
+                "bit_length": 2
+              }
+            ]
+          },
+          {
+            "name": "PES_header_data_length",
+            "value": "5",
+            "byte_offset": 166,
+            "byte_length": 1
+          },
+          {
+            "name": "PTS",
+            "value": "930600 (10.340000 s)",
+            "byte_offset": 167,
+            "byte_length": 5,
+            "bits": [
+              {
+                "bit_offset": 1340,
+                "bit_length": 3
+              },
+              {
+                "bit_offset": 1344,
+                "bit_length": 15
+              },
+              {
+                "bit_offset": 1360,
+                "bit_length": 15
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "trailer",
+        "fields": [
+          {
+            "name": "trailer_bytes",
+            "value": "16 bytes",
+            "byte_offset": 188,
+            "byte_length": 16
+          }
+        ]
+      }
+    ]
+  },
+  "unit": {
+    "kind": "pes",
+    "first_offset_bytes": 2448,
+    "position": 1,
+    "packets_in_range": 1,
+    "stream_id": "0xe0",
+    "pts_ms": 10340,
+    "header_packet_offsets": [
+      2448
+    ]
+  },
+  "warnings": []
+}

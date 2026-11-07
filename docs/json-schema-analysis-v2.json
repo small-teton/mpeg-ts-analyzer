@@ -125,7 +125,8 @@
           "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger"
         },
         "packet_size_bytes": {
-          "enum": [188, 192]
+          "enum": [188, 192, 204],
+          "description": "Physical packet size: 188 (TS), 192 (M2TS: 4-byte TP_extra_header, then the TS packet) or 204 (the TS packet, then a 16-byte trailer)."
         },
         "offset_bytes": {
           "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger"

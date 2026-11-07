@@ -9,7 +9,7 @@ The parser has focused Go fuzz targets for its untrusted-input boundaries:
   report of `--output analysis`
 - descriptors
 - PES headers
-- 188-byte TS / 192-byte M2TS packet-size detection and PAT discovery
+- 188-byte TS / 192-byte M2TS / 204-byte packet-size detection and PAT discovery
 - TS synchronization loss and the bounded realignment of the analysis pass,
   for both packet sizes
 

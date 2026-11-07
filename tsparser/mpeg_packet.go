@@ -40,10 +40,7 @@ func BufferPsi(reader io.Reader, pos *int64, pid uint16, mpegPacket MpegPacket, 
 			return fmt.Errorf("file read error: %w", err)
 		}
 
-		tsData := tsBuffer
-		if packetSize > tsPayloadSize {
-			tsData = tsBuffer[packetSize-tsPayloadSize:]
-		}
+		tsData := tsBytes(tsBuffer, packetSize)
 		tsPacket.Initialize(*pos, options)
 		tsPacket.Append(tsData)
 		if err := tsPacket.Parse(); err != nil {
@@ -254,10 +251,7 @@ func scanPrograms(reader io.Reader, pos *int64, analyzers []*programAnalyzer, co
 		}
 		*pos = packets.pos - int64(size)
 
-		tsData := tsBuffer
-		if packetSize > tsPayloadSize {
-			tsData = tsBuffer[packetSize-tsPayloadSize:]
-		}
+		tsData := tsBytes(tsBuffer, packetSize)
 		tsPacket.Initialize(*pos, options)
 		tsPacket.Append(tsData)
 		if err := tsPacket.Parse(); err != nil {

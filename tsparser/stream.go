@@ -171,9 +171,10 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 			}
 		}
 
-		// Either size counts: detection falls back to 188 bytes when the
-		// first read has no alignment, and a later one may hold M2TS packets.
-		aligned = aligned || hasAlignment(buf[:size], tsPayloadSize) || hasAlignment(buf[:size], tsPayloadSize+tpExtraHeaderSize)
+		// Any size counts: detection falls back to 188 bytes when the first
+		// read has no alignment, and a later one may hold M2TS or 204-byte
+		// packets.
+		aligned = aligned || hasAlignment(buf[:size], tsPayloadSize) || hasAlignment(buf[:size], m2tsPacketSize) || hasTrailerAlignment(buf[:size])
 		patOffset, err := findPat(buf[:size], packetSize)
 		if err != nil {
 			continue
@@ -421,10 +422,18 @@ func maxInt64(a, b int64) int64 {
 	return b
 }
 
-// detectPacketSize detects whether the stream uses 188-byte or 192-byte packets.
+// detectPacketSize detects whether the stream uses 188-byte, 192-byte (M2TS)
+// or 204-byte packets. A 204-byte alignment needs strictSyncBytes sync bytes
+// 204 bytes apart that do not also start strictSyncBytes sync bytes 188 or
+// 192 bytes apart (see trailerAligned); otherwise three sync bytes one packet apart select 188
+// bytes, then 192 bytes, as before 204-byte support. Without any alignment
+// the result is 188.
 func detectPacketSize(data []byte) int {
-	for _, candidate := range []int{tsPayloadSize, tsPayloadSize + tpExtraHeaderSize} {
-		syncOffset := candidate - tsPayloadSize // 0 for 188, 4 for 192
+	if hasTrailerAlignment(data) {
+		return trailerPacketSize
+	}
+	for _, candidate := range []int{tsPayloadSize, m2tsPacketSize} {
+		syncOffset := tsOffset(candidate) // 0 for 188, 4 for 192
 		if len(data) < syncOffset+candidate*2+1 {
 			continue
 		}
@@ -441,7 +450,7 @@ func detectPacketSize(data []byte) int {
 
 // findPat finds the first PAT packet in the data with the given packet size.
 func findPat(data []byte, packetSize int) (int64, error) {
-	syncOffset := packetSize - tsPayloadSize // 0 for 188, 4 for 192
+	syncOffset := tsOffset(packetSize) // 4 for 192, else 0
 	for i := 0; i+syncOffset+packetSize*2 < len(data); i++ {
 		sync0 := i + syncOffset
 		sync1 := sync0 + packetSize

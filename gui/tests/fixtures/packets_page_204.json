@@ -1,0 +1,503 @@
+{
+  "schema_version": "1.0",
+  "output": "packets",
+  "input": {
+    "path": "sample_data/sample_204byte_all_findings.ts",
+    "file_size_bytes": 24480,
+    "packet_size_bytes": 204,
+    "offset_bytes": 0
+  },
+  "status": "complete",
+  "first_offset_bytes": 0,
+  "next_offset_bytes": 8160,
+  "end_of_file": false,
+  "total_packets": 120,
+  "packets": [
+    {
+      "offset_bytes": 0,
+      "valid": true,
+      "pid": "0x0000",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 1,
+      "continuity_counter": 0,
+      "sections": [
+        {
+          "table_id": "0x00",
+          "table_id_extension": 1,
+          "version_number": 0,
+          "current_next_indicator": 1,
+          "section_number": 0,
+          "last_section_number": 0
+        }
+      ]
+    },
+    {
+      "offset_bytes": 204,
+      "valid": true,
+      "pid": "0x0000",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 1,
+      "continuity_counter": 1,
+      "sections": [
+        {
+          "table_id": "0x00",
+          "table_id_extension": 1,
+          "version_number": 0,
+          "current_next_indicator": 1,
+          "section_number": 0,
+          "last_section_number": 0
+        }
+      ]
+    },
+    {
+      "offset_bytes": 408,
+      "valid": true,
+      "pid": "0x1000",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 1,
+      "continuity_counter": 0,
+      "sections": [
+        {
+          "table_id": "0x02",
+          "table_id_extension": 1,
+          "version_number": 0,
+          "current_next_indicator": 1,
+          "section_number": 0,
+          "last_section_number": 0
+        }
+      ]
+    },
+    {
+      "offset_bytes": 612,
+      "valid": true,
+      "pid": "0x1000",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 1,
+      "continuity_counter": 1,
+      "sections": [
+        {
+          "table_id": "0x02",
+          "table_id_extension": 1,
+          "version_number": 0,
+          "current_next_indicator": 1,
+          "section_number": 0,
+          "last_section_number": 0
+        }
+      ]
+    },
+    {
+      "offset_bytes": 816,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 0,
+      "pcr_ms": 10080
+    },
+    {
+      "offset_bytes": 1020,
+      "valid": true,
+      "pid": "0x0101",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 0
+    },
+    {
+      "offset_bytes": 1224,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 1,
+      "pcr_ms": 10120
+    },
+    {
+      "offset_bytes": 1428,
+      "valid": true,
+      "pid": "0x1fff",
+      "pusi": false,
+      "transport_error": true,
+      "scrambling_control": 0,
+      "adaptation_field_control": 1,
+      "continuity_counter": 0
+    },
+    {
+      "offset_bytes": 1632,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 2,
+      "pcr_ms": 10160
+    },
+    {
+      "offset_bytes": 1836,
+      "valid": true,
+      "pid": "0x0101",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 1
+    },
+    {
+      "offset_bytes": 2040,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 3,
+      "pcr_ms": 10200
+    },
+    {
+      "offset_bytes": 2244,
+      "valid": true,
+      "pid": "0x1fff",
+      "pusi": false,
+      "transport_error": false,
+      "scrambling_control": 2,
+      "adaptation_field_control": 1,
+      "continuity_counter": 0
+    },
+    {
+      "offset_bytes": 2448,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 4,
+      "pcr_ms": 10240
+    },
+    {
+      "offset_bytes": 2652,
+      "valid": true,
+      "pid": "0x0101",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 2
+    },
+    {
+      "offset_bytes": 2856,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 5,
+      "pcr_ms": 10280
+    },
+    {
+      "offset_bytes": 3060,
+      "valid": true,
+      "pid": "0x1fff",
+      "pusi": false,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 1,
+      "continuity_counter": 0
+    },
+    {
+      "offset_bytes": 3264,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 6,
+      "pcr_ms": 10320
+    },
+    {
+      "offset_bytes": 3468,
+      "valid": true,
+      "pid": "0x0101",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 3
+    },
+    {
+      "offset_bytes": 3672,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 7,
+      "pcr_ms": 10360
+    },
+    {
+      "offset_bytes": 3876,
+      "valid": true,
+      "pid": "0x0000",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 1,
+      "continuity_counter": 2,
+      "sections": [
+        {
+          "table_id": "0x00",
+          "table_id_extension": 1,
+          "version_number": 0,
+          "current_next_indicator": 1,
+          "section_number": 0,
+          "last_section_number": 0
+        }
+      ]
+    },
+    {
+      "offset_bytes": 4080,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 8,
+      "pcr_ms": 10400
+    },
+    {
+      "offset_bytes": 4284,
+      "valid": true,
+      "pid": "0x0101",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 4
+    },
+    {
+      "offset_bytes": 4488,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 9
+    },
+    {
+      "offset_bytes": 4692,
+      "valid": true,
+      "pid": "0x1000",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 1,
+      "continuity_counter": 2,
+      "sections": [
+        {
+          "table_id": "0x02",
+          "table_id_extension": 1,
+          "version_number": 0,
+          "current_next_indicator": 1,
+          "section_number": 0,
+          "last_section_number": 0
+        }
+      ]
+    },
+    {
+      "offset_bytes": 4896,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 10
+    },
+    {
+      "offset_bytes": 5100,
+      "valid": true,
+      "pid": "0x0101",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 6
+    },
+    {
+      "offset_bytes": 5304,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 11
+    },
+    {
+      "offset_bytes": 5508,
+      "valid": true,
+      "pid": "0x1fff",
+      "pusi": false,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 1,
+      "continuity_counter": 0
+    },
+    {
+      "offset_bytes": 5712,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 12,
+      "pcr_ms": 10560
+    },
+    {
+      "offset_bytes": 5916,
+      "valid": true,
+      "pid": "0x0101",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 7
+    },
+    {
+      "offset_bytes": 6120,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 13,
+      "pcr_ms": 10600
+    },
+    {
+      "offset_bytes": 6324,
+      "valid": true,
+      "pid": "0x1fff",
+      "pusi": false,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 1,
+      "continuity_counter": 0
+    },
+    {
+      "offset_bytes": 6528,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 14,
+      "pcr_ms": 10640
+    },
+    {
+      "offset_bytes": 6732,
+      "valid": true,
+      "pid": "0x0101",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 8
+    },
+    {
+      "offset_bytes": 6936,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 15,
+      "pcr_ms": 10680
+    },
+    {
+      "offset_bytes": 7140,
+      "valid": true,
+      "pid": "0x1fff",
+      "pusi": false,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 1,
+      "continuity_counter": 0
+    },
+    {
+      "offset_bytes": 7344,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 0,
+      "pcr_ms": 10720
+    },
+    {
+      "offset_bytes": 7548,
+      "valid": true,
+      "pid": "0x0101",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 9
+    },
+    {
+      "offset_bytes": 7752,
+      "valid": true,
+      "pid": "0x0100",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 3,
+      "continuity_counter": 1,
+      "pcr_ms": 10760
+    },
+    {
+      "offset_bytes": 7956,
+      "valid": true,
+      "pid": "0x0000",
+      "pusi": true,
+      "transport_error": false,
+      "scrambling_control": 0,
+      "adaptation_field_control": 1,
+      "continuity_counter": 3,
+      "sections": [
+        {
+          "table_id": "0x00",
+          "table_id_extension": 1,
+          "version_number": 0,
+          "current_next_indicator": 1,
+          "section_number": 0,
+          "last_section_number": 0
+        }
+      ]
+    }
+  ],
+  "warnings": []
+}

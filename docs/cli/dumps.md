@@ -308,7 +308,12 @@ Reading the output:
   busiest single 1-second window (`N/A` for streams shorter than one second).
 - **Total (program)** sums the analyzed program's PIDs. **NULL** (`0x1FFF`)
   stuffing is mux-wide, so it is listed separately and left out of the total.
-- Byte counts are TS-layer: 188 bytes per packet, including for 192-byte M2TS.
+- Byte counts are TS-layer: 188 bytes per packet, including for 192-byte M2TS
+  and 204-byte packets. The 4-byte M2TS header and the 16-byte trailer of a
+  204-byte packet are not TS data, so they are left out of every bitrate (the
+  PCR jitter delivery rate too). The physical input rate of the whole file is
+  the TS rate × packet size / 188: for 204-byte packets, × 204/188, which is
+  what TSDuck's `tsanalyze` reports as `bitrate-204` next to `bitrate`.
 - The segment count next to the duration reflects PCR discontinuities found in
   the stream (see [PCR steps](usage.md#pcr-steps)); a PCR wraparound keeps the
   clock running.

@@ -21,10 +21,12 @@ import (
 var syncLossFixtures = []struct {
 	path       string
 	packetSize int64
-	m2ts       bool
+	// flag selects the packet size of the generator: none, -m2ts or -trailer.
+	flag string
 }{
-	{"../sample_data/sample_188byte_sync_loss.ts", 188, false},
-	{"../sample_data/sample_192byte_sync_loss.ts", 192, true},
+	{"../sample_data/sample_188byte_sync_loss.ts", 188, ""},
+	{"../sample_data/sample_192byte_sync_loss.ts", 192, "-m2ts"},
+	{"../sample_data/sample_204byte_sync_loss.ts", 204, "-trailer"},
 }
 
 func generateSyncLoss(t *testing.T, args ...string) string {
@@ -40,8 +42,8 @@ func generateSyncLoss(t *testing.T, args ...string) string {
 func TestSyncLossFixtureGenerator(t *testing.T) {
 	for _, fixture := range syncLossFixtures {
 		var args []string
-		if fixture.m2ts {
-			args = append(args, "-m2ts")
+		if fixture.flag != "" {
+			args = append(args, fixture.flag)
 		}
 		generated, err := os.ReadFile(generateSyncLoss(t, args...))
 		if err != nil {
@@ -155,11 +157,10 @@ func TestSyncLossFixtureText(t *testing.T) {
 // Each kind of damage on its own, and the stream without damage.
 func TestSyncLossDamageKinds(t *testing.T) {
 	all := []string{"sync-byte", "insert-byte", "delete-byte", "garbage", "truncated-tail"}
-	for _, m2ts := range []bool{false, true} {
-		ps := int64(188)
-		args := []string{}
-		if m2ts {
-			ps, args = 192, []string{"-m2ts"}
+	for _, fixture := range syncLossFixtures {
+		ps, args := fixture.packetSize, []string{}
+		if fixture.flag != "" {
+			args = []string{fixture.flag}
 		}
 		for _, tc := range []struct {
 			damage        string
@@ -197,7 +198,7 @@ func TestSyncLossDamageKinds(t *testing.T) {
 					*sync.FirstLossOffsetBytes == tc.loss && sync.SkippedBytes == tc.skipped && *sync.FirstResyncOffsetBytes == tc.loss+tc.skipped
 			}
 			if !ok {
-				t.Errorf("m2ts=%v %q: %d packets, %s", m2ts, tc.damage, packets, toJSON(t, report))
+				t.Errorf("%d bytes %q: %d packets, %s", ps, tc.damage, packets, toJSON(t, report))
 			}
 		}
 	}
@@ -206,10 +207,10 @@ func TestSyncLossDamageKinds(t *testing.T) {
 // A loss followed by fewer than five aligned packets is not recovered: the
 // analysis stops at the loss and the document is incomplete.
 func TestSyncLossUnrecovered(t *testing.T) {
-	for _, m2ts := range []bool{false, true} {
-		ps, args := int64(188), []string{"-unrecoverable"}
-		if m2ts {
-			ps, args = 192, append(args, "-m2ts")
+	for _, fixture := range syncLossFixtures {
+		ps, args := fixture.packetSize, []string{"-unrecoverable"}
+		if fixture.flag != "" {
+			args = append(args, fixture.flag)
 		}
 		path := generateSyncLoss(t, args...)
 		report, err := decodeRangeAnalysis(t, path, options.Options{})
@@ -223,16 +224,16 @@ func TestSyncLossUnrecovered(t *testing.T) {
 		// The partial packet is part of the bytes the search could not align.
 		want.TrailingPartialPacketBytes, want.TrailingPartialPacketOffsetBytes = 0, nil
 		if report.Status != "incomplete" || report.Reason != "sync_lost" || *report.AnalysisEndOffsetBytes != 197*ps+1000 || len(report.Warnings) != 0 {
-			t.Errorf("m2ts=%v: envelope %s", m2ts, toJSON(t, report))
+			t.Errorf("%d bytes: envelope %s", ps, toJSON(t, report))
 		}
 		if got := toJSON(t, report.Sync); got != toJSON(t, want) {
-			t.Errorf("m2ts=%v: sync\n got %s\nwant %s", m2ts, got, toJSON(t, want))
+			t.Errorf("%d bytes: sync\n got %s\nwant %s", ps, got, toJSON(t, want))
 		}
 		s := summary(t, path, options.Options{})
 		if s.Status != "incomplete" || s.Reason != "sync_lost" || toJSON(t, s.Sync) != toJSON(t, want) {
-			t.Errorf("m2ts=%v: summary %s", m2ts, toJSON(t, s))
+			t.Errorf("%d bytes: summary %s", ps, toJSON(t, s))
 		}
-		if m2ts {
+		if ps != 188 {
 			continue
 		}
 		out := captureStdout(t, func() {
