@@ -15,15 +15,17 @@ pub enum Category {
     Timing,
     PesTimestamps,
     Integrity,
+    Structure,
 }
 
 impl Category {
     /// The categories in table order.
     #[cfg(test)]
-    pub const ALL: [Category; 3] = [
+    pub const ALL: [Category; 4] = [
         Category::Timing,
         Category::PesTimestamps,
         Category::Integrity,
+        Category::Structure,
     ];
 
     pub fn title(self) -> &'static str {
@@ -31,6 +33,7 @@ impl Category {
             Category::Timing => "Timing",
             Category::PesTimestamps => "PES / Timestamps",
             Category::Integrity => "Integrity",
+            Category::Structure => "Structure",
         }
     }
 }
@@ -46,6 +49,8 @@ pub enum Check {
     TransportErrors,
     ScrambledPackets,
     Synchronization,
+    ReferencedPids,
+    UnreferencedPids,
 }
 
 impl Check {
@@ -109,7 +114,7 @@ pub struct CheckHelp {
 
 /// The explanations in table order: grouped by [`Category`], in
 /// [`Category::ALL`] order.
-pub const HELP: [CheckHelp; 8] = [
+pub const HELP: [CheckHelp; 10] = [
     CheckHelp {
         check: Check::MaxPcrInterval,
         category: Category::Timing,
@@ -306,6 +311,72 @@ pub const HELP: [CheckHelp; 8] = [
             "Packets lists the packets of the range at the alignment of its start, so packets after a realignment can appear there as invalid.",
         )),
     },
+    CheckHelp {
+        check: Check::ReferencedPids,
+        category: Category::Structure,
+        title: "Referenced PIDs",
+        summary: "PIDs the PAT and PMTs reference that carry no packets, or stop for more than 5 s.",
+        measures: "Whether each PID the PSI layout references carries packets while it is referenced: the PMT PID of every program in the PAT and, for every analyzed program, its PCR PID and each elementary stream. Each program, role (PMT, PCR, elementary stream) and PID is one reference; a PCR PID that also carries a stream is checked in both roles. The silence of a reference is its longest time without a packet, counted from the start of the reference to the first packet and from the last packet to the end of the reference. Time is estimated from each packet's byte position between two PCRs of one program, as for bitrate.",
+        applies_to: "The whole multiplex: every program of the PAT, from the start of each program's analysis (after its PMT was found) to the end of the range. A reference ends where a PAT or PMT change removes it, so a removed stream is not silent afterwards. Absence and silence are judged for the PMT, the PCR PID and video and audio streams, which carry packets continuously; for other stream types (private data, subtitles, metadata) only presence is reported.",
+        value: "How many references are not ok, out of all references. Current result lists them by status with their program, PID and silence, and gives the silence limit and the time basis.",
+        statuses: &[
+            (
+                "ok",
+                "Every reference carried packets, and no judged reference went more than 5000 ms without one.",
+            ),
+            (
+                "absent",
+                "A judged reference (PMT, PCR or a video or audio stream) carried no packet at all while it was referenced for more than 5000 ms.",
+            ),
+            (
+                "silent",
+                "A judged reference carried packets, but went more than 5000 ms without one.",
+            ),
+            (
+                "insufficient_data",
+                "A reference carried no packet, but either it was referenced for 5000 ms or less, or its stream type may be idle for long (private data, subtitles), so it cannot be called absent; or there is no PCR to measure time.",
+            ),
+        ],
+        skipped: "This check is never skipped while a program is analyzed. Without any PCR in the reference program, durations are unknown and every judged reference is insufficient_data.",
+        limitations: "ETSI TR 101 290 (PID_error) leaves the limit to the user; 5000 ms is TSDuck's default for video and audio PIDs. Time before the first and after the last PCR of the range, and across a PCR discontinuity, is not counted, so silences there are lower bounds. Packets with transport_error_indicator set do not count, because their PID may be damaged; scrambled packets count. How often the PAT and PMT repeat is not judged here.",
+        navigation: Some((
+            Screen::Packets,
+            "Packets lists the packets around the offsets of a silence.",
+        )),
+    },
+    CheckHelp {
+        check: Check::UnreferencedPids,
+        category: Category::Structure,
+        title: "Unreferenced PIDs",
+        summary: "Packets on PIDs that neither the PAT nor any PMT references.",
+        measures: "Whether packets arrive on PIDs that no PAT or PMT references at that point, for longer than a 500 ms grace period. A PID that was never referenced is unreferenced when no PMT refers to it within 500 ms of its first packet; a stream that a PMT change removed is unreferenced when its packets continue for more than 500 ms. The grace period allows a new stream to start just before the PMT that announces it, and a removed stream to stop just after.",
+        applies_to: "The whole multiplex, while every program of the PAT is analyzed. The null PID 0x1FFF, the PSI/SI PIDs 0x0000 to 0x001F, 0x1FFB, the PAT's network PID and the CA PIDs of a PMT's CA descriptors are never unreferenced. Packets read while the first PAT and PMT are acquired do not count, so a capture that starts in the middle of a stream is not penalized.",
+        value: "The number of PIDs listed. Current result gives, for each, its packets and how long it stayed unreferenced, and the grace period.",
+        statuses: &[
+            (
+                "ok",
+                "No PID carried packets without a reference for more than 500 ms.",
+            ),
+            (
+                "unreferenced",
+                "At least one PID carried packets that no PAT or PMT referenced, for more than 500 ms.",
+            ),
+            (
+                "insufficient_data",
+                "No PID was unreferenced for more than 500 ms, but a PID appeared less than 500 ms before the end of the range, so it cannot be judged; or there is no PCR to measure time.",
+            ),
+            (
+                "skipped",
+                "The analysis did not follow the PMT of every program, so the referenced PIDs are not fully known: for example only one program of a multi-program stream was analyzed.",
+            ),
+        ],
+        skipped: "Skipped when the analysis never followed every program's PMT. The GUI analyzes every program, so this happens when a program's PMT was not found in the range.",
+        limitations: "ETSI TR 101 290 (Unreferenced_PID) allows 0.5 s for a reference. EMM PIDs announced only in the CAT, which is not parsed, appear as unreferenced. Whether unreferenced data is useful is not judged. Packets with transport_error_indicator set do not count, because their PID may be damaged.",
+        navigation: Some((
+            Screen::Packets,
+            "Packets lists the packets around the first unreferenced packet of each PID.",
+        )),
+    },
 ];
 
 #[cfg(test)]
@@ -337,8 +408,8 @@ mod tests {
         }
     }
 
-    /// The table order: Timing, PES / Timestamps, Integrity, with each
-    /// category's checks together.
+    /// The table order: Timing, PES / Timestamps, Integrity, Structure, with
+    /// each category's checks together.
     #[test]
     fn checks_are_grouped_in_category_order() {
         let categories: Vec<Category> = Check::ALL.iter().map(|c| c.category()).collect();
@@ -358,6 +429,8 @@ mod tests {
                 Check::TransportErrors,
                 Check::ScrambledPackets,
                 Check::Synchronization,
+                Check::ReferencedPids,
+                Check::UnreferencedPids,
             ]
         );
     }
@@ -376,6 +449,8 @@ mod tests {
         };
         assert!(text(Check::MaxPcrInterval).contains("100 ms"));
         assert!(text(Check::PcrPtsDtsGap).contains("1000 ms"));
+        assert!(text(Check::ReferencedPids).contains("5000 ms"));
+        assert!(text(Check::UnreferencedPids).contains("500 ms"));
         let sync = text(Check::Synchronization);
         for phrase in ["0x47", "five consecutive packets", "1 MiB", "skipped"] {
             assert!(sync.contains(phrase), "{phrase}");

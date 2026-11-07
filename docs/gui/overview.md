@@ -13,7 +13,8 @@ Packages for macOS, Linux and Windows are described in
 
 - **Overview** brings the detected program layout, stream properties, the
   transport-health checks (timing, PES timestamps, continuity, transport
-  errors and scrambling, TS synchronization), and
+  errors and scrambling, TS synchronization, referenced and unreferenced
+  PIDs), and
   per-stream bitrate into one screen, with a full-page explanation of every
   check.
 - **Timeline** plots the PCR interval and the PCR → PTS/DTS gap of every
@@ -28,7 +29,8 @@ Packages for macOS, Linux and Windows are described in
 Overview shows a **Transport health** table for the selected program. Each
 row is one check with the value and the verdict the CLI reported (`OK`, `NG`,
 `WARNING`, `ANOMALIES`, `ERRORS`, `AFFECTED`, `DATA EXCLUDED`, `RECOVERED`,
-`LOST`, `NOT ASSESSABLE` or `SKIPPED`), grouped
+`LOST`, `ABSENT`, `SILENT`, `UNREFERENCED`, `INSUFFICIENT DATA`,
+`NOT ASSESSABLE` or `SKIPPED`), grouped
 under categories that are always expanded:
 
 | Category | Check | Applies to | Verdicts |
@@ -41,6 +43,8 @@ under categories that are always expanded:
 | Integrity | Transport errors | whole multiplex, every packet of the range | `OK` without `transport_error_indicator`; `AFFECTED` when no marked packet carried data the analysis reads; `DATA EXCLUDED` when one did and its data was left out |
 | Integrity | Scrambled packets | whole multiplex, every packet of the range | `OK` without scrambled packets; `AFFECTED` or `DATA EXCLUDED` as for transport errors |
 | Integrity | TS synchronization | whole multiplex | `OK`; `RECOVERED` when packets lost their sync byte and the analysis realigned; `LOST` when it could not realign and stopped there |
+| Structure | Referenced PIDs | whole multiplex, every program of the PAT | `OK`; `ABSENT` when a PMT, PCR, video or audio PID had no packet while referenced for more than 5000 ms; `SILENT` when it went more than 5000 ms without one; `INSUFFICIENT DATA` when a PID without packets was referenced too briefly, may be idle (private data), or there is no PCR |
+| Structure | Unreferenced PIDs | whole multiplex | `OK`; `UNREFERENCED` when a PID carried packets without a PAT/PMT reference for more than 500 ms; `INSUFFICIENT DATA` when a PID appeared too close to the end of the range; `SKIPPED` when not every program's PMT was followed |
 
 The table always lists the checks in this order. The verdict is shown exactly
 as the CLI reported it; a status this GUI does not know is still shown, with a
@@ -58,7 +62,9 @@ and opened with Enter or Space. The page shows:
   assessed; for PCR jitter also the delivery assessment and its evidence; for
   TS synchronization the losses, realignments, skipped bytes, the first loss
   and the largest skipped span with their offsets, and a partial packet at
-  the end of the input;
+  the end of the input; for Referenced and Unreferenced PIDs the PIDs that
+  are not `OK`, grouped by status with their program, role and longest
+  silence or unreferenced time, and the limit;
 - the check's **findings**, each with **Open packet** when it has an offset
   (for transport errors and scrambled packets, the first affected packet of
   each PID)
@@ -97,13 +103,25 @@ early. Packets pages through the range at the alignment of its start, so
 packets after a realignment can appear there as invalid. The sample
 `sample_data/sample_188byte_sync_loss.ts` shows a `RECOVERED` result.
 
+Referenced and Unreferenced PIDs compare the PIDs the PAT and PMTs reference
+with the PIDs that carry packets, for every program of the multiplex. A video,
+audio, PCR or PMT PID that carries nothing, or stops for more than 5 s, is
+`ABSENT` or `SILENT`; streams that may be idle, such as subtitles or private
+data, only have their presence reported. A PID that carries packets without
+a reference for more than 0.5 s is `UNREFERENCED`; packets read before the
+first PAT and PMT, and a stream added or removed by a PMT change within that
+time, do not count. Times are estimated from byte positions between PCRs. The
+sample `sample_data/sample_188byte_pid_references.ts` shows each status.
+
 **Findings** lists everything that needs attention, and its count includes
 every check that is not `OK`: each failed check, each PTS/DTS anomaly kind per
 PID, each continuity error (with its offset), PCR jitter, each PID with
 transport errors or scrambled packets (with its first offset), a loss of TS
 synchronization (at the offset of the first loss, with the number of losses
-and skipped bytes, and the CLI's reason when the analysis stopped), and the
-analyzer's warnings. Each row shows the verdict, the check, the reason and whether it
+and skipped bytes, and the CLI's reason when the analysis stopped), each
+referenced PID that is not `OK` (at the packet before its longest silence)
+and each unreferenced PID (at its first unreferenced packet), with their own
+status, and the analyzer's warnings. Each row shows the verdict, the check, the reason and whether it
 concerns the selected program or the whole multiplex; selecting the check
 opens its page. A check counts once through its own events, not again for its
 total. A check the CLI skipped, and a PCR jitter estimate the CLI found

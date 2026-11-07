@@ -99,6 +99,10 @@ pub struct AnalysisReport {
     /// `transport_errors` is.
     #[serde(default)]
     pub scrambled_packets: Option<AffectedPackets>,
+    /// Referenced, missing and unreferenced PIDs; absent as
+    /// `transport_errors` is.
+    #[serde(default)]
+    pub pid_references: Option<PidReferences>,
     pub programs: Vec<Program>,
     pub warnings: Vec<Warning>,
     /// Absent before CLI schema 1.x gained it, and when no program was analyzed.
@@ -273,6 +277,52 @@ pub struct AffectedPid {
     pub packet_count: u64,
     pub excluded_packet_count: u64,
     pub first_offset_bytes: u64,
+}
+
+/// The CLI's `pid_references` result.
+#[derive(Debug, Deserialize)]
+pub struct PidReferences {
+    pub silence_limit_ms: f64,
+    pub unreferenced_grace_ms: f64,
+    pub referenced: ReferencedPids,
+    pub unreferenced: UnreferencedPids,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReferencedPids {
+    pub status: String,
+    pub pids: Vec<ReferencedPid>,
+}
+
+/// One program, role and PID of the PSI layouts.
+#[derive(Debug, Deserialize)]
+pub struct ReferencedPid {
+    pub program_number: u16,
+    pub role: String,
+    pub pid: String,
+    pub stream_type: Option<String>,
+    pub status: String,
+    pub reason: Option<String>,
+    pub max_silence_ms: Option<f64>,
+    pub max_silence_start_offset_bytes: Option<u64>,
+    pub referenced_from_offset_bytes: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UnreferencedPids {
+    pub status: String,
+    pub reason: Option<String>,
+    pub pids: Vec<UnreferencedPid>,
+}
+
+/// A PID that carried packets no layout referenced.
+#[derive(Debug, Deserialize)]
+pub struct UnreferencedPid {
+    pub pid: String,
+    pub status: String,
+    pub packet_count: u64,
+    pub first_offset_bytes: u64,
+    pub longest_run_ms: f64,
 }
 
 #[derive(Debug, Deserialize)]

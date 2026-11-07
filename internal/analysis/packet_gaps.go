@@ -1,7 +1,5 @@
 package analysis
 
-import "slices"
-
 // PacketGaps is the bounded per-PID packet collector of the analysis. For
 // every PID it keeps the number of packets, the first and last packet and the
 // largest gap between two consecutive packets, and it owns the PCR clock that
@@ -15,7 +13,8 @@ import "slices"
 // per-packet history.
 type PacketGaps struct {
 	clock pcrClock
-	pids  map[uint16]*pidPackets
+	pids  [nullPID + 1]*pidPackets // indexed by PID; nil until observed
+	count int                      // PIDs observed
 }
 
 type pidPackets struct {
@@ -32,17 +31,18 @@ type pidPackets struct {
 
 // NewPacketGaps returns a collector that has seen no packet and no PCR.
 func NewPacketGaps() *PacketGaps {
-	return &PacketGaps{pids: make(map[uint16]*pidPackets)}
+	return &PacketGaps{}
 }
 
 // ObservePacket counts one packet. Packets must be observed in file order,
 // with their index in the range.
 func (g *PacketGaps) ObservePacket(o Packet) {
 	now := g.clock.take(o.Index, o.Offset)
-	p, ok := g.pids[o.PID]
-	if !ok {
+	p := g.pids[o.PID&nullPID]
+	if p == nil {
 		p = &pidPackets{pid: o.PID, first: now}
-		g.pids[o.PID] = p
+		g.pids[o.PID&nullPID] = p
+		g.count++
 	} else if gap := o.Index - p.last.index - 1; !p.hasGap || gap > p.gapPackets {
 		p.worst, p.gapPackets, p.hasGap = interval{start: p.last, end: now}, gap, true
 	}
@@ -96,18 +96,19 @@ type PIDPackets struct {
 // PIDs returns every PID observed so far in ascending PID order. Times are
 // final after Finish.
 func (g *PacketGaps) PIDs() []PIDPackets {
-	result := make([]PIDPackets, 0, len(g.pids))
+	result := make([]PIDPackets, 0, g.count)
 	for _, p := range g.pids {
-		result = append(result, p.result())
+		if p != nil {
+			result = append(result, p.result())
+		}
 	}
-	slices.SortFunc(result, func(a, b PIDPackets) int { return int(a.PID) - int(b.PID) })
 	return result
 }
 
 // PID returns what was collected for one PID, and whether it was observed.
 func (g *PacketGaps) PID(pid uint16) (PIDPackets, bool) {
-	p, ok := g.pids[pid]
-	if !ok {
+	p := g.pids[pid&nullPID]
+	if p == nil {
 		return PIDPackets{PID: pid}, false
 	}
 	return p.result(), true

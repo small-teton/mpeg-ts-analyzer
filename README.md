@@ -28,6 +28,9 @@ bits.
   counted; the PSI/PES payload of both is kept out of the analysis, and so is
   the PCR of a packet marked with `transport_error_indicator`, while a
   scrambled packet's PCR (in its clear adaptation field) is still used.
+- **PID references**: PMT, PCR and elementary-stream PIDs that the PAT/PMT
+  reference but that are absent or silent for more than 5 s, and PIDs that
+  carry packets without being referenced (after a 0.5 s grace period).
 
 Results are text for people, or JSON with a published schema for CI and other
 programs. See [CLI usage][docs-cli-usage].

@@ -61,6 +61,72 @@
     "excluded_packet_count": 0,
     "pids": []
   },
+  "pid_references": {
+    "time_basis": "pcr_interpolated_file_position",
+    "silence_limit_ms": 5000,
+    "unreferenced_grace_ms": 500,
+    "referenced": {
+      "status": "ok",
+      "pids": [
+        {
+          "program_number": 1,
+          "role": "pmt",
+          "pid": "0x1000",
+          "status": "ok",
+          "silence_judged": true,
+          "packet_count": 6,
+          "first_offset_bytes": 376,
+          "last_offset_bytes": 34276,
+          "referenced_packet_count": 4,
+          "referenced_from_offset_bytes": 752,
+          "referenced_until_offset_bytes": 38600,
+          "max_silence_ms": 500,
+          "max_silence_exact": true,
+          "max_silence_start_offset_bytes": 5076,
+          "max_silence_end_offset_bytes": 14477
+        },
+        {
+          "program_number": 1,
+          "role": "pcr",
+          "pid": "0x0100",
+          "status": "ok",
+          "silence_judged": true,
+          "packet_count": 96,
+          "first_offset_bytes": 752,
+          "last_offset_bytes": 38224,
+          "referenced_packet_count": 96,
+          "referenced_from_offset_bytes": 752,
+          "referenced_until_offset_bytes": 38600,
+          "max_silence_ms": 40,
+          "max_silence_exact": true,
+          "max_silence_start_offset_bytes": 7144,
+          "max_silence_end_offset_bytes": 7896
+        },
+        {
+          "program_number": 1,
+          "role": "elementary_stream",
+          "pid": "0x0100",
+          "stream_type": "0x02",
+          "status": "ok",
+          "silence_judged": true,
+          "packet_count": 96,
+          "first_offset_bytes": 752,
+          "last_offset_bytes": 38224,
+          "referenced_packet_count": 96,
+          "referenced_from_offset_bytes": 752,
+          "referenced_until_offset_bytes": 38600,
+          "max_silence_ms": 40,
+          "max_silence_exact": true,
+          "max_silence_start_offset_bytes": 7144,
+          "max_silence_end_offset_bytes": 7896
+        }
+      ]
+    },
+    "unreferenced": {
+      "status": "ok",
+      "pids": []
+    }
+  },
   "programs": [
     {
       "program_number": 1,

@@ -38,20 +38,39 @@ type pidReferenceSummary struct {
 	layoutSet  bool
 	generation int // psiTracker.generation of the layout reported last
 	started    int // analyzers started when it was reported
+	// next is the index of the next scanned packet. Lead packets are aligned
+	// to the first packet of the range; the scan counts its packets, since a
+	// synchronization recovery may skip bytes that are not whole packets.
+	next int64
 }
 
 func newPidReferenceSummary(leadStart int64, packetSize int) *pidReferenceSummary {
 	return &pidReferenceSummary{check: analysis.NewPIDReferenceCheck(), leadStart: leadStart, packetSize: int64(packetSize)}
 }
 
+// index is the index of the packet at pos in the lead, or of the first
+// packet of the scan.
 func (s *pidReferenceSummary) index(pos int64) int64 { return (pos - s.leadStart) / s.packetSize }
+
+// scanIndex is the index of the packet of the scan at pos.
+func (s *pidReferenceSummary) scanIndex(pos int64) int64 {
+	if !s.layoutSet {
+		return s.index(pos)
+	}
+	return s.next
+}
 
 // observeLead counts a packet read before the scan, while the first PAT and
 // PMT were acquired. No layout applies yet.
 func (s *pidReferenceSummary) observeLead(tsPacket *TsPacket, pos int64) {
+	s.count(tsPacket, s.index(pos), pos)
+}
+
+func (s *pidReferenceSummary) count(tsPacket *TsPacket, index, pos int64) {
 	if !tsPacket.transportError() {
-		s.check.ObservePacket(analysis.Packet{PID: tsPacket.Pid(), Index: s.index(pos), Offset: pos})
+		s.check.ObservePacket(analysis.Packet{PID: tsPacket.Pid(), Index: index, Offset: pos})
 	}
+	s.next = index + 1
 }
 
 // observe counts a packet of the scan, after reporting the layout that
@@ -63,21 +82,22 @@ func (s *pidReferenceSummary) observe(tsPacket *TsPacket, pos int64, analyzers [
 			started++
 		}
 	}
+	index := s.scanIndex(pos)
 	if !s.layoutSet || psi.generation != s.generation || started != s.started {
-		s.check.ObserveLayout(referenceLayout(s.index(pos), pos, psi))
+		s.check.ObserveLayout(referenceLayout(index, pos, psi))
 		s.layoutSet, s.generation, s.started = true, psi.generation, started
 	}
-	s.observeLead(tsPacket, pos)
+	s.count(tsPacket, index, pos)
 }
 
 // observePcr applies a PCR of the reference program carried by the packet at
 // pos.
 func (s *pidReferenceSummary) observePcr(pos int64, pcr uint64, discontinuity bool) {
-	s.check.ObservePCR(analysis.PCR{Index: s.index(pos), Offset: pos, PCR: pcr, Discontinuity: discontinuity})
+	s.check.ObservePCR(analysis.PCR{Index: s.scanIndex(pos), Offset: pos, PCR: pcr, Discontinuity: discontinuity})
 }
 
 // finish ends the scan at pos, the offset after its last packet.
-func (s *pidReferenceSummary) finish(pos int64) { s.check.Finish(s.index(pos), pos) }
+func (s *pidReferenceSummary) finish(pos int64) { s.check.Finish(s.scanIndex(pos), pos) }
 
 // usePcrOf makes the first analyzer with a PCR_PID the reference program.
 func (s *pidReferenceSummary) usePcrOf(analyzers []*programAnalyzer) {

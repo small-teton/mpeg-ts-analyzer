@@ -7,7 +7,7 @@ use crate::icons;
 use crate::plot_data::Timeline;
 use crate::psi;
 use crate::range_bar;
-use crate::report::{AffectedPackets, AnalysisReport, Program, stream_type_name};
+use crate::report::{AffectedPackets, AnalysisReport, Program, ReferencedPid, stream_type_name};
 
 /// What Overview shows: the summary, or the full-page explanation of one
 /// check.
@@ -526,6 +526,79 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
                 reason: sync.reason.clone(),
             })
         }
+        Check::ReferencedPids => {
+            let references = report.pid_references.as_ref()?;
+            let referenced = &references.referenced;
+            let not_ok = referenced.pids.iter().filter(|p| p.status != "ok").count();
+            let mut facts = vec![("References", referenced.pids.len().to_string())];
+            for (status, label) in [
+                ("absent", "Absent"),
+                ("silent", "Silent"),
+                ("insufficient_data", "Insufficient data"),
+            ] {
+                let pids: Vec<String> = referenced
+                    .pids
+                    .iter()
+                    .filter(|p| p.status == status)
+                    .map(reference_text)
+                    .collect();
+                if !pids.is_empty() {
+                    facts.push((label, pids.join("; ")));
+                }
+            }
+            facts.push((
+                "Silence limit",
+                format!("{:.0} ms", references.silence_limit_ms),
+            ));
+            facts.push(("Time basis", "PCR-interpolated file position".to_owned()));
+            facts.push(("Applies to", "the whole multiplex".to_owned()));
+            Some(Row {
+                check,
+                status: referenced.status.clone(),
+                value: format!("{not_ok} of {}", referenced.pids.len()),
+                facts,
+                reason: None,
+            })
+        }
+        Check::UnreferencedPids => {
+            let references = report.pid_references.as_ref()?;
+            let unreferenced = &references.unreferenced;
+            let mut facts = Vec::new();
+            for (status, label) in [
+                ("unreferenced", "Unreferenced PIDs"),
+                ("insufficient_data", "Not judged"),
+            ] {
+                let pids: Vec<String> = unreferenced
+                    .pids
+                    .iter()
+                    .filter(|p| p.status == status)
+                    .map(|p| {
+                        format!(
+                            "{}: {}, {:.1} ms",
+                            p.pid,
+                            packets(p.packet_count),
+                            p.longest_run_ms
+                        )
+                    })
+                    .collect();
+                if !pids.is_empty() {
+                    facts.push((label, pids.join("; ")));
+                }
+            }
+            facts.push((
+                "Grace period",
+                format!("{:.0} ms", references.unreferenced_grace_ms),
+            ));
+            facts.push(("Applies to", "the whole multiplex".to_owned()));
+            facts.extend(unreferenced.reason.clone().map(|r| ("Reason", r)));
+            Some(Row {
+                check,
+                status: unreferenced.status.clone(),
+                value: unreferenced.pids.len().to_string(),
+                facts,
+                reason: unreferenced.reason.clone(),
+            })
+        }
         Check::PcrJitter => {
             let jitter = program.pcr_jitter.as_ref()?;
             let estimate = &jitter.estimate;
@@ -554,6 +627,32 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
             })
         }
     }
+}
+
+/// "1 packet" or "N packets".
+fn packets(count: u64) -> String {
+    match count {
+        1 => "1 packet".to_owned(),
+        count => format!("{count} packets"),
+    }
+}
+
+/// One referenced PID: its program, role, PID and what the CLI found.
+fn reference_text(p: &ReferencedPid) -> String {
+    let role = match (p.role.as_str(), &p.stream_type) {
+        ("pmt", _) => "PMT".to_owned(),
+        ("pcr", _) => "PCR".to_owned(),
+        (_, Some(stream_type)) => format!("stream_type {stream_type}"),
+        (role, None) => role.to_owned(),
+    };
+    let detail = match (p.status.as_str(), p.max_silence_ms, &p.reason) {
+        ("ok", _, _) => "ok".to_owned(),
+        ("absent", Some(ms), _) => format!("no packet for {ms:.1} ms"),
+        ("silent", Some(ms), _) => format!("{ms:.1} ms without a packet"),
+        (_, _, Some(reason)) => reason.replace('_', " "),
+        (status, _, None) => status.replace('_', " "),
+    };
+    format!("program {} {} ({role}): {detail}", p.program_number, p.pid)
 }
 
 /// The CLI's result of a transport-error or scrambling check.
@@ -1125,6 +1224,56 @@ pub(crate) fn findings(
                     sync.and_then(|s| s.first_loss_offset_bytes),
                 ));
             }
+            Check::ReferencedPids => {
+                // One finding per reference that is not ok, with its own
+                // status, at the packet before its silence.
+                let pids = report
+                    .pid_references
+                    .as_ref()
+                    .map_or(&[][..], |r| &r.referenced.pids[..]);
+                for pid in pids.iter().filter(|p| p.status != "ok") {
+                    findings.push(Finding {
+                        status: pid.status.clone(),
+                        ..finding(
+                            reference_text(pid),
+                            Scope::Multiplex,
+                            Some(
+                                pid.max_silence_start_offset_bytes
+                                    .unwrap_or(pid.referenced_from_offset_bytes),
+                            ),
+                        )
+                    });
+                }
+            }
+            Check::UnreferencedPids => {
+                // One finding per PID, at its first unreferenced packet.
+                let pids = report
+                    .pid_references
+                    .as_ref()
+                    .map_or(&[][..], |r| &r.unreferenced.pids[..]);
+                if pids.is_empty() {
+                    findings.push(finding(
+                        row.reason.clone().unwrap_or_default(),
+                        Scope::Multiplex,
+                        None,
+                    ));
+                }
+                for pid in pids {
+                    findings.push(Finding {
+                        status: pid.status.clone(),
+                        ..finding(
+                            format!(
+                                "PID {}: {} without a reference for {:.1} ms",
+                                pid.pid,
+                                packets(pid.packet_count),
+                                pid.longest_run_ms
+                            ),
+                            Scope::Multiplex,
+                            Some(pid.first_offset_bytes),
+                        )
+                    });
+                }
+            }
             Check::PcrJitter => {
                 let jitter = program.pcr_jitter.as_ref();
                 let limit = match row.status.as_str() {
@@ -1251,10 +1400,15 @@ mod tests {
                 "PID 0x1fff (null): 1 packet, 0 excluded from analysis"
             );
         }
-        // Each row is non-OK and has its finding, except TS synchronization:
-        // the packets of this sample are aligned (see the sync-loss sample).
+        // Each row is non-OK and has its finding, except TS synchronization
+        // and the PID references: the packets of this sample are aligned and
+        // its PIDs are all referenced and present (see the sync-loss and
+        // PID-reference samples).
         for row in rows(&report, &report.programs[0]) {
-            if row.check == Check::Synchronization {
+            if matches!(
+                row.check,
+                Check::Synchronization | Check::ReferencedPids | Check::UnreferencedPids
+            ) {
                 assert_eq!(row.status, "ok");
                 continue;
             }
@@ -1400,6 +1554,8 @@ mod tests {
                 Check::TransportErrors,
                 Check::ScrambledPackets,
                 Check::Synchronization,
+                Check::ReferencedPids,
+                Check::UnreferencedPids,
             ]
         );
         let labels: Vec<&str> = rows[0].facts.iter().map(|(label, _)| *label).collect();
@@ -1430,6 +1586,199 @@ mod tests {
             ]
         );
         assert_eq!(rows[6].value, "0");
+        // Healthy PID references: counts, limits and scope only.
+        let referenced: Vec<&str> = rows[7].facts.iter().map(|(label, _)| *label).collect();
+        assert_eq!(
+            referenced,
+            ["References", "Silence limit", "Time basis", "Applies to"]
+        );
+        assert_eq!(
+            (rows[7].status.as_str(), rows[7].value.as_str()),
+            ("ok", "0 of 8")
+        );
+        let unreferenced: Vec<&str> = rows[8].facts.iter().map(|(label, _)| *label).collect();
+        assert_eq!(unreferenced, ["Grace period", "Applies to"]);
+        assert_eq!(rows[8].value, "0");
+    }
+
+    /// The PID-reference sample: each reference that is not ok and each
+    /// unreferenced PID is a finding with its own status.
+    #[test]
+    fn pid_reference_rows_and_findings() {
+        let document = include_str!("../../tests/fixtures/analysis_pid_references_188.json");
+        let report = report(document);
+        let program = &report.programs[0];
+        let referenced = row(&report, program, Check::ReferencedPids).unwrap();
+        assert_eq!(
+            (referenced.status.as_str(), referenced.value.as_str()),
+            ("absent", "3 of 8")
+        );
+        assert_eq!(
+            referenced.facts,
+            [
+                ("References", "8".to_owned()),
+                (
+                    "Absent",
+                    "program 1 0x0103 (stream_type 0x04): no packet for 13175.0 ms".to_owned()
+                ),
+                (
+                    "Silent",
+                    "program 1 0x0101 (stream_type 0x03): 6100.0 ms without a packet".to_owned()
+                ),
+                (
+                    "Insufficient data",
+                    "program 1 0x0102 (stream_type 0x06): intermittent stream type".to_owned()
+                ),
+                ("Silence limit", "5000 ms".to_owned()),
+                ("Time basis", "PCR-interpolated file position".to_owned()),
+                ("Applies to", "the whole multiplex".to_owned()),
+            ]
+        );
+        let unreferenced = row(&report, program, Check::UnreferencedPids).unwrap();
+        assert_eq!(
+            (unreferenced.status.as_str(), unreferenced.value.as_str()),
+            ("unreferenced", "2")
+        );
+        assert_eq!(
+            unreferenced.facts,
+            [
+                (
+                    "Unreferenced PIDs",
+                    "0x0300: 5 packets, 12750.0 ms".to_owned()
+                ),
+                ("Not judged", "0x0500: 2 packets, 350.0 ms".to_owned()),
+                ("Grace period", "500 ms".to_owned()),
+                ("Applies to", "the whole multiplex".to_owned()),
+            ]
+        );
+        assert!(matches!(
+            status_verdict("absent"),
+            crate::theme::Verdict::Ng
+        ));
+        assert!(matches!(
+            status_verdict("silent"),
+            crate::theme::Verdict::Warn
+        ));
+        assert!(matches!(
+            status_verdict("unreferenced"),
+            crate::theme::Verdict::Warn
+        ));
+
+        let (all, unavailable) = findings(&report, program);
+        assert!(unavailable.is_empty());
+        let pid_findings: Vec<_> = all
+            .iter()
+            .filter(|f| {
+                matches!(
+                    f.check,
+                    Some(Check::ReferencedPids | Check::UnreferencedPids)
+                )
+            })
+            .map(|f| (f.status.as_str(), f.reason.as_str(), f.scope, f.offset))
+            .collect();
+        assert_eq!(
+            pid_findings,
+            [
+                (
+                    "silent",
+                    "program 1 0x0101 (stream_type 0x03): 6100.0 ms without a packet",
+                    Scope::Multiplex,
+                    Some(0xAE0C)
+                ),
+                (
+                    "insufficient_data",
+                    "program 1 0x0102 (stream_type 0x06): intermittent stream type",
+                    Scope::Multiplex,
+                    Some(0x1F94)
+                ),
+                (
+                    "absent",
+                    "program 1 0x0103 (stream_type 0x04): no packet for 13175.0 ms",
+                    Scope::Multiplex,
+                    Some(0x1F94)
+                ),
+                (
+                    "unreferenced",
+                    "PID 0x0300: 5 packets without a reference for 12750.0 ms",
+                    Scope::Multiplex,
+                    Some(0x5C88)
+                ),
+                (
+                    "insufficient_data",
+                    "PID 0x0500: 2 packets without a reference for 350.0 ms",
+                    Scope::Multiplex,
+                    Some(0x1C8C8)
+                ),
+            ]
+        );
+
+        // Without a time base: the reason, a finding without PIDs, and a
+        // reference without silence; a skipped check is unavailable analysis.
+        let mut edited: serde_json::Value = serde_json::from_str(document).unwrap();
+        let references = &mut edited["pid_references"];
+        references["unreferenced"] = serde_json::json!({"status": "insufficient_data", "reason": "no_pcr_time_base", "pids": []});
+        references["referenced"]["pids"][0] = serde_json::json!({
+            "program_number": 1, "role": "pmt", "pid": "0x1000", "status": "insufficient_data",
+            "silence_judged": true, "packet_count": 0, "referenced_packet_count": 0,
+            "referenced_from_offset_bytes": 8084, "referenced_until_offset_bytes": 120320
+        });
+        references["referenced"]["pids"][1]["status"] = "unknown_status".into();
+        let report = self::report(&edited.to_string());
+        let (all, _) = findings(&report, &report.programs[0]);
+        let unreferenced: Vec<_> = all
+            .iter()
+            .filter(|f| f.check == Some(Check::UnreferencedPids))
+            .map(|f| (f.status.as_str(), f.reason.as_str(), f.offset))
+            .collect();
+        assert_eq!(
+            unreferenced,
+            [("insufficient_data", "no_pcr_time_base", None)]
+        );
+        let pmt = all
+            .iter()
+            .find(|f| f.reason.starts_with("program 1 0x1000"))
+            .unwrap();
+        assert_eq!(
+            (pmt.reason.as_str(), pmt.offset),
+            ("program 1 0x1000 (PMT): insufficient data", Some(8084))
+        );
+        assert!(
+            all.iter()
+                .any(|f| f.reason == "program 1 0x0100 (PCR): unknown status")
+        );
+
+        edited["pid_references"]["unreferenced"] = serde_json::json!({
+            "status": "skipped", "reason": "program_layouts_unknown", "pids": []
+        });
+        let report = self::report(&edited.to_string());
+        let (_, unavailable) = findings(&report, &report.programs[0]);
+        assert_eq!(
+            unavailable,
+            [Unavailable {
+                check: Check::UnreferencedPids,
+                status: "skipped".to_owned(),
+                reason: "program_layouts_unknown".to_owned()
+            }]
+        );
+        let reference = |role: &str, stream_type: Option<&str>| ReferencedPid {
+            program_number: 2,
+            role: role.to_owned(),
+            pid: "0x0200".to_owned(),
+            stream_type: stream_type.map(str::to_owned),
+            status: "ok".to_owned(),
+            reason: None,
+            max_silence_ms: None,
+            max_silence_start_offset_bytes: None,
+            referenced_from_offset_bytes: 0,
+        };
+        assert_eq!(
+            reference_text(&reference("elementary_stream", None)),
+            "program 2 0x0200 (elementary_stream): ok"
+        );
+        assert_eq!(
+            reference_text(&reference("elementary_stream", Some("0x1b"))),
+            "program 2 0x0200 (stream_type 0x1b): ok"
+        );
     }
 
     /// The sync-loss sample: a recovered result is a finding at the first

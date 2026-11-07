@@ -62,7 +62,8 @@ import (
 //
 // A run that the end of the scan (or a layout that is no longer fully known)
 // cuts before the grace period could elapse cannot be judged and makes the
-// result insufficient_data.
+// result insufficient_data. The CAT is not parsed, so an EMM PID that only
+// the CAT announces is unreferenced.
 
 // PIDSilenceLimitMs is the longest silence of a judged referenced PID.
 const PIDSilenceLimitMs = 5000.0
@@ -135,8 +136,9 @@ type PIDReferenceCheck struct {
 	gaps       *PacketGaps
 	rows       map[rowKey]*referenceRow
 	active     map[uint16][]*referenceRow // rows referenced now, by PID
-	referenced map[uint16]bool            // PIDs referenced by the applicable layout
-	ever       map[uint16]bool            // PIDs referenced by any layout so far
+	activePID  [nullPID + 1]bool          // active has the PID
+	referenced [nullPID + 1]bool          // PIDs referenced by the applicable layout
+	ever       [nullPID + 1]bool          // PIDs referenced by any layout so far
 	unref      map[uint16]*unreferencedPID
 	complete   bool // every program's PMT is followed
 	assessed   bool // complete was set at some point
@@ -145,12 +147,10 @@ type PIDReferenceCheck struct {
 // NewPIDReferenceCheck returns a check that has seen no layout.
 func NewPIDReferenceCheck() *PIDReferenceCheck {
 	return &PIDReferenceCheck{
-		gaps:       NewPacketGaps(),
-		rows:       make(map[rowKey]*referenceRow),
-		active:     make(map[uint16][]*referenceRow),
-		referenced: make(map[uint16]bool),
-		ever:       make(map[uint16]bool),
-		unref:      make(map[uint16]*unreferencedPID),
+		gaps:   NewPacketGaps(),
+		rows:   make(map[rowKey]*referenceRow),
+		active: make(map[uint16][]*referenceRow),
+		unref:  make(map[uint16]*unreferencedPID),
 	}
 }
 
@@ -163,18 +163,21 @@ func (c *PIDReferenceCheck) ObservePCR(o PCR) { c.gaps.ObservePCR(o) }
 // ObservePacket counts one packet; see Packet.
 func (c *PIDReferenceCheck) ObservePacket(o Packet) {
 	c.gaps.ObservePacket(o)
+	pid := o.PID & nullPID
 	clock := &c.gaps.clock
 	now := clock.take(o.Index, o.Offset)
-	for _, row := range c.active[o.PID] {
-		row.packet(clock, now)
-	}
-	if c.complete && !c.referenced[o.PID] && unreferencedCandidate(o.PID) {
-		u, ok := c.unref[o.PID]
-		if !ok {
-			u = &unreferencedPID{pid: o.PID}
-			c.unref[o.PID] = u
+	if c.activePID[pid] {
+		for _, row := range c.active[pid] {
+			row.packet(clock, now)
 		}
-		u.packet(clock, now, c.ever[o.PID])
+	}
+	if c.complete && !c.referenced[pid] && unreferencedCandidate(pid) {
+		u, ok := c.unref[pid]
+		if !ok {
+			u = &unreferencedPID{pid: pid}
+			c.unref[pid] = u
+		}
+		u.packet(clock, now, c.ever[pid])
 	}
 }
 
@@ -189,9 +192,10 @@ func (c *PIDReferenceCheck) ObserveLayout(l ReferenceLayout) {
 	clock := &c.gaps.clock
 	now := clock.take(l.Index, l.Offset)
 	want := make(map[rowKey]uint8)
-	referenced := make(map[uint16]bool)
+	var referenced [nullPID + 1]bool
 	complete := true
 	add := func(key rowKey, streamType uint8) {
+		key.pid &= nullPID // PIDs are 13 bits
 		if key.pid != nullPID {
 			want[key] = streamType
 			referenced[key.pid] = true
@@ -210,11 +214,11 @@ func (c *PIDReferenceCheck) ObserveLayout(l ReferenceLayout) {
 			add(rowKey{p.Number, RoleElementaryStream, s.PID}, s.StreamType)
 		}
 		for _, pid := range p.CAPIDs {
-			referenced[pid] = true
+			referenced[pid&nullPID] = true
 		}
 	}
 	if l.NetworkPID != 0 {
-		referenced[l.NetworkPID] = true
+		referenced[l.NetworkPID&nullPID] = true
 	}
 	for pid, rows := range c.active {
 		kept := rows[:0]
@@ -227,6 +231,7 @@ func (c *PIDReferenceCheck) ObserveLayout(l ReferenceLayout) {
 		}
 		if len(kept) == 0 {
 			delete(c.active, pid)
+			c.activePID[pid] = false
 		} else {
 			c.active[pid] = kept
 		}
@@ -241,6 +246,7 @@ func (c *PIDReferenceCheck) ObserveLayout(l ReferenceLayout) {
 		if !row.active {
 			row.watch(clock, now)
 			c.active[key.pid] = append(c.active[key.pid], row)
+			c.activePID[key.pid] = true
 		}
 	}
 	for pid, u := range c.unref {
@@ -248,8 +254,8 @@ func (c *PIDReferenceCheck) ObserveLayout(l ReferenceLayout) {
 			u.close(clock, now, referenced[pid])
 		}
 	}
-	for pid := range referenced {
-		c.ever[pid] = true
+	for pid, yes := range referenced {
+		c.ever[pid] = c.ever[pid] || yes
 	}
 	c.referenced, c.complete = referenced, complete
 	c.assessed = c.assessed || complete
@@ -267,6 +273,7 @@ func (c *PIDReferenceCheck) Finish(index, offset int64) {
 		}
 	}
 	c.active = make(map[uint16][]*referenceRow)
+	c.activePID = [nullPID + 1]bool{}
 	for _, u := range c.unref {
 		if u.open {
 			u.close(clock, now, false)
