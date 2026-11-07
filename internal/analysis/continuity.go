@@ -19,6 +19,9 @@ const (
 	// StatusDataExcluded means the check found affected packets and the
 	// parser left data of at least one of them out of the analysis.
 	StatusDataExcluded
+	// StatusSkipped means the check could not be evaluated: the input held
+	// too little data for it.
+	StatusSkipped
 )
 
 // ContinuityCheck aggregates continuity_counter errors per PID for the

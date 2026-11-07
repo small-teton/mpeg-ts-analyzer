@@ -68,6 +68,9 @@ observations it needs through focused methods.
 | The `continuity_counter` JSON object, the text summary, exit codes | `tsparser` report code and `cmd` |
 | Whether a packet with `transport_error_indicator` set or a scrambled payload may feed PSI, PES or PCR analysis, and whether its data was excluded | `tsparser` (`TsPacket.payloadUntrusted`, `transportTrustSummary.observe`), reported as `analysis.TransportError` / `analysis.Scrambled` |
 | How affected packets are counted per PID, labeled, and the `ok` / `affected` / `data_excluded` status | `analysis` (`TransportTrustCheck`) |
+| Whether a packet of the `PCR_PID` carries a trusted PCR, and whether `discontinuity_indicator` declares a new time base for it (on the PCR packet, or on an earlier packet of the PID without a PCR) | `tsparser` (`programAnalyzer.observe`), reported as `analysis.PCR` |
+| How each PCR relates to the previous one (`continuous`, `wraparound`, `declared`, `pcr_pid_change`, `backward`, `forward_jump`), the maximum PCR interval and the PCR discontinuity status | `analysis` (`PCRClock`, `PCRCheck`) |
+| Where the PCR jitter estimate, the bitrate time base, the time series and the PCR-PTS/DTS bracket split into timing segments | `tsparser`, following the `analysis.PCRStep` of each PCR |
 | Whether a PES header is valid and which problem it has, its PTS/DTS, and the PES packet's time on the PCR timeline (interpolated between the PCRs around it) | `tsparser` (`Pes.Parse`, `pesFeed`, `arrivalAt`), reported as `analysis.PES` and `analysis.PESBreak` |
 | How header problems are counted per PID, which streams the 700 ms PTS repetition limit applies to, how intervals, breaks and lower bounds are measured, and the statuses and reasons | `analysis` (`PESCheck`) |
 
@@ -82,6 +85,15 @@ whether their data was excluded, and `TransportTrustCheck` aggregates the
 resulting `TransportError` and `Scrambled` observations into the
 `transport_errors` and `scrambled_packets` results.
 
+The PCR interval and PCR discontinuity checks
+([#163](https://github.com/small-teton/mpeg-ts-analyzer/issues/163)) moved to
+`analysis` because every PCR-based result had its own copy of the rule that
+decides when two PCRs are comparable, and the copies disagreed (one measured
+across a wraparound, the others split there). `PCRClock` is now that single
+rule: the scan reports each trusted PCR as an `analysis.PCR`, `PCRCheck`
+returns its `PCRStep`, and the jitter estimate, bitrate and time series in
+`tsparser` follow the step instead of classifying PCRs themselves.
+
 The PES header and PTS repetition check
 ([#164](https://github.com/small-teton/mpeg-ts-analyzer/issues/164)) follows
 the same split. Its `analysis.PES` observation carries one PES packet's header
@@ -89,10 +101,9 @@ outcome, PTS/DTS and PCR-timeline time without any payload, so later
 timestamp checks (such as a multiplex lead between PCR and PTS/DTS) can
 consume the same observation.
 
-Other aggregate evaluators (PCR interval, PCR jitter, PCR-PTS/DTS gap,
-timestamp anomalies, bitrate) are still in `tsparser`. They move to `analysis`
-when a change to them would otherwise couple a check further to the parser,
-not all at once.
+Other aggregate evaluators (PCR jitter, PCR-PTS/DTS gap, timestamp anomalies,
+bitrate) are still in `tsparser`. They move to `analysis` when a change to them
+would otherwise couple a check further to the parser, not all at once.
 
 ## Adding a check
 

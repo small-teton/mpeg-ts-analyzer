@@ -30,7 +30,11 @@ one continuity-counter gap, a PCR that is 100 µs late, a null packet with
 with a bad PTS marker bit and 800 ms of audio PES packets without a PTS. The stream is
 delivered at a constant 75.2 kbit/s for 2.4 s, long enough for two 1-second
 windows, so the PCR jitter analysis finds constant delivery and judges the
-late PCR (`NG`). Use the normal sample above for a first look at the analyzer.
+late PCR (`NG`). Its packets are aligned and its PCR clock is continuous, so
+TS synchronization and PCR discontinuities stay `OK`; the
+[sync-loss sample](#diagnostic-sample-with-ts-synchronization-loss) and the
+[PCR discontinuity sample](#pcr-discontinuity-sample) cover them. Use the normal sample above for a first look at the
+analyzer.
 
 ```bash
 go run ./tools/generate_all_findings -output sample_data/sample_188byte_all_findings.ts
@@ -72,6 +76,30 @@ Tests check that the committed files equal the generator output and pin the
 results for both packet sizes; the GUI's tests use the CLI's analysis of the
 188-byte file (`gui/tests/fixtures/analysis_sync_loss_188.json`), which `make
 gui-test` compares with the output of the CLI built from the tree.
+
+## PCR discontinuity sample
+
+`sample_data/sample_188byte_pcr_discontinuities.ts` and its 192-byte M2TS twin
+`sample_data/sample_192byte_pcr_discontinuities.ts` (48 KiB each) are
+**intentionally invalid**. Their PCR, one every 40 ms of a constant 75.2 kbit/s
+multiplex, passes through every kind of PCR step the analyzer distinguishes: a
+33-bit wraparound, two declared discontinuities (one declared on an earlier
+PCR-less packet), an undeclared backward step, an undeclared forward jump of
+4 s and a `PCR_PID` change. Max PCR interval stays `OK` (40 ms) while
+PCR discontinuities is `NG`; see [PCR steps](../cli/usage.md#pcr-steps).
+
+```bash
+go run ./tools/generate_pcr_discontinuities -output sample_data/sample_188byte_pcr_discontinuities.ts
+go run ./tools/generate_pcr_discontinuities -m2ts -output sample_data/sample_192byte_pcr_discontinuities.ts
+./mpeg-ts-analyzer sample_data/sample_188byte_pcr_discontinuities.ts --dump-pcr-jitter --dump-bitrate
+```
+
+The generator, the expected results and the TSDuck cross-check are described
+in
+[`tools/generate_pcr_discontinuities`](https://github.com/small-teton/mpeg-ts-analyzer/tree/master/tools/generate_pcr_discontinuities).
+The GUI's Overview tests use the CLI's analysis of the 188-byte file
+(`gui/tests/fixtures/analysis_pcr_discontinuities_188.json`), which
+`make gui-test` compares with the output of the CLI built from the tree.
 
 ## Transport-error and scrambling sample
 

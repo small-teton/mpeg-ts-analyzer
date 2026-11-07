@@ -5,8 +5,6 @@ import (
 	"testing"
 )
 
-const ms = ticksPerMs
-
 // at is a time on segment 0 of the PCR timeline, in milliseconds.
 func at(milliseconds uint64) ClockTime {
 	return ClockTime{Valid: true, Ticks: 10_000*ms + milliseconds*ms}
@@ -236,7 +234,7 @@ func TestPTSRepetitionTimeline(t *testing.T) {
 	c.ObservePES(pts(video.PID, 0, at(0)))
 	c.ObservePES(pts(video.PID, 188, ClockTime{Valid: true, Ticks: 0, Segment: 1}))
 	// A PCR wraparound inside a segment is measured.
-	c.ObservePES(pts(video.PID, 376, ClockTime{Valid: true, Ticks: pcrWrap - 20*ms, Segment: 2}))
+	c.ObservePES(pts(video.PID, 376, ClockTime{Valid: true, Ticks: PCRWrapTicks - 20*ms, Segment: 2}))
 	c.ObservePES(pts(video.PID, 564, ClockTime{Valid: true, Ticks: 20 * ms, Segment: 2}))
 	// A PTS that cannot be placed ends the interval; an unplaced PES without
 	// PTS is ignored.

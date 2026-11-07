@@ -33,9 +33,9 @@ import "slices"
 //   - Time base: 27 MHz PCR ticks. Two times are compared only within one PCR
 //     segment; their difference is taken modulo 2^33*300, so a PCR wraparound
 //     inside a segment is measured.
-//   - Discontinuity: a PCR discontinuity (declared, an undeclared backward
-//     reset, or a PCR_PID change) starts a new segment and no interval spans
-//     it.
+//   - Discontinuity: every PCR step that PCRCheck does not measure as an
+//     interval (declared, pcr_pid_change, backward, forward_jump) starts a new
+//     segment and no interval spans it.
 //   - Acquisition: nothing is known before the first PES of a PID in the
 //     range. PES packets without a PTS before the first PTS only provide a
 //     lower bound (see below).
@@ -58,13 +58,7 @@ import "slices"
 // PTSRepetitionLimitTicks is the largest allowed interval between PES packets
 // carrying a PTS, 700 ms in 27 MHz ticks (ISO/IEC 13818-1 clause 2.7.4, ETSI
 // TR 101 290 indicator 2.5).
-const PTSRepetitionLimitTicks = 700 * ticksPerMs
-
-const (
-	ticksPerMs = 27000
-	// pcrWrap is the modulus of the 27 MHz PCR value: a 33-bit base times 300.
-	pcrWrap = uint64(1) << 33 * 300
-)
+const PTSRepetitionLimitTicks = 700 * PCRTicksPerMs
 
 // PESHeaderProblem classifies a PES header that cannot be trusted. The parser
 // decides it from the retained header bytes; see the tsparser PES parser for
@@ -321,7 +315,7 @@ func (c *PESCheck) ObservePES(o PES) {
 		st.open, st.openHasPTS, st.openSegment = true, o.HasPTS, o.Arrival.Segment
 		st.openStart, st.openFrom = at, o.Offset
 	case o.HasPTS:
-		st.record(interval{measured: st.openHasPTS, ticks: (at + pcrWrap - st.openStart) % pcrWrap, from: st.openFrom, to: o.Offset})
+		st.record(interval{measured: st.openHasPTS, ticks: (at + PCRWrapTicks - st.openStart) % PCRWrapTicks, from: st.openFrom, to: o.Offset})
 		st.openHasPTS, st.openStart, st.openFrom = true, at, o.Offset
 	}
 	st.last, st.lastAt = at, o.Offset
@@ -371,7 +365,7 @@ func (st *pesStream) pending() (interval, bool) {
 	if !st.open || st.lastAt == st.openFrom {
 		return interval{}, false
 	}
-	return interval{ticks: (st.last + pcrWrap - st.openStart) % pcrWrap, from: st.openFrom, to: st.lastAt}, true
+	return interval{ticks: (st.last + PCRWrapTicks - st.openStart) % PCRWrapTicks, from: st.openFrom, to: st.lastAt}, true
 }
 
 // endInterval closes the interval in progress at a break.

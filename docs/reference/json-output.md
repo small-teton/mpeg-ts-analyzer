@@ -123,6 +123,13 @@ $ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_
       "limit_ms": 100,
       "observations": 59
     },
+    "pcr_discontinuities": {
+      "status": "ok",
+      "pcr_count": 60,
+      "undeclared_count": 0,
+      "jump_limit_ms": 1000,
+      "items": []
+    },
     "max_pcr_pts_dts_gap": {
       "status": "ok",
       "value_ms": 726.6666666666665,
@@ -241,6 +248,8 @@ Status and reason values are:
 | incomplete program `reason` | `pmt_parse_failed` |
 | `sync.status` | `ok`, `recovered`, `lost` |
 | `compliance.*.status` | `ok`, `ng`, `skipped` |
+| `compliance.pcr_discontinuities.items[].kind` | `wraparound`, `declared`, `pcr_pid_change`, `backward`, `forward_jump` |
+| `pcr_jitter.estimate.discontinuities[].kind` | `declared`, `pcr_pid_change`, `backward`, `forward_jump` |
 | `pcr_jitter.status` | `ok`, `warning`, `ng`, `not_assessable`, `skipped` |
 | `pcr_jitter.estimate.model` | `byte_position` |
 | `pcr_jitter.delivery.assessment` | `constant`, `variable`, `unknown` |
@@ -425,6 +434,28 @@ contributes no PSI transition, PES header, PTS/DTS, timestamp anomaly or
 PCR-PTS/DTS gap; the PAT/PMT warnings it causes are listed in `warnings`. See
 [Transport errors and scrambled packets](../cli/usage.md#transport-errors-and-scrambled-packets-always-on)
 for the complete policy. Neither object takes part in `--fail-on-error`.
+
+## PCR timing results
+
+Every PCR-based result is computed from the PCRs of the selected program's
+`PCR_PID` in packets without `transport_error_indicator` (a scrambled packet's
+PCR is used). Each PCR is classified against the previous one into one of the
+steps in [PCR steps](../cli/usage.md#pcr-steps): first, `continuous`,
+`wraparound`, `declared`, `pcr_pid_change`, `backward` or `forward_jump`.
+`continuous` and `wraparound` steps are comparable; every other step except
+the first starts a new timing segment. All results use the same steps:
+
+| Result | Source and units | Scope | Comparison boundaries | Too little data |
+| --- | --- | --- | --- | --- |
+| `compliance.max_pcr_interval` | Largest PCR value difference of a comparable step, in ms; `observations` counts those steps. Limit 100 ms, inclusive (ISO/IEC 13818-1, 2.7.2; ETSI TR 101 290 2.3a). | Selected program, following `PCR_PID` changes | Not measured at the first PCR of the range or at any segment boundary; measured across a wraparound. An undeclared forward step of 100 to 1000 ms is measured and fails. | `skipped` with no comparable step |
+| `compliance.pcr_discontinuities` | Count of each step kind other than `continuous`, with the first PCR packet's `first_offset_bytes` and `first_jump_ms` (the value difference; for a wraparound the interval across the wrap). `ng` when `undeclared_count` (`backward` + `forward_jump`) is above 0 (ISO/IEC 13818-1, 2.4.3.5; ETSI TR 101 290 2.3b). `jump_limit_ms` (1000) separates a late PCR from a `forward_jump`. | Selected program, following `PCR_PID` changes | Every PCR after the first is classified; `pcr_count` counts all PCRs. | `skipped` with fewer than two PCRs |
+| `pcr_jitter` | Byte-position estimate in ns, and the delivery assessment ([PCR jitter](#pcr-jitter)); not a TR 101 290 2.4 measurement | Selected program | Interpolated only between three PCRs of one segment; delivery windows do not span a boundary; `estimate.discontinuities` lists each boundary with its `kind`, `jump_ms` and the segments it separates | `skipped` with fewer than 3 PCRs, no segment of 3 PCRs, or more than 30 % of the PCRs starting a segment |
+| `bitrate` | Bytes over PCR time of the comparable steps, per PID, in bit/s; `segment_count` counts timing segments | Selected program's PIDs; null packets separately | Bytes before the first PCR and across a boundary are dropped and the clock does not advance across it | `skipped` without two PCRs in one segment |
+| `compliance.max_pcr_pts_dts_gap` | DTS (or PTS) minus the PCR interpolated by byte position between the PCRs before and after the PES packet, in ms. Limit 1000 ms, inclusive. | Every elementary stream of the selected program | A PES packet is compared only when both PCRs belong to the same segment and the second is larger: no gap across a boundary or a wraparound, and none after the last PCR | `skipped` with no bracketed PTS/DTS |
+| `series.pcr` (`--output analysis`) | Each PCR with `pcr_ms`, `elapsed_ms` and `interval_ms` | Each program | `interval_ms` only on comparable steps; `discontinuity: true` on the first PCR of each new segment, where `elapsed_ms` does not advance | Empty without PCRs |
+
+Results are aggregates bounded by the number of step kinds; only the existing
+series and jitter samples grow with the number of PCRs.
 
 ## PES headers and PTS repetition
 
@@ -693,9 +724,11 @@ PTS_error; both are profile-neutral.
   reports the values). A PES packet that does not lie between two PCRs of one
   segment (before the first PCR, after the last one, or a program without
   PCR) is not placed; if it carries a PTS, the interval in progress ends there.
-- Wraparound and discontinuities: a 33-bit PCR wraparound between two PCRs is
-  measured. A PCR discontinuity (declared, an undeclared backward reset, or a
-  `PCR_PID` change) starts a new segment, and no interval spans it.
+- Wraparound and discontinuities: segments follow the
+  [PCR timing results](#pcr-timing-results): a `wraparound` step is measured
+  across, and every other step that starts a new segment (`declared`,
+  `pcr_pid_change`, `backward`, `forward_jump`) ends the interval in progress,
+  so no interval spans it.
 - Acquisition: the first PES packet of each PID in the range starts the
   measurement. PES packets without a PTS before the first PTS, before a break
   and at the end of the range give a lower bound (the stream went at least
@@ -745,7 +778,9 @@ delivery. The object has three parts:
   sides in their segment, and `max_abs_jitter_ns` / `max_abs_jitter_offset_bytes`
   the worst value the status is judged on, next to the signed extremes, the
   average `|jitter|`, the share within ±500 ns and the PCR discontinuities that
-  split the samples into segments. The value fields are absent when no
+  split the samples into segments, each with its `kind` (see
+  [PCR timing results](#pcr-timing-results)); a wraparound does not split
+  them. The value fields are absent when no
   estimate could be made. `series.pcr_jitter` of `--output analysis` holds the
   estimate of every observation.
 - **`delivery`** — whether the stream supports the constant-delivery premise.
@@ -934,7 +969,22 @@ counted in `sync`.
 
 Everything else, including the `series.pcr_jitter` points, is unchanged.
 Within 2.0, `transport_errors`, `scrambled_packets`, `pes_headers` and
-`pts_repetition` were added to both documents (additive changes).
+`pts_repetition` were added to both documents, and `compliance.pcr_discontinuities` and the `kind` of each
+`pcr_jitter.estimate.discontinuities` entry to both (additive changes). Aligning
+the PCR steps also changed some values within 2.0 for streams with these steps
+(none of the bundled samples except the new PCR-discontinuities sample):
+
+| Stream with | Before | Now |
+| --- | --- | --- |
+| A 33-bit PCR wraparound | Jitter estimate, delivery windows, bitrate and `series.pcr` split at the wrap (`discontinuity: true`, elapsed time frozen) | One segment across the wrap; listed as a `wraparound` step |
+| An undeclared forward PCR jump of more than 1000 ms | Measured as a PCR interval (`max_pcr_interval` `ng` with the jump as value) | A `forward_jump`: not an interval; `pcr_discontinuities` `ng` |
+| Two equal consecutive PCRs | A segment boundary for jitter, bitrate and series | A 0 ms interval |
+| `discontinuity_indicator` on a packet of the `PCR_PID` without a PCR | Ignored | The next PCR is `declared` |
+| A PES packet whose PCR bracket spans a declared or undeclared discontinuity | Interpolated across the two time bases | No PCR-PTS/DTS gap |
+
+With `--fail-on-error` an undeclared forward jump still exits 2 (now through
+`PCR discontinuities`); an undeclared backward step, which previously passed,
+now exits 2 as well.
 `--capabilities` reports the schema version of each output, so a caller can
 tell the two apart before running an analysis.
 

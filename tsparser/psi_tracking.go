@@ -21,9 +21,10 @@ import (
 //
 // Transition policy:
 //
-//   - PCR_PID change: the first PCR on the new PCR_PID is handled as a
-//     discontinuity, so no PCR interval, jitter estimate or bitrate window
-//     spans the change (see programAnalyzer.setLayout).
+//   - PCR_PID change: the first PCR on the new PCR_PID is a pcr_pid_change
+//     discontinuity (analysis.PCRClock), so no PCR interval, jitter estimate,
+//     bitrate window or PCR-PTS/DTS gap spans the change (see
+//     programAnalyzer.setLayout).
 //   - Removed or retyped elementary PID: its buffered PES is finalized at the
 //     change and its PES and timestamp state is dropped; packets of a removed
 //     PID are ignored from then on.
