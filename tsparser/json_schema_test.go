@@ -271,6 +271,8 @@ func summarySchemaCases() []schemaCase {
 				"/psi_health/status": "ok", "/psi_health/time_base/status": "pcr", "/psi_health/tables/0/table": "pat",
 				"/psi_health/tables/1/program_number": 1, "/psi_health/tables/0/program_number": absent{},
 				"/psi_health/tables/0/first_problem_offset_bytes": absent{}, "/psi_health/tables/1/withdrawn_offset_bytes": absent{},
+				"/pid_references/referenced/status": "ok", "/pid_references/unreferenced/status": "ok", "/pid_references/unreferenced/reason": absent{},
+				"/pid_references/referenced/pids/0/stream_type": absent{}, "/pid_references/referenced/pids/2/stream_type": "0x02",
 				"/pcr_jitter": absent{}, "/bitrate": absent{}, "/psi_transitions": absent{},
 				"/warnings": []any{}, "/input/offset_bytes": 0, "/input/limit_bytes": absent{},
 				"/continuity_counter/total_error_count": 0, "/continuity_counter/pids": []any{},
@@ -339,6 +341,23 @@ func summarySchemaCases() []schemaCase {
 			},
 		},
 		{
+			name: "complete with PID reference findings", schema: summarySchemaFile, path: fixedPath(pidReferencesFixtures[0].path),
+			want: map[string]any{
+				"/status": "complete", "/pid_references/time_basis": "pcr_interpolated_file_position",
+				"/pid_references/referenced/status": "absent", "/pid_references/referenced/pids/3/status": "silent",
+				"/pid_references/referenced/pids/4/reason": "intermittent_stream_type", "/pid_references/referenced/pids/4/first_offset_bytes": absent{},
+				"/pid_references/unreferenced/status": "unreferenced", "/pid_references/unreferenced/pids/1/status": "insufficient_data",
+			},
+		},
+		{
+			name: "complete with unreferenced PIDs skipped for a selected program", schema: summarySchemaFile, path: fixedPath(twoPrograms188Path),
+			opts: options.Options{Program: 1},
+			want: map[string]any{
+				"/status": "complete", "/pid_references/unreferenced/status": "skipped",
+				"/pid_references/unreferenced/reason": "program_layouts_unknown", "/pid_references/referenced/pids/4/pid": "0x1001", "/pid_references/referenced/pids/4/role": "pmt",
+			},
+		},
+		{
 			name: "complete with PCR discontinuities", schema: summarySchemaFile, path: fixedPath(pcrDiscontinuitiesFixtures[0].path),
 			opts: options.Options{DumpPcrJitter: true},
 			want: map[string]any{
@@ -398,7 +417,7 @@ func summarySchemaCases() []schemaCase {
 			},
 			want: map[string]any{
 				"/status": "incomplete", "/reason": "end_of_input_before_complete_analysis", "/error": absent{},
-				"/programs": []any{}, "/compliance": absent{}, "/transport_errors": absent{}, "/scrambled_packets": absent{},
+				"/programs": []any{}, "/compliance": absent{}, "/transport_errors": absent{}, "/scrambled_packets": absent{}, "/pid_references": absent{},
 				"/psi_health": absent{},
 			},
 		},
@@ -512,6 +531,13 @@ func analysisSchemaCases() []schemaCase {
 			},
 		},
 		{
+			name: "complete with PID reference findings in M2TS", schema: analysisSchemaFile, path: fixedPath(pidReferencesFixtures[1].path), opts: analysis,
+			want: map[string]any{
+				"/status": "complete", "/pid_references/referenced/pids/5/status": "absent",
+				"/pid_references/referenced/pids/5/referenced_until_offset_bytes": 571 * 192, "/pid_references/unreferenced/pids/0/pid": "0x0300",
+			},
+		},
+		{
 			name: "complete with PCR discontinuities in M2TS", schema: analysisSchemaFile, path: fixedPath(pcrDiscontinuitiesFixtures[1].path), opts: analysis,
 			want: map[string]any{
 				"/status": "complete", "/programs/0/compliance/pcr_discontinuities/status": "ng",
@@ -547,7 +573,7 @@ func analysisSchemaCases() []schemaCase {
 			}),
 			want: map[string]any{
 				"/status": "incomplete", "/reason": "no_program_analyzed", "/analysis_start_offset_bytes": absent{},
-				"/continuity_counter": absent{}, "/transport_errors": absent{}, "/scrambled_packets": absent{},
+				"/continuity_counter": absent{}, "/transport_errors": absent{}, "/scrambled_packets": absent{}, "/pid_references": absent{},
 				"/psi_health": absent{},
 			},
 		},

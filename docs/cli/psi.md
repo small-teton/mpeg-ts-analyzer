@@ -169,6 +169,8 @@ TS Sync: no sync loss detected
 -----------------------------
 Compliance Check Results:
 Max PCR interval: 80.000000ms [OK, limit: <= 100.000000ms]
+PCR discontinuities: 0 undeclared in 60 PCRs [OK]
+  - pcr_pid_change: 1, first at 0x000190f8 (PCR jumped +80.000ms)
 PCR-PTS/DTS max gap: 726.666667ms [OK, limit: <= 1000.000000ms]
 -----------------------------
 Bitrate Summary (PCR time base):
@@ -191,6 +193,9 @@ Transport Scrambling: no scrambled packets
 PAT/PMT health: OK (repetition limit 500 ms, ETSI TR 101 290 1.3.a/1.5.a; time base: PCR PID 0x0200 of program 1)
   PAT PID 0x0000 : 43 tables, 38 intervals, max 150.222 ms ending at 0x00020388 [OK]
   PMT program 1 PID 0x1100 : 43 tables, 37 intervals, max 148.444 ms ending at 0x00020444 [OK]
+-----------------------------
+Referenced PIDs: 8 references, silence limit 5000 ms [OK]
+Unreferenced PIDs: none [OK]
 ```
 
 The [PAT/PMT health](usage.md#pat-and-pmt-health-always-on) summary counts the

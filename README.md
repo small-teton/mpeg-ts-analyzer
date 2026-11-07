@@ -34,6 +34,9 @@ bits.
 - **PAT/PMT health**: whether the PAT and the PMT of every announced program
   were found, repeat at least every 500 ms (the ETSI TR 101 290 1.3.a/1.5.a
   value, timed by PCR), and arrive with valid CRC, syntax and table_id.
+- **PID references**: PMT, PCR and elementary-stream PIDs that the PAT/PMT
+  reference but that are absent or silent for more than 5 s, and PIDs that
+  carry packets without being referenced (after a 0.5 s grace period).
 
 Results are text for people, or JSON with a published schema for CI and other
 programs. See [CLI usage][docs-cli-usage].

@@ -13,28 +13,28 @@ use super::Screen;
 /// A group of the Transport health table, in table order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Category {
-    Structure,
     Timing,
     PesTimestamps,
     Integrity,
+    Structure,
 }
 
 impl Category {
     /// The categories in table order.
     #[cfg(test)]
     pub const ALL: [Category; 4] = [
-        Category::Structure,
         Category::Timing,
         Category::PesTimestamps,
         Category::Integrity,
+        Category::Structure,
     ];
 
     pub fn title(self) -> &'static str {
         match self {
-            Category::Structure => "Structure",
             Category::Timing => "Timing",
             Category::PesTimestamps => "PES / Timestamps",
             Category::Integrity => "Integrity",
+            Category::Structure => "Structure",
         }
     }
 }
@@ -42,8 +42,6 @@ impl Category {
 /// One transport-health check of the Overview table.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Check {
-    PatHealth,
-    PmtHealth,
     MaxPcrInterval,
     PcrDiscontinuities,
     PcrJitter,
@@ -53,12 +51,16 @@ pub enum Check {
     TransportErrors,
     ScrambledPackets,
     Synchronization,
+    PatHealth,
+    PmtHealth,
+    ReferencedPids,
+    UnreferencedPids,
 }
 
 impl Check {
     /// The checks in table order: the order of [`HELP`].
     pub const ALL: [Check; HELP.len()] = {
-        let mut all = [Check::PatHealth; HELP.len()];
+        let mut all = [Check::MaxPcrInterval; HELP.len()];
         let mut index = 0;
         while index < HELP.len() {
             all[index] = HELP[index].check;
@@ -116,65 +118,7 @@ pub struct CheckHelp {
 
 /// The explanations in table order: grouped by [`Category`], in
 /// [`Category::ALL`] order.
-pub const HELP: [CheckHelp; 11] = [
-    CheckHelp {
-        check: Check::PatHealth,
-        category: Category::Structure,
-        title: "PAT health",
-        summary: "Whether the PAT is found, repeats at least every 500 ms and can be read.",
-        measures: "Whether the program association table (PAT) is found on PID 0x0000 and how often it repeats. A PAT counts when every section of one version arrives valid (CRC_32, syntax), at the packet that completes it; sections are collected exactly as the analysis collects them. The time of each PAT is interpolated by byte position between the PCRs around it, and the time between two consecutive PATs (a complete interval) is compared with 500 ms. The time from the start of a PCR segment to the first PAT, and from the last PAT to the end of the segment, are open intervals: lower bounds of the real gap, also compared with 500 ms. Sections that cannot be used are counted: an invalid CRC_32, a malformed section, sections discarded before the table completed, a table_id other than 0x00 on PID 0x0000, and packets not read because of transport_error_indicator or scrambling.",
-        applies_to: "The whole multiplex: PID 0x0000, over every packet of the range from its first packet. Times use the PCR of the selected program in a single-program run, or of the first analyzed program that has a PCR in the GUI's analysis.",
-        value: "The longest time without a PAT in milliseconds, complete or open. Current result gives the number of PATs, the complete and late intervals, version changes, every problem count, the first problem offset and the PCR time base.",
-        statuses: &[
-            (
-                "ok",
-                "The PAT repeats: at least one complete interval was measured, none is longer than 500 ms (ETSI TR 101 290 1.3.a), and every section could be used.",
-            ),
-            (
-                "ng",
-                "At least one reason: late (an interval longer than 500 ms), missing, crc_error, malformed_section, incomplete, wrong_table_id or unusable_packets. Current result lists them with their counts.",
-            ),
-            (
-                "insufficient_data",
-                "No problem was found, but the range does not show the PAT repeating: no complete interval within one PCR segment, or no PCR time base. Listed under Unavailable analysis, not as a finding.",
-            ),
-        ],
-        skipped: "This check is never skipped while a program is analyzed. Without a PCR time base the repetition is not measured, and a PAT without any problem is insufficient_data.",
-        limitations: "ISO/IEC 13818-1 defines the PAT on PID 0x0000 with table_id 0x00, its section syntax and CRC_32, but no repetition interval: 500 ms is the value of ETSI TR 101 290, a DVB measurement guideline. Stricter broadcast profiles are not applied, so a stream that passes may still fail one. A file has no packet-arrival times; time comes from PCRs and byte position. A version change does not restart the intervals. A continuity counter error inside a section is reported by Continuity counter; the PAT it breaks shows as a longer interval.",
-        navigation: Some((
-            Screen::Packets,
-            "Packets lists every PAT packet at its offset.",
-        )),
-    },
-    CheckHelp {
-        check: Check::PmtHealth,
-        category: Category::Structure,
-        title: "PMT health",
-        summary: "Whether the program's PMT is found, repeats at least every 500 ms and can be read.",
-        measures: "Whether the program map table (PMT) of the program is found on the PID the PAT assigns to it, and how often it repeats. A PMT counts when every section of one version arrives valid (CRC_32, syntax), at the packet that completes it. Its time is interpolated by byte position between PCRs, and the time between two consecutive PMTs (a complete interval) is compared with 500 ms. The time from the first PCR after the PAT announced the program, or from the start of a PCR segment, to the first PMT, and from the last PMT to the end of the segment, are open intervals: lower bounds of the real gap, also compared with 500 ms. Sections that cannot be used are counted: an invalid CRC_32, a malformed section, sections discarded before the table completed (for example a section of a multi-section PMT that never arrives), and packets not read because of transport_error_indicator or scrambling.",
-        applies_to: "The selected program's PMT, from the packet after the PAT that announced the program, over the rest of the range. A PMT that a later PAT moves to another PID is followed there as a new identity: its intervals restart, it is OK only once it repeats there, and a late or missing earlier identity keeps it NG. The CLI reports the PMT of every announced program; select a program to see its row.",
-        value: "The longest time without the PMT in milliseconds, complete or open. Current result gives the number of PMTs, the complete and late intervals, version changes, every problem count, the first problem offset and the PCR time base.",
-        statuses: &[
-            (
-                "ok",
-                "The PMT repeats: at least one complete interval was measured, none is longer than 500 ms (ETSI TR 101 290 1.5.a), and every section could be used.",
-            ),
-            (
-                "ng",
-                "At least one reason: missing (no PMT while the program was followed for more than 500 ms), late (an interval longer than 500 ms), crc_error, malformed_section, incomplete or unusable_packets. Current result lists them with their counts.",
-            ),
-            (
-                "insufficient_data",
-                "No problem was found, but the range does not show the PMT repeating: no complete interval within one PCR segment, or no PCR time base. Listed under Unavailable analysis, not as a finding.",
-            ),
-        ],
-        skipped: "This check is never skipped while a program is analyzed. Without a PCR time base the repetition is not measured, and a PMT without any problem is insufficient_data, even one that was never found.",
-        limitations: "ISO/IEC 13818-1 defines the PMT with table_id 0x02 on the PID the PAT assigns, its section syntax and CRC_32, but no repetition interval: 500 ms is the value of ETSI TR 101 290, a DVB measurement guideline. Stricter broadcast profiles are not applied. A file has no packet-arrival times; time comes from PCRs and byte position. A version change does not restart the intervals. A section that cannot be attributed to one program of a PID shared by several PMTs counts for each of them.",
-        navigation: Some((
-            Screen::Packets,
-            "Packets lists every PMT packet at its offset.",
-        )),
-    },
+pub const HELP: [CheckHelp; 13] = [
     CheckHelp {
         check: Check::MaxPcrInterval,
         category: Category::Timing,
@@ -397,6 +341,130 @@ pub const HELP: [CheckHelp; 11] = [
             "Packets lists the packets of the range at the alignment of its start, so packets after a realignment can appear there as invalid.",
         )),
     },
+    CheckHelp {
+        check: Check::PatHealth,
+        category: Category::Structure,
+        title: "PAT health",
+        summary: "Whether the PAT is found, repeats at least every 500 ms and can be read.",
+        measures: "Whether the program association table (PAT) is found on PID 0x0000 and how often it repeats. A PAT counts when every section of one version arrives valid (CRC_32, syntax), at the packet that completes it; sections are collected exactly as the analysis collects them. The time of each PAT is interpolated by byte position between the PCRs around it, and the time between two consecutive PATs (a complete interval) is compared with 500 ms. The time from the start of a PCR segment to the first PAT, and from the last PAT to the end of the segment, are open intervals: lower bounds of the real gap, also compared with 500 ms. Sections that cannot be used are counted: an invalid CRC_32, a malformed section, sections discarded before the table completed, a table_id other than 0x00 on PID 0x0000, and packets not read because of transport_error_indicator or scrambling.",
+        applies_to: "The whole multiplex: PID 0x0000, over every packet of the range from its first packet. Times use the PCR of the selected program in a single-program run, or of the first analyzed program that has a PCR in the GUI's analysis.",
+        value: "The longest time without a PAT in milliseconds, complete or open. Current result gives the number of PATs, the complete and late intervals, version changes, every problem count, the first problem offset and the PCR time base.",
+        statuses: &[
+            (
+                "ok",
+                "The PAT repeats: at least one complete interval was measured, none is longer than 500 ms (ETSI TR 101 290 1.3.a), and every section could be used.",
+            ),
+            (
+                "ng",
+                "At least one reason: late (an interval longer than 500 ms), missing, crc_error, malformed_section, incomplete, wrong_table_id or unusable_packets. Current result lists them with their counts.",
+            ),
+            (
+                "insufficient_data",
+                "No problem was found, but the range does not show the PAT repeating: no complete interval within one PCR segment, or no PCR time base. Listed under Unavailable analysis, not as a finding.",
+            ),
+        ],
+        skipped: "This check is never skipped while a program is analyzed. Without a PCR time base the repetition is not measured, and a PAT without any problem is insufficient_data.",
+        limitations: "ISO/IEC 13818-1 defines the PAT on PID 0x0000 with table_id 0x00, its section syntax and CRC_32, but no repetition interval: 500 ms is the value of ETSI TR 101 290, a DVB measurement guideline. Stricter broadcast profiles are not applied, so a stream that passes may still fail one. A file has no packet-arrival times; time comes from PCRs and byte position. A version change does not restart the intervals. A continuity counter error inside a section is reported by Continuity counter; the PAT it breaks shows as a longer interval.",
+        navigation: Some((
+            Screen::Packets,
+            "Packets lists every PAT packet at its offset.",
+        )),
+    },
+    CheckHelp {
+        check: Check::PmtHealth,
+        category: Category::Structure,
+        title: "PMT health",
+        summary: "Whether the program's PMT is found, repeats at least every 500 ms and can be read.",
+        measures: "Whether the program map table (PMT) of the program is found on the PID the PAT assigns to it, and how often it repeats. A PMT counts when every section of one version arrives valid (CRC_32, syntax), at the packet that completes it. Its time is interpolated by byte position between PCRs, and the time between two consecutive PMTs (a complete interval) is compared with 500 ms. The time from the first PCR after the PAT announced the program, or from the start of a PCR segment, to the first PMT, and from the last PMT to the end of the segment, are open intervals: lower bounds of the real gap, also compared with 500 ms. Sections that cannot be used are counted: an invalid CRC_32, a malformed section, sections discarded before the table completed (for example a section of a multi-section PMT that never arrives), and packets not read because of transport_error_indicator or scrambling.",
+        applies_to: "The selected program's PMT, from the packet after the PAT that announced the program, over the rest of the range. A PMT that a later PAT moves to another PID is followed there as a new identity: its intervals restart, it is OK only once it repeats there, and a late or missing earlier identity keeps it NG. The CLI reports the PMT of every announced program; select a program to see its row.",
+        value: "The longest time without the PMT in milliseconds, complete or open. Current result gives the number of PMTs, the complete and late intervals, version changes, every problem count, the first problem offset and the PCR time base.",
+        statuses: &[
+            (
+                "ok",
+                "The PMT repeats: at least one complete interval was measured, none is longer than 500 ms (ETSI TR 101 290 1.5.a), and every section could be used.",
+            ),
+            (
+                "ng",
+                "At least one reason: missing (no PMT while the program was followed for more than 500 ms), late (an interval longer than 500 ms), crc_error, malformed_section, incomplete or unusable_packets. Current result lists them with their counts.",
+            ),
+            (
+                "insufficient_data",
+                "No problem was found, but the range does not show the PMT repeating: no complete interval within one PCR segment, or no PCR time base. Listed under Unavailable analysis, not as a finding.",
+            ),
+        ],
+        skipped: "This check is never skipped while a program is analyzed. Without a PCR time base the repetition is not measured, and a PMT without any problem is insufficient_data, even one that was never found.",
+        limitations: "ISO/IEC 13818-1 defines the PMT with table_id 0x02 on the PID the PAT assigns, its section syntax and CRC_32, but no repetition interval: 500 ms is the value of ETSI TR 101 290, a DVB measurement guideline. Stricter broadcast profiles are not applied. A file has no packet-arrival times; time comes from PCRs and byte position. A version change does not restart the intervals. A section that cannot be attributed to one program of a PID shared by several PMTs counts for each of them.",
+        navigation: Some((
+            Screen::Packets,
+            "Packets lists every PMT packet at its offset.",
+        )),
+    },
+    CheckHelp {
+        check: Check::ReferencedPids,
+        category: Category::Structure,
+        title: "Referenced PIDs",
+        summary: "PIDs the PAT and PMTs reference that carry no packets, or stop for more than 5 s.",
+        measures: "Whether each PID the PSI layout references carries packets while it is referenced: the PMT PID of every program in the PAT and, for every analyzed program, its PCR PID and each elementary stream. Each program, role (PMT, PCR, elementary stream) and PID is one reference; a PCR PID that also carries a stream is checked in both roles, and a stream retyped by a PMT change is a new reference of its new type. The silence of a reference is its longest time without a packet, counted from the start of the reference to the first packet and from the last packet to the end of the reference. Time is estimated from each packet's byte position between two PCRs of one program, as for bitrate.",
+        applies_to: "The whole multiplex: every program of the PAT, from the start of each program's analysis (after its PMT was found) to the end of the range. A reference ends where a PAT or PMT change removes it, so a removed stream is not silent afterwards. Absence and silence are judged for the PMT, the PCR PID and video and audio streams, which carry packets continuously; for other stream types (private data, subtitles, metadata) only presence is reported.",
+        value: "How many references are not ok, out of all references. Current result lists them by status with their program, PID and silence, and gives the silence limit and the time basis.",
+        statuses: &[
+            (
+                "ok",
+                "Every reference carried packets, and no judged reference went more than 5000 ms without one.",
+            ),
+            (
+                "absent",
+                "A judged reference (PMT, PCR or a video or audio stream) carried no packet at all while it was referenced for more than 5000 ms.",
+            ),
+            (
+                "silent",
+                "A judged reference carried packets, but went more than 5000 ms without one.",
+            ),
+            (
+                "insufficient_data",
+                "A reference carried no packet, but either it was referenced for 5000 ms or less, or its stream type may be idle for long (private data, subtitles), so it cannot be called absent; or there is no PCR to measure time.",
+            ),
+        ],
+        skipped: "This check is never skipped while a program is analyzed. Without any PCR in the reference program, durations are unknown and every judged reference is insufficient_data.",
+        limitations: "ETSI TR 101 290 (PID_error) leaves the limit to the user; 5000 ms is TSDuck's default for video and audio PIDs, and it is fixed in the CLI. A reference the CLI cannot judge (insufficient_data) is listed under Unavailable analysis, not as a finding. Time before the first and after the last PCR of the range, and across a PCR discontinuity, is not counted, so silences there are lower bounds. Packets with transport_error_indicator set do not count, because their PID may be damaged; scrambled packets count. How often the PAT and PMT repeat is not judged here.",
+        navigation: Some((
+            Screen::Packets,
+            "Packets lists the packets around the offsets of a silence.",
+        )),
+    },
+    CheckHelp {
+        check: Check::UnreferencedPids,
+        category: Category::Structure,
+        title: "Unreferenced PIDs",
+        summary: "Packets on PIDs that neither the PAT nor any PMT references.",
+        measures: "Whether packets arrive on PIDs that no PAT or PMT references at that point, for longer than a 500 ms grace period. A PID that was never referenced is unreferenced when no PMT refers to it within 500 ms of its first packet; a stream that a PMT change removed is unreferenced when its packets continue for more than 500 ms. The grace period allows a new stream to start just before the PMT that announces it, and a removed stream to stop just after.",
+        applies_to: "The whole multiplex, while every program of the PAT is analyzed. The null PID 0x1FFF, the PSI/SI PIDs 0x0000 to 0x001F, 0x1FFB, the PAT's network PID and the CA PIDs of a PMT's CA descriptors are never unreferenced. Packets read while the first PAT and PMT are acquired do not count, so a capture that starts in the middle of a stream is not penalized.",
+        value: "The number of PIDs listed. Current result gives, for each, its packets and how long it stayed unreferenced, and the grace period.",
+        statuses: &[
+            (
+                "ok",
+                "No PID carried packets without a reference for more than 500 ms.",
+            ),
+            (
+                "unreferenced",
+                "At least one PID carried packets that no PAT or PMT referenced, for more than 500 ms.",
+            ),
+            (
+                "insufficient_data",
+                "No PID was unreferenced for more than 500 ms, but a PID appeared less than 500 ms before the end of the range, so it cannot be judged; or there is no PCR to measure time.",
+            ),
+            (
+                "skipped",
+                "The analysis did not follow the PMT of every program, so the referenced PIDs are not fully known: for example only one program of a multi-program stream was analyzed.",
+            ),
+        ],
+        skipped: "Skipped when the analysis never followed every program's PMT. The GUI analyzes every program, so this happens when a program's PMT was not found in the range.",
+        limitations: "ETSI TR 101 290 (Unreferenced_PID) allows 0.5 s for a reference; the CLI's 500 ms grace is fixed. A PID the CLI cannot judge (insufficient_data) is listed under Unavailable analysis, not as a finding. EMM PIDs announced only in the CAT, which is not parsed, appear as unreferenced. Whether unreferenced data is useful is not judged. Packets with transport_error_indicator set do not count, because their PID may be damaged.",
+        navigation: Some((
+            Screen::Packets,
+            "Packets lists the packets around the first unreferenced packet of each PID.",
+        )),
+    },
 ];
 
 #[cfg(test)]
@@ -428,7 +496,7 @@ mod tests {
         }
     }
 
-    /// The table order: Structure, Timing, PES / Timestamps, Integrity, with
+    /// The table order: Timing, PES / Timestamps, Integrity, Structure, with
     /// each category's checks together.
     #[test]
     fn checks_are_grouped_in_category_order() {
@@ -441,8 +509,6 @@ mod tests {
         assert_eq!(
             Check::ALL,
             [
-                Check::PatHealth,
-                Check::PmtHealth,
                 Check::MaxPcrInterval,
                 Check::PcrDiscontinuities,
                 Check::PcrJitter,
@@ -452,6 +518,10 @@ mod tests {
                 Check::TransportErrors,
                 Check::ScrambledPackets,
                 Check::Synchronization,
+                Check::PatHealth,
+                Check::PmtHealth,
+                Check::ReferencedPids,
+                Check::UnreferencedPids,
             ]
         );
     }
@@ -470,6 +540,24 @@ mod tests {
         };
         assert!(text(Check::MaxPcrInterval).contains("100 ms"));
         assert!(text(Check::PcrPtsDtsGap).contains("1000 ms"));
+        assert!(text(Check::ReferencedPids).contains("5000 ms"));
+        assert!(text(Check::UnreferencedPids).contains("500 ms"));
+        for check in [Check::PatHealth, Check::PmtHealth] {
+            let help = text(check);
+            for phrase in [
+                "500 ms",
+                "ETSI TR 101 290",
+                "no repetition interval",
+                "open intervals",
+                "PCR time base",
+            ] {
+                assert!(
+                    help.contains(phrase) || check.help().skipped.contains(phrase),
+                    "{check:?}: {phrase}"
+                );
+            }
+            assert!(check.verdict_meaning("insufficient_data").is_some());
+        }
         let discontinuities = text(Check::PcrDiscontinuities);
         for phrase in [
             "discontinuity_indicator",
@@ -510,21 +598,5 @@ mod tests {
             );
         }
         assert_eq!(Check::PcrJitter.verdict_meaning("indeterminate"), None);
-        for check in [Check::PatHealth, Check::PmtHealth] {
-            let help = text(check);
-            for phrase in [
-                "500 ms",
-                "ETSI TR 101 290",
-                "no repetition interval",
-                "open intervals",
-                "PCR time base",
-            ] {
-                assert!(
-                    help.contains(phrase) || check.help().skipped.contains(phrase),
-                    "{check:?}: {phrase}"
-                );
-            }
-            assert!(check.verdict_meaning("insufficient_data").is_some());
-        }
     }
 }

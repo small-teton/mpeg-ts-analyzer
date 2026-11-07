@@ -97,8 +97,8 @@ pub fn program_selector_labels(ui: &mut egui::Ui, labels: &[String], selected: &
 pub fn status_verdict(status: &str) -> Verdict {
     match status {
         "ok" | "complete" => Verdict::Ok,
-        "ng" | "errors" | "failed" | "lost" => Verdict::Ng,
-        "warning" | "warn" | "anomalies" | "recovered" => Verdict::Warn,
+        "ng" | "errors" | "failed" | "lost" | "absent" => Verdict::Ng,
+        "warning" | "warn" | "anomalies" | "recovered" | "silent" | "unreferenced" => Verdict::Warn,
         _ => Verdict::Neutral,
     }
 }

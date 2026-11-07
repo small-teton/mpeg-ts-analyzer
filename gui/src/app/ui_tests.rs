@@ -1126,15 +1126,32 @@ fn findings_account_for_every_check_that_is_not_ok() {
         "../../tests/fixtures/analysis_pcr_discontinuities_188.json"
     ))
     .unwrap();
+    let pid_references: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/analysis_pid_references_188.json"
+    ))
+    .unwrap();
+    // One finding each: the silent reference and the unreferenced PID of the
+    // PID-reference sample.
+    let mut references = pid_references["pid_references"].clone();
+    references["referenced"]["pids"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|p| p["status"] == "ok" || p["status"] == "silent");
+    references["referenced"]["status"] = "silent".into();
+    references["unreferenced"]["pids"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|p| p["status"] == "unreferenced");
     let report = edited_report(|document| {
         document["sync"] = sync_loss["sync"].clone();
         document["programs"][0]["compliance"]["pcr_discontinuities"] =
             pcr_discontinuities["programs"][0]["compliance"]["pcr_discontinuities"].clone();
+        document["pid_references"] = references;
     });
     let harness = harness(app_with_report(report));
     // Two findings for PCR discontinuities (a backward step and a forward
-    // jump) and two for PAT and PMT health.
-    harness.get_by_label("Findings (12)");
+    // jump), the two PID-reference findings, and two for PAT and PMT health.
+    harness.get_by_label("Findings (14)");
     assert!(harness.query_by_label("None.").is_none());
     for check in Check::ALL {
         let links = if check == Check::PcrDiscontinuities {
@@ -1339,6 +1356,40 @@ fn all_findings_fixture_matches_the_cli() {
 
 /// The sync-loss fixture is what the CLI writes for the sample.
 /// Runs only against a CLI named by MPEG_TS_ANALYZER_CLI (e.g. via `make gui-test`).
+#[test]
+fn pid_references_fixture_matches_the_cli() {
+    let args = ["--format", "json", "--output", "analysis"];
+    let Some(json) = crate::cli::run_on_sample("sample_188byte_pid_references.ts", &args) else {
+        return;
+    };
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/analysis_pid_references_188.json"
+    ))
+    .unwrap();
+    let mut output: serde_json::Value = serde_json::from_slice(&json).unwrap();
+    output["input"]["path"] = fixture["input"]["path"].clone();
+    assert_eq!(output, fixture, "regenerate the fixture with the CLI");
+}
+
+/// The Referenced PIDs page of the PID-reference sample lists its findings,
+/// each with the packet before its silence.
+#[test]
+fn referenced_pids_page_opens_the_packet_before_a_silence() {
+    let report: AnalysisReport = serde_json::from_str(include_str!(
+        "../../tests/fixtures/analysis_pid_references_188.json"
+    ))
+    .unwrap();
+    let mut harness = harness_sized(app_with_report(report), WIDE);
+    harness.run();
+    table_row(&harness, Check::ReferencedPids)
+        .query_by_label("ABSENT")
+        .expect("the table shows the status");
+    open_detail(&mut harness, Check::ReferencedPids, false);
+    harness.get_by_role_and_label(Role::Heading, "Findings (2)");
+    harness.get_by_label("Status: ABSENT");
+    harness.get_by_role_and_label(Role::Button, "Open packet at 0x0000AE0C");
+}
+
 #[test]
 fn sync_loss_fixture_matches_the_cli() {
     let args = ["--format", "json", "--output", "analysis"];

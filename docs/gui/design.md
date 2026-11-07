@@ -167,16 +167,17 @@ check (`CheckDetail`).
 
 - **Transport health table**: one non-collapsible table with the columns
   Check, Value, Status and Help, grouped by category. The order is fixed:
-  Structure (PAT health, PMT health), Timing (Max PCR interval, PCR
-  discontinuities, PCR jitter estimate), PES / Timestamps (PCR → PTS/DTS gap,
-  PTS/DTS anomalies), Integrity (Continuity counter, Transport errors,
-  Scrambled packets, TS synchronization). Structure comes first, as in #157;
-  Multiplexing joins when its checks land. A check is listed when the CLI
-  reported it. There is no scope column or badge: the selected program is
-  shown above, and exceptions (PAT health, Continuity counter, Transport
-  errors, Scrambled packets and TS synchronization cover the whole
-  multiplex; PMT health is the selected program's PMT from `psi_health`) are
-  on the detail page. Status is the CLI's status
+  Timing (Max PCR interval, PCR discontinuities, PCR jitter estimate), PES / Timestamps
+  (PCR → PTS/DTS gap, PTS/DTS anomalies), Integrity (Continuity counter,
+  Transport errors, Scrambled packets, TS synchronization), Structure
+  (PAT health, PMT health, Referenced PIDs, Unreferenced PIDs). Within
+  Structure the tables come before the PIDs they announce, as in #157.
+  Multiplexing joins as its checks land (#157). A check is listed when the
+  CLI reported it. There is no scope column or badge: the selected program is
+  shown above, and exceptions (Continuity counter, Transport errors,
+  Scrambled packets, TS synchronization, PAT health, Referenced PIDs and
+  Unreferenced PIDs cover the whole multiplex; PMT health is the selected
+  program's PMT from `psi_health`) are on the detail page. Status is the CLI's status
   verbatim as a badge sized to its text (at least 48 points wide); a status
   the GUI does not describe is shown in the neutral color with a tooltip
   saying so. Help holds the focusable
@@ -233,16 +234,22 @@ check (`CheckDetail`).
   the CLI reported errors without events), PCR jitter, each PID of
   `transport_errors` and `scrambled_packets` (at its first offset), TS
   synchronization (one finding at the first loss offset), a failed PAT or PMT
-  (at its first problem, or else at the end of its first late interval) and
-  each analyzer warning. Any status other than `ok`, `skipped`,
-  `not_assessable` and `insufficient_data`,
+  (at its first problem, or else at the end of its first late interval), each
+  reference of `pid_references.referenced` with a finding status such as
+  `absent` or `silent` (with its own status, at the packet before its longest
+  silence), each PID of `pid_references.unreferenced` that is `unreferenced`
+  (at its first unreferenced packet) and each analyzer warning. Any status
+  other than `ok`, `skipped`, `not_assessable` and, for the PAT/PMT and
+  PID-reference checks, `insufficient_data`,
   including one the GUI does not know, is a finding with the CLI's status as
   its badge, so an `NG` or `WARNING` row can never sit next to an empty list.
   Each finding names its scope (program or whole multiplex); its check link
   opens the check's page. `skipped` checks, a PCR jitter estimate that is
-  `not_assessable` and a PAT or PMT whose repetition the range does not show
-  (`insufficient_data`) are listed under "Unavailable analysis" with their status
-  as the badge and the CLI's reason; they are not findings.
+  `not_assessable`, a PAT or PMT whose repetition the range does not show,
+  and PID references or unreferenced PIDs the CLI could not judge
+  (`insufficient_data`, whether the whole check or only some PIDs) are listed
+  under "Unavailable analysis" with their status as the badge and the CLI's
+  reason (for PIDs: which PIDs and why); they are not findings.
 
 ### Timeline
 

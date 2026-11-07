@@ -199,10 +199,11 @@ func TestTransportErrorsText(t *testing.T) {
 		"  PID 0x0101 (audio) : 1 packet, first at 0x0000210c, 1 excluded",
 		"  PID 0x0200 (unknown) : 1 packet, first at 0x00000524, 0 excluded",
 		"  PID 0x1000 (PMT) : 1 packet, first at 0x00002e44, 1 excluded",
+		"-----------------------------",
 		"",
 	}, "\n")
 	// The PAT/PMT health summary follows.
-	if !strings.Contains(out, want+"-----------------------------\nPAT/PMT health: ") {
+	if !strings.Contains(out, want+"PAT/PMT health: ") {
 		t.Errorf("text summary:\n%s\nwant:\n%s", out, want)
 	}
 

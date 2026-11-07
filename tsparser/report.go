@@ -30,6 +30,7 @@ type AnalysisReport struct {
 	TransportErrors       *ReportAffectedPackets    `json:"transport_errors,omitempty"`
 	ScrambledPackets      *ReportAffectedPackets    `json:"scrambled_packets,omitempty"`
 	PSIHealth             *ReportPSIHealth          `json:"psi_health,omitempty"`
+	PIDReferences         *ReportPIDReferences      `json:"pid_references,omitempty"`
 	TimestampAnomalies    *ReportTimestampAnomalies `json:"timestamp_anomalies,omitempty"`
 	PCRJitter             *ReportPCRJitter          `json:"pcr_jitter,omitempty"`
 	Bitrate               *ReportBitrate            `json:"bitrate,omitempty"`

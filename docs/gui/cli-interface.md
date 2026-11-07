@@ -58,7 +58,8 @@ switching programs or screens never runs the CLI again.
   transport errors and scrambled packets (`transport_errors`,
   `scrambled_packets`), TS synchronization (`sync`), PAT/PMT health
   (`psi_health`, which lists the PMT of every announced program; the GUI shows
-  the selected program's) and warnings are per range, as the CLI checks them
+  the selected program's), referenced and unreferenced PIDs
+  (`pid_references`) and warnings are per range, as the CLI checks them
   across the multiplex. Bitrate and jitter are collected without the `--dump-*` flags.
 - **PSI layout**: each PAT/PMT section seen (offset, version), the interval each
   layout applies to, the PIDs that change, and every PID observed in the range.

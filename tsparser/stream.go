@@ -273,8 +273,9 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 		// Affected packets are counted over the whole range, including the
 		// packets read while acquiring the PAT and PMT.
 		trust := newTransportTrustSummary()
+		references := newPidReferenceSummary(leadStart, packetSize)
 		health := newPsiHealthCollector(pat, selectedProgram, pcrPid)
-		if err = observeLead(reader, leadStart, pos, options, packetSize, trust.observeLead, health.observe); err != nil {
+		if err = observeLead(reader, leadStart, pos, options, packetSize, trust.observeLead, references.observeLead, health.observe); err != nil {
 			return err
 		}
 		if _, err = reader.Seek(pos, 0); err != nil {
@@ -290,7 +291,7 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 		}
 
 		var analysis *pesAnalysis
-		tables := &trackedTables{pat: pat, programNumber: selectedProgram, pmt: pmt, trust: trust, health: health}
+		tables := &trackedTables{pat: pat, programNumber: selectedProgram, pmt: pmt, trust: trust, references: references, health: health}
 		analysis, err = bufferPes(reader, &pos, pmtPid, pcrPid, programs, tables, options, packetSize, endOffset, report != nil)
 		if report != nil && analysis != nil {
 			report.Programs = []ReportProgram{reportProgram(selectedProgram, pmtPid, pmt.Pmt)}
@@ -300,6 +301,7 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 			report.ContinuityCounter = reportContinuity(analysis.continuity)
 			report.TransportErrors, report.ScrambledPackets = reportTransportTrust(analysis.trust)
 			report.PSIHealth = reportPsiHealth(analysis.health)
+			report.PIDReferences = reportPidReferences(analysis.references)
 			report.TimestampAnomalies = reportAnomalies(analysis.anomalies)
 			if analysis.jitter != nil {
 				report.PCRJitter = reportJitter(analysis.jitter)

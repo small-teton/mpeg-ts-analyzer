@@ -91,6 +91,7 @@ type pesAnalysis struct {
 	compliance complianceReport
 	continuity *continuityCounterSummary
 	trust      *transportTrustSummary
+	references *pidReferenceSummary // nil without PSI tracking
 	anomalies  *TimestampAnomaly
 	jitter     *PcrJitter
 	bitrate    *BitrateStats
@@ -113,12 +114,11 @@ type trackedTables struct {
 	pat           *patTable
 	programNumber uint16
 	pmt           *pmtTable
-	// trust has already counted the affected packets read while acquiring
-	// the PAT and PMT.
-	trust *transportTrustSummary
-	// health has already seen the packets read while acquiring the PAT and
-	// PMT.
-	health *psiHealthCollector
+	// trust and references have already counted, and health has already
+	// seen, the packets read while acquiring the PAT and PMT.
+	trust      *transportTrustSummary
+	references *pidReferenceSummary
+	health     *psiHealthCollector
 }
 
 func truncatedPacketMessage(size int) string {
@@ -158,6 +158,8 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		psi.health = tables.health
 		psi.health.ref = analyzer
 		psi.addProgram(tables.programNumber, pmtPid, tables.pmt, analyzer)
+		psi.references = tables.references
+		tables.references.usePcrOf([]*programAnalyzer{analyzer})
 	}
 	trust.addProgramLabels(pmtPid, pcrPid, programInfos)
 	scan, err := scanPrograms(reader, pos, []*programAnalyzer{analyzer}, continuity, trust, psi, options, packetSize, endOffset, quiet)
@@ -170,6 +172,7 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 	result := &pesAnalysis{compliance: report, continuity: continuity, trust: trust, anomalies: analyzer.anomaly, truncatedBytes: scan.truncatedBytes, truncatedPos: scan.truncatedPos, sync: scan.sync}
 	if psi != nil {
 		result.transitions, result.psiWarnings, result.sdt, result.health = psi.transitions, psi.warnings, psi.sdt, psi.health
+		result.references = psi.references
 	}
 	if options.DumpPcrJitter {
 		result.jitter = &analyzer.pcrJitter
@@ -191,6 +194,9 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		trust.Dump()
 		if result.health != nil {
 			dumpPsiHealth(reportPsiHealth(result.health))
+		}
+		if psi != nil {
+			psi.references.Dump()
 		}
 	}
 	if failures := report.failures(); options.FailOnError && len(failures) > 0 {
@@ -275,12 +281,21 @@ func scanPrograms(reader io.Reader, pos *int64, analyzers []*programAnalyzer, co
 			if psi.health != nil {
 				psi.health.observe(tsPacket, *pos)
 			}
+			// After the analyzers, which pass the packet's PCR to the PID
+			// reference check, and before PSI tracking applies a change
+			// from the next packet on.
+			if psi.references != nil {
+				psi.references.observe(tsPacket, *pos, analyzers, psi)
+			}
 			psi.observe(tsPacket, *pos, continuityTracker)
 		}
 	}
 	*pos = packets.pos
 	if psi != nil {
 		psi.finish(*pos)
+		if psi.references != nil {
+			psi.references.finish(*pos)
+		}
 	}
 
 	if result.truncatedBytes == 0 && endOffset > 0 {
@@ -316,6 +331,9 @@ type programAnalyzer struct {
 	anomaly       *TimestampAnomaly
 	series        *programSeries // nil unless time series are collected
 	programInfos  []ProgramInfo  // elementary streams of the current layout
+	// onPcr, when set, receives each PCR the analysis uses and its step: the
+	// time basis of the PID reference check.
+	onPcr func(pos int64, step analysis.PCRStep)
 	// pcrDiscontinuityPending is set by a packet of the PCR_PID with
 	// discontinuity_indicator set but no PCR: the next PCR of the PID starts
 	// the new time base (ISO/IEC 13818-1, 2.4.3.5).
@@ -424,6 +442,9 @@ func (a *programAnalyzer) observePcr(tsPacket *TsPacket, pos int64) {
 	pidChanged := a.pcrPidChanged
 	a.pcrDiscontinuityPending, a.pcrPidChanged = false, false
 	step := a.pcr.Observe(analysis.PCR{PID: pid, Offset: pos, Value: pcr, DiscontinuityIndicator: declared, PCRPIDChanged: pidChanged})
+	if a.onPcr != nil {
+		a.onPcr(pos, step)
+	}
 	sample := pcrSample{pos: pos, pid: pid, pcr: pcr, discontinuity: declared, pidChanged: pidChanged}
 	if a.bitrate != nil {
 		a.bitrate.markPcrStep(sample, step)

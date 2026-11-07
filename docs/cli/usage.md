@@ -23,6 +23,7 @@ In addition, it can dump various MPEG-2 TS internal structures for stream invest
 - TS synchronization: an always-on check that reports packets without their sync byte and continues from the next confirmed alignment (see [TS synchronization](#ts-synchronization-always-on))
 - Transport errors (`transport_error_indicator`) and scrambled packets (`transport_scrambling_control`), counted per PID with an always-on summary; their payload (and the PCR of a packet with a transport error) is kept out of the analysis
 - PAT/PMT health: availability, repetition interval (500 ms, ETSI TR 101 290 1.3.a/1.5.a) and section errors of the PAT and of the PMT of every announced program, with an always-on summary
+- PID references: an always-on check that reports PMT, PCR and elementary-stream PIDs the PSI layout references but that are absent or silent for more than 5 s, and PIDs that carry packets without being referenced (see [PID references](#pid-references-always-on))
 
 Both 188-byte TS packets and 192-byte M2TS packets (BDAV format with TP_extra_header) are supported. The packet size is auto-detected from the stream.
 
@@ -119,6 +120,9 @@ Transport Scrambling: no scrambled packets
 PAT/PMT health: OK (repetition limit 500 ms, ETSI TR 101 290 1.3.a/1.5.a; time base: PCR PID 0x0100 of program 1)
   PAT PID 0x0000 : 43 tables, 40 intervals, max 150.222 ms ending at 0x00020388 [OK]
   PMT program 1 PID 0x1000 : 43 tables, 40 intervals, max 148.444 ms ending at 0x00020444 [OK]
+-----------------------------
+Referenced PIDs: 4 references, silence limit 5000 ms [OK]
+Unreferenced PIDs: none [OK]
 ```
 
 ## Timing compliance verdicts and `--fail-on-error`
@@ -562,6 +566,126 @@ The check keeps one fixed-size record per table and one section reader per
 PMT PID, so its memory is bounded by the programs of the PAT, not by the
 length of the input. It does not take part in `--fail-on-error`. In JSON it is
 `psi_health` ([Machine-readable output](../reference/json-output.md#pat-and-pmt-health)).
+
+## PID references (always on)
+
+An always-on check reconciles the PIDs that the PSI layout references with the
+PIDs that actually carry packets, for the whole multiplex. A healthy stream
+gets one line for each part:
+
+```
+-----------------------------
+Referenced PIDs: 4 references, silence limit 5000 ms [OK]
+Unreferenced PIDs: none [OK]
+```
+
+When something is wrong, the PIDs concerned follow (output of
+`sample_data/sample_188byte_pid_references.ts`, see
+[Sample data](../development/sample-data.md)):
+
+```
+-----------------------------
+Referenced PIDs: 8 references, silence limit 5000 ms [ABSENT]
+  program 1 ES PID 0x0101 (stream_type 0x03) : silent, no packet for 6100.0 ms from 0x0000ae0c to 0x0001613c
+  program 1 ES PID 0x0102 (stream_type 0x06) : insufficient data (intermittent_stream_type)
+  program 1 ES PID 0x0103 (stream_type 0x04) : absent, no packet for 13175.0 ms from 0x00001f94 to 0x0001a354
+Unreferenced PIDs: 2 PIDs, grace 500 ms [UNREFERENCED]
+  PID 0x0300 : unreferenced, 5 packets from 0x00005c88 to 0x00008b88, 12750.0 ms
+  PID 0x0500 : insufficient data, 2 packets from 0x0001c8c8 to 0x0001d488, 350.0 ms
+```
+
+**Referenced PIDs.** Every program of the PAT references its PMT PID. A
+program whose PMT the analysis follows (the selected program, or every program
+with `--output analysis`) also references its `PCR_PID` (unless `0x1FFF`) and
+each elementary PID. Each program, role (PMT, PCR, ES) and PID is one
+reference, so a `PCR_PID` that also carries an elementary stream is listed
+for both roles; a stream that a PMT change retypes is a new reference of the
+new `stream_type`, judged only under that type from the change on. A reference holds from the packet where its layout applies
+(the start of the analysis, which follows the acquisition of the PAT and PMT,
+or the packet after the one that completed a PAT or PMT change) until a later
+layout no longer contains it or the analysis ends. Its silence is the longest
+time without a packet of the PID while referenced, counting from the start of
+the reference to the first packet and from the last packet to the end of the
+reference, so a stream removed by a PMT change is not silent after it.
+
+| Status | Meaning |
+| --- | --- |
+| `OK` | Packets arrived, and no silence of a judged role exceeded 5000 ms |
+| `ABSENT` | A judged role had no packet at all during a reference longer than 5000 ms |
+| `SILENT` | A judged role had packets, but went more than 5000 ms without one |
+| `INSUFFICIENT DATA` | No packet, but the reference was not longer than 5000 ms (`reference_shorter_than_limit`) or the stream type is not judged (`intermittent_stream_type`); or no PCR to measure time (`no_pcr_time_base`) |
+
+Absence and silence are judged for the PMT, the `PCR_PID` and video and audio
+streams (the stream types the continuity summary labels `video` or `audio`),
+which carry packets continuously. Other stream types, such as private data,
+subtitles or metadata, may be idle for a long time, so the check only reports
+whether they had packets. The summary line shows the most severe status.
+
+ETSI TR 101 290 (check 1.6, PID_error) leaves the period after which a
+referenced PID is missing to the user; the analyzer uses 5 s, the default of
+TSDuck's TR 101 290 analyzer for video and audio PIDs. Repetition of the PMT
+itself is not this check: a PMT that arrives every 3 s is present here. The
+5000 ms limit and the 500 ms grace period below are fixed: no option changes
+them, and they are reported in JSON (`silence_limit_ms`,
+`unreferenced_grace_ms`). Configurable limits may come with the CI failure
+policy ([#62](https://github.com/small-teton/mpeg-ts-analyzer/issues/62)).
+
+**Unreferenced PIDs.** A packet is unreferenced when no layout references its
+PID at that point and the PID is not the null PID `0x1FFF`, one of `0x0000` to
+`0x001F` (reserved for PSI and SI by ISO/IEC 13818-1 and ETSI EN 300 468),
+`0x1FFB` (ATSC PSIP), the PAT's `network_PID`, or the `CA_PID` of a
+CA_descriptor in a PMT. ETSI TR 101 290 (check 3.4, Unreferenced_PID) allows
+0.5 s for a PMT to refer to a PID, which covers the packets of a new stream
+sent shortly before the PMT that announces it and of a removed stream sent
+shortly after the PMT that removes it. Consecutive unreferenced packets of a
+PID form a run:
+
+- a PID that no earlier layout referenced is unreferenced when no layout
+  references it within 500 ms of the first packet of the run (until the end of
+  the range, a PID that is never referenced is unreferenced from its first
+  packet);
+- a PID that an earlier layout referenced is unreferenced when its packets
+  continue for more than 500 ms after the first unreferenced one;
+- a run that the end of the range cuts before 500 ms could elapse is
+  `insufficient data`: the range is too short to tell.
+
+| Status | Meaning |
+| --- | --- |
+| `none [OK]` | No PID carried unreferenced packets for longer than 500 ms |
+| `UNREFERENCED` | At least one PID did; each is listed with its packets, the first and last of them and how long its longest run lasted |
+| `INSUFFICIENT DATA` | No PID is unreferenced, but a run could not be judged (`unreferenced_within_grace`) or there is no PCR time base (`no_pcr_time_base`) |
+| `not checked (program_layouts_unknown) [SKIPPED]` | The analysis did not follow every program's PMT, so the referenced PIDs are not fully known; for example `--program 2` on a two-program stream (use `--output analysis` to analyze every program) |
+
+The CAT is not parsed, so an EMM PID that only the CAT announces is reported
+as unreferenced; ECM PIDs named by a CA_descriptor in a PMT are referenced.
+Whether the data on an unreferenced PID is useful is not judged.
+
+Unreferenced packets are only judged while every program of the PAT is
+analyzed, so the packets read while the first PAT and PMT are acquired (for a
+capture that starts in the middle of a stream) never count, and neither do
+packets of a program added by a later PAT, whose PMT is not followed.
+
+Both parts share these rules:
+
+- Time is estimated from the packet's byte position between two PCRs of the
+  reference program (the analyzed program, or with `--output analysis` the
+  first program in PAT order that has a `PCR_PID`), as for the bitrate and
+  PCR jitter estimates; all programs' clocks run at 27 MHz. Time before the
+  first or after the last PCR of the range, and across a timing-segment
+  boundary (a `declared`, `pcr_pid_change`, `backward` or `forward_jump`
+  [PCR step](#pcr-steps)), is not counted, so a duration there is a lower
+  bound; a `wraparound` is an ordinary interval (`max_silence_exact: false` in JSON).
+  Without any PCR, durations are unknown and the results are `INSUFFICIENT
+  DATA`.
+- A packet with `transport_error_indicator` set does not count: its PID may be
+  corrupted, so it neither shows that a PID is present nor makes one
+  unreferenced. A scrambled packet counts, because its header is clear.
+- Packet counts cover the whole range and match the per-PID packet counts of
+  TSDuck's `tsanalyze`, which also leaves packets with a transport error out.
+- The check never changes the exit status and does not take part in
+  `--fail-on-error`. The state it keeps is bounded by the number of PIDs and
+  programs; no per-packet history is kept. The JSON result is `pid_references`
+  ([JSON output](../reference/json-output.md#pid-references)).
 
 ## Timestamp anomaly report (always on)
 

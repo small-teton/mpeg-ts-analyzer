@@ -264,7 +264,7 @@ func TestPsiHealthText(t *testing.T) {
 		"  PMT program 2 PID 0x1010 : not found, 0 intervals, max 2840.000 ms ending at 0x00006cb0, first problem at 0x00006d6c [NG: missing, incomplete x1]",
 		"",
 	}, "\n")
-	if !strings.HasSuffix(out, want) {
+	if !strings.Contains(out, want+"-----------------------------\nReferenced PIDs: ") {
 		t.Errorf("text summary:\n%s\nwant suffix:\n%s", out, want)
 	}
 
@@ -281,7 +281,7 @@ func TestPsiHealthText(t *testing.T) {
 		"  PMT program 2 PID 0x1010 : 15 tables, no pcr time base [INSUFFICIENT DATA]",
 		"",
 	}, "\n")
-	if !strings.HasSuffix(out, want) {
+	if !strings.Contains(out, want) {
 		t.Errorf("no PCR:\n%s", out)
 	}
 

@@ -82,11 +82,15 @@ type streamTypeChange struct {
 
 // psiTracker follows the PAT and the PMTs of the analyzed programs.
 type psiTracker struct {
-	options     options.Options
-	packetSize  int
-	quiet       bool
-	continuity  *continuityCounterSummary
-	trust       *transportTrustSummary // names PIDs of applied layouts, when set
+	options    options.Options
+	packetSize int
+	quiet      bool
+	continuity *continuityCounterSummary
+	trust      *transportTrustSummary // names PIDs of applied layouts, when set
+	references *pidReferenceSummary   // PID reference health, when set
+	// generation counts the applied PAT changes and PMT layouts, so the PID
+	// reference check sees each layout change.
+	generation  int
 	patVersion  uint8
 	patTable    *patTable
 	patPrograms []Program
@@ -277,6 +281,7 @@ func (t *psiTracker) applyPat(pos int64, sections []*Pat, continuity *continuity
 	if t.health != nil {
 		t.health.patApplied(pos, t.patPrograms)
 	}
+	t.generation++
 
 	for _, p := range t.programs {
 		if p.removed {
@@ -371,6 +376,7 @@ func (t *psiTracker) setLayout(p *trackedProgram, pmtPid uint16, table *pmtTable
 		}
 	}
 	p.pmtPid, p.table = pmtPid, table
+	t.generation++
 	t.continuity.addProgramLabels(pmtPid, table.pcrPid, table.programInfos)
 	if t.trust != nil {
 		t.trust.addProgramLabels(pmtPid, table.pcrPid, table.programInfos)
