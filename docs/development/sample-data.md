@@ -118,6 +118,18 @@ go run ./tools/generate_transport_errors -m2ts -output sample_data/sample_192byt
 ./mpeg-ts-analyzer sample_data/sample_188byte_transport_errors.ts
 ```
 
+`sample_data/sample_188byte_transport_errors_malformed.ts` and
+`sample_data/sample_192byte_transport_errors_malformed.ts` are the same streams
+with each transport-error packet also malformed after its 4-byte header (a
+reserved `adaptation_field_control`, or adaptation-field lengths that run past
+the packet). Since only that header of such a packet is read, they give the
+same results.
+
+```bash
+go run ./tools/generate_transport_errors -malformed -output sample_data/sample_188byte_transport_errors_malformed.ts
+go run ./tools/generate_transport_errors -malformed -m2ts -output sample_data/sample_192byte_transport_errors_malformed.ts
+```
+
 The packets, the expected results and the TSDuck cross-check are described in
 [`tools/generate_transport_errors`](https://github.com/small-teton/mpeg-ts-analyzer/tree/master/tools/generate_transport_errors).
 

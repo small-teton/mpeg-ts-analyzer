@@ -30,7 +30,9 @@ bits.
 - **Transport errors and scrambled packets** per PID: affected packets are
   counted; the PSI/PES payload of both is kept out of the analysis, and so is
   the PCR of a packet marked with `transport_error_indicator`, while a
-  scrambled packet's PCR (in its clear adaptation field) is still used.
+  scrambled packet's PCR (in its clear adaptation field) is still used. Only
+  the 4-byte header of a marked packet is read, so one with a malformed
+  adaptation field is counted instead of stopping the analysis.
 - **PAT/PMT health**: whether the PAT and the PMT of every announced program
   were found, repeat at least every 500 ms (the ETSI TR 101 290 1.3.a/1.5.a
   value, timed by PCR), and arrive with valid CRC, syntax and table_id.

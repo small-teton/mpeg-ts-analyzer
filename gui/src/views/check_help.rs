@@ -347,7 +347,7 @@ pub const HELP: [CheckHelp; 15] = [
             ),
         ],
         skipped: "This check is never skipped while a program is analyzed. When a PAT or PMT arrives only in damaged packets, it is never acquired: the analysis is incomplete and no check is reported.",
-        limitations: "A damaged packet still counts for the continuity counter check with the counter in its header, and for the bitrate. A damaged packet whose header cannot be parsed at all interrupts the analysis as any malformed packet does, and the analysis restarts at the next PAT. Errors corrected upstream, or not flagged by the device, are invisible in the file.",
+        limitations: "Only the 4-byte TS header of a damaged packet is read: its adaptation field is not parsed, so a damaged packet with a reserved adaptation_field_control or a malformed adaptation field is still counted and the analysis continues, and its discontinuity_indicator is not used. A damaged packet still counts for the continuity counter check with the counter in its header, and for the bitrate. Errors corrected upstream, or not flagged by the device, are invisible in the file.",
         navigation: Some((
             Screen::Packets,
             "Packets marks each packet with transport_error_indicator set as a transport error.",

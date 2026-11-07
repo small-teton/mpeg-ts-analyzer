@@ -1,7 +1,9 @@
 package tsparser
 
 import (
+	"bytes"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
@@ -448,5 +450,120 @@ func TestParseInvalidAfControl(t *testing.T) {
 	tp.Append(pkt)
 	if err := tp.Parse(); err == nil {
 		t.Error("expected error for adaptation_field_control=0, got nil")
+	}
+}
+
+// teiPacket is a packet with transport_error_indicator set on PID 0x0100 with
+// continuity_counter 5, the given transport_scrambling_control and
+// adaptation_field_control, and rest from byte 4 on (the remaining bytes 0xAA).
+func teiPacket(tsc, afc byte, rest ...byte) []byte {
+	pkt := bytes.Repeat([]byte{0xAA}, 188)
+	copy(pkt, []byte{0x47, 0x81, 0x00, tsc<<6 | afc<<4 | 5})
+	copy(pkt[4:], rest)
+	return pkt
+}
+
+// A packet with transport_error_indicator set is parsed up to its fixed
+// header only: it never fails, has no adaptation field values, and its
+// payload is located with packet-bound checks only.
+func TestParseTransportErrorUntrusted(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		pkt        []byte
+		payloadLen int
+	}{
+		{"reserved adaptation_field_control", teiPacket(0, 0), 0},
+		{"payload only", teiPacket(0, 1), 184},
+		{"adaptation field only", teiPacket(0, 2, 183, 0x90, 0, 0, 0, 0, 0, 0), 0},
+		{"adaptation field and payload", teiPacket(0, 3, 7, 0x90, 0, 0, 0, 0x32, 0x7E, 0), 176},
+		{"adaptation field filling the packet", teiPacket(0, 3, 183), 0},
+		{"adaptation_field_length past the packet", teiPacket(0, 3, 200), 0},
+		// transport_private_data_length 200 runs past the adaptation field.
+		{"transport_private_data past the field", teiPacket(0, 3, 9, 0x02, 200), 174},
+		{"scrambled", teiPacket(2, 3, 9, 0x02, 200), 174},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			tp := NewTsPacket()
+			tp.Initialize(376, options.Options{})
+			tp.Append(tt.pkt)
+			if err := tp.Parse(); err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			if len(tp.Payload()) != tt.payloadLen {
+				t.Errorf("payload length = %d, want %d", len(tp.Payload()), tt.payloadLen)
+			}
+			if len(tp.Payload()) > 0 && &tp.Payload()[len(tp.Payload())-1] != &tp.buf[187] {
+				t.Error("payload does not end at the end of the packet")
+			}
+			if !tp.transportError() || tp.Pid() != 0x100 || tp.ContinuityCounter() != 5 || tp.adaptationFieldControl != tt.pkt[3]>>4&3 || tp.transportScramblingControl != tt.pkt[3]>>6 {
+				t.Errorf("header fields: %+v", tp)
+			}
+			if tp.Pcr() != 0 || tp.adaptationField.PcrFlag() || tp.adaptationField.DiscontinuityIndicator() {
+				t.Error("adaptation field values were used")
+			}
+			if !tp.payloadUntrusted() {
+				t.Error("payload is trusted")
+			}
+		})
+	}
+
+	// A previous parse of the same TsPacket leaves no adaptation field value.
+	tp := NewTsPacket()
+	tp.Append(teiPacket(0, 3, 7, 0x90, 0, 0, 0, 0x32, 0x7E, 0))
+	tp.buf[1] = 0x01
+	if err := tp.Parse(); err != nil || !tp.adaptationField.PcrFlag() {
+		t.Fatalf("clear packet: %v", err)
+	}
+	tp.buf[1] = 0x81
+	if err := tp.Parse(); err != nil || tp.adaptationField.PcrFlag() || tp.Pcr() != 0 {
+		t.Errorf("reparsed TEI packet keeps the PCR: %v", err)
+	}
+	tp.buf[3] &^= 0x30 // adaptation_field_control 0
+	if err := tp.Parse(); err != nil || len(tp.Payload()) != 0 {
+		t.Errorf("reparsed TEI packet keeps the payload: %v", err)
+	}
+}
+
+// Without transport_error_indicator, the same malformed packets are errors.
+func TestParseMalformedWithoutTransportError(t *testing.T) {
+	for name, pkt := range map[string][]byte{
+		"reserved adaptation_field_control":       teiPacket(0, 0),
+		"adaptation_field_length past the packet": teiPacket(0, 3, 200),
+		"transport_private_data past the field":   teiPacket(0, 3, 9, 0x02, 200),
+	} {
+		pkt[1] &^= 0x80
+		tp := NewTsPacket()
+		tp.Append(pkt)
+		if err := tp.Parse(); err == nil {
+			t.Errorf("%s: no error", name)
+		}
+	}
+}
+
+func TestParseTransportErrorDump(t *testing.T) {
+	opts := options.Options{DumpHeader: true, DumpPayload: true, DumpAdaptationField: true}
+	parse := func(pkt []byte) string {
+		return captureStdout(t, func() {
+			tp := NewTsPacket()
+			tp.Initialize(0, opts)
+			tp.Append(pkt)
+			if err := tp.Parse(); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	out := parse(teiPacket(0, 3, 200))
+	want := "\n===========================================\n Adaptation Field\n===========================================\nnot parsed: transport_error_indicator is set\n" +
+		"===============================================================\n TS Header\n"
+	if !strings.HasPrefix(out, want) || !strings.Contains(out, "transport_error_indicator       : 1\n") ||
+		!strings.Contains(out, "adaptation_field_control        : 3\n") || !strings.Contains(out, " Dump TS Data\n") ||
+		!strings.Contains(out, "\n 1: 47 81 00 35 c8 aa ") {
+		t.Errorf("dump:\n%s", out)
+	}
+	// No adaptation field is declared, so none is dumped; the header and the
+	// whole packet still are.
+	out = parse(teiPacket(0, 0))
+	if strings.Contains(out, "Adaptation Field") || !strings.Contains(out, "adaptation_field_control        : 0\n") || !strings.Contains(out, "\n 1: 47 81 00 05 aa ") {
+		t.Errorf("dump without adaptation field:\n%s", out)
 	}
 }

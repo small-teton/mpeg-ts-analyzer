@@ -50,8 +50,9 @@ type PacketsPage struct {
 // PacketSummary holds the light per-packet fields of a page.
 type PacketSummary struct {
 	OffsetBytes int64 `json:"offset_bytes"`
-	// Valid is false when the packet could not be parsed (no sync byte); the
-	// other fields are then absent or zero.
+	// Valid is false when the packet could not be parsed: no sync byte, or,
+	// without transport_error_indicator, a header or adaptation field that
+	// cannot be parsed. The other fields are then absent or zero.
 	Valid                  bool     `json:"valid"`
 	PID                    string   `json:"pid,omitempty"`
 	PUSI                   bool     `json:"pusi"`
@@ -206,11 +207,27 @@ func packetSummary(tp *TsPacket, offset int64) PacketSummary {
 		AdaptationFieldControl: tp.adaptationFieldControl,
 		ContinuityCounter:      tp.ContinuityCounter(),
 	}
-	if tp.HasAf() && tp.adaptationField.PcrFlag() {
-		s.PCRMs = optionalFloat(float64(tp.Pcr())/float64(pcrTicksPerMs), true)
+	if pcr, ok := listedPCR(tp); ok {
+		s.PCRMs = optionalFloat(float64(pcr)/float64(pcrTicksPerMs), true)
 	}
 	s.Sections = packetSectionStarts(tp)
 	return s
+}
+
+// listedPCR returns the PCR a page lists for the packet. The adaptation field
+// of a packet with transport_error_indicator set is not parsed, so its PCR is
+// read from the packet's bytes as the packet detail decodes it: when
+// PCR_flag is set and adaptation_field_length can hold the PCR, without
+// checking the rest of the field. The analysis never uses that PCR.
+func listedPCR(tp *TsPacket) (uint64, bool) {
+	if !tp.transportError() {
+		return tp.Pcr(), tp.HasAf() && tp.adaptationField.PcrFlag()
+	}
+	raw := tp.buf
+	if !tp.HasAf() || raw[tsHeaderSize] < 7 || raw[tsHeaderSize+1]&0x10 == 0 {
+		return 0, false
+	}
+	return readBits(raw, bitsAt(6, 0, 33))*300 + readBits(raw, bitsAt(10, 7, 9)), true
 }
 
 // packetSectionStarts reads the headers of the sections that start in a

@@ -9,6 +9,8 @@ these packets and keeps their data out of the analysis.
 ```sh
 go run ./tools/generate_transport_errors -output sample_data/sample_188byte_transport_errors.ts
 go run ./tools/generate_transport_errors -m2ts -output sample_data/sample_192byte_transport_errors.ts
+go run ./tools/generate_transport_errors -malformed -output sample_data/sample_188byte_transport_errors_malformed.ts
+go run ./tools/generate_transport_errors -malformed -m2ts -output sample_data/sample_192byte_transport_errors_malformed.ts
 tsdump --headers-only sample_data/sample_188byte_transport_errors.ts
 tsdump --format m2ts --headers-only sample_data/sample_192byte_transport_errors.ts
 tsanalyze --json sample_data/sample_188byte_transport_errors.ts
@@ -68,3 +70,37 @@ TSDuck 3.45 agrees for both files:
   new PID right after an error packet.
 - `continuity`: no discontinuity; `pcrextract` lists 47 PCRs because it does
   not skip TEI packets.
+
+## Malformed TEI packets (`-malformed`)
+
+`-malformed` writes the same stream, but also damages each TEI packet where a
+parser reading past its fixed 4-byte header would fail, as uncorrectable bit
+errors do in real captures. PIDs, continuity counters and payload presence stay
+as above:
+
+| Packet | PID | Damage |
+| --- | --- | --- |
+| 0 | 0x1FFF null | `adaptation_field_control` 0 (reserved) |
+| 25 | 0x0101 audio | `adaptation_field_length` 200, past the packet |
+| 30 | 0x0100 video | `transport_private_data_flag` with `transport_private_data_length` 200 after the (1 s late) PCR |
+| 39 | 0x0000 PAT | `adaptation_field_control` 0, with the PAT's previous `continuity_counter` (control 0 does not increment it) |
+| 43 | 0x1000 PMT | `adaptation_field_control` 3 with `adaptation_field_length` 255 |
+| 70 | 0x0100 video, also scrambled | `OPCR_flag` and `transport_private_data_flag`, `transport_private_data_length` 200 |
+
+With `transport_error_indicator` cleared, each of these packets is a parse
+error, and the analyzer before
+[#183](https://github.com/small-teton/mpeg-ts-analyzer/issues/183) stopped at
+packet 25 (`failed to parse TS packet in BufferPes: invalid
+adaptation_field_length: 200`). Since only the fixed header of a TEI packet is
+read, the expected analysis, summary and text output are exactly those of the
+default stream; `tsparser` tests pin this for both packet sizes, and also that
+the packet list shows every packet as valid.
+
+TSDuck 3.45 agrees for both files (`--format m2ts` for the 192-byte one):
+
+- `tsdump --headers-only`: 100 packets, `Error: 1` on the same six packets and
+  PIDs, and the same scrambled packets; each PID's count and first packet times
+  the packet size equal the analyzer's `packet_count` and `first_offset_bytes`.
+- `tsp -P filter --valid --negate -P count`: 6 packets.
+- `tsanalyze`: 100 packets, 6 with transport errors.
+- `tsp -P continuity`: no discontinuity, as the analyzer reports.
