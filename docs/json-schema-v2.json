@@ -433,7 +433,7 @@
             },
             "pids": {
               "type": "array",
-              "description": "One row per program, role and PID ever referenced, ordered by program_number, role (pmt, pcr, elementary_stream) and PID.",
+              "description": "One row per program, role, PID and (for elementary streams) stream_type ever referenced, ordered by program_number, role (pmt, pcr, elementary_stream), PID and stream_type.",
               "items": {
                 "$ref": "#/$defs/referencedPID"
               }
@@ -492,7 +492,7 @@
         },
         "stream_type": {
           "$ref": "#/$defs/streamType",
-          "description": "stream_type of an elementary_stream row (the latest one); absent for the other roles."
+          "description": "stream_type of an elementary_stream row; a stream retyped by a PMT change has one row per type. Absent for the other roles."
         },
         "status": {
           "$ref": "#/$defs/status",

@@ -11,8 +11,10 @@ import (
 // Referenced PIDs. Every program of the applicable PAT references its PMT PID;
 // a program whose PMT the analysis follows also references its PCR_PID
 // (unless 0x1FFF) and each elementary_PID. Each (program, role, PID) is one
-// result row, so a PCR_PID that also carries an elementary stream has a pcr
-// row and an elementary_stream row. A row is referenced from the packet at
+// result row, and an elementary stream also by its stream_type: a PCR_PID
+// that also carries an elementary stream has a pcr row and an
+// elementary_stream row, and a PMT change that retypes a stream ends the row
+// of the old type and starts one of the new type. A row is referenced from the packet at
 // which its layout applies (the scan start, the start of the program's
 // analysis after its PMT was acquired, or the packet after the one that
 // completed a PAT/PMT change) until the layout stops referencing it or the
@@ -121,10 +123,15 @@ func (r ReferenceRole) String() string {
 	}
 }
 
+// rowKey identifies a reference. An elementary stream is also identified by
+// its stream_type, so a PMT change that retypes a PID ends the reference of
+// the old type and starts one of the new type: each is judged under the
+// policy of its own type and windows, never retroactively.
 type rowKey struct {
-	program uint16
-	role    ReferenceRole
-	pid     uint16
+	program    uint16
+	role       ReferenceRole
+	pid        uint16
+	streamType uint8 // 0 for the PMT and PCR roles
 }
 
 // PIDReferenceCheck evaluates referenced and unreferenced PIDs. It is fed
@@ -191,27 +198,27 @@ func unreferencedCandidate(pid uint16) bool {
 func (c *PIDReferenceCheck) ObserveLayout(l ReferenceLayout) {
 	clock := &c.gaps.clock
 	now := clock.take(l.Index, l.Offset)
-	want := make(map[rowKey]uint8)
+	want := make(map[rowKey]bool)
 	var referenced [nullPID + 1]bool
 	complete := true
-	add := func(key rowKey, streamType uint8) {
+	add := func(key rowKey) {
 		key.pid &= nullPID // PIDs are 13 bits
 		if key.pid != nullPID {
-			want[key] = streamType
+			want[key] = true
 			referenced[key.pid] = true
 		}
 	}
 	for _, p := range l.Programs {
-		add(rowKey{p.Number, RolePMT, p.PMTPID}, 0)
+		add(rowKey{p.Number, RolePMT, p.PMTPID, 0})
 		if !p.Known {
 			complete = false
 			continue
 		}
 		if p.PCRPID != 0 {
-			add(rowKey{p.Number, RolePCR, p.PCRPID}, 0)
+			add(rowKey{p.Number, RolePCR, p.PCRPID, 0})
 		}
 		for _, s := range p.Streams {
-			add(rowKey{p.Number, RoleElementaryStream, s.PID}, s.StreamType)
+			add(rowKey{p.Number, RoleElementaryStream, s.PID, s.StreamType})
 		}
 		for _, pid := range p.CAPIDs {
 			referenced[pid&nullPID] = true
@@ -223,7 +230,7 @@ func (c *PIDReferenceCheck) ObserveLayout(l ReferenceLayout) {
 	for pid, rows := range c.active {
 		kept := rows[:0]
 		for _, row := range rows {
-			if _, ok := want[row.key]; ok {
+			if want[row.key] {
 				kept = append(kept, row)
 			} else {
 				row.unwatch(clock, now)
@@ -236,13 +243,12 @@ func (c *PIDReferenceCheck) ObserveLayout(l ReferenceLayout) {
 			c.active[pid] = kept
 		}
 	}
-	for key, streamType := range want {
+	for key := range want {
 		row, ok := c.rows[key]
 		if !ok {
 			row = &referenceRow{key: key}
 			c.rows[key] = row
 		}
-		row.streamType = streamType
 		if !row.active {
 			row.watch(clock, now)
 			c.active[key.pid] = append(c.active[key.pid], row)
@@ -286,7 +292,6 @@ func (c *PIDReferenceCheck) Finish(index, offset int64) {
 // referenced.
 type referenceRow struct {
 	key        rowKey
-	streamType uint8
 	active     bool
 	since      stamp // the last packet while referenced, or the reference start
 	silence    longest
@@ -335,7 +340,7 @@ func (r *referenceRow) judged() bool {
 	if r.key.role != RoleElementaryStream {
 		return true
 	}
-	label := streamTypeLabel(r.streamType)
+	label := streamTypeLabel(r.key.streamType)
 	return label == "video" || label == "audio"
 }
 
@@ -448,8 +453,8 @@ type ReferencedPID struct {
 	Program uint16
 	Role    ReferenceRole
 	PID     uint16
-	// StreamType is the stream_type of an elementary stream (the latest one
-	// when a PMT change retyped it); 0 for the other roles.
+	// StreamType is the stream_type of an elementary stream; a retyped stream
+	// has one row per type. 0 for the other roles.
 	StreamType uint8
 	Status     PIDStatus
 	Reason     string
@@ -486,7 +491,8 @@ type ReferencedPID struct {
 
 // ReferencedResult is the result for referenced PIDs: the most severe row
 // status (absent, then silent, then insufficient_data, then ok) and the rows
-// ordered by program number, role (PMT, PCR, elementary stream) and PID.
+// ordered by program number, role (PMT, PCR, elementary stream), PID and
+// stream type.
 type ReferencedResult struct {
 	Status PIDStatus
 	PIDs   []ReferencedPID
@@ -538,7 +544,7 @@ func (c *PIDReferenceCheck) Result() PIDReferenceResult {
 		}
 	}
 	slices.SortFunc(referenced.PIDs, func(a, b ReferencedPID) int {
-		return cmp.Or(cmp.Compare(a.Program, b.Program), cmp.Compare(a.Role, b.Role), cmp.Compare(a.PID, b.PID))
+		return cmp.Or(cmp.Compare(a.Program, b.Program), cmp.Compare(a.Role, b.Role), cmp.Compare(a.PID, b.PID), cmp.Compare(a.StreamType, b.StreamType))
 	})
 	return PIDReferenceResult{Referenced: referenced, Unreferenced: c.unreferencedResult(timeBase)}
 }
@@ -558,7 +564,7 @@ func severity(status PIDStatus) int {
 
 func (c *PIDReferenceCheck) referencedPID(row *referenceRow, timeBase bool) ReferencedPID {
 	r := ReferencedPID{
-		Program: row.key.program, Role: row.key.role, PID: row.key.pid, StreamType: row.streamType, Judged: row.judged(),
+		Program: row.key.program, Role: row.key.role, PID: row.key.pid, StreamType: row.key.streamType, Judged: row.judged(),
 		ReferencedPackets: row.packets, ReferencedFrom: row.from, ReferencedUntil: row.until,
 	}
 	if p, ok := c.gaps.PID(row.key.pid); ok {

@@ -638,8 +638,11 @@ absent when no analysis ran (`incomplete`, `failed`, `programs_listed`). For
   and for each program whose PMT the analysis follows `pcr` (its `PCR_PID`,
   unless `0x1fff`) and `elementary_stream` (with its `stream_type`). A
   `PCR_PID` that also carries an elementary stream has a row for each role
-  with the same counts. Rows are ordered by `program_number`, then `pmt`,
-  `pcr`, `elementary_stream`, then PID. `referenced.status` is the most
+  with the same counts. An elementary stream is also identified by its
+  `stream_type`: a PMT change that retypes it ends the row of the old type
+  and starts a row of the new type, so each is judged under its own type
+  only. Rows are ordered by `program_number`, then `pmt`, `pcr`,
+  `elementary_stream`, then PID and `stream_type`. `referenced.status` is the most
   severe row status (`absent`, then `silent`, then `insufficient_data`).
 - `packet_count`, `first_offset_bytes` and `last_offset_bytes` cover the PID
   in the whole range, from its first packet; `referenced_packet_count` counts

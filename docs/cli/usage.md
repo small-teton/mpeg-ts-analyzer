@@ -443,7 +443,8 @@ program whose PMT the analysis follows (the selected program, or every program
 with `--output analysis`) also references its `PCR_PID` (unless `0x1FFF`) and
 each elementary PID. Each program, role (PMT, PCR, ES) and PID is one
 reference, so a `PCR_PID` that also carries an elementary stream is listed
-for both roles. A reference holds from the packet where its layout applies
+for both roles; a stream that a PMT change retypes is a new reference of the
+new `stream_type`, judged only under that type from the change on. A reference holds from the packet where its layout applies
 (the start of the analysis, which follows the acquisition of the PAT and PMT,
 or the packet after the one that completed a PAT or PMT change) until a later
 layout no longer contains it or the analysis ends. Its silence is the longest

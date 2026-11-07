@@ -188,7 +188,7 @@ Continuity Counter: no errors detected
 Transport Error Indicator: no packets with transport_error_indicator set
 Transport Scrambling: no scrambled packets
 -----------------------------
-Referenced PIDs: 7 references, silence limit 5000 ms [OK]
+Referenced PIDs: 8 references, silence limit 5000 ms [OK]
 Unreferenced PIDs: none [OK]
 ```
 

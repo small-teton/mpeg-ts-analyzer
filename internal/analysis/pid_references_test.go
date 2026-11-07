@@ -128,12 +128,12 @@ func TestReferencedPIDOrderAndSharedRoles(t *testing.T) {
 	s.finish()
 	var got []rowKey
 	for _, row := range s.check.Result().Referenced.PIDs {
-		got = append(got, rowKey{row.Program, row.Role, row.PID})
+		got = append(got, rowKey{row.Program, row.Role, row.PID, row.StreamType})
 	}
 	want := []rowKey{
-		{1, RolePMT, pmtPID}, {1, RolePCR, pcrPID}, {1, RoleElementaryStream, pcrPID},
-		{2, RolePMT, 0x1001}, {2, RolePCR, 0x0200}, {2, RoleElementaryStream, 0x0200},
-		{3, RolePMT, 0x1002}, {4, RolePMT, 0x1003},
+		{1, RolePMT, pmtPID, 0}, {1, RolePCR, pcrPID, 0}, {1, RoleElementaryStream, pcrPID, 0x02},
+		{2, RolePMT, 0x1001, 0}, {2, RolePCR, 0x0200, 0}, {2, RoleElementaryStream, 0x0200, 0x1B},
+		{3, RolePMT, 0x1002, 0}, {4, RolePMT, 0x1003, 0},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("rows %v", got)
@@ -332,5 +332,50 @@ func TestUnreferencedClosingRunsAreBounded(t *testing.T) {
 	u := s.check.unref[0x0300]
 	if u.undetermined.runs != 0 || u.found.runs != 0 || len(u.closing) != 0 {
 		t.Errorf("runs %+v", u)
+	}
+}
+
+// A PMT change that retypes a stream starts a new reference: the old type's
+// silence is not judged under the new type, and the reverse.
+func TestRetypedStreamIsANewReference(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		before, after uint8
+		wantBefore    PIDStatus
+		wantAfter     PIDStatus
+	}{
+		// Private data idle for 6 s, then audio with packets: both ok.
+		{"private to audio", 0x06, 0x03, PIDStatusInsufficientData, PIDStatusOK},
+		// Audio silent for 6 s, then private data: the audio silence stays.
+		{"audio to private", 0x03, 0x06, PIDStatusAbsent, PIDStatusOK},
+	} {
+		s := newStream()
+		s.layout(program(ElementaryStream{PID: audioPID, StreamType: tc.before}))
+		for range 60 {
+			s.tick(pmtPID)
+		}
+		s.layout(program(ElementaryStream{PID: audioPID, StreamType: tc.after}))
+		for range 5 {
+			s.tick(pmtPID, audioPID)
+		}
+		s.finish()
+		r := s.check.Result()
+		var got []ReferencedPID
+		for _, row := range r.Referenced.PIDs {
+			if row.PID == audioPID {
+				got = append(got, row)
+			}
+		}
+		if len(got) != 2 {
+			t.Fatalf("%s: rows %+v", tc.name, got)
+		}
+		byType := map[uint8]ReferencedPID{got[0].StreamType: got[0], got[1].StreamType: got[1]}
+		before, after := byType[tc.before], byType[tc.after]
+		if before.Status != tc.wantBefore || before.ReferencedPackets != 0 || before.ReferencedUntil != 600*188 {
+			t.Errorf("%s: before %+v", tc.name, before)
+		}
+		if after.Status != tc.wantAfter || after.ReferencedPackets != 5 || after.ReferencedFrom != 600*188 || after.MaxSilenceMs > 100 {
+			t.Errorf("%s: after %+v", tc.name, after)
+		}
 	}
 }
