@@ -16,6 +16,7 @@ use crate::range_bar::AnalysisRange;
 use crate::report::{AnalysisReport, PacketDetail, PacketsPage};
 use crate::settings::Settings;
 use crate::views::Screen;
+use crate::views::metric_help::Metric;
 use crate::views::packet_pages::PacketPages;
 
 /// A CLI that passed the capabilities check. It is never run.
@@ -62,6 +63,12 @@ pub(super) fn analyzed_app() -> App {
         "../../tests/fixtures/analysis_two_programs_188.json"
     ))
     .expect("analysis fixture");
+    app_with_report(report)
+}
+
+/// An app showing `report`, with the Packets screen loaded as in
+/// [`analyzed_app`].
+fn app_with_report(report: AnalysisReport) -> App {
     let mut app = app(Ok(checked_cli()));
     app.input = Some(PathBuf::from(&report.input.path));
     app.file_size = report.input.file_size_bytes;
@@ -81,8 +88,12 @@ pub(super) fn analyzed_app() -> App {
 }
 
 fn harness(app: App) -> Harness<'static, App> {
+    harness_sized(app, egui::vec2(1280.0, 800.0))
+}
+
+fn harness_sized(app: App, size: egui::Vec2) -> Harness<'static, App> {
     let mut harness = Harness::builder()
-        .with_size(egui::vec2(1280.0, 800.0))
+        .with_size(size)
         .with_context_setup(crate::theme::apply)
         .build_ui_state(|ui, app: &mut App| app.show(ui), app);
     harness.run();
@@ -296,4 +307,250 @@ fn packet_detail_pane_keeps_its_width_for_every_packet() {
     let pat = detail_pane_left(188, pat_packet_detail());
     let pmt = detail_pane_left(564, pmt_packet_detail());
     assert_eq!(pat, pmt);
+}
+
+/// The CLI's analysis of `sample_data/sample_188byte_all_findings.ts`, in
+/// which every compliance card reports a problem.
+fn all_findings_report() -> AnalysisReport {
+    serde_json::from_str(include_str!(
+        "../../tests/fixtures/analysis_all_findings_188.json"
+    ))
+    .expect("all-findings fixture")
+}
+
+fn info_button<'a>(harness: &'a Harness<'_, App>, metric: Metric) -> Node<'a> {
+    let name = metric.about();
+    harness.get_by(move |node| node.role() == Role::Button && node.label() == Some(name.clone()))
+}
+
+/// The title label of a compliance card.
+fn card_title<'a>(harness: &'a Harness<'_, App>, metric: Metric) -> Node<'a> {
+    harness.get_by_role_and_label(Role::Label, metric.title())
+}
+
+fn bounds(node: &Node<'_>) -> egui::Rect {
+    let b = node.accesskit_node().bounding_box().expect("bounds");
+    egui::Rect::from_min_max(
+        egui::pos2(b.x0 as f32, b.y0 as f32),
+        egui::pos2(b.x1 as f32, b.y1 as f32),
+    )
+}
+
+#[test]
+fn every_card_has_an_information_button_with_an_explanation() {
+    let mut harness = harness(app_with_report(all_findings_report()));
+    for metric in Metric::ALL {
+        info_button(&harness, metric).click();
+        harness.run();
+        assert_eq!(harness.state().overview.help, Some(metric));
+        harness.get_by_role_and_label(Role::Window, metric.title());
+        harness.get_by_label(metric.help().measures);
+        harness.get_by_label(metric.help().limitations);
+        harness.key_press(egui::Key::Escape);
+        harness.run();
+        assert_eq!(harness.state().overview.help, None);
+    }
+}
+
+#[test]
+fn help_opens_and_closes_without_changing_the_analysis() {
+    let mut app = app_with_report(all_findings_report());
+    app.program = 0;
+    let mut harness = harness(app);
+    let generation = harness.state().analysis_generation;
+    let unchanged = |harness: &Harness<'_, App>| {
+        let state = harness.state();
+        assert_eq!(state.screen, Screen::Overview);
+        assert_eq!(state.program, 0);
+        assert_eq!(state.analysis_generation, generation);
+        assert!(state.analysis.is_some());
+    };
+
+    // Mouse, then the window's close button.
+    info_button(&harness, Metric::PcrJitter).click();
+    harness.run();
+    assert_eq!(harness.state().overview.help, Some(Metric::PcrJitter));
+    harness.get_by_role_and_label(Role::Window, "PCR jitter");
+    unchanged(&harness);
+    harness
+        .get_by_role_and_label(Role::Button, "Close window")
+        .click();
+    harness.run();
+    assert_eq!(harness.state().overview.help, None);
+    assert!(
+        harness
+            .query_by_role_and_label(Role::Window, "PCR jitter")
+            .is_none()
+    );
+
+    // Keyboard, then Escape.
+    info_button(&harness, Metric::MaxPcrInterval).focus();
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    assert_eq!(harness.state().overview.help, Some(Metric::MaxPcrInterval));
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    assert_eq!(harness.state().overview.help, None);
+    unchanged(&harness);
+
+    // A click outside the window.
+    info_button(&harness, Metric::ContinuityCounter).click();
+    harness.run();
+    assert_eq!(
+        harness.state().overview.help,
+        Some(Metric::ContinuityCounter)
+    );
+    harness.get_by_label("Elementary streams").click();
+    harness.run();
+    assert_eq!(harness.state().overview.help, None);
+    unchanged(&harness);
+
+    // Its link opens the detailed view.
+    info_button(&harness, Metric::PcrJitter).click();
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::Button, "Open Bitrate")
+        .scroll_to_me();
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::Button, "Open Bitrate")
+        .click();
+    harness.run();
+    assert_eq!(harness.state().screen, Screen::Bitrate);
+    assert_eq!(harness.state().overview.help, None);
+}
+
+/// Wide, medium and narrow windows, and one narrower than a card's
+/// preferred width: the cards wrap to more rows in their order, and every
+/// title and information button is inside the window without overlapping.
+#[test]
+fn cards_reflow_in_order_and_stay_visible() {
+    for (size, columns) in [
+        (egui::vec2(1280.0, 800.0), 5),
+        (egui::vec2(860.0, 800.0), 3),
+        (egui::vec2(480.0, 900.0), 1),
+        (egui::vec2(300.0, 900.0), 1),
+    ] {
+        let mut harness = harness_sized(app_with_report(all_findings_report()), size);
+        let titles: Vec<egui::Rect> = Metric::ALL
+            .iter()
+            .map(|m| bounds(&card_title(&harness, *m)))
+            .collect();
+        let first_row = titles
+            .iter()
+            .filter(|r| (r.top() - titles[0].top()).abs() < 1.0)
+            .count();
+        assert_eq!(first_row, columns, "{size:?}");
+        for pair in titles.windows(2) {
+            let same_row = (pair[1].top() - pair[0].top()).abs() < 1.0;
+            assert!(
+                pair[1].top() > pair[0].bottom() || (same_row && pair[1].left() > pair[0].right()),
+                "{size:?}: cards out of order"
+            );
+        }
+        let window = egui::Rect::from_min_size(egui::pos2(96.0, 0.0), size - egui::vec2(96.0, 0.0));
+        for metric in Metric::ALL {
+            card_title(&harness, metric).scroll_to_me();
+            harness.run();
+            let title = bounds(&card_title(&harness, metric));
+            let button = bounds(&info_button(&harness, metric));
+            assert!(
+                window.contains_rect(title),
+                "{size:?} {metric:?} title {title:?}"
+            );
+            assert!(
+                window.contains_rect(button),
+                "{size:?} {metric:?} button {button:?}"
+            );
+            assert!(!title.intersects(button), "{size:?} {metric:?} overlaps");
+        }
+    }
+}
+
+#[test]
+fn findings_account_for_every_card_that_is_not_ok() {
+    // Every card of the all-findings sample reports a problem.
+    let mut harness = harness(app_with_report(all_findings_report()));
+    harness.get_by_label("Findings (5)");
+    assert!(harness.query_by_label("None.").is_none());
+    assert_eq!(
+        harness
+            .query_all_by_role_and_label(Role::Link, "Continuity counter")
+            .count(),
+        1
+    );
+    let link = |harness: &Harness<'_, App>| {
+        harness
+            .get_by_role_and_label(Role::Link, "PCR jitter (estimate)")
+            .scroll_to_me();
+    };
+    link(&harness);
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::Link, "PCR jitter (estimate)")
+        .click();
+    harness.run();
+    assert_eq!(harness.state().overview.help, Some(Metric::PcrJitter));
+
+    // The two-program sample: only PCR jitter is NG.
+    let harness = self::harness(analyzed_app());
+    harness.get_by_label("Findings (1)");
+    harness.get_by_role_and_label(Role::Link, "PCR jitter (estimate)");
+
+    // Every card OK: no finding.
+    let mut clean: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/analysis_two_programs_188.json"
+    ))
+    .unwrap();
+    clean["programs"][0]["pcr_jitter"]["status"] = "ok".into();
+    let harness = self::harness(app_with_report(
+        serde_json::from_value(clean.clone()).unwrap(),
+    ));
+    harness.get_by_label("Findings (0)");
+    harness.get_by_label("None.");
+    assert!(
+        harness
+            .query_by_label_contains("Unavailable analysis")
+            .is_none()
+    );
+
+    // A skipped card is unavailable analysis, not a finding.
+    clean["programs"][0]["pcr_jitter"]["status"] = "skipped".into();
+    clean["programs"][0]["pcr_jitter"]["reason"] = "need at least 3 PCR samples".into();
+    let harness = self::harness(app_with_report(serde_json::from_value(clean).unwrap()));
+    harness.get_by_label("Findings (0)");
+    harness.get_by_label("Unavailable analysis (1)");
+    harness.get_by_role_and_label(Role::Link, "PCR jitter");
+}
+
+/// The fixture is what the CLI writes for the sample, so the Overview tests
+/// above see a real report; both packet sizes give the same findings.
+/// Runs only against a CLI named by MPEG_TS_ANALYZER_CLI (e.g. via `make gui-test`).
+#[test]
+fn all_findings_fixture_matches_the_cli() {
+    let args = ["--format", "json", "--output", "analysis"];
+    let Some(json) = crate::cli::run_on_sample("sample_188byte_all_findings.ts", &args) else {
+        return;
+    };
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/analysis_all_findings_188.json"
+    ))
+    .unwrap();
+    let mut output: serde_json::Value = serde_json::from_slice(&json).unwrap();
+    output["input"]["path"] = fixture["input"]["path"].clone();
+    assert_eq!(output, fixture, "regenerate the fixture with the CLI");
+
+    let m2ts = crate::cli::run_on_sample("sample_192byte_all_findings.ts", &args).unwrap();
+    let m2ts = crate::report::parse_analysis(&m2ts, "1").unwrap();
+    let report = all_findings_report();
+    let summary = |report: &AnalysisReport| -> Vec<(String, String)> {
+        crate::views::overview::findings(report, &report.programs[0])
+            .0
+            .into_iter()
+            .map(|f| (f.status, f.label))
+            .collect()
+    };
+    assert_eq!(summary(&m2ts), summary(&report));
+    assert_eq!(m2ts.input.packet_size_bytes, Some(192));
 }

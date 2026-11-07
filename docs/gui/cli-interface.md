@@ -19,6 +19,10 @@ issues. This document records the requirements those issues have to meet.
   plus a field naming the output kind. Each request is bounded (by the scan
   range or by a page size), so streaming formats such as JSON Lines are not
   needed. The existing `--format json` summary stays as it is.
+- **Verdicts are the CLI's.** The GUI shows every `status` as reported and
+  does not recompute or reinterpret it; it treats an unknown status as a
+  finding with that status rather than as `ok` (Overview findings in
+  [design.md](design.md#overview)).
 - **Exit codes and `status` / `reason` values** follow the existing contract in
   [CLI usage](../cli/usage.md) and [Machine-readable output](../reference/json-output.md).
 - **Byte offset** is the key shared by all outputs; every record that refers to

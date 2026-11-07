@@ -71,6 +71,7 @@ pub struct App {
     screen: Screen,
     /// Program shown by Overview, Timeline and Bitrate.
     program: usize,
+    overview: overview::OverviewState,
     timeline: TimelineView,
     settings: Settings,
     settings_open: bool,
@@ -135,6 +136,7 @@ impl App {
             error: None,
             screen: Screen::Overview,
             program: 0,
+            overview: overview::OverviewState::default(),
             timeline: TimelineView::default(),
             settings,
             settings_open: false,
@@ -400,7 +402,8 @@ impl App {
     fn top_bar(&mut self, ui: &mut egui::Ui) {
         self.range.clamp(self.file_size);
         let load = self.load();
-        ui.horizontal(|ui| {
+        // Both rows wrap, so a narrow window does not widen the screens below.
+        ui.horizontal_wrapped(|ui| {
             if ui
                 .button((icons::text(icons::FOLDER_OPEN), "Open…"))
                 .clicked()
@@ -409,7 +412,9 @@ impl App {
             }
             match &self.input {
                 Some(path) => {
-                    ui.monospace(path.display().to_string());
+                    let path = path.display().to_string();
+                    ui.add(egui::Label::new(egui::RichText::new(&path).monospace()).truncate())
+                        .on_hover_text(path);
                     ui.weak(range_bar::bytes(self.file_size));
                     if let Some(problem) = &self.file_problem {
                         ui.colored_label(ui.visuals().error_fg_color, problem);
@@ -424,7 +429,7 @@ impl App {
             ui.add_space(6.0);
             return;
         }
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.strong("Scan range");
             let controls_width = 470.0;
             let bar_width = (ui.available_width() - controls_width).max(160.0);
@@ -578,7 +583,9 @@ impl App {
         egui::CentralPanel::default().show(ui, |ui| {
             let navigate = match (&self.analysis, &self.plots) {
                 (Some(report), Some(plots)) => match self.screen {
-                    Screen::Overview => overview::show_report(ui, report, &mut self.program),
+                    Screen::Overview => {
+                        overview::show_report(ui, report, &mut self.program, &mut self.overview)
+                    }
                     Screen::Timeline => self.timeline.show_report(
                         ui,
                         report,
@@ -637,6 +644,13 @@ impl App {
         });
 
         let ctx = ui.ctx().clone();
+        if self.screen == Screen::Overview && self.plots.is_some() {
+            if let Some(screen) = self.overview.help_window(&ctx) {
+                self.screen = screen;
+            }
+        } else {
+            self.overview.help = None;
+        }
         let status = crate::settings::CliStatus {
             source: self.cli_location.0,
             path: &self.cli_location.1,
