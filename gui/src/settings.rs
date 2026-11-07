@@ -40,6 +40,9 @@ pub struct Settings {
     pub cli_path: String,
     /// Look for a newer GUI release once at startup (docs/gui/design.md, "Updates").
     pub check_updates_at_startup: bool,
+    /// A GUI version the user chose to skip: the startup check does not open
+    /// the update window for it (docs/gui/design.md, "Updates").
+    pub skipped_update_version: Option<String>,
 }
 
 impl Default for Settings {
@@ -51,6 +54,7 @@ impl Default for Settings {
             cached_pages: 5,
             cli_path: String::new(),
             check_updates_at_startup: true,
+            skipped_update_version: None,
         }
     }
 }
@@ -217,6 +221,7 @@ mod tests {
             cached_pages: 3,
             cli_path: "/opt/mpeg-ts-analyzer/bin/mpeg-ts-analyzer".to_owned(),
             check_updates_at_startup: false,
+            skipped_update_version: Some("9.9.9".to_owned()),
         };
         let mut storage = MemoryStorage::default();
         eframe::set_value(&mut storage, STORAGE_KEY, &saved);
@@ -236,5 +241,6 @@ mod tests {
             loaded.confirm_range_mib,
             Settings::default().confirm_range_mib
         );
+        assert_eq!(loaded.skipped_update_version, None);
     }
 }

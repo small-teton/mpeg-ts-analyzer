@@ -88,10 +88,17 @@ for the current System Settings workflow.
 ### Updating the GUI
 
 The GUI checks for a newer GUI release once at startup (Settings → Updates
-turns this off) and shows "Update available" in the status bar when there is
-one. About → **Check for Updates…** checks on demand. The update window shows
-the new version and the CLI version it bundles; **Install** downloads the
-package, verifies its signature and installs it:
+turns this off). When it finds one, it opens the **Software update** window
+once per launch; you can keep working while it is open. The update button at
+the bottom of the left rail (above Settings) checks on demand, and so does
+About → **Check for Updates…**. Once an update is known, the rail button shows
+a colored dot and its tooltip names the version.
+
+The update window shows the new version and the CLI version it bundles.
+**Later** closes it until the next launch; **Skip this version** stops the
+startup prompt for that version (a newer release prompts again, and a manual
+check still shows it). **Install** downloads the package, verifies its
+signature and installs it; it waits while an analysis is running:
 
 - **macOS** (`.app` in Applications): the app is replaced, then **Restart
   now** starts the new version. Because the GUI downloads the update itself,
