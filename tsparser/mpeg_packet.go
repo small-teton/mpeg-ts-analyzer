@@ -5,6 +5,7 @@ import (
 	"io"
 	"sort"
 
+	"github.com/small-teton/mpeg-ts-analyzer/v2/internal/analysis"
 	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 )
 
@@ -98,6 +99,8 @@ type pesAnalysis struct {
 	// input (0 when the input ends on a packet boundary), starting at truncatedPos.
 	truncatedBytes int
 	truncatedPos   int64
+	// sync is the synchronization result of the scan.
+	sync analysis.SyncResult
 	// transitions and psiWarnings come from following PAT/PMT version changes.
 	transitions []psiTransition
 	psiWarnings []psiDiagnostic
@@ -162,7 +165,7 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 	analyzer.finish()
 
 	report := analyzer.complianceReport()
-	result := &pesAnalysis{compliance: report, continuity: continuity, trust: trust, anomalies: analyzer.anomaly, truncatedBytes: scan.truncatedBytes, truncatedPos: scan.truncatedPos}
+	result := &pesAnalysis{compliance: report, continuity: continuity, trust: trust, anomalies: analyzer.anomaly, truncatedBytes: scan.truncatedBytes, truncatedPos: scan.truncatedPos, sync: scan.sync}
 	if psi != nil {
 		result.transitions, result.psiWarnings, result.sdt = psi.transitions, psi.warnings, psi.sdt
 		result.references = psi.references
@@ -174,6 +177,7 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		result.bitrate = analyzer.bitrate
 	}
 	if !quiet {
+		dumpSync(scan.sync)
 		report.dump()
 		if options.DumpPcrJitter {
 			analyzer.pcrJitter.Dump()
@@ -200,6 +204,8 @@ type scanResult struct {
 	truncatedBytes   int
 	truncatedPos     int64
 	continuityEvents []continuityEvent
+	// sync is the synchronization result of the scan.
+	sync analysis.SyncResult
 }
 
 // scanPrograms reads packets from *pos until the end of the input or endOffset
@@ -212,19 +218,25 @@ func scanPrograms(reader io.Reader, pos *int64, analyzers []*programAnalyzer, co
 	tsBuffer := make([]byte, packetSize)
 	tsPacket := NewTsPacket()
 	continuityTracker := newContinuityTracker()
+	packets := newPacketReader(reader, *pos, packetSize, endOffset)
+	if !quiet {
+		packets.report = func(message string) { fmt.Println(message) }
+	}
 
-	for endOffset <= 0 || *pos+int64(packetSize) <= endOffset {
-		size, err := io.ReadFull(reader, tsBuffer)
-		if err == io.EOF {
+	for {
+		size, err := packets.next(tsBuffer)
+		if err != nil {
+			return result, err
+		}
+		if size == 0 {
 			break
-		} else if err == io.ErrUnexpectedEOF {
+		} else if size < packetSize {
 			// Captures cut off mid-packet are common; keep the analysis of the
 			// complete packets and report the leftover bytes.
 			result.truncatedBytes = size
 			break
-		} else if err != nil {
-			return result, fmt.Errorf("file read error: %w", err)
 		}
+		*pos = packets.pos - int64(size)
 
 		tsData := tsBuffer
 		if packetSize > tsPayloadSize {
@@ -233,6 +245,12 @@ func scanPrograms(reader io.Reader, pos *int64, analyzers []*programAnalyzer, co
 		tsPacket.Initialize(*pos, options)
 		tsPacket.Append(tsData)
 		if err := tsPacket.Parse(); err != nil {
+			// The caller retries from the input position after this packet.
+			if seeker, ok := reader.(io.Seeker); ok && packets.buffered() > 0 {
+				if _, serr := seeker.Seek(packets.pos, io.SeekStart); serr != nil {
+					return result, fmt.Errorf("file seek error: %w", serr)
+				}
+			}
 			return result, fmt.Errorf("failed to parse TS packet in BufferPes: %w", err)
 		}
 		continuityResult := continuityTracker.Check(tsPacket)
@@ -261,8 +279,8 @@ func scanPrograms(reader io.Reader, pos *int64, analyzers []*programAnalyzer, co
 			}
 			psi.observe(tsPacket, *pos, continuityTracker)
 		}
-		*pos += int64(size)
 	}
+	*pos = packets.pos
 	if psi != nil {
 		psi.finish(*pos)
 		if psi.references != nil {
@@ -271,14 +289,16 @@ func scanPrograms(reader io.Reader, pos *int64, analyzers []*programAnalyzer, co
 	}
 
 	if result.truncatedBytes == 0 && endOffset > 0 {
-		result.truncatedBytes = trailingBytesAtEOF(reader, tsBuffer, endOffset-*pos)
+		result.truncatedBytes = packets.trailingAtEOF(tsBuffer, endOffset-*pos)
 	}
 	if result.truncatedBytes > 0 {
 		result.truncatedPos = *pos
+		packets.check.ObserveTrailingPartialPacket(analysis.TrailingPartialPacket{Offset: *pos, Bytes: result.truncatedBytes})
 		if !quiet {
 			fmt.Printf("0x%08x %s\n", *pos, truncatedPacketMessage(result.truncatedBytes))
 		}
 	}
+	result.sync = packets.check.Result()
 	return result, nil
 }
 

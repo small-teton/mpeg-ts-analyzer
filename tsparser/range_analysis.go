@@ -113,6 +113,9 @@ func analyzeAllPrograms(reader io.ReadSeeker, pat *patTable, leadStart, programS
 	report.Status = "complete"
 	report.Reason = ""
 	report.Error = ""
+	if syncLost(scan.sync) {
+		report.Status, report.Reason = "incomplete", syncLostReason
+	}
 	return nil
 }
 
@@ -128,6 +131,7 @@ type RangeAnalysisReport struct {
 	Error                    string                  `json:"error,omitempty"`
 	AnalysisStartOffsetBytes *int64                  `json:"analysis_start_offset_bytes,omitempty"`
 	AnalysisEndOffsetBytes   *int64                  `json:"analysis_end_offset_bytes,omitempty"`
+	Sync                     *ReportSync             `json:"sync,omitempty"`
 	ContinuityCounter        *ReportContinuity       `json:"continuity_counter,omitempty"`
 	ContinuityEvents         []ReportContinuityEvent `json:"continuity_events"`
 	TransportErrors          *ReportAffectedPackets  `json:"transport_errors,omitempty"`
@@ -245,6 +249,7 @@ func rangeAnalysisReport(report *AnalysisReport) *RangeAnalysisReport {
 	if analysis.scanned {
 		start, end := analysis.scanStart, analysis.scanEnd
 		r.AnalysisStartOffsetBytes, r.AnalysisEndOffsetBytes = &start, &end
+		r.Sync = reportSync(analysis.scan.sync)
 		r.ContinuityCounter = reportContinuity(analysis.continuity)
 		r.TransportErrors, r.ScrambledPackets = reportTransportTrust(analysis.trust)
 		r.PIDReferences = reportPidReferences(analysis.references)

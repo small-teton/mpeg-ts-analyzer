@@ -24,6 +24,7 @@ type AnalysisReport struct {
 	Error                 string                    `json:"error,omitempty"`
 	Programs              []ReportProgram           `json:"programs"`
 	SelectedProgramNumber *uint16                   `json:"selected_program_number,omitempty"`
+	Sync                  *ReportSync               `json:"sync,omitempty"`
 	Compliance            *ReportCompliance         `json:"compliance,omitempty"`
 	ContinuityCounter     *ReportContinuity         `json:"continuity_counter,omitempty"`
 	TransportErrors       *ReportAffectedPackets    `json:"transport_errors,omitempty"`
