@@ -65,6 +65,10 @@
       "$ref": "json-schema-v2.json#/$defs/affectedPackets",
       "description": "Packets with a non-zero transport_scrambling_control, for the whole multiplex, from the first packet of the range. Absent when no program was analyzed."
     },
+    "pid_references": {
+      "$ref": "json-schema-v2.json#/$defs/pidReferences",
+      "description": "Referenced, missing and unreferenced PIDs for the whole multiplex, from the first packet of the range. Absent when no program was analyzed."
+    },
     "pes_headers": {
       "$ref": "json-schema-v2.json#/$defs/pesHeaders",
       "description": "PES header checks of every elementary stream of the analyzed programs. Absent when no program was analyzed."

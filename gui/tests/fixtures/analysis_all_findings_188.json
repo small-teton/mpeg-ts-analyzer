@@ -68,6 +68,90 @@
       }
     ]
   },
+  "pid_references": {
+    "time_basis": "pcr_interpolated_file_position",
+    "silence_limit_ms": 5000,
+    "unreferenced_grace_ms": 500,
+    "referenced": {
+      "status": "ok",
+      "pids": [
+        {
+          "program_number": 1,
+          "role": "pmt",
+          "pid": "0x1000",
+          "status": "ok",
+          "silence_judged": true,
+          "packet_count": 7,
+          "first_offset_bytes": 376,
+          "last_offset_bytes": 19364,
+          "referenced_packet_count": 5,
+          "referenced_from_offset_bytes": 752,
+          "referenced_until_offset_bytes": 22560,
+          "max_silence_ms": 400,
+          "max_silence_exact": true,
+          "max_silence_start_offset_bytes": 4324,
+          "max_silence_end_offset_bytes": 8084
+        },
+        {
+          "program_number": 1,
+          "role": "pcr",
+          "pid": "0x0100",
+          "status": "ok",
+          "silence_judged": true,
+          "packet_count": 58,
+          "first_offset_bytes": 752,
+          "last_offset_bytes": 22184,
+          "referenced_packet_count": 58,
+          "referenced_from_offset_bytes": 752,
+          "referenced_until_offset_bytes": 22560,
+          "max_silence_ms": 40.1,
+          "max_silence_exact": true,
+          "max_silence_start_offset_bytes": 10528,
+          "max_silence_end_offset_bytes": 10904
+        },
+        {
+          "program_number": 1,
+          "role": "elementary_stream",
+          "pid": "0x0100",
+          "stream_type": "0x02",
+          "status": "ok",
+          "silence_judged": true,
+          "packet_count": 58,
+          "first_offset_bytes": 752,
+          "last_offset_bytes": 22184,
+          "referenced_packet_count": 58,
+          "referenced_from_offset_bytes": 752,
+          "referenced_until_offset_bytes": 22560,
+          "max_silence_ms": 40.1,
+          "max_silence_exact": true,
+          "max_silence_start_offset_bytes": 10528,
+          "max_silence_end_offset_bytes": 10904
+        },
+        {
+          "program_number": 1,
+          "role": "elementary_stream",
+          "pid": "0x0101",
+          "stream_type": "0x03",
+          "status": "ok",
+          "silence_judged": true,
+          "packet_count": 29,
+          "first_offset_bytes": 940,
+          "last_offset_bytes": 21996,
+          "referenced_packet_count": 29,
+          "referenced_from_offset_bytes": 752,
+          "referenced_until_offset_bytes": 22560,
+          "max_silence_ms": 80.05,
+          "max_silence_exact": true,
+          "max_silence_start_offset_bytes": 9964,
+          "max_silence_end_offset_bytes": 10716
+        }
+      ]
+    },
+    "unreferenced": {
+      "status": "ok",
+      "pids": []
+    }
+  },
   "pes_headers": {
     "status": "errors",
     "checked_count": 87,

@@ -199,10 +199,10 @@ func TestTransportErrorsText(t *testing.T) {
 		"  PID 0x0101 (audio) : 1 packet, first at 0x0000210c, 1 excluded",
 		"  PID 0x0200 (unknown) : 1 packet, first at 0x00000524, 0 excluded",
 		"  PID 0x1000 (PMT) : 1 packet, first at 0x00002e44, 1 excluded",
+		"-----------------------------",
 		"",
 	}, "\n")
-	// The PES header and PTS repetition summary follows.
-	if !strings.Contains(out, want+"-----------------------------\nPES Headers: ") {
+	if !strings.Contains(out, want) {
 		t.Errorf("text summary:\n%s\nwant suffix:\n%s", out, want)
 	}
 
@@ -222,7 +222,7 @@ func TestTransportErrorsText(t *testing.T) {
 		}
 	})
 	want = "Transport Error Indicator: no packets with transport_error_indicator set\nTransport Scrambling: no scrambled packets\n"
-	if !strings.Contains(out, want+"-----------------------------\nPES Headers: ") {
+	if !strings.Contains(out, want) {
 		t.Errorf("healthy: %s", out)
 	}
 }

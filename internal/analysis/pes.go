@@ -225,7 +225,7 @@ type pesStream struct {
 	placed    int // PES packets placed on the PCR timeline
 	intervals int
 	hasMax    bool
-	max       interval
+	max       ptsInterval
 	exceeded  int
 	firstOver int64
 
@@ -244,7 +244,7 @@ type problemCount struct {
 	first int64
 }
 
-type interval struct {
+type ptsInterval struct {
 	measured bool
 	ticks    uint64
 	from, to int64
@@ -318,7 +318,7 @@ func (c *PESCheck) ObservePES(o PES) {
 		st.open, st.openHasPTS, st.openSegment = true, o.HasPTS, o.Arrival.Segment
 		st.openStart, st.openFrom = at, o.Offset
 	case o.HasPTS:
-		st.record(interval{measured: st.openHasPTS, ticks: at - st.openStart, from: st.openFrom, to: o.Offset})
+		st.record(ptsInterval{measured: st.openHasPTS, ticks: at - st.openStart, from: st.openFrom, to: o.Offset})
 		st.openHasPTS, st.openStart, st.openFrom = true, at, o.Offset
 	}
 	st.last, st.lastAt = at, o.Offset
@@ -343,7 +343,7 @@ func (c *PESCheck) ObserveBreak(o PESBreak) {
 // record counts a closed interval: a measured one always, a lower bound only
 // when it exceeds the limit. Intervals of a PID end in stream order, so the
 // first one above the limit is the earliest.
-func (st *pesStream) record(iv interval) {
+func (st *pesStream) record(iv ptsInterval) {
 	over := iv.ticks > PTSRepetitionLimitTicks
 	if !iv.measured && !over {
 		return
@@ -364,11 +364,11 @@ func (st *pesStream) record(iv interval) {
 
 // pending returns the lower bound of the interval in progress: the time from
 // its start to the last PES observed since, when that PES has no PTS.
-func (st *pesStream) pending() (interval, bool) {
+func (st *pesStream) pending() (ptsInterval, bool) {
 	if !st.open || st.lastAt == st.openFrom {
-		return interval{}, false
+		return ptsInterval{}, false
 	}
-	return interval{ticks: st.last - st.openStart, from: st.openFrom, to: st.lastAt}, true
+	return ptsInterval{ticks: st.last - st.openStart, from: st.openFrom, to: st.lastAt}, true
 }
 
 // endInterval closes the interval in progress at a break.

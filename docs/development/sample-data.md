@@ -120,6 +120,26 @@ go run ./tools/generate_transport_errors -m2ts -output sample_data/sample_192byt
 The packets, the expected results and the TSDuck cross-check are described in
 [`tools/generate_transport_errors`](https://github.com/small-teton/mpeg-ts-analyzer/tree/master/tools/generate_transport_errors).
 
+## PID-reference sample
+
+`sample_data/sample_188byte_pid_references.ts` and its 192-byte M2TS twin
+`sample_data/sample_192byte_pid_references.ts` (120 KiB each, 16 s) are also
+**intentionally invalid**. Their PSI layout references an audio PID that is
+silent for 6.1 s, an audio PID that never carries a packet, a private-data PID
+that never carries a packet, and streams that a PMT change adds and removes;
+other packets are on PIDs that nothing references. The capture starts in the
+middle of the stream, before the first PAT, to test that acquisition and the
+PMT change cause no false finding.
+
+```bash
+go run ./tools/generate_pid_references -output sample_data/sample_188byte_pid_references.ts
+go run ./tools/generate_pid_references -m2ts -output sample_data/sample_192byte_pid_references.ts
+./mpeg-ts-analyzer sample_data/sample_188byte_pid_references.ts
+```
+
+The packets, the expected results and the TSDuck cross-check are described in
+[`tools/generate_pid_references`](https://github.com/small-teton/mpeg-ts-analyzer/tree/master/tools/generate_pid_references).
+
 ## PES header and PTS repetition sample
 
 `sample_data/sample_188byte_pes_health.ts` and its 192-byte M2TS twin

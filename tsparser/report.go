@@ -29,6 +29,7 @@ type AnalysisReport struct {
 	ContinuityCounter     *ReportContinuity         `json:"continuity_counter,omitempty"`
 	TransportErrors       *ReportAffectedPackets    `json:"transport_errors,omitempty"`
 	ScrambledPackets      *ReportAffectedPackets    `json:"scrambled_packets,omitempty"`
+	PIDReferences         *ReportPIDReferences      `json:"pid_references,omitempty"`
 	PESHeaders            *ReportPESHeaders         `json:"pes_headers,omitempty"`
 	PTSRepetition         *ReportPTSRepetition      `json:"pts_repetition,omitempty"`
 	TimestampAnomalies    *ReportTimestampAnomalies `json:"timestamp_anomalies,omitempty"`

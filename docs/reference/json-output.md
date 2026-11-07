@@ -154,6 +154,90 @@ $ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_
     "excluded_packet_count": 0,
     "pids": []
   },
+  "pid_references": {
+    "time_basis": "pcr_interpolated_file_position",
+    "silence_limit_ms": 5000,
+    "unreferenced_grace_ms": 500,
+    "referenced": {
+      "status": "ok",
+      "pids": [
+        {
+          "program_number": 1,
+          "role": "pmt",
+          "pid": "0x1000",
+          "status": "ok",
+          "silence_judged": true,
+          "packet_count": 43,
+          "first_offset_bytes": 376,
+          "last_offset_bytes": 310012,
+          "referenced_packet_count": 40,
+          "referenced_from_offset_bytes": 13536,
+          "referenced_until_offset_bytes": 311516,
+          "max_silence_ms": 148.444,
+          "max_silence_exact": true,
+          "max_silence_start_offset_bytes": 123704,
+          "max_silence_end_offset_bytes": 132164
+        },
+        {
+          "program_number": 1,
+          "role": "pcr",
+          "pid": "0x0100",
+          "status": "ok",
+          "silence_judged": true,
+          "packet_count": 202,
+          "first_offset_bytes": 564,
+          "last_offset_bytes": 304748,
+          "referenced_packet_count": 189,
+          "referenced_from_offset_bytes": 13536,
+          "referenced_until_offset_bytes": 311516,
+          "max_silence_ms": 66.667,
+          "max_silence_exact": true,
+          "max_silence_start_offset_bytes": 123892,
+          "max_silence_end_offset_bytes": 126712
+        },
+        {
+          "program_number": 1,
+          "role": "elementary_stream",
+          "pid": "0x0100",
+          "stream_type": "0x02",
+          "status": "ok",
+          "silence_judged": true,
+          "packet_count": 202,
+          "first_offset_bytes": 564,
+          "last_offset_bytes": 304748,
+          "referenced_packet_count": 189,
+          "referenced_from_offset_bytes": 13536,
+          "referenced_until_offset_bytes": 311516,
+          "max_silence_ms": 66.667,
+          "max_silence_exact": true,
+          "max_silence_start_offset_bytes": 123892,
+          "max_silence_end_offset_bytes": 126712
+        },
+        {
+          "program_number": 1,
+          "role": "elementary_stream",
+          "pid": "0x0101",
+          "stream_type": "0x03",
+          "status": "ok",
+          "silence_judged": true,
+          "packet_count": 1359,
+          "first_offset_bytes": 2256,
+          "last_offset_bytes": 311328,
+          "referenced_packet_count": 1307,
+          "referenced_from_offset_bytes": 13536,
+          "referenced_until_offset_bytes": 311516,
+          "max_silence_ms": 26.286,
+          "max_silence_exact": true,
+          "max_silence_start_offset_bytes": 264704,
+          "max_silence_end_offset_bytes": 266772
+        }
+      ]
+    },
+    "unreferenced": {
+      "status": "ok",
+      "pids": []
+    }
+  },
   "pes_headers": {
     "status": "ok",
     "checked_count": 220,
@@ -256,6 +340,8 @@ Status and reason values are:
 | `bitrate.status` | `ok`, `skipped` |
 | `continuity_counter.status` | `ok`, `errors` |
 | `transport_errors.status`, `scrambled_packets.status` | `ok`, `affected`, `data_excluded` |
+| `pid_references.referenced.status`, `pid_references.referenced.pids[].status` | `ok`, `absent`, `silent`, `insufficient_data` |
+| `pid_references.unreferenced.status` | `ok`, `unreferenced`, `insufficient_data`, `skipped` |
 | `pes_headers.status` (and per PID) | `ok`, `errors`, `insufficient_data` |
 | `pes_headers` `reason` | `no_pes`, `untrusted_payload`, `incomplete_headers` |
 | `pes_headers.errors[].kind` | `truncated`, `bad_start_code`, `bad_flags`, `inconsistent_length`, `bad_marker_bits` |
@@ -434,6 +520,268 @@ contributes no PSI transition, PES header, PTS/DTS, timestamp anomaly or
 PCR-PTS/DTS gap; the PAT/PMT warnings it causes are listed in `warnings`. See
 [Transport errors and scrambled packets](../cli/usage.md#transport-errors-and-scrambled-packets-always-on)
 for the complete policy. Neither object takes part in `--fail-on-error`.
+
+## PID references
+
+Every complete analysis (summary and `--output analysis`) has `pid_references`
+for the whole multiplex: whether the PIDs that the PAT and PMTs reference carry
+packets, and whether packets arrive on PIDs that nothing references. It is
+absent when no analysis ran (`incomplete`, `failed`, `programs_listed`). For
+`sample_data/sample_188byte_pid_references.ts` (see
+[Sample data](../development/sample-data.md)):
+
+```json
+{
+  "pid_references": {
+    "time_basis": "pcr_interpolated_file_position",
+    "silence_limit_ms": 5000,
+    "unreferenced_grace_ms": 500,
+    "referenced": {
+      "status": "absent",
+      "pids": [
+        {
+          "program_number": 1,
+          "role": "pmt",
+          "pid": "0x1000",
+          "status": "ok",
+          "silence_judged": true,
+          "packet_count": 40,
+          "first_offset_bytes": 1880,
+          "last_offset_bytes": 119192,
+          "referenced_packet_count": 37,
+          "referenced_from_offset_bytes": 8084,
+          "referenced_until_offset_bytes": 120320,
+          "max_silence_ms": 400,
+          "max_silence_exact": true,
+          "max_silence_start_offset_bytes": 10904,
+          "max_silence_end_offset_bytes": 13912
+        },
+        {
+          "program_number": 1,
+          "role": "pcr",
+          "pid": "0x0100",
+          "status": "ok",
+          "silence_judged": true,
+          "packet_count": 160,
+          "first_offset_bytes": 0,
+          "last_offset_bytes": 119568,
+          "referenced_packet_count": 149,
+          "referenced_from_offset_bytes": 8084,
+          "referenced_until_offset_bytes": 120320,
+          "max_silence_ms": 100,
+          "max_silence_exact": true,
+          "max_silence_start_offset_bytes": 8272,
+          "max_silence_end_offset_bytes": 9024
+        },
+        {
+          "program_number": 1,
+          "role": "elementary_stream",
+          "pid": "0x0100",
+          "stream_type": "0x02",
+          "status": "ok",
+          "silence_judged": true,
+          "packet_count": 160,
+          "first_offset_bytes": 0,
+          "last_offset_bytes": 119568,
+          "referenced_packet_count": 149,
+          "referenced_from_offset_bytes": 8084,
+          "referenced_until_offset_bytes": 120320,
+          "max_silence_ms": 100,
+          "max_silence_exact": true,
+          "max_silence_start_offset_bytes": 8272,
+          "max_silence_end_offset_bytes": 9024
+        },
+        {
+          "program_number": 1,
+          "role": "elementary_stream",
+          "pid": "0x0101",
+          "stream_type": "0x03",
+          "status": "silent",
+          "silence_judged": true,
+          "packet_count": 100,
+          "first_offset_bytes": 188,
+          "last_offset_bytes": 119756,
+          "referenced_packet_count": 89,
+          "referenced_from_offset_bytes": 8084,
+          "referenced_until_offset_bytes": 120320,
+          "max_silence_ms": 6100,
+          "max_silence_exact": true,
+          "max_silence_start_offset_bytes": 44556,
+          "max_silence_end_offset_bytes": 90428
+        },
+        {
+          "program_number": 1,
+          "role": "elementary_stream",
+          "pid": "0x0102",
+          "stream_type": "0x06",
+          "status": "insufficient_data",
+          "reason": "intermittent_stream_type",
+          "silence_judged": false,
+          "packet_count": 0,
+          "referenced_packet_count": 0,
+          "referenced_from_offset_bytes": 8084,
+          "referenced_until_offset_bytes": 120320,
+          "max_silence_ms": 14800,
+          "max_silence_exact": false,
+          "max_silence_start_offset_bytes": 8084,
+          "max_silence_end_offset_bytes": 120320
+        },
+        {
+          "program_number": 1,
+          "role": "elementary_stream",
+          "pid": "0x0103",
+          "stream_type": "0x04",
+          "status": "absent",
+          "silence_judged": true,
+          "packet_count": 0,
+          "referenced_packet_count": 0,
+          "referenced_from_offset_bytes": 8084,
+          "referenced_until_offset_bytes": 107348,
+          "max_silence_ms": 13175,
+          "max_silence_exact": false,
+          "max_silence_start_offset_bytes": 8084,
+          "max_silence_end_offset_bytes": 107348
+        },
+        {
+          "program_number": 1,
+          "role": "elementary_stream",
+          "pid": "0x0105",
+          "stream_type": "0x03",
+          "status": "ok",
+          "silence_judged": true,
+          "packet_count": 11,
+          "first_offset_bytes": 105092,
+          "last_offset_bytes": 120132,
+          "referenced_packet_count": 9,
+          "referenced_from_offset_bytes": 107348,
+          "referenced_until_offset_bytes": 120320,
+          "max_silence_ms": 200,
+          "max_silence_exact": true,
+          "max_silence_start_offset_bytes": 108100,
+          "max_silence_end_offset_bytes": 109604
+        },
+        {
+          "program_number": 1,
+          "role": "elementary_stream",
+          "pid": "0x0106",
+          "stream_type": "0x03",
+          "status": "ok",
+          "silence_judged": true,
+          "packet_count": 74,
+          "first_offset_bytes": 564,
+          "last_offset_bytes": 110356,
+          "referenced_packet_count": 66,
+          "referenced_from_offset_bytes": 8084,
+          "referenced_until_offset_bytes": 107348,
+          "max_silence_ms": 200,
+          "max_silence_exact": true,
+          "max_silence_start_offset_bytes": 9588,
+          "max_silence_end_offset_bytes": 11092
+        }
+      ]
+    },
+    "unreferenced": {
+      "status": "unreferenced",
+      "pids": [
+        {
+          "pid": "0x0300",
+          "status": "unreferenced",
+          "packet_count": 5,
+          "first_offset_bytes": 23688,
+          "last_offset_bytes": 35720,
+          "longest_run_ms": 12750
+        },
+        {
+          "pid": "0x0500",
+          "status": "insufficient_data",
+          "packet_count": 2,
+          "first_offset_bytes": 116936,
+          "last_offset_bytes": 119944,
+          "longest_run_ms": 350
+        }
+      ]
+    }
+  }
+}
+```
+
+- `time_basis` is `pcr_interpolated_file_position`: the time of a packet is
+  interpolated from its position between two PCRs of the reference program
+  (the selected program, or with `--output analysis` the first analyzed
+  program in PAT order with a `PCR_PID`), the model of the bitrate and PCR
+  jitter estimates. Time before the first or after the last PCR of the range,
+  and across a timing-segment boundary (a `declared`, `pcr_pid_change`,
+  `backward` or `forward_jump` step, see
+  [PCR timing results](#pcr-timing-results)), is not counted, so durations
+  there are lower bounds; a `wraparound` step is an ordinary interval.
+- `silence_limit_ms` (5000) and `unreferenced_grace_ms` (500) are the limits
+  below. ETSI TR 101 290 leaves the PID_error period (check 1.6) to the user;
+  5 s is the default of TSDuck's TR 101 290 analyzer for video and audio PIDs.
+  The 0.5 s grace is TR 101 290's Unreferenced_PID period (check 3.4). Both
+  are fixed (no option changes them); they are reported so that a consumer
+  can tell if a later version makes them configurable, which may come with
+  the CI failure policy
+  ([#62](https://github.com/small-teton/mpeg-ts-analyzer/issues/62)).
+- `referenced.pids` has one row per program, `role` and `pid` that a layout
+  referenced at some point: `pmt` for the PMT PID of every program of the PAT,
+  and for each program whose PMT the analysis follows `pcr` (its `PCR_PID`,
+  unless `0x1fff`) and `elementary_stream` (with its `stream_type`). A
+  `PCR_PID` that also carries an elementary stream has a row for each role
+  with the same counts. An elementary stream is also identified by its
+  `stream_type`: a PMT change that retypes it ends the row of the old type
+  and starts a row of the new type, so each is judged under its own type
+  only. Rows are ordered by `program_number`, then `pmt`, `pcr`,
+  `elementary_stream`, then PID and `stream_type`. `referenced.status` is the most
+  severe row status (`absent`, then `silent`, then `insufficient_data`).
+- `packet_count`, `first_offset_bytes` and `last_offset_bytes` cover the PID
+  in the whole range, from its first packet; `referenced_packet_count` counts
+  the packets while the row was referenced, from `referenced_from_offset_bytes`
+  (where its layout first applied) to `referenced_until_offset_bytes` (where a
+  layout stopped referencing it, or the end of the scan). Packets with
+  `transport_error_indicator` set are not counted, because their PID may be
+  corrupted; scrambled packets are, because their header is clear.
+- `max_silence_ms` is the longest time without a packet of the PID while
+  referenced, including from the start of a reference to the first packet and
+  from the last packet to the end of a reference; the offsets are the packet
+  (or reference start) before it and the packet (or reference end) that ended
+  it. `max_silence_exact` is `false` when it is a lower bound. It is absent
+  without a PCR time base.
+- `silence_judged` is `true` for the PMT, the `PCR_PID` and video or audio
+  elementary streams, which carry packets continuously. Other stream types
+  (private data, subtitles, metadata) may be idle for a long time, so only
+  their presence is reported.
+
+| Row `status` | Meaning |
+| --- | --- |
+| `ok` | A packet arrived while referenced, and for a judged role no silence exceeded `silence_limit_ms` |
+| `absent` | A judged role had no packet at all while referenced, during a reference longer than `silence_limit_ms` |
+| `silent` | A judged role had packets, but `max_silence_ms` exceeds `silence_limit_ms` |
+| `insufficient_data` | `reason` is `reference_shorter_than_limit` (no packet, but the reference was too short to call the PID absent), `intermittent_stream_type` (no packet on a PID that is not judged) or `no_pcr_time_base` (no PCR to measure time) |
+
+`unreferenced.pids` lists the PIDs that carried packets while no layout
+referenced them. The null PID `0x1fff`, the PSI/SI PIDs `0x0000` to `0x001f`,
+`0x1ffb`, the PAT's `network_PID` and the `CA_PID` of every CA_descriptor in a
+PMT are never unreferenced. Consecutive unreferenced packets of a PID form a
+run. A run is `unreferenced` when no layout references the PID within
+`unreferenced_grace_ms` of its first packet, or, for a PID an earlier layout
+referenced (a stream that a PMT removed), when its packets continue for longer
+than that after the first unreferenced one. `longest_run_ms` is the longest
+such run, `packet_count` and the offsets cover those runs. A run that the end
+of the range cuts before the grace period could elapse is `insufficient_data`.
+
+| `unreferenced.status` | Meaning |
+| --- | --- |
+| `ok` | No PID carried unreferenced packets beyond the grace period |
+| `unreferenced` | At least one PID did |
+| `insufficient_data` | No PID is unreferenced, but a run could not be judged (`reason: unreferenced_within_grace`), or there is no PCR time base (`no_pcr_time_base`) |
+| `skipped` | The analysis never followed the PMT of every program of the PAT, so the referenced PIDs are not fully known (`reason: program_layouts_unknown`); for example a summary run with `--program` on a multi-program stream |
+
+Packets are judged only while every program's PMT is followed, so packets read
+while the first PAT and PMTs were acquired (a capture that starts in the
+middle of a stream) are never unreferenced, and a PAT or PMT change applies
+from the packet after the one that completed it, with the grace period around
+it. See [PID references](../cli/usage.md#pid-references-always-on) for the
+complete policy. `pid_references` does not take part in `--fail-on-error`.
 
 ## PCR timing results
 
@@ -968,9 +1316,10 @@ which 1.x let end the scan and restart the PAT search, is now skipped and
 counted in `sync`.
 
 Everything else, including the `series.pcr_jitter` points, is unchanged.
-Within 2.0, `transport_errors`, `scrambled_packets`, `pes_headers` and
-`pts_repetition` were added to both documents, and `compliance.pcr_discontinuities` and the `kind` of each
-`pcr_jitter.estimate.discontinuities` entry to both (additive changes). Aligning
+Within 2.0, `transport_errors` and `scrambled_packets` were added to both
+documents, and `compliance.pcr_discontinuities` and the `kind` of each
+`pcr_jitter.estimate.discontinuities` entry to both, and `pid_references`,
+`pes_headers` and `pts_repetition` to both documents (additive changes). Aligning
 the PCR steps also changed some values within 2.0 for streams with these steps
 (none of the bundled samples except the new PCR-discontinuities sample):
 
@@ -1020,6 +1369,7 @@ Abridged output for the two-program sample:
   "continuity_events": [],
   "transport_errors": { "status": "ok", "packet_count": 0, "excluded_packet_count": 0, "pids": [] },
   "scrambled_packets": { "status": "ok", "packet_count": 0, "excluded_packet_count": 0, "pids": [] },
+  "pid_references": { "time_basis": "pcr_interpolated_file_position", "silence_limit_ms": 5000, "unreferenced_grace_ms": 500, "referenced": { "status": "ok", "pids": [ ... ] }, "unreferenced": { "status": "ok", "pids": [] } },
   "pes_headers": { "status": "ok", "checked_count": 106, "error_count": 0, "unchecked_count": 0, "errors": [], "pids": [ ... ] },
   "pts_repetition": { "limit_ms": 700, "status": "ok", "pts_count": 106, "interval_count": 94, "max_interval_ms": 414.2792962962963, ... },
   "programs": [
@@ -1075,6 +1425,10 @@ Abridged output for the two-program sample:
 - `transport_errors` and `scrambled_packets` are reported once for the whole
   multiplex, from the first packet of the range, as in the summary
   ([Transport errors and scrambled packets](#transport-errors-and-scrambled-packets)).
+- `pid_references` is reported once for the whole multiplex, from the first
+  packet of the range ([PID references](#pid-references)). Each program's
+  references apply from its own analysis start; unreferenced PIDs are judged
+  once every program's PMT is followed.
 - `pes_headers` and `pts_repetition` are reported once and list the
   elementary streams of every analyzed program by `program_number` and PID
   ([PES headers and PTS repetition](#pes-headers-and-pts-repetition)).

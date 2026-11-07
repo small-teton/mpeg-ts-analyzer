@@ -56,8 +56,9 @@ switching programs or screens never runs the CLI again.
 - **Per program vs. per multiplex**: PCR, PTS/DTS, timestamp anomalies,
   bitrate and PCR jitter are per program; continuity-counter results,
   transport errors and scrambled packets (`transport_errors`,
-  `scrambled_packets`), TS synchronization (`sync`) and warnings are per
-  range, as the CLI checks them
+  `scrambled_packets`), TS synchronization (`sync`), referenced and
+  unreferenced PIDs (`pid_references`) and warnings are per range, as the
+  CLI checks them
   across the multiplex. PES header and PTS repetition results (`pes_headers`,
   `pts_repetition`) are reported once per range and list every elementary
   stream by `program_number` and PID. Bitrate and jitter are collected without the `--dump-*` flags.
