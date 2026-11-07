@@ -261,6 +261,13 @@ func (c *PIDReferenceCheck) ObserveLayout(l ReferenceLayout) {
 		}
 	}
 	for pid, yes := range referenced {
+		// A PID whose reference ends, or that is referenced again after an
+		// earlier layout stopped referencing it, starts a new packet-gap
+		// chain. A PID referenced for the first time does not: packets read
+		// before the first layout (the acquisition) are not an absence.
+		if yes != c.referenced[pid] && c.ever[pid] {
+			c.gaps.restart(uint16(pid))
+		}
 		c.ever[pid] = c.ever[pid] || yes
 	}
 	c.referenced, c.complete = referenced, complete

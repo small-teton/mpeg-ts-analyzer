@@ -60,6 +60,7 @@ pub enum Check {
     PmtHealth,
     ReferencedPids,
     UnreferencedPids,
+    PacketGaps,
     MuxLead,
 }
 
@@ -124,7 +125,7 @@ pub struct CheckHelp {
 
 /// The explanations in table order: grouped by [`Category`], in
 /// [`Category::ALL`] order.
-pub const HELP: [CheckHelp; 16] = [
+pub const HELP: [CheckHelp; 17] = [
     CheckHelp {
         check: Check::MaxPcrInterval,
         category: Category::Timing,
@@ -531,6 +532,31 @@ pub const HELP: [CheckHelp; 16] = [
         )),
     },
     CheckHelp {
+        check: Check::PacketGaps,
+        category: Category::Multiplexing,
+        title: "Packet gaps",
+        summary: "The longest run of other packets between two packets of each PID: a report of how the multiplex interleaves, without a verdict.",
+        measures: "For each PID, the largest number of packets of other PIDs (null packets included) between two consecutive packets of the PID; the two packets themselves are not counted. The gap in packets is exact and chooses the largest gap; its time is estimated from each packet's byte position between two PCRs of one program, as for bitrate. A poorly interleaved remux that sends a stream in large blocks shows a large gap even when the stream's average bitrate is right.",
+        applies_to: "The PIDs of the selected program: its PMT, its PCR PID and its elementary streams, as any PAT or PMT of the range referenced them. The CLI reports every PID of the multiplex except the null PID, from the first packet of the range. A PAT or PMT change that removes a PID, or adds it back after an earlier change removed it, starts a new count, so a stream that is removed and re-added has no gap across its absence.",
+        value: "The largest gap of the program's elementary streams, in milliseconds (in packets when there is no PCR time), marked \"at least\" when the time is a lower bound. Current result names that stream; the detail table lists every PID of the program with its packets, its largest gap in packets and milliseconds, and the two packets around it.",
+        statuses: &[
+            (
+                "info",
+                "A report, not a verdict: at least one PID of the program has two consecutive packets, so its largest gap is measured. No gap is too long or too short.",
+            ),
+            (
+                "insufficient_data",
+                "No PID of the program has two consecutive packets: each has a single packet, or its packets are separated by a PAT or PMT change that removed it.",
+            ),
+        ],
+        skipped: "This report is never skipped while a program is analyzed. Without any PCR in the reference program, gaps are given in packets only.",
+        limitations: "There is no limit and no verdict: the report never becomes a finding and never changes the CLI's exit status. A file has no arrival times, so the time is an estimate even when exact, and on a variable-bitrate stream a gap in packets and a gap in time can disagree. Time before the first and after the last PCR of the analysis, and across a PCR discontinuity, is not counted, so such a gap is a lower bound, shown as \"at least\". Of equal gaps the first is shown, preferring one after the first PCR. The time before a PID's first packet and after its last is not a gap; Referenced PIDs judges absence and silence. Packets with transport_error_indicator set do not count for their PID, because their PID may be damaged, but they take their place in the gaps of other PIDs.",
+        navigation: Some((
+            Screen::Packets,
+            "Packets lists the packets around a gap; the detail table opens the packets before and after the largest gap of each PID.",
+        )),
+    },
+    CheckHelp {
         check: Check::MuxLead,
         category: Category::Multiplexing,
         title: "Mux lead",
@@ -621,6 +647,7 @@ mod tests {
                 Check::PmtHealth,
                 Check::ReferencedPids,
                 Check::UnreferencedPids,
+                Check::PacketGaps,
                 Check::MuxLead,
             ]
         );
@@ -681,6 +708,10 @@ mod tests {
                 );
             }
             assert!(check.verdict_meaning("insufficient_data").is_some());
+        }
+        let gaps = text(Check::PacketGaps);
+        for phrase in ["not a verdict", "no verdict", "lower bound", "null packets"] {
+            assert!(gaps.contains(phrase), "{phrase}");
         }
         let discontinuities = text(Check::PcrDiscontinuities);
         for phrase in [

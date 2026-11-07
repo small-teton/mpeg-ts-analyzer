@@ -8,8 +8,8 @@ use crate::plot_data::Timeline;
 use crate::psi;
 use crate::range_bar;
 use crate::report::{
-    AffectedPackets, AnalysisReport, AvLeadProgram, MuxLeadPid, Program, PsiHealth, PsiTableHealth,
-    ReferencedPid, UnreferencedPid, stream_type_name,
+    AffectedPackets, AnalysisReport, AvLeadProgram, MuxLeadPid, PacketGapPid, Program, PsiHealth,
+    PsiTableHealth, ReferencedPid, UnreferencedPid, stream_type_name,
 };
 
 /// What Overview shows: the summary, or the full-page explanation of one
@@ -815,6 +815,26 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
                 reason: undetermined_unreferenced(report),
             })
         }
+        Check::PacketGaps => {
+            let number = program.program_number;
+            let pids = program_packet_gaps(report, program)?;
+            let worst = worst_stream_gap(&pids, number);
+            let mut facts = vec![("PIDs", pids.len().to_string())];
+            facts.extend(worst.map(|p| ("Largest stream gap", gap_text(p, number))));
+            facts.push(("Time basis", "PCR-interpolated file position".to_owned()));
+            facts.push(("Verdict", "none: report only".to_owned()));
+            facts.push(("Applies to", format!("the PIDs of program {number}")));
+            let status = packet_gaps_status(&pids);
+            let reason = (status == "insufficient_data")
+                .then(|| format!("no PID of program {number} has two consecutive packets"));
+            Some(Row {
+                check,
+                status: status.to_owned(),
+                value: worst.map_or_else(|| "—".to_owned(), gap_amount),
+                facts,
+                reason,
+            })
+        }
         Check::PcrJitter => {
             let jitter = program.pcr_jitter.as_ref()?;
             let estimate = &jitter.estimate;
@@ -843,6 +863,103 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
             })
         }
     }
+}
+
+/// The packet gaps of the PIDs that a layout referenced for `program`, in
+/// PID order; `None` when the CLI reported no packet gaps.
+pub(crate) fn program_packet_gaps<'a>(
+    report: &'a AnalysisReport,
+    program: &Program,
+) -> Option<Vec<&'a PacketGapPid>> {
+    let gaps = &report.multiplexing.as_ref()?.packet_gaps;
+    Some(
+        gaps.pids
+            .iter()
+            .filter(|p| {
+                p.references
+                    .iter()
+                    .any(|r| r.program_number == program.program_number)
+            })
+            .collect(),
+    )
+}
+
+/// The status of the packet-gap row: a PID status this GUI does not know (shown
+/// as the CLI reported it), else `info` when a gap was measured, else
+/// `insufficient_data`.
+fn packet_gaps_status<'a>(pids: &[&'a PacketGapPid]) -> &'a str {
+    pids.iter()
+        .map(|p| p.status.as_str())
+        .find(|s| !matches!(*s, "info" | "insufficient_data"))
+        .or_else(|| pids.iter().any(|p| p.status == "info").then_some("info"))
+        .unwrap_or("insufficient_data")
+}
+
+/// The elementary stream of `program` with the largest gap in packets; the
+/// first of equal gaps.
+fn worst_stream_gap<'a>(pids: &[&'a PacketGapPid], program: u16) -> Option<&'a PacketGapPid> {
+    pids.iter()
+        .rev()
+        .filter(|p| {
+            p.references
+                .iter()
+                .any(|r| r.program_number == program && r.role == "elementary_stream")
+        })
+        .filter(|p| p.max_gap_packets.is_some())
+        .max_by_key(|p| p.max_gap_packets)
+        .copied()
+}
+
+/// The roles of a PID in `program`: PMT, PCR or its stream_type.
+pub(crate) fn gap_roles(p: &PacketGapPid, program: u16) -> String {
+    let roles: Vec<String> = p
+        .references
+        .iter()
+        .filter(|r| r.program_number == program)
+        .map(|r| match (r.role.as_str(), &r.stream_type) {
+            ("pmt", _) => "PMT".to_owned(),
+            ("pcr", _) => "PCR".to_owned(),
+            (_, Some(stream_type)) => format!("stream_type {stream_type}"),
+            (role, None) => role.to_owned(),
+        })
+        .collect();
+    roles.join(", ")
+}
+
+/// The time of a PID's largest gap, `at least` when it is a lower bound.
+pub(crate) fn gap_ms(p: &PacketGapPid) -> Option<String> {
+    let ms = p.max_gap_ms?;
+    let bound = if p.max_gap_exact == Some(false) {
+        "at least "
+    } else {
+        ""
+    };
+    Some(format!("{bound}{ms:.1} ms"))
+}
+
+/// The value of a gap: its time, or its packets when it has no time.
+fn gap_amount(p: &PacketGapPid) -> String {
+    gap_ms(p).unwrap_or_else(|| packets(p.max_gap_packets.unwrap_or_default()))
+}
+
+/// One PID's largest gap: PID, roles, packets, time and the two packets.
+fn gap_text(p: &PacketGapPid, program: u16) -> String {
+    let mut text = format!("PID {} ({})", p.pid, gap_roles(p, program));
+    match p.max_gap_packets {
+        Some(gap) => {
+            text += &format!(": {}", packets(gap));
+            if let Some(ms) = gap_ms(p) {
+                text += &format!(", {ms}");
+            }
+            if let (Some(start), Some(end)) =
+                (p.max_gap_start_offset_bytes, p.max_gap_end_offset_bytes)
+            {
+                text += &format!(", from 0x{start:08X} to 0x{end:08X}");
+            }
+        }
+        None => text += &format!(": {}", p.status.replace('_', " ")),
+    }
+    text
 }
 
 /// What the PES checks apply to.
@@ -1481,8 +1598,8 @@ pub(crate) fn is_unavailable(check: Check, status: &str) -> bool {
 }
 
 /// Whether a check status is a report without a verdict: the `info` of a
-/// report-only check (Mux lead), which is neither a finding nor unavailable
-/// analysis.
+/// report-only check (Packet gaps, Mux lead), which is neither a finding
+/// nor unavailable analysis.
 pub(crate) fn is_report_only(check: Check, status: &str) -> bool {
     status == "info" && is_known_status(check, status)
 }
@@ -1821,6 +1938,22 @@ pub(crate) fn findings(
                     });
                 }
             }
+            Check::PacketGaps => {
+                // Only a status this GUI does not know: one finding per PID
+                // with it, at the packet before its largest gap.
+                let number = program.program_number;
+                for pid in program_packet_gaps(report, program)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|p| p.status == row.status)
+                {
+                    findings.push(finding(
+                        gap_text(pid, number),
+                        in_program,
+                        pid.max_gap_start_offset_bytes,
+                    ));
+                }
+            }
             Check::PcrJitter => {
                 let jitter = program.pcr_jitter.as_ref();
                 let limit = match row.status.as_str() {
@@ -1986,7 +2119,7 @@ mod tests {
                 continue;
             }
             // A report without a verdict is never a finding.
-            if row.check == Check::MuxLead {
+            if matches!(row.check, Check::PacketGaps | Check::MuxLead) {
                 assert_eq!(row.status, "info");
                 assert!(!is_finding(row.check, &row.status));
                 assert!(!is_unavailable(row.check, &row.status));
@@ -2114,7 +2247,10 @@ mod tests {
         );
 
         // No mux lead, or no multiplexing result: no row.
-        edited["multiplexing"] = serde_json::json!({});
+        edited["multiplexing"]
+            .as_object_mut()
+            .unwrap()
+            .remove("mux_lead");
         let report = self::report(&edited.to_string());
         assert!(self::row(&report, &report.programs[0], Check::MuxLead).is_none());
         edited["multiplexing"] = serde_json::Value::Null;
@@ -2466,6 +2602,7 @@ mod tests {
                 Check::PmtHealth,
                 Check::ReferencedPids,
                 Check::UnreferencedPids,
+                Check::PacketGaps,
                 Check::MuxLead,
             ]
         );
@@ -2576,6 +2713,129 @@ mod tests {
         let unreferenced: Vec<&str> = rows[12].facts.iter().map(|(label, _)| *label).collect();
         assert_eq!(unreferenced, ["Grace period", "Applies to"]);
         assert_eq!(rows[12].value, "0");
+        // Packet gaps of program 1 only: its PMT, PCR/video and audio PIDs;
+        // the largest stream gap is the audio's.
+        assert_eq!(
+            (rows[13].status.as_str(), rows[13].value.as_str()),
+            ("info", "357.4 ms")
+        );
+        assert_eq!(
+            rows[13].facts,
+            [
+                ("PIDs", "3".to_owned()),
+                (
+                    "Largest stream gap",
+                    "PID 0x0101 (stream_type 0x03): 173 packets, 357.4 ms, from 0x0000CB6C to 0x00014B34"
+                        .to_owned()
+                ),
+                ("Time basis", "PCR-interpolated file position".to_owned()),
+                ("Verdict", "none: report only".to_owned()),
+                ("Applies to", "the PIDs of program 1".to_owned()),
+            ]
+        );
+        assert!(matches!(
+            status_verdict("info"),
+            crate::theme::Verdict::Neutral
+        ));
+    }
+
+    /// Packet gaps: a lower bound, a gap without time, PIDs without a gap and
+    /// a status this GUI does not know.
+    #[test]
+    fn packet_gap_rows() {
+        let document = include_str!("../../tests/fixtures/analysis_packet_gaps_188.json");
+        let report = report(document);
+        let program = &report.programs[0];
+        let row = row(&report, program, Check::PacketGaps).unwrap();
+        assert_eq!(
+            (row.status.as_str(), row.value.as_str()),
+            ("info", "at least 590.0 ms")
+        );
+        assert_eq!(
+            row.facts[1].1,
+            "PID 0x0101 (stream_type 0x03): 125 packets, at least 590.0 ms, from 0x00011F24 to 0x00017BAC"
+        );
+        let pids = program_packet_gaps(&report, program).unwrap();
+        // PSI/SI PIDs (0x0000, 0x0011, 0x0012) belong to no program.
+        let listed: Vec<&str> = pids.iter().map(|p| p.pid.as_str()).collect();
+        assert_eq!(listed, ["0x0100", "0x0101", "0x0102", "0x01ff", "0x1000"]);
+        assert_eq!(gap_roles(pids[3], 1), "PCR");
+        assert_eq!(gap_roles(pids[4], 1), "PMT");
+        let (all, unavailable) = findings(&report, program);
+        assert!(all.iter().all(|f| f.check != Some(Check::PacketGaps)));
+        assert!(unavailable.iter().all(|u| u.check != Check::PacketGaps));
+
+        // Without a time base the value is in packets; a role without a
+        // stream_type is shown as reported.
+        let mut edited: serde_json::Value = serde_json::from_str(document).unwrap();
+        for pid in edited["multiplexing"]["packet_gaps"]["pids"]
+            .as_array_mut()
+            .unwrap()
+        {
+            pid.as_object_mut().unwrap().remove("max_gap_ms");
+            if let Some(reference) = pid["references"].get_mut(0) {
+                reference["stream_type"] = serde_json::Value::Null;
+            }
+        }
+        let report = self::report(&edited.to_string());
+        let program = &report.programs[0];
+        let row = self::row(&report, program, Check::PacketGaps).unwrap();
+        assert_eq!(row.value, "125 packets");
+        assert_eq!(
+            row.facts[1].1,
+            "PID 0x0101 (elementary_stream): 125 packets, from 0x00011F24 to 0x00017BAC"
+        );
+
+        // No PID of the program has a gap: unavailable analysis.
+        for pid in edited["multiplexing"]["packet_gaps"]["pids"]
+            .as_array_mut()
+            .unwrap()
+        {
+            let pid = pid.as_object_mut().unwrap();
+            pid.insert("status".to_owned(), "insufficient_data".into());
+            pid.remove("max_gap_packets");
+        }
+        let report = self::report(&edited.to_string());
+        let program = &report.programs[0];
+        let row = self::row(&report, program, Check::PacketGaps).unwrap();
+        assert_eq!(
+            (row.status.as_str(), row.value.as_str()),
+            ("insufficient_data", "—")
+        );
+        let pids = program_packet_gaps(&report, program).unwrap();
+        assert_eq!(
+            gap_text(pids[0], 1),
+            "PID 0x0100 (elementary_stream): insufficient data"
+        );
+        let (_, unavailable) = findings(&report, program);
+        assert!(unavailable.contains(&Unavailable {
+            check: Check::PacketGaps,
+            status: "insufficient_data".to_owned(),
+            reason: "no PID of program 1 has two consecutive packets".to_owned()
+        }));
+
+        // A status this GUI does not know is a finding per PID.
+        edited["multiplexing"]["packet_gaps"]["pids"][4]["status"] = "ng".into();
+        edited["multiplexing"]["packet_gaps"]["pids"][4]["max_gap_start_offset_bytes"] = 376.into();
+        let report = self::report(&edited.to_string());
+        let program = &report.programs[0];
+        assert_eq!(
+            self::row(&report, program, Check::PacketGaps)
+                .unwrap()
+                .status,
+            "ng"
+        );
+        let (all, _) = findings(&report, program);
+        let gaps: Vec<_> = all
+            .iter()
+            .filter(|f| f.check == Some(Check::PacketGaps))
+            .map(|f| (f.status.as_str(), f.offset))
+            .collect();
+        assert_eq!(gaps, [("ng", Some(376))]);
+        // No multiplexing result: no row.
+        edited["multiplexing"] = serde_json::Value::Null;
+        let report = self::report(&edited.to_string());
+        assert!(self::row(&report, &report.programs[0], Check::PacketGaps).is_none());
     }
 
     /// The PID-reference sample: each reference that is not ok and each

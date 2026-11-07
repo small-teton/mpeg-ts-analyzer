@@ -428,14 +428,6 @@ pub struct PtsRepetitionPid {
     pub counts: PtsRepetitionCounts,
 }
 
-/// The CLI's `multiplexing` result: report-only diagnostics without a verdict.
-#[derive(Debug, Deserialize)]
-pub struct Multiplexing {
-    /// Absent from a CLI without the mux lead report.
-    #[serde(default)]
-    pub mux_lead: Option<MuxLead>,
-}
-
 /// The mux lead of every elementary PID and the A/V lead difference of every
 /// program with video and audio.
 #[derive(Debug, Deserialize)]
@@ -599,6 +591,46 @@ pub struct UnreferencedPid {
     pub packet_count: u64,
     pub first_offset_bytes: u64,
     pub longest_run_ms: f64,
+}
+
+/// The CLI's `multiplexing` result: report-only diagnostics without a verdict.
+#[derive(Debug, Deserialize)]
+pub struct Multiplexing {
+    pub packet_gaps: PacketGaps,
+    /// Absent from a CLI without the mux lead report.
+    #[serde(default)]
+    pub mux_lead: Option<MuxLead>,
+}
+
+/// The largest packet gap of every non-NULL PID of the range.
+#[derive(Debug, Deserialize)]
+pub struct PacketGaps {
+    pub pids: Vec<PacketGapPid>,
+}
+
+/// The largest gap between two consecutive packets of one PID.
+#[derive(Debug, Deserialize)]
+pub struct PacketGapPid {
+    pub pid: String,
+    /// The programs and roles that reference the PID; empty for PSI/SI PIDs
+    /// and PIDs no layout references.
+    pub references: Vec<PidReference>,
+    pub packet_count: u64,
+    pub status: String,
+    pub reason: Option<String>,
+    pub max_gap_packets: Option<u64>,
+    pub max_gap_start_offset_bytes: Option<u64>,
+    pub max_gap_end_offset_bytes: Option<u64>,
+    pub max_gap_ms: Option<f64>,
+    pub max_gap_exact: Option<bool>,
+}
+
+/// A program and role under which a layout referenced a PID.
+#[derive(Debug, Deserialize)]
+pub struct PidReference {
+    pub program_number: u16,
+    pub role: String,
+    pub stream_type: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

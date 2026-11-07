@@ -52,14 +52,14 @@ func TestMuxLeadFixtureGenerator(t *testing.T) {
 }
 
 // wantMuxLead is the expected result of the fixture at packet size size.
-func wantMuxLead(size int64) *ReportMultiplexing {
+func wantMuxLead(size int64) ReportMuxLead {
 	at := func(slot int64) *int64 { v := slot * size; return &v }
 	ms := func(v float64) *float64 { return &v }
 	stream := func(pid, streamType, label string) ReportPESStream {
 		return ReportPESStream{ProgramNumber: 1, PID: pid, StreamType: streamType, Label: label}
 	}
 	audioDiff := ReportAVLeadDifference{VideoPID: "0x0100", MaxAVLeadDifferenceMs: ms(800), AudioLeadMs: ms(1500), VideoLeadMs: ms(700), AudioOffsetBytes: at(9), VideoOffsetBytes: at(10)}
-	return &ReportMultiplexing{MuxLead: ReportMuxLead{
+	return ReportMuxLead{
 		TimeBasis: "pcr_interpolated_file_position",
 		PIDs: []ReportMuxLeadPID{
 			// Slots 148 (its next PCR starts a new segment) and 238 (no PCR
@@ -84,7 +84,7 @@ func wantMuxLead(size int64) *ReportMultiplexing {
 					VideoPID: "0x0100", MaxAVLeadDifferenceMs: ms(728), AudioLeadMs: ms(-20), VideoLeadMs: ms(708), AudioOffsetBytes: at(51), VideoOffsetBytes: at(68)}},
 			},
 		}},
-	}}
+	}
 }
 
 func TestMuxLeadFixtures(t *testing.T) {
@@ -94,7 +94,7 @@ func TestMuxLeadFixtures(t *testing.T) {
 			t.Fatalf("%s: %v", fixture.path, err)
 		}
 		want := wantMuxLead(fixture.packetSize)
-		if !jsonEqual(t, report.Multiplexing, want) {
+		if !jsonEqual(t, report.Multiplexing.MuxLead, want) {
 			t.Errorf("%s: multiplexing %s", fixture.path, toJSON(t, report.Multiplexing))
 		}
 		// The PCR-PTS/DTS gap check judges the same leads: its value is the
@@ -104,7 +104,7 @@ func TestMuxLeadFixtures(t *testing.T) {
 			t.Errorf("%s: gap %s", fixture.path, toJSON(t, gap))
 		}
 		summary, err := decodeJSONReport(t, func() error { return ParseTsFile(fixture.path, options.Options{Format: "json"}) })
-		if err != nil || !jsonEqual(t, summary.Multiplexing, want) {
+		if err != nil || !jsonEqual(t, summary.Multiplexing.MuxLead, want) {
 			t.Errorf("%s: summary %v %s", fixture.path, err, toJSON(t, summary.Multiplexing))
 		}
 		// Report-only: --fail-on-error fails on the gap check alone.
@@ -159,7 +159,7 @@ func TestMuxLeadUnmeasured(t *testing.T) {
 	if out != want {
 		t.Errorf("text:\n%s\nwant:\n%s", out, want)
 	}
-	r := reportMultiplexing(check).MuxLead
+	r := reportMuxLead(check)
 	program := r.Programs[0]
 	if r.PIDs[1].Reason != "no_pcr_timing" || r.PIDs[1].MinLeadMs != nil || program.Status != "insufficient_data" || program.Reason != "no_comparable_leads" ||
 		program.AudioPID != "" || program.MaxAVLeadDifferenceMs != nil || len(program.Audio) != 2 || program.Audio[1].Reason != "no_comparable_leads" {

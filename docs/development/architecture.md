@@ -74,7 +74,7 @@ observations it needs through focused methods.
 | Whether a PAT or PMT section is usable, when a table is complete, which programs the applied PAT announces, and which PCRs give the time base | `tsparser` (`psiHealthCollector`, with the same `psiSectionReader`, `psiAssembler` and trust policy as the analysis), reported as `analysis.PSIInstance`, `PSIProblem`, `PSIAnnounced`, `PSIWithdrawn`, and the reference program's `analysis.PCR` values, classified by the same `PCRClock` as `PCRCheck` |
 | How packet times are interpolated from PCRs, which intervals are complete or open, the 500 ms limit and the `ok` / `ng` / `insufficient_data` status per table | `analysis` (`PSIHealthCheck`) |
 | Which packets show a PID's presence (not one with `transport_error_indicator`), which PCRs give the time basis, and which PSI layout applies from which packet | `tsparser` (`pidReferenceSummary`, `referenceLayout`), reported as `analysis.Packet`, `analysis.TimedPCR` (the reference program's PCR with its `PCRStep`) and `analysis.ReferenceLayout` |
-| The time of a packet between two PCRs, per-PID packet counts and gaps, silences while referenced, unreferenced runs and their grace period, the referenced and unreferenced statuses | `analysis` (`PacketGaps`, `PIDReferenceCheck`) |
+| The time of a packet between two PCRs, per-PID packet counts and gaps, silences while referenced, unreferenced runs and their grace period, the referenced and unreferenced statuses, the report-only packet-gap statuses | `analysis` (`PacketGaps`, `PIDReferenceCheck`) |
 | Whether a PES header is valid and which problem it has, its PTS/DTS, and the PES packet's time on the PCR timeline (interpolated between the PCRs around it) | `tsparser` (`Pes.Parse`, `pesFeed`, `arrivalAt`), reported as `analysis.PES` and `analysis.PESBreak` |
 | How header problems are counted per PID, which streams the 700 ms PTS repetition limit applies to, how intervals, breaks and lower bounds are measured, and the statuses and reasons | `analysis` (`PESCheck`) |
 | The mux lead of each PES packet (DTS/PTS minus its PCR-timeline time, modulo the PCR period), its per-PID minimum, maximum and spread, the audio/video classes and the A/V lead difference; report only | `analysis` (`PESCheck.MuxLead`, from the same `analysis.PES` observations) |
@@ -115,10 +115,15 @@ program with the `PCRStep` its `PCRCheck` returned (`analysis.TimedPCR`), so
 time advances on `continuous` and `wraparound` steps and a new segment starts
 exactly where every other PCR-based result starts one. The state waiting
 for a PCR is a fixed number of stamps per PID; no per-packet history is kept. `PIDReferenceCheck` is built on it and adds the reference
-windows and unreferenced runs; the planned report of per-PID maximum packet
-gaps ([#176](https://github.com/small-teton/mpeg-ts-analyzer/issues/176))
-presents `PacketGaps.PIDs()` from the same collector (`PIDReferenceCheck.Gaps()`)
-instead of keeping a second per-PID history.
+windows and unreferenced runs. The report-only per-PID maximum packet gaps
+([#176](https://github.com/small-teton/mpeg-ts-analyzer/issues/176)) are
+presented from the same collector instead of a second per-PID history:
+`PIDReferenceCheck.PacketGaps()` joins each PID of `PacketGaps.PIDs()` with
+the references of the layouts and gives it the neutral status `info` (or
+`insufficient_data`), and `PIDReferenceCheck.ObserveLayout` restarts a PID's
+chain when a layout stops or resumes referencing it, so a removed and re-added
+stream has no gap across its absence. `tsparser` only formats the
+`multiplexing.packet_gaps` JSON and the text block.
 
 The PES header and PTS repetition check
 ([#164](https://github.com/small-teton/mpeg-ts-analyzer/issues/164)) follows

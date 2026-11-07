@@ -74,7 +74,7 @@
     },
     "multiplexing": {
       "$ref": "#/$defs/multiplexing",
-      "description": "Report-only multiplexing diagnostics (mux lead and A/V lead difference) of every elementary stream of the selected program. They carry no verdict and never affect the exit status. Present whenever the analysis ran (status complete)."
+      "description": "Report-only multiplexing diagnostics: per-PID maximum packet gaps over every packet of the range, and the mux lead and A/V lead difference of every elementary stream of the selected program. They carry no verdict and never affect the exit status. Present whenever the analysis ran (status complete)."
     },
     "timestamp_anomalies": {
       "$ref": "#/$defs/timestampAnomalies"
@@ -671,6 +671,117 @@
         }
       }
     },
+    "multiplexing": {
+      "type": "object",
+      "required": [
+        "packet_gaps",
+        "mux_lead"
+      ],
+      "description": "Report-only multiplexing diagnostics. They carry no verdict, never become findings and never affect the exit status.",
+      "properties": {
+        "packet_gaps": {
+          "$ref": "#/$defs/packetGaps"
+        },
+        "mux_lead": {
+          "$ref": "#/$defs/muxLead"
+        }
+      }
+    },
+    "packetGaps": {
+      "type": "object",
+      "required": [
+        "time_basis",
+        "pids"
+      ],
+      "properties": {
+        "time_basis": {
+          "$ref": "#/$defs/status",
+          "description": "Time model of max_gap_ms. Current value: pcr_interpolated_file_position (packet positions interpolated between the PCRs of the reference program, as for pid_references)."
+        },
+        "pids": {
+          "type": "array",
+          "description": "Every PID observed in the range except the null PID 0x1FFF, in numeric order.",
+          "items": {
+            "$ref": "#/$defs/packetGapPID"
+          }
+        }
+      }
+    },
+    "packetGapPID": {
+      "type": "object",
+      "required": [
+        "pid",
+        "references",
+        "packet_count",
+        "status"
+      ],
+      "properties": {
+        "pid": {
+          "$ref": "#/$defs/pid"
+        },
+        "references": {
+          "type": "array",
+          "description": "Every program and role under which a PAT or followed PMT of the range referenced the PID, ordered by program_number, role (pmt, pcr, elementary_stream) and stream_type; empty for PSI/SI PIDs and PIDs no layout referenced.",
+          "items": {
+            "$ref": "#/$defs/pidReference"
+          }
+        },
+        "packet_count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Packets of the PID in the whole range, without packets with transport_error_indicator set."
+        },
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Not a verdict. Current values: info (a gap was measured), insufficient_data (no two consecutive packets)."
+        },
+        "reason": {
+          "$ref": "#/$defs/reasonCode",
+          "description": "Current values: no_consecutive_packets (insufficient_data: fewer than two packets in one stretch of the layout), no_pcr_time_base (info without max_gap_ms)."
+        },
+        "max_gap_packets": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Largest number of packets of other PIDs (null and transport-error packets included) between two consecutive packets of the PID; the endpoints are not counted. Two packets on either side of a PAT/PMT change that stops or resumes referencing the PID are not consecutive. Absent when status is insufficient_data."
+        },
+        "max_gap_start_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Offset of the packet that starts the largest gap. Of equal gaps the first is reported, preferring the first that starts after the first PCR of the time basis."
+        },
+        "max_gap_end_offset_bytes": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "description": "Offset of the packet that ends the largest gap."
+        },
+        "max_gap_ms": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Estimated time of the largest gap; absent without a PCR time base."
+        },
+        "max_gap_exact": {
+          "type": "boolean",
+          "description": "Whether max_gap_ms was interpolated within one PCR timing segment; false means it is a lower bound (the gap lies partly before the first or after the last PCR, or crosses a PCR discontinuity)."
+        }
+      }
+    },
+    "pidReference": {
+      "type": "object",
+      "required": [
+        "program_number",
+        "role"
+      ],
+      "properties": {
+        "program_number": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "role": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: pmt, pcr, elementary_stream."
+        },
+        "stream_type": {
+          "$ref": "#/$defs/streamType",
+          "description": "stream_type of an elementary_stream reference; absent for the other roles."
+        }
+      }
+    },
     "affectedPackets": {
       "type": "object",
       "required": [
@@ -959,18 +1070,6 @@
           "items": {
             "$ref": "#/$defs/ptsRepetitionPID"
           }
-        }
-      }
-    },
-    "multiplexing": {
-      "type": "object",
-      "required": [
-        "mux_lead"
-      ],
-      "description": "Report-only multiplexing diagnostics. They carry no verdict, never become findings and never affect the exit status.",
-      "properties": {
-        "mux_lead": {
-          "$ref": "#/$defs/muxLead"
         }
       }
     },

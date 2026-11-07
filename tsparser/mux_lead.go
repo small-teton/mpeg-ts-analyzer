@@ -19,11 +19,6 @@ import (
 // the mux lead only reports. The result carries no verdict and never affects
 // the exit status.
 
-// ReportMultiplexing holds the report-only multiplexing diagnostics.
-type ReportMultiplexing struct {
-	MuxLead ReportMuxLead `json:"mux_lead"`
-}
-
 // ReportMuxLead is the mux lead of every elementary PID of the analyzed
 // programs and the A/V lead difference of every program with a video and an
 // audio stream.
@@ -84,8 +79,8 @@ type ReportAVLeadProgram struct {
 	Audio []ReportAVLeadAudio `json:"audio"`
 }
 
-// reportMultiplexing returns the multiplexing result.
-func reportMultiplexing(check *analysis.PESCheck) *ReportMultiplexing {
+// reportMuxLead returns the mux_lead result.
+func reportMuxLead(check *analysis.PESCheck) ReportMuxLead {
 	r := check.MuxLead()
 	lead := ReportMuxLead{TimeBasis: pidReferenceTimeBasis, PIDs: []ReportMuxLeadPID{}, Programs: []ReportAVLeadProgram{}}
 	for _, p := range r.PIDs {
@@ -111,7 +106,7 @@ func reportMultiplexing(check *analysis.PESCheck) *ReportMultiplexing {
 		}
 		lead.Programs = append(lead.Programs, program)
 	}
-	return &ReportMultiplexing{MuxLead: lead}
+	return lead
 }
 
 func reportAVLeadDifference(a analysis.AVLeadDifference) ReportAVLeadDifference {

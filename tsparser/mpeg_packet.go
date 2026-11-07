@@ -201,6 +201,11 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 			psi.references.Dump()
 		}
 		dumpPESHealth(analyzer.pes.check.Result())
+		// The report-only packet gaps and mux lead come last, after every
+		// verdict.
+		if psi != nil {
+			dumpPacketGaps(psi.references)
+		}
 		dumpMuxLead(analyzer.pes.check)
 	}
 	if failures := report.failures(); options.FailOnError && len(failures) > 0 {
