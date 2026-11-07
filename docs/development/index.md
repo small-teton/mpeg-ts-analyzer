@@ -297,10 +297,12 @@ Release publication is kept out of ordinary CI:
 - `GUI release` publishes only when manually dispatched on `master` or for a
   user-pushed `gui-vX.Y.Z` tag, and creates the tag only after every package
   passed; see [GUI release](release.md#gui-release). On pull requests that
-  change the packaging it builds and installs the packages as a dry run, and
-  its publication job is skipped. The packaging means the icons, the notices
+  change the packaging it builds and installs the packages and signs the
+  update packages with a throwaway key as a dry run, and its signing with the
+  release key and its publication job are skipped. The packaging means the icons, the notices
   configuration, `cli.rs`, `main.rs`, the toolchain, the workflow,
-  `gui/BUNDLED_CLI_VERSION`, `VERSION`, the release scripts and notes, and any
+  `gui/BUNDLED_CLI_VERSION`, `VERSION`, the update signing key
+  (`gui/updater.pub`), the release scripts and notes, and any
   change to `gui/Cargo.toml` other than
   dev-dependencies and the optional dependencies and features that the default
   features do not enable. Those, and `gui/Cargo.lock` changes, only check the

@@ -97,7 +97,7 @@ jobs:
         package=false
         # Here-strings, not pipes: with pipefail, grep -q exiting at the first
         # match could fail the upstream printf with SIGPIPE.
-        if grep -Eq '^(rust-toolchain\.toml$|gui/assets/icons/|gui/about\.(hbs|toml)$|gui/scripts/(third-party-notices|sign-macos-app)\.sh$|gui/src/(cli|main)\.rs$|gui/BUNDLED_CLI_VERSION$|VERSION$|\.github/scripts/(release-state|bundled-cli)\.sh$|\.github/gui-release-notes\.md$|\.github/workflows/gui-release\.yml$)' \
+        if grep -Eq '^(rust-toolchain\.toml$|gui/assets/icons/|gui/about\.(hbs|toml)$|gui/scripts/(third-party-notices|sign-macos-app)\.sh$|gui/src/(cli|main)\.rs$|gui/BUNDLED_CLI_VERSION$|gui/updater\.pub$|VERSION$|\.github/scripts/(release-state|bundled-cli|sign-gui-updates)\.sh$|\.github/gui-release-notes\.md$|\.github/workflows/gui-release\.yml$)' \
           <<<"$files"; then
           package=true
         elif grep -qx gui/Cargo.toml <<<"$files"; then
