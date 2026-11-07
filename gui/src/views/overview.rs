@@ -578,14 +578,18 @@ fn health_table(ui: &mut egui::Ui, rows: &[Row], state: &mut OverviewState) {
         ui.set_width(inner);
         accessible_scope(ui, builder, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
-            let header_fill = ui.visuals().faint_bg_color;
+            let header_fill = crate::theme::TABLE_HEADER_FILL;
             table_row(ui, &columns, Some(header_fill), None, |ui, cell| {
-                ui.strong(match cell {
-                    Cell::Check => "Check",
-                    Cell::Value => "Value",
-                    Cell::Status => "Status",
-                    Cell::Help => "Help",
-                });
+                ui.label(
+                    egui::RichText::new(match cell {
+                        Cell::Check => "Check",
+                        Cell::Value => "Value",
+                        Cell::Status => "Status",
+                        Cell::Help => "Help",
+                    })
+                    .strong()
+                    .color(crate::theme::TABLE_HEADER_TEXT),
+                );
             });
             let mut category = None;
             for row in rows {
@@ -774,11 +778,16 @@ const CELL_MAX_HEIGHT: f32 = 10_000.0;
 /// heading with its title as written.
 fn category_row(ui: &mut egui::Ui, title: &str, width: f32) {
     egui::Frame::new()
-        .fill(ui.visuals().faint_bg_color)
+        .fill(crate::theme::TABLE_CATEGORY_FILL)
         .inner_margin(egui::Margin::symmetric(CELL_PADDING as i8, 4))
         .show(ui, |ui| {
             ui.set_width(width - 2.0 * CELL_PADDING);
-            let response = ui.label(egui::RichText::new(title.to_uppercase()).small().strong());
+            let response = ui.label(
+                egui::RichText::new(title.to_uppercase())
+                    .small()
+                    .strong()
+                    .color(crate::theme::TABLE_HEADER_TEXT),
+            );
             response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Heading, true, title));
         });
 }

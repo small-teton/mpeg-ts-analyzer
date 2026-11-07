@@ -245,13 +245,17 @@ fn verdict_table(ui: &mut egui::Ui, statuses: &[(&str, &str)], current: Option<&
         ui.set_width(inner);
         accessible_scope(ui, builder, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
-            let header_fill = ui.visuals().faint_bg_color;
+            let header_fill = crate::theme::TABLE_HEADER_FILL;
             verdict_row(
                 ui,
                 [status_width, condition_width],
                 None,
                 |ui, column| {
-                    ui.strong(["Status", "Condition"][column]);
+                    ui.label(
+                        egui::RichText::new(["Status", "Condition"][column])
+                            .strong()
+                            .color(crate::theme::TABLE_HEADER_TEXT),
+                    );
                 },
                 Some(header_fill),
                 None,

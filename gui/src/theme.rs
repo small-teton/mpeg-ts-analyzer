@@ -22,22 +22,15 @@ impl Verdict {
         }
     }
 
-    /// Foreground and background colors for a verdict badge.
+    /// Foreground and background colors for a verdict badge: white text on a
+    /// saturated fill, each at least 4.5:1 against white.
     pub fn colors(self) -> (Color32, Color32) {
-        match self {
-            Verdict::Ok => (
-                Color32::from_rgb(0x9b, 0xe8, 0xa9),
-                Color32::from_rgb(0x1d, 0x4a, 0x29),
-            ),
-            Verdict::Ng => (
-                Color32::from_rgb(0xff, 0xaa, 0xaa),
-                Color32::from_rgb(0x5c, 0x1f, 0x1f),
-            ),
-            Verdict::Warn => (
-                Color32::from_rgb(0xff, 0xd5, 0x83),
-                Color32::from_rgb(0x56, 0x42, 0x0e),
-            ),
-        }
+        let fill = match self {
+            Verdict::Ok => Color32::from_rgb(0x2e, 0x7d, 0x32),
+            Verdict::Ng => Color32::from_rgb(0xc6, 0x28, 0x28),
+            Verdict::Warn => Color32::from_rgb(0x9a, 0x67, 0x00),
+        };
+        (Color32::WHITE, fill)
     }
 }
 
@@ -46,6 +39,13 @@ pub const VIDEO_COLOR: Color32 = Color32::from_rgb(0x4e, 0xa8, 0xff);
 pub const AUDIO_COLOR: Color32 = Color32::from_rgb(0x7f, 0xd6, 0x8a);
 pub const PSI_COLOR: Color32 = Color32::from_rgb(0xc7, 0x92, 0xea);
 pub const LIMIT_COLOR: Color32 = Color32::from_rgb(0xff, 0x7a, 0x7a);
+/// Fill of a table's column-header row, clearly lighter than the panel.
+pub const TABLE_HEADER_FILL: Color32 = Color32::from_gray(0x3a);
+/// Fill of a category row inside a table, between the header and the rows.
+pub const TABLE_CATEGORY_FILL: Color32 = Color32::from_gray(0x2e);
+/// Text of table header and category rows.
+pub const TABLE_HEADER_TEXT: Color32 = Color32::from_gray(0xf2);
+
 /// Fill of the buttons that start an analysis, with white text.
 pub const START_COLOR: Color32 = Color32::from_rgb(0x2e, 0x8b, 0x4f);
 
