@@ -55,7 +55,7 @@ func TestPacketGapsFixtureGenerator(t *testing.T) {
 // The analysis, and so the PCR time basis, starts at packet 85 (after the
 // PMT acquisition); its first PCR is packet 88. The packet counts are
 // TSDuck's (tsanalyze) and the gaps those of an independent packet-index scan.
-func wantPacketGaps(size int64) *ReportMultiplexing {
+func wantPacketGaps(size int64) ReportPacketGaps {
 	at := func(packet int64) *int64 { v := packet * size; return &v }
 	count := func(v int64) *int64 { return &v }
 	ms := func(v float64) *float64 { return &v }
@@ -70,7 +70,7 @@ func wantPacketGaps(size int64) *ReportMultiplexing {
 		}
 	}
 	none := []ReportPIDReference{}
-	return &ReportMultiplexing{PacketGaps: ReportPacketGaps{TimeBasis: "pcr_interpolated_file_position", PIDs: []ReportPacketGapPID{
+	return ReportPacketGaps{TimeBasis: "pcr_interpolated_file_position", PIDs: []ReportPacketGapPID{
 		// The PAT and PMT gaps before the first PCR are as large, but only
 		// their time after it is exact.
 		gap("0x0000", none, 25, 31, 100, 132, 160, &yes),
@@ -84,7 +84,7 @@ func wantPacketGaps(size int64) *ReportMultiplexing {
 		gap("0x0102", es("0x06"), 7, 63, 101, 165, 320, &yes),
 		gap("0x01ff", []ReportPIDReference{{ProgramNumber: 1, Role: "pcr"}}, 100, 7, 88, 96, 40, &yes),
 		gap("0x1000", []ReportPIDReference{{ProgramNumber: 1, Role: "pmt"}}, 25, 31, 116, 148, 160, &yes),
-	}}}
+	}}
 }
 
 func TestPacketGapsFixtures(t *testing.T) {
@@ -94,11 +94,11 @@ func TestPacketGapsFixtures(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", fixture.path, err)
 		}
-		if !jsonEqual(t, report.Multiplexing, want) {
+		if !jsonEqual(t, report.Multiplexing.PacketGaps, want) {
 			t.Errorf("%s: multiplexing %s", fixture.path, toJSON(t, report.Multiplexing))
 		}
 		summary, err := decodeJSONReport(t, func() error { return ParseTsFile(fixture.path, options.Options{Format: "json"}) })
-		if err != nil || summary.Status != "complete" || !jsonEqual(t, summary.Multiplexing, want) {
+		if err != nil || summary.Status != "complete" || !jsonEqual(t, summary.Multiplexing.PacketGaps, want) {
 			t.Errorf("%s: summary %v %s", fixture.path, err, toJSON(t, summary.Multiplexing))
 		}
 	}
@@ -157,8 +157,9 @@ func TestPacketGapsText(t *testing.T) {
 		"  PID 0x1000 (program 1 PMT) : 25 packets, max gap 31 packets, 160.000 ms from 0x00005530 to 0x00006cb0",
 		"",
 	}, "\n")
-	if !strings.HasSuffix(out, want) {
-		t.Errorf("text:\n%s\nwant suffix:\n%s", out, want)
+	// Only the report-only mux lead follows.
+	if !strings.Contains(out, want+"-----------------------------\nMux Lead") {
+		t.Errorf("text:\n%s\nwant:\n%s", out, want)
 	}
 }
 
@@ -184,7 +185,7 @@ func TestPacketGapsWithoutTimeBase(t *testing.T) {
 	if out != want {
 		t.Errorf("text:\n%s\nwant:\n%s", out, want)
 	}
-	r := reportMultiplexing(s).PacketGaps.PIDs
+	r := reportPacketGaps(s).PIDs
 	if len(r) != 1 || r[0].Reason != "no_pcr_time_base" || r[0].MaxGapMs != nil || r[0].MaxGapExact != nil || *r[0].MaxGapPackets != 1 || len(r[0].References) != 2 {
 		t.Errorf("JSON %s", toJSON(t, r))
 	}

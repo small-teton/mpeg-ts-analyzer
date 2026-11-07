@@ -16,9 +16,16 @@ import (
 // index), the same reference-program PCRs and the same layouts. The result
 // carries no verdict and never affects the exit status.
 
-// ReportMultiplexing holds the report-only multiplexing diagnostics.
+// ReportMultiplexing holds the report-only multiplexing diagnostics: the
+// per-PID maximum packet gaps and the mux lead (mux_lead.go).
 type ReportMultiplexing struct {
 	PacketGaps ReportPacketGaps `json:"packet_gaps"`
+	MuxLead    ReportMuxLead    `json:"mux_lead"`
+}
+
+// reportMultiplexing returns the multiplexing result.
+func reportMultiplexing(s *pidReferenceSummary, pes *analysis.PESCheck) *ReportMultiplexing {
+	return &ReportMultiplexing{PacketGaps: reportPacketGaps(s), MuxLead: reportMuxLead(pes)}
 }
 
 // ReportPacketGaps is the maximum packet gap of every non-NULL PID.
@@ -49,9 +56,9 @@ type ReportPIDReference struct {
 	StreamType    string `json:"stream_type,omitempty"`
 }
 
-// reportMultiplexing returns the multiplexing result.
-func reportMultiplexing(s *pidReferenceSummary) *ReportMultiplexing {
-	r := &ReportMultiplexing{PacketGaps: ReportPacketGaps{TimeBasis: pidReferenceTimeBasis, PIDs: []ReportPacketGapPID{}}}
+// reportPacketGaps returns the packet_gaps result.
+func reportPacketGaps(s *pidReferenceSummary) ReportPacketGaps {
+	r := ReportPacketGaps{TimeBasis: pidReferenceTimeBasis, PIDs: []ReportPacketGapPID{}}
 	for _, gap := range s.check.PacketGaps() {
 		row := ReportPacketGapPID{PID: reportPID(gap.PID), References: []ReportPIDReference{}, PacketCount: gap.Packets, Status: string(gap.Status), Reason: gap.Reason}
 		for _, ref := range gap.References {
@@ -69,7 +76,7 @@ func reportMultiplexing(s *pidReferenceSummary) *ReportMultiplexing {
 			ms, exact := roundMicro(gap.MaxGapMs), gap.MaxGapExact
 			row.MaxGapMs, row.MaxGapExact = &ms, &exact
 		}
-		r.PacketGaps.PIDs = append(r.PacketGaps.PIDs, row)
+		r.PIDs = append(r.PIDs, row)
 	}
 	return r
 }

@@ -266,7 +266,7 @@ func rangeAnalysisReport(report *AnalysisReport) *RangeAnalysisReport {
 		r.PSIHealth = reportPsiHealth(analysis.health)
 		r.PIDReferences = reportPidReferences(analysis.references)
 		r.PESHeaders, r.PTSRepetition = reportPESHealth(analysis.pes)
-		r.Multiplexing = reportMultiplexing(analysis.references)
+		r.Multiplexing = reportMultiplexing(analysis.references, analysis.pes)
 		r.PSITransitions = reportPsiTransitions(analysis.psi.transitions)
 		r.PSILayout = reportPsiLayout(analysis)
 		for _, e := range analysis.scan.continuityEvents {

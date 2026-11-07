@@ -45,6 +45,9 @@ bits.
 - **Packet gaps** (report only): for every PID, the longest run of other
   packets between two of its packets, in packets and estimated milliseconds,
   to spot poorly interleaved (bursty) multiplexes. No verdict is attached.
+- **Mux lead** (report only, no verdict): how far ahead of its DTS/PTS each
+  elementary stream is multiplexed (minimum, maximum and spread per PID, with
+  offsets), and the largest audio/video lead difference of each program.
 
 Results are text for people, or JSON with a published schema for CI and other
 programs. See [CLI usage][docs-cli-usage].

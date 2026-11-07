@@ -1229,10 +1229,11 @@ fn findings_account_for_every_check_that_is_not_ok() {
     harness.get_by_label("Findings (16)");
     assert!(harness.query_by_label("None.").is_none());
     for check in Check::ALL {
-        // Packet gaps is a report without a verdict: never a finding.
+        // Packet gaps and Mux lead are reports without a verdict: never a
+        // finding.
         let links = match check {
             Check::PcrDiscontinuities => 2,
-            Check::PacketGaps => 0,
+            Check::PacketGaps | Check::MuxLead => 0,
             _ => 1,
         };
         assert_eq!(
@@ -1505,6 +1506,63 @@ fn packet_gaps_page_lists_every_pid_of_the_program() {
     for offset in ["0x00011F24", "0x00017BAC", "0x000040A0"] {
         harness.get_by_role_and_label(Role::Button, &format!("Open packet at {offset}"));
     }
+}
+
+/// The mux-lead fixture is what the CLI writes for its sample.
+/// Runs only against a CLI named by MPEG_TS_ANALYZER_CLI (e.g. via `make gui-test`).
+#[test]
+fn mux_lead_fixture_matches_the_cli() {
+    let args = ["--format", "json", "--output", "analysis"];
+    let Some(json) = crate::cli::run_on_sample("sample_188byte_mux_lead.ts", &args) else {
+        return;
+    };
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/analysis_mux_lead_188.json"
+    ))
+    .unwrap();
+    let mut output: serde_json::Value = serde_json::from_slice(&json).unwrap();
+    output["input"]["path"] = fixture["input"]["path"].clone();
+    assert_eq!(output, fixture, "regenerate the fixture with the CLI");
+}
+
+/// The Mux lead page of the audio-preload sample: a neutral report without
+/// findings, a per-PID table and a per-audio table whose offsets open the
+/// PES packets.
+#[test]
+fn mux_lead_page_lists_every_pid_and_audio_stream() {
+    let report: AnalysisReport = serde_json::from_str(include_str!(
+        "../../tests/fixtures/analysis_mux_lead_188.json"
+    ))
+    .unwrap();
+    let mut harness = harness_sized(app_with_report(report), WIDE);
+    harness.run();
+    table_row(&harness, Check::MuxLead)
+        .query_by_label("INFO")
+        .expect("the table shows the status");
+    open_detail(&mut harness, Check::MuxLead, false);
+    harness.get_by_label("Status: INFO");
+    harness.get_by_role_and_label(Role::Heading, "Per PID");
+    harness.get_by_role_and_label(Role::Heading, "A/V lead difference per audio stream");
+    // No finding section: the report has no verdict.
+    assert!(harness.query_by_label_contains("Findings (").is_none());
+    // The smallest AAC lead (packet 51) and the two PES packets of the
+    // largest A/V difference (packets 9 and 10).
+    for offset in ["0x00002574", "0x0000069C", "0x00000758"] {
+        assert!(
+            harness
+                .query_all_by_role_and_label(Role::Button, &format!("Open packet at {offset}"))
+                .count()
+                >= 1,
+            "{offset}"
+        );
+    }
+    harness
+        .query_all_by_role_and_label(Role::Button, "Open packet at 0x00002574")
+        .next()
+        .unwrap()
+        .click();
+    harness.run();
+    assert_eq!(harness.state().screen, Screen::Packets);
 }
 
 #[test]

@@ -11,7 +11,7 @@ use super::overview::{
 };
 use crate::icons;
 use crate::plot_data::Timeline;
-use crate::report::{AnalysisReport, PacketGapPid, Program};
+use crate::report::{AnalysisReport, AvLeadProgram, MuxLeadPid, PacketGapPid, Program};
 
 /// What the page shows its check for.
 pub struct Context<'a> {
@@ -106,6 +106,25 @@ fn page(ui: &mut egui::Ui, context: &Context<'_>, check: Check) -> Option<Overvi
             action = Some(chosen);
         }
         ui.add_space(12.0);
+    }
+
+    if check == Check::MuxLead {
+        if let Some(pids) = overview::program_mux_leads(context.report, context.program)
+            && !pids.is_empty()
+        {
+            section_heading(ui, "Per PID");
+            if let Some(chosen) = mux_lead_table(ui, &pids) {
+                action = Some(chosen);
+            }
+            ui.add_space(12.0);
+        }
+        if let Some(av) = overview::program_av_lead(context.report, context.program) {
+            section_heading(ui, "A/V lead difference per audio stream");
+            if let Some(chosen) = av_lead_table(ui, av) {
+                action = Some(chosen);
+            }
+            ui.add_space(12.0);
+        }
     }
 
     let (findings, _) = overview::findings(context.report, context.program);
@@ -268,6 +287,127 @@ fn packet_gap_table(
                                 }
                             }
                         }
+                        ui.end_row();
+                    }
+                });
+        });
+    action
+}
+
+/// A monospace button that opens the packet at `offset`, or a dash.
+fn offset_button(ui: &mut egui::Ui, offset: Option<u64>) -> Option<OverviewAction> {
+    let Some(offset) = offset else {
+        ui.weak("—");
+        return None;
+    };
+    let text = format!("0x{offset:08X}");
+    let name = format!("Open packet at {text}");
+    let button = ui.small_button(egui::RichText::new(&text).monospace());
+    button.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &name));
+    button
+        .on_hover_text(&name)
+        .clicked()
+        .then_some(OverviewAction::OpenPacket(offset))
+}
+
+/// The mux lead of every PID of the program, with buttons that open the PES
+/// packets with the smallest and largest lead.
+fn mux_lead_table(ui: &mut egui::Ui, pids: &[&MuxLeadPid]) -> Option<OverviewAction> {
+    let mut action = None;
+    egui::ScrollArea::horizontal()
+        .id_salt("mux_lead_scroll")
+        .show(ui, |ui| {
+            egui::Grid::new("mux_lead")
+                .striped(true)
+                .num_columns(9)
+                .spacing([16.0, 4.0])
+                .show(ui, |ui| {
+                    for header in [
+                        "PID",
+                        "Stream",
+                        "PES",
+                        "Min",
+                        "At",
+                        "Max",
+                        "At",
+                        "Spread",
+                        "Unbracketed",
+                    ] {
+                        ui.strong(header);
+                    }
+                    ui.end_row();
+                    for pid in pids {
+                        ui.monospace(&pid.stream.pid);
+                        ui.label(&pid.stream.label);
+                        match pid.sample_count {
+                            0 => ui.weak(
+                                pid.reason
+                                    .as_deref()
+                                    .unwrap_or(&pid.status)
+                                    .replace('_', " "),
+                            ),
+                            count if pid.negative_count > 0 => {
+                                ui.monospace(format!("{count} ({} negative)", pid.negative_count))
+                            }
+                            count => ui.monospace(count.to_string()),
+                        };
+                        ui.monospace(overview::lead_ms(pid.min_lead_ms));
+                        action = offset_button(ui, pid.min_lead_offset_bytes).or(action);
+                        ui.monospace(overview::lead_ms(pid.max_lead_ms));
+                        action = offset_button(ui, pid.max_lead_offset_bytes).or(action);
+                        ui.monospace(overview::lead_ms(pid.spread_ms));
+                        ui.monospace(pid.unbracketed_count.to_string());
+                        ui.end_row();
+                    }
+                });
+        });
+    action
+}
+
+/// The A/V lead difference of every audio stream of the program, with
+/// buttons that open the two PES packets of the largest difference.
+fn av_lead_table(ui: &mut egui::Ui, av: &AvLeadProgram) -> Option<OverviewAction> {
+    let mut action = None;
+    egui::ScrollArea::horizontal()
+        .id_salt("av_lead_scroll")
+        .show(ui, |ui| {
+            egui::Grid::new("av_lead")
+                .striped(true)
+                .num_columns(8)
+                .spacing([16.0, 4.0])
+                .show(ui, |ui| {
+                    for header in [
+                        "Audio PID",
+                        "Difference",
+                        "Audio lead",
+                        "At",
+                        "Video PID",
+                        "Video lead",
+                        "At",
+                        "Comparisons",
+                    ] {
+                        ui.strong(header);
+                    }
+                    ui.end_row();
+                    for audio in &av.audio {
+                        let d = &audio.difference;
+                        ui.monospace(&audio.pid);
+                        match d.max_av_lead_difference_ms {
+                            Some(ms) => ui.monospace(format!("{ms:.1} ms")),
+                            None => ui.weak(
+                                audio
+                                    .reason
+                                    .as_deref()
+                                    .unwrap_or(&audio.status)
+                                    .replace('_', " "),
+                            ),
+                        };
+                        ui.monospace(overview::lead_ms(d.audio_lead_ms));
+                        action = offset_button(ui, d.audio_offset_bytes).or(action);
+                        ui.monospace(d.video_pid.as_deref().unwrap_or("—"));
+                        ui.monospace(overview::lead_ms(d.video_lead_ms));
+                        action = offset_button(ui, d.video_offset_bytes).or(action);
+                        ui.monospace(audio.comparison_count.to_string());
                         ui.end_row();
                     }
                 });

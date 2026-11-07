@@ -156,6 +156,11 @@ Max packet gaps (report only): 5 PIDs, time basis pcr_interpolated_file_position
   PID 0x0100 (program 1 PCR, program 1 ES stream_type 0x02) : 202 packets, max gap 16 packets, 43.871 ms from 0x0002e094 to 0x0002ed10
   PID 0x0101 (program 1 ES stream_type 0x03) : 1359 packets, max gap 10 packets, 25.778 ms from 0x000069c0 to 0x000071d4
   PID 0x1000 (program 1 PMT) : 43 packets, max gap 44 packets, 148.444 ms from 0x0001e338 to 0x00020444
+-----------------------------
+Mux Lead (report only: DTS, or PTS without DTS, minus PCR-interpolated arrival)
+  Program 1 PID 0x0100 (video) : 691.111ms to 726.667ms (spread 35.556ms) over 118 PES, min at 0x00007c1c, max at 0x0001e3f4, 1 unbracketed
+  Program 1 PID 0x0101 (audio) : 663.311ms to 688.598ms (spread 25.287ms) over 98 PES, min at 0x000056a8, max at 0x0003df68, 3 unbracketed
+  Program 1 A/V lead difference: 47.016ms, audio PID 0x0101 (lead 678.867ms at 0x00007cd8) against video PID 0x0100 (lead 725.882ms at 0x00008898)
 ```
 
 ## Timing compliance verdicts and `--fail-on-error`
@@ -831,8 +836,8 @@ the complete rules.
 
 ## Packet gaps (report only)
 
-The last block of every analysis lists, for every PID of the range except the
-null PID, the longest stretch of other packets between two consecutive
+Near the end of every analysis, before the mux lead, a block lists, for every
+PID of the range except the null PID, the longest stretch of other packets between two consecutive
 packets of the PID. It is a report-only multiplexing diagnostic: a poorly
 interleaved remux that sends a stream in large blocks can starve it for a
 long stretch even when its average bitrate is right. There is no limit and no
@@ -886,6 +891,65 @@ largest gap:
 The state is one record per PID, shared with the PID references; nothing is
 kept per packet. The JSON result is `multiplexing.packet_gaps`
 ([JSON output](../reference/json-output.md#multiplexing-packet-gaps)).
+
+## Mux lead (always on, report only)
+
+The mux lead of a PES packet is how far ahead of its decode time it was
+multiplexed: its DTS (its PTS without DTS) minus its arrival time, the
+program's PCR at its first packet interpolated by byte position between the
+PCRs before and after it. The analyzer prints, for every elementary stream,
+the smallest and largest lead with their PES offsets and the spread, and for a
+program with video and audio the largest difference between an audio lead and
+the video lead:
+
+```
+-----------------------------
+Mux Lead (report only: DTS, or PTS without DTS, minus PCR-interpolated arrival)
+  Program 1 PID 0x0100 (video) : 691.111ms to 726.667ms (spread 35.556ms) over 118 PES, min at 0x00007c1c, max at 0x0001e3f4, 1 unbracketed
+  Program 1 PID 0x0101 (audio) : 663.311ms to 688.598ms (spread 25.287ms) over 98 PES, min at 0x000056a8, max at 0x0003df68, 3 unbracketed
+  Program 1 A/V lead difference: 47.016ms, audio PID 0x0101 (lead 678.867ms at 0x00007cd8) against video PID 0x0100 (lead 725.882ms at 0x00008898)
+```
+
+It is a **report, not a check**: no limit applies, it never prints a verdict,
+never becomes a finding and never changes the exit status, also with
+`--fail-on-error`. A negative lead (a PES packet multiplexed after its
+DTS/PTS) is printed as an observation, not as an error. With a large audio
+preload (output of `sample_data/sample_188byte_mux_lead.ts`, see
+[Sample data](../development/sample-data.md)):
+
+```
+-----------------------------
+Mux Lead (report only: DTS, or PTS without DTS, minus PCR-interpolated arrival)
+  Program 1 PID 0x0100 (video) : 700.000ms to 708.000ms (spread 8.000ms) over 115 PES, min at 0x00000758, max at 0x000005e0, 2 unbracketed
+  Program 1 PID 0x0101 (audio) : 1500.000ms to 1500.000ms (spread 0.000ms) over 56 PES, min at 0x0000069c, max at 0x0000069c, 2 unbracketed
+  Program 1 PID 0x0102 (audio) : -20.000ms to 650.000ms (spread 670.000ms) over 17 PES, min at 0x00002574, max at 0x00000814
+    1 PES multiplexed after their DTS/PTS (negative lead: an observation, not an error)
+  Program 1 PID 0x0103 (stream_type 0x06) : 300.000ms to 300.000ms (spread 0.000ms) over 1 PES, min at 0x00000b04, max at 0x00000b04
+  Program 1 A/V lead difference: 800.000ms, audio PID 0x0101 (lead 1500.000ms at 0x0000069c) against video PID 0x0100 (lead 700.000ms at 0x00000758)
+    audio PID 0x0101 : 800.000ms
+    audio PID 0x0102 : 728.000ms
+```
+
+- The samples are the PES packets with a valid header and a PTS, the same as
+  for PTS repetition and the PCR-PTS/DTS gap. A PES packet before the first
+  PCR, after the last one or across a PCR discontinuity is *unbracketed* and
+  not measured. The PTS/DTS and PCR wraparounds are handled: the lead is the
+  signed difference nearest to zero modulo the PCR period.
+- The PCR-PTS/DTS gap verdict above is the largest of the same leads in the
+  program, judged against 1000 ms; the mux lead only reports how the leads are
+  distributed per PID. One PES packet is never two findings.
+- Video is stream_type 0x01, 0x02, 0x1B or 0x24; audio is 0x03, 0x04, 0x0F,
+  0x11, 0x81 or 0x87. Each audio stream is compared with the program's
+  lowest-numbered video PID, whenever either gets a new lead and both leads
+  lie in one PCR segment; with several audio streams the worst is printed
+  first, then each one.
+- `no lead (...)` gives the reason a PID has no sample, and `not measured`
+  that an audio stream and the video never had leads in one PCR segment at
+  the same time.
+
+The state is bounded by the number of elementary streams. See
+[JSON output](../reference/json-output.md#multiplexing-mux-lead) for the
+complete rules.
 
 ## Timestamp anomaly report (always on)
 
