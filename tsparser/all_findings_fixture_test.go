@@ -117,13 +117,22 @@ func TestAllFindingsFixtures(t *testing.T) {
 				t.Errorf("%s: slot %d: %s", fixture.path, tt.slot, toJSON(t, tt.got))
 			}
 		}
-		// PAT/PMT health: no PAT in slot 59, so 800 ms pass between the PATs
-		// in slots 39 and 79; the PMT repeats every 400 ms.
+		// PAT/PMT health: no PAT in slot 59 and no PMT in slot 63, so 800 ms
+		// pass between the PATs in slots 39 and 79 and between the PMTs in
+		// slots 43 and 83.
 		h := report.PSIHealth
-		if pat, pmt := h.Tables[0], h.Tables[1]; len(h.Tables) != 2 || !jsonEqual(t, pat.Reasons, []string{"late"}) || pat.InstanceCount != 7 ||
-			*pat.Repetition.MaxIntervalMs != 800 || *pat.Repetition.MaxIntervalEndOffsetBytes != at(79) || pat.Repetition.LateIntervalCount != 1 ||
-			pmt.Status != "ok" || *pmt.Repetition.MaxIntervalMs != 400 {
-			t.Errorf("%s: PAT/PMT health %s", fixture.path, toJSON(t, h))
+		if len(h.Tables) != 2 {
+			t.Fatalf("%s: PAT/PMT health %s", fixture.path, toJSON(t, h))
+		}
+		for i, want := range []struct {
+			instances int
+			end       int64
+		}{{7, 79}, {6, 83}} {
+			table := h.Tables[i]
+			if !jsonEqual(t, table.Reasons, []string{"late"}) || table.InstanceCount != want.instances || *table.Repetition.MaxIntervalMs != 800 ||
+				*table.Repetition.MaxIntervalEndOffsetBytes != at(want.end) || table.Repetition.LateIntervalCount != 1 {
+				t.Errorf("%s: PAT/PMT health %s", fixture.path, toJSON(t, table))
+			}
 		}
 	}
 }

@@ -55,8 +55,9 @@ switching programs or screens never runs the CLI again.
 - **Per program vs. per multiplex**: PCR, PTS/DTS, timestamp anomalies,
   bitrate and PCR jitter are per program; continuity-counter results,
   transport errors and scrambled packets (`transport_errors`,
-  `scrambled_packets`) and warnings are per range, as the CLI checks them
-  across the multiplex. Bitrate and jitter are collected without the `--dump-*` flags.
+  `scrambled_packets`), PAT/PMT health (`psi_health`, which lists the PMT of
+  every announced program; the GUI shows the selected program's) and warnings
+  are per range, as the CLI checks them across the multiplex. Bitrate and jitter are collected without the `--dump-*` flags.
 - **PSI layout**: each PAT/PMT section seen (offset, version), the interval each
   layout applies to, the PIDs that change, and every PID observed in the range.
   The GUI keeps this to label packets and to mark changes on the plots (#93,

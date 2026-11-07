@@ -12,8 +12,8 @@ Packages for macOS, Linux and Windows are described in
 [![The four GUI views: Overview and Timeline on the top row, Bitrate and Packets on the bottom row](../images/gui-tabs.png)](../images/gui-tabs.png)
 
 - **Overview** brings the detected program layout, stream properties, the
-  transport-health checks (timing, PES timestamps, continuity, transport
-  errors and scrambling), and
+  transport-health checks (PAT/PMT structure, timing, PES timestamps,
+  continuity, transport errors and scrambling), and
   per-stream bitrate into one screen, with a full-page explanation of every
   check.
 - **Timeline** plots the PCR interval and the PCR → PTS/DTS gap of every
@@ -28,11 +28,13 @@ Packages for macOS, Linux and Windows are described in
 Overview shows a **Transport health** table for the selected program. Each
 row is one check with the value and the verdict the CLI reported (`OK`, `NG`,
 `WARNING`, `ANOMALIES`, `ERRORS`, `AFFECTED`, `DATA EXCLUDED`,
-`NOT ASSESSABLE` or `SKIPPED`), grouped
+`NOT ASSESSABLE`, `INSUFFICIENT DATA` or `SKIPPED`), grouped
 under categories that are always expanded:
 
 | Category | Check | Applies to | Verdicts |
 |---|---|---|---|
+| Structure | PAT health | whole multiplex (PID 0x0000), every packet of the range | `OK` when the PAT repeats at least every 500 ms (ETSI TR 101 290 1.3.a) and every section is usable; `NG` for a late, missing or unusable PAT; `INSUFFICIENT DATA` when the range does not show it repeating |
+| Structure | PMT health | selected program's PMT | `OK`, `NG` or `INSUFFICIENT DATA` as for the PAT (TR 101 290 1.5.a) |
 | Timing | Max PCR interval | selected program (its PCR PID) | `OK` up to 100 ms, `NG` above |
 | Timing | PCR jitter estimate | selected program (its PCR PID) | `OK` within ±500 ns, `WARNING` within ±25 µs, `NG` beyond, when delivery is constant; otherwise `NOT ASSESSABLE` |
 | PES / Timestamps | PCR → PTS/DTS gap | selected program | `OK` up to 1000 ms, `NG` above |
@@ -86,12 +88,13 @@ TR 101 290 measurement.
 **Findings** lists everything that needs attention, and its count includes
 every check that is not `OK`: each failed check, each PTS/DTS anomaly kind per
 PID, each continuity error (with its offset), PCR jitter, each PID with
-transport errors or scrambled packets (with its first offset), and the
+transport errors or scrambled packets (with its first offset), a failed PAT
+or PMT (with its first problem or late interval), and the
 analyzer's warnings. Each row shows the verdict, the check, the reason and whether it
 concerns the selected program or the whole multiplex; selecting the check
 opens its page. A check counts once through its own events, not again for its
-total. A check the CLI skipped, and a PCR jitter estimate the CLI found
-`not_assessable`, are listed under **Unavailable analysis** instead, with the
+total. A check the CLI skipped, a PCR jitter estimate the CLI found
+`not_assessable`, and a PAT or PMT with `insufficient_data`, are listed under **Unavailable analysis** instead, with the
 CLI's reason; they are not findings. The GUI shows the CLI's verdicts as they
 are and never changes them.
 

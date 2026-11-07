@@ -36,8 +36,9 @@
 //     2 (even key), which ISO/IEC 13818-1 does not allow on the null PID.
 //     Both are on the null PID, whose payload the analysis never reads, so
 //     they leave every other result unchanged.
-//   - psi-late: the PAT of slot 59 is replaced by a null packet, so 800 ms
-//     pass between the PATs in slots 39 and 79 (limit 500 ms).
+//   - psi-late: the PAT of slot 59 and the PMT of slot 63 are replaced by
+//     null packets, so 800 ms pass between the PATs in slots 39 and 79 and
+//     between the PMTs in slots 43 and 83 (limit 500 ms).
 //
 // With -m2ts, each packet gets a 4-byte TP_extra_header whose
 // arrival_time_stamp advances by one 20 ms slot per packet, matching the
@@ -209,7 +210,7 @@ func generate(omit map[string]bool) []byte {
 	for slot := range slots {
 		var p []byte
 		switch {
-		case with(defectPsiLate) && slot == 59:
+		case with(defectPsiLate) && (slot == 59 || slot == 63):
 			p = nullPacket()
 		case slot == 0 || slot == 1 || slot%20 == 19:
 			p = psiPacket(0x0000, patCC, patSection())
