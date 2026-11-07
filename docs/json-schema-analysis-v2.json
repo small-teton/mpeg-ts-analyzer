@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/small-teton/mpeg-ts-analyzer/blob/master/docs/json-schema-analysis-v2.json",
+  "$id": "https://small-teton.github.io/mpeg-ts-analyzer/json-schema-analysis-v2.json",
   "title": "mpeg-ts-analyzer range analysis v2",
   "description": "Schema for --format json --output analysis: every program of the analyzed range in one document, with time series. Shared definitions come from the summary report schema (json-schema-v2.json). Objects permit additive fields and status strings permit additive lowercase values within schema version 2.",
   "type": "object",

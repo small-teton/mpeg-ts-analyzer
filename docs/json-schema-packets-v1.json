@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/small-teton/mpeg-ts-analyzer/blob/master/docs/json-schema-packets-v1.json",
+  "$id": "https://small-teton.github.io/mpeg-ts-analyzer/json-schema-packets-v1.json",
   "title": "mpeg-ts-analyzer packet documents v1",
   "description": "Schema for --format json --output packets (a page of packets) and --output packet (one packet decoded). Shared definitions come from the summary report schema (json-schema-v2.json). Objects permit additive fields and status strings permit additive lowercase values within schema version 1.",
   "type": "object",
