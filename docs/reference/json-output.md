@@ -1932,7 +1932,8 @@ reasons below, and an `acquisition` object with the evidence; it is absent from
 every other document. Nothing that depends on the PAT/PMT (`programs`, `sync`,
 `psi_health` and the other checks) is reported, and the exit status is 1, as for
 any failure. `input.packet_size_bytes` is absent when no alignment was found,
-since detection only falls back to 188 bytes.
+since detection only falls back to 188 bytes; otherwise it is
+`acquisition.alignment.packet_size_bytes`.
 
 | `reason` | `acquisition.alignment.status` | `acquisition.pat` |
 | --- | --- | --- |
@@ -2025,7 +2026,7 @@ With `--limit 300` (from offset 0) the same kind of document has
 | `range_start_offset_bytes`, `range_end_offset_bytes` | The scanned range, `[start, end)`: `--offset` to `--offset` + `--limit`, clipped to the input. |
 | `scanned_bytes` | `range_end_offset_bytes` − `range_start_offset_bytes`. |
 | `alignment.layouts[]` | Every supported layout (188, 192, 204): the consecutive sync bytes one packet apart the detector requires (`required_sync_bytes`), the shortest range that can hold them (`required_bytes`) and whether the scan found it (`found`, `not_found`, or `insufficient_data` when `scanned_bytes` < `required_bytes`). |
-| `alignment.packet_size_bytes`, `alignment.first_aligned_offset_bytes` | The detected packet size and the first aligned packet; absent unless `status` is `acquired` (the offset also when no packet was aligned at that size). |
+| `alignment.packet_size_bytes`, `alignment.first_aligned_offset_bytes` | The packet size of the alignment found and the first aligned packet; absent unless `status` is `acquired` (the offset also when no packet was aligned at that size). The size is the one the detector prefers in the first read that holds an alignment. When that is not the first read of the range, PAT discovery had kept the 188-byte fallback and could not use the later packets; `error` says so. |
 | `alignment.aligned_packet_count` | Packets of the detected size that start with the sync byte, from the first alignment the detector accepts; after a packet without the sync byte, a new alignment needs five sync bytes, as in [TS synchronization](#ts-synchronization). 0 unless `status` is `acquired`. |
 | `pat.packet_count`, `pat.section_start_count`, `pat.first_packet_offset_bytes` | Aligned packets on PID 0, those with `payload_unit_start_indicator` set, and the first one (absent without any). |
 | `pat.crc_error_count` … `pat.unusable_packet_count` | PAT problems, counted as in [`psi_health`](#pat-and-pmt-health). |

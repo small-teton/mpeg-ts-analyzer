@@ -395,7 +395,8 @@ func TestSyncNotAcquired(t *testing.T) {
 		t.Fatal(err)
 	}
 	report, err = decodeJSONReport(t, func() error { return ParseTsFile(path, options.Options{Format: "json"}) })
-	if err == nil || report.Reason != "pat_not_observed" || report.Acquisition.Alignment.AlignedPacketCount != 0 {
+	if err == nil || report.Reason != "pat_not_observed" || report.Acquisition.Alignment.AlignedPacketCount != 4 ||
+		report.Acquisition.Alignment.PacketSizeBytes != 192 || report.Input.PacketSizeBytes != 192 {
 		t.Errorf("late M2TS alignment: err = %v, report %s", err, toJSON(t, report))
 	}
 }

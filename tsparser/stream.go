@@ -97,10 +97,10 @@ func parseTsFileJSONTo(filename string, options options.Options, output io.Write
 			if errors.As(parseErr, &acquisitionErr) {
 				reason = acquisitionErr.reason
 				report.Acquisition = acquisitionErr.report
-				if acquisitionErr.report.Alignment.Status != "acquired" {
-					// No packet size was detected; the fallback is not reported.
-					report.Input.PacketSizeBytes = 0
-				}
+				// The size of the alignment found, which may be found only
+				// after the first read; none without alignment, rather than
+				// the 188-byte fallback.
+				report.Input.PacketSizeBytes = acquisitionErr.report.Alignment.PacketSizeBytes
 			}
 		}
 	}
@@ -130,7 +130,7 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 }
 
 func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *AnalysisReport) error {
-	const bufSize = 65536
+	const bufSize = scanReadBytes
 	var fileOffset int64
 	patDetected := false
 	// scan records which packet alignments the reads contain.

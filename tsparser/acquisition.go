@@ -27,6 +27,9 @@ const (
 	patNotObservedReason           = "pat_not_observed"
 	patNotAcquiredReason           = "pat_not_acquired"
 	acquisitionEvidenceBufferBytes = 64 << 10
+	// scanReadBytes is the size of each read of the main scan; the packet
+	// size is detected in the first one.
+	scanReadBytes = 65536
 )
 
 // ReportAcquisition is the evidence of a failed initial acquisition. The range
@@ -87,15 +90,23 @@ type acquisitionError struct {
 func (e *acquisitionError) Error() string { return e.message }
 
 // alignmentScan records, over every read of the main scan, which layouts the
-// detector accepted.
+// detector accepted, and the packet size detectPacketSize picks in the first
+// read that holds an alignment. The scan keeps the size detected in its first
+// read, which falls back to 188 bytes when that read has no alignment; the
+// evidence is gathered at packetSize instead, the layout actually found.
 type alignmentScan struct {
-	found [3]bool // in supportedPacketSizes order
+	found      [3]bool // in supportedPacketSizes order
+	packetSize int     // 0 until a read holds an alignment
 }
 
 func (s *alignmentScan) observe(data []byte) {
 	s.found[0] = s.found[0] || hasAlignment(data, tsPayloadSize)
 	s.found[1] = s.found[1] || hasAlignment(data, m2tsPacketSize)
 	s.found[2] = s.found[2] || hasTrailerAlignment(data)
+	if s.packetSize == 0 && s.aligned() {
+		// The read holds an alignment, so detection does not fall back here.
+		s.packetSize = detectPacketSize(data)
+	}
 }
 
 func (s *alignmentScan) aligned() bool { return s.found[0] || s.found[1] || s.found[2] }
@@ -253,7 +264,11 @@ func acquisitionFailure(reader io.ReadSeeker, opts options.Options, scan *alignm
 	end = max(end, start)
 	evidence := analysis.AcquisitionEvidence{ScannedBytes: end - start, Layouts: scan.layouts()}
 	var packets acquisitionPackets
+	// assumed is set when the analysis kept the 188-byte fallback of a first
+	// read without alignment while a later read holds another layout.
+	assumed := scan.aligned() && scan.packetSize != packetSize
 	if scan.aligned() {
+		packetSize = scan.packetSize
 		if packets, err = observeAcquisition(reader, start, end, packetSize); err != nil {
 			return err
 		}
@@ -286,7 +301,7 @@ func acquisitionFailure(reader io.ReadSeeker, opts options.Options, scan *alignm
 			report.Alignment.FirstAlignedOffsetBytes = &packets.firstAligned
 		}
 		report.PAT = reportAcquisitionPAT(packets)
-		failure.reason, failure.message = patFailure(packets, report, opts, packetSize)
+		failure.reason, failure.message = patFailure(packets, report, opts, packetSize, assumed)
 		if result.Outcome == analysis.AcquisitionPATNotObserved {
 			report.PAT.Status = "not_observed"
 		}
@@ -346,13 +361,21 @@ func reportAcquisitionPAT(p acquisitionPackets) *ReportAcquisitionPAT {
 // patFailure returns the reason and explanation of an aligned range without a
 // usable PAT. What is known is stated as fact; why the PAT is missing is
 // given as possibilities.
-func patFailure(p acquisitionPackets, r *ReportAcquisition, opts options.Options, packetSize int) (string, string) {
+//
+// assumed reports that PAT discovery used the 188-byte fallback of a first
+// read without alignment while the range holds packetSize packets later on:
+// discovery could not use them, which the message says instead of a cause in
+// the PAT itself.
+func patFailure(p acquisitionPackets, r *ReportAcquisition, opts options.Options, packetSize int, assumed bool) (string, string) {
 	message := fmt.Sprintf("PAT not detected: no complete PAT after scanning %s (%d bytes) in the range %s", countText(p.aligned, fmt.Sprintf("aligned %d-byte packet", packetSize)), p.aligned*int64(packetSize), rangeText(r.RangeStartOffsetBytes, r.RangeEndOffsetBytes))
 	widen := ""
 	if opts.Offset > 0 || opts.Limit > 0 {
 		widen = "; a wider --offset/--limit range may include one"
 	}
-	const stop = "; program analysis needs a PAT and stops here"
+	stop := "; program analysis needs a PAT and stops here"
+	if assumed {
+		stop = fmt.Sprintf("; PAT discovery assumed 188-byte packets because the first read of the range (up to %d bytes) had no packet alignment, so it could not use the %d-byte packets that follow", scanReadBytes, packetSize) + stop
+	}
 	if p.patPackets == 0 {
 		return patNotObservedReason, message + "; no packet is on PID 0x0000. The range may be a partial capture or a PSI/PES fragment, or may end before the next PAT repetition" + widen + stop
 	}
@@ -374,6 +397,8 @@ func patFailure(p acquisitionPackets, r *ReportAcquisition, opts options.Options
 	}
 	message += fmt.Sprintf("; %s on PID 0x0000, %d starting a section", countText(p.patPackets, "packet"), p.sectionStarts)
 	switch {
+	case pat.CompleteTableCount > 0 && assumed:
+		message += fmt.Sprintf("; %d complete PAT(s) were assembled from them", pat.CompleteTableCount)
 	case pat.CompleteTableCount > 0:
 		message += fmt.Sprintf("; %d complete PAT(s) were assembled, but PAT discovery could not start from it (it needs the PAT packet followed by two aligned packets)", pat.CompleteTableCount)
 	case len(causes) > 0:

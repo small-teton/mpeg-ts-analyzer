@@ -326,6 +326,9 @@ reads the range once more and keeps a fixed amount of state.
 When the first read of the input has no packet alignment, the `Packet size`
 line says that 188 bytes was only assumed:
 `Packet size: 188 bytes (assumed: no packet alignment in the first read)`.
+PAT discovery keeps that size. If a later read holds packets of another size,
+the evidence is gathered at that size, and the error ends by saying that PAT
+discovery assumed 188-byte packets and could not use them.
 
 A short fragment, or a range without a PAT, can still be inspected packet by
 packet: `--format json --output packets` (with `--packet-size 188`, `192` or

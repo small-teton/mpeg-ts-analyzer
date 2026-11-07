@@ -400,7 +400,7 @@
             "packet_size_bytes": {
               "type": "integer",
               "enum": [188, 192, 204],
-              "description": "Detected packet size; present when status is acquired."
+              "description": "Packet size of the alignment found, as the detector prefers it in the first read that holds one (possibly after a first read without alignment); present when status is acquired."
             },
             "first_aligned_offset_bytes": {
               "$ref": "#/$defs/nonNegativeInteger",

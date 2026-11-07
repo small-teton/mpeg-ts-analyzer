@@ -293,3 +293,36 @@ func TestAcquisitionReadErrors(t *testing.T) {
 		t.Errorf("evidence: err = %v", err)
 	}
 }
+
+// A first read without alignment makes the scan fall back to 188 bytes; the
+// evidence is still gathered at the layout a later read holds, and the error
+// says why PAT discovery missed it.
+func TestAcquisitionLateAlignment(t *testing.T) {
+	pat := acquisitionPatPacket()
+	for _, c := range []struct {
+		name    string
+		size    int
+		packets []byte
+		reason  string
+		aligned int64
+		message string
+	}{
+		{"M2TS without PID 0", m2tsPacketSize, nullPackets(4), "pat_not_observed", 4, "no packet is on PID 0x0000"},
+		{"204 bytes without PID 0", trailerPacketSize, nullPackets(5), "pat_not_observed", 5, "no packet is on PID 0x0000"},
+		{"M2TS with a PAT", m2tsPacketSize, append(bytes.Clone(pat), nullPackets(4)...), "pat_not_acquired", 5, "1 complete PAT(s) were assembled from them; PAT discovery assumed 188-byte packets"},
+		{"204 bytes with a PAT", trailerPacketSize, append(bytes.Clone(pat), nullPackets(5)...), "pat_not_acquired", 6, "1 complete PAT(s) were assembled from them; PAT discovery assumed 188-byte packets"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			head := 70000
+			r := runAcquisition(t, append(make([]byte, head), asPacketSize(c.packets, c.size)...), options.Options{})
+			a := r.Acquisition.Alignment
+			if r.Reason != c.reason || r.Input.PacketSizeBytes != c.size || a.PacketSizeBytes != c.size || a.AlignedPacketCount != c.aligned || *a.FirstAlignedOffsetBytes != int64(head) {
+				t.Errorf("report %s", toJSON(t, r))
+			}
+			want := "PAT discovery assumed 188-byte packets because the first read of the range (up to 65536 bytes) had no packet alignment, so it could not use the " + itoa(c.size) + "-byte packets that follow; program analysis needs a PAT and stops here"
+			if !strings.Contains(r.Error, c.message) || !strings.HasSuffix(r.Error, want) {
+				t.Errorf("error %q", r.Error)
+			}
+		})
+	}
+}
