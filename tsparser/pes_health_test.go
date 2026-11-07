@@ -175,7 +175,7 @@ func TestPESFeed(t *testing.T) {
 func TestCompletePesIncompleteHeader(t *testing.T) {
 	a := newProgramAnalyzer(options.Options{}, 0, 1, 0x1000, 0x100, []ProgramInfo{{elementaryPid: 0x100, streamType: 0x02}}, false)
 	pes := NewPes()
-	pes.Initialize(0x100, 188, pcrAnchor{})
+	pes.initialize(0x100, 188, pcrAnchor{})
 	pes.Append([]byte{0x00, 0x00, 0x01, 0xE0, 0x00})
 	a.pesMap[0x100] = pes
 	a.finish()
@@ -213,7 +213,7 @@ func TestDumpPESHealth(t *testing.T) {
 func TestContinuityErrorEndsPes(t *testing.T) {
 	a := newProgramAnalyzer(options.Options{}, 0, 1, 0x1000, 0x100, []ProgramInfo{{elementaryPid: 0x100, streamType: 0x02}}, false)
 	pes := NewPes()
-	pes.Initialize(0x100, 0, pcrAnchor{})
+	pes.initialize(0x100, 0, pcrAnchor{})
 	pes.Append([]byte{0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x80, 0x05, 0x21, 0x00, 0x05, 0xBF, 0x21})
 	a.pesMap[0x100] = pes
 	a.breakPES(0x100, 376, analysis.BreakContinuityError)

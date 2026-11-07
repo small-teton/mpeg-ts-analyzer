@@ -16,7 +16,7 @@ func TestNewPes(t *testing.T) {
 func TestPesInitialize(t *testing.T) {
 	prev := pcrAnchor{valid: true, pcr: 3, unwrapped: 3, pos: 4}
 	p1 := NewPes()
-	p1.Initialize(1, 2, prev)
+	p1.initialize(1, 2, prev)
 
 	if p1.pid != 1 {
 		t.Errorf("actual: 1, But got %d", p1.pid)
@@ -39,7 +39,7 @@ func TestPesInitialize(t *testing.T) {
 		t.Errorf("Parse error: %s", err)
 	}
 	p2.nextAnchor = pcrAnchor{valid: true}
-	p2.Initialize(1, 2, prev)
+	p2.initialize(1, 2, prev)
 
 	if !reflect.DeepEqual(p1, p2) {
 		t.Errorf("Failed Initialize. Different in p1 and p2")
@@ -621,7 +621,7 @@ func TestPesAppendRetainsAtMostTheHeader(t *testing.T) {
 		payload[i] = byte(i)
 	}
 	pes := NewPes()
-	pes.Initialize(0x100, 0, pcrAnchor{})
+	pes.initialize(0x100, 0, pcrAnchor{})
 	const chunks = 10
 	for range chunks {
 		pes.Append(payload)
@@ -637,7 +637,7 @@ func TestPesAppendRetainsAtMostTheHeader(t *testing.T) {
 			t.Fatalf("buf[%d] = 0x%02x, want 0x%02x", i, got, want)
 		}
 	}
-	pes.Initialize(0x100, 0, pcrAnchor{})
+	pes.initialize(0x100, 0, pcrAnchor{})
 	if len(pes.buf) != 0 || pes.received != 0 {
 		t.Errorf("after Initialize len(buf) = %d, received = %d", len(pes.buf), pes.received)
 	}

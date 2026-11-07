@@ -469,7 +469,7 @@ func (a *programAnalyzer) observe(tsPacket *TsPacket, pos int64, duplicate bool)
 			pes = NewPes()
 			a.pesMap[pid] = pes
 		}
-		pes.Initialize(pid, pos, a.clock)
+		pes.initialize(pid, pos, a.clock)
 		pes.Append(tsPacket.Payload()) // read until pointer_field
 	} else {
 		pes.Append(tsPacket.Payload())

@@ -85,9 +85,9 @@ func NewPes() *Pes {
 	return pes
 }
 
-// Initialize starts a PES packet of pid at the packet at offset pos, after
+// initialize starts a PES packet of pid at the packet at offset pos, after
 // the PCR prev (invalid when no PCR is known).
-func (p *Pes) Initialize(pid uint16, pos int64, prev pcrAnchor) {
+func (p *Pes) initialize(pid uint16, pos int64, prev pcrAnchor) {
 	p.pid = pid
 	p.continuityCounter = 0
 	p.buf = p.buf[0:0]
