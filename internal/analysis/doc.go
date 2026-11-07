@@ -41,6 +41,12 @@
 //   - A PID is the 13-bit packet identifier; stream types are the PMT
 //     stream_type values. Counts are numbers of events, not of bytes.
 //
+// PCR is the exception that feeds results outside this package: PCRCheck
+// classifies each PCR against the previous one (PCRClock) and returns the
+// PCRStep, so the PCR jitter estimate, the bitrate time base and the time
+// series in tsparser split into the same timing segments as the PCR interval
+// and discontinuity checks.
+//
 // A check keeps only aggregate state, bounded by the number of PIDs (at most
 // 8192) or by a documented fixed limit; it never retains one object per
 // packet. Results are plain values computed on demand and owned by the caller.

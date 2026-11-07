@@ -3,63 +3,14 @@ package tsparser
 import (
 	"fmt"
 	"strings"
+
+	"github.com/small-teton/mpeg-ts-analyzer/v2/internal/analysis"
 )
 
-const (
-	maxPcrIntervalLimitMs = 100.0
-	maxPcrPtsGapLimitMs   = 1000.0
-)
+const maxPcrPtsGapLimitMs = 1000.0
 
-// pcrWrapTicks is the PCR modulus. program_clock_reference_base is a 33-bit
-// 90 kHz counter and the extension counts 0..299 at 27 MHz, so the combined
-// 27 MHz value wraps from 2^33*300-1 back to 0.
-const pcrWrapTicks = (uint64(1) << 33) * 300
-
-// pcrIntervalTracker measures the maximum interval between consecutive PCRs on
-// the selected program's PCR PID. The segment-boundary policy is:
-//
-//   - discontinuity_indicator on the current PCR packet starts a new segment;
-//     no interval is measured across a declared discontinuity, whichever way
-//     the clock jumped.
-//   - A smaller PCR within pcrDiscontinuityJumpMs of the previous one across
-//     the 2^33*300 boundary is a normal wraparound and is measured.
-//   - Any other smaller PCR is an undeclared backward reset; it has no
-//     meaningful interval, so it starts a new segment.
-//   - An undeclared forward jump is measured as is. Without a time reference
-//     it cannot be told apart from a genuinely late PCR, and either way the
-//     stream violates the 100 ms requirement.
-type pcrIntervalTracker struct {
-	prev      uint64
-	hasPrev   bool
-	maxTicks  uint64
-	intervals int
-}
-
-// Add records one PCR observation. discontinuity is the PCR packet's
-// adaptation_field discontinuity_indicator. It returns the interval to the
-// previous PCR in milliseconds when one was measured.
-func (t *pcrIntervalTracker) Add(pcr uint64, discontinuity bool) (float64, bool) {
-	prev, hasPrev := t.prev, t.hasPrev
-	t.prev, t.hasPrev = pcr, true
-	if !hasPrev || discontinuity {
-		return 0, false
-	}
-	var delta uint64
-	if pcr >= prev {
-		delta = pcr - prev
-	} else {
-		delta = pcr + pcrWrapTicks - prev
-		if delta > pcrDiscontinuityJumpMs*pcrTicksPerMs {
-			return 0, false
-		}
-	}
-	t.maxTicks = max(t.maxTicks, delta)
-	t.intervals++
-	return pcrToMs(float64(delta)), true
-}
-
-// maxMs returns the largest measured interval in milliseconds.
-func (t *pcrIntervalTracker) maxMs() float64 { return pcrToMs(float64(t.maxTicks)) }
+// pcrWrapTicks is the PCR modulus (see analysis.PCRWrapTicks).
+const pcrWrapTicks = analysis.PCRWrapTicks
 
 type complianceStatus string
 
@@ -96,20 +47,28 @@ func (c complianceCheck) dump() {
 	}
 }
 
+// complianceReport holds the timing compliance checks of one program. The PCR
+// discontinuity check counts as a timing compliance check: ETSI TR 101 290
+// groups an undeclared PCR discontinuity (indicator 2.3b) with the PCR
+// repetition interval (2.3a) under PCR_error (2.3).
 type complianceReport struct {
-	maxPcrInterval complianceCheck
-	maxPcrPtsGap   complianceCheck
+	maxPcrInterval     complianceCheck
+	pcrDiscontinuities analysis.PCRDiscontinuityResult
+	maxPcrPtsGap       complianceCheck
 }
 
-func newComplianceReport(maxPcrIntervalMs float64, pcrIntervals int, maxPcrPtsGapMs float64, pcrPtsSamples int) complianceReport {
+const pcrDiscontinuitiesName = "PCR discontinuities"
+
+func newComplianceReport(interval analysis.PCRIntervalResult, discontinuities analysis.PCRDiscontinuityResult, maxPcrPtsGapMs float64, pcrPtsSamples int) complianceReport {
 	return complianceReport{
 		maxPcrInterval: complianceCheck{
 			name:         "Max PCR interval",
-			valueMs:      maxPcrIntervalMs,
-			limitMs:      maxPcrIntervalLimitMs,
-			observations: pcrIntervals,
+			valueMs:      interval.MaxMs,
+			limitMs:      analysis.MaxPCRIntervalMs,
+			observations: interval.Intervals,
 			skippedWhy:   "need at least two comparable PCR observations",
 		},
+		pcrDiscontinuities: discontinuities,
 		maxPcrPtsGap: complianceCheck{
 			name:         "PCR-PTS/DTS max gap",
 			valueMs:      maxPcrPtsGapMs,
@@ -120,19 +79,51 @@ func newComplianceReport(maxPcrIntervalMs float64, pcrIntervals int, maxPcrPtsGa
 	}
 }
 
+// pcrDiscontinuitiesSkippedWhy explains a skipped PCR discontinuity check.
+const pcrDiscontinuitiesSkippedWhy = "need at least two PCR observations"
+
+// pcrDiscontinuityStatus is the JSON status of the PCR discontinuity check.
+func pcrDiscontinuityStatus(r analysis.PCRDiscontinuityResult) string {
+	switch r.Status {
+	case analysis.StatusSkipped:
+		return "skipped"
+	case analysis.StatusErrors:
+		return "ng"
+	default:
+		return "ok"
+	}
+}
+
+func dumpPcrDiscontinuities(r analysis.PCRDiscontinuityResult) {
+	status := strings.ToUpper(pcrDiscontinuityStatus(r))
+	if r.Status == analysis.StatusSkipped {
+		fmt.Printf("%s: SKIPPED (%s)\n", pcrDiscontinuitiesName, pcrDiscontinuitiesSkippedWhy)
+		return
+	}
+	fmt.Printf("%s: %d undeclared in %d PCRs [%s, limit: 0 without discontinuity_indicator]\n", pcrDiscontinuitiesName, r.Undeclared, r.PCRs, status)
+	for _, step := range r.Steps {
+		fmt.Printf("  - %-14s: %d, first at 0x%08x (PCR jumped %+.3fms)\n", step.Kind, step.Count, step.FirstOffset, step.FirstJumpMs)
+	}
+}
+
 func (r complianceReport) dump() {
 	fmt.Println("-----------------------------")
 	fmt.Println("Compliance Check Results:")
 	r.maxPcrInterval.dump()
+	dumpPcrDiscontinuities(r.pcrDiscontinuities)
 	r.maxPcrPtsGap.dump()
 }
 
 func (r complianceReport) failures() []string {
 	var failures []string
-	for _, check := range []complianceCheck{r.maxPcrInterval, r.maxPcrPtsGap} {
-		if check.status() == complianceNG {
-			failures = append(failures, check.name)
-		}
+	if r.maxPcrInterval.status() == complianceNG {
+		failures = append(failures, r.maxPcrInterval.name)
+	}
+	if r.pcrDiscontinuities.Status == analysis.StatusErrors {
+		failures = append(failures, pcrDiscontinuitiesName)
+	}
+	if r.maxPcrPtsGap.status() == complianceNG {
+		failures = append(failures, r.maxPcrPtsGap.name)
 	}
 	return failures
 }

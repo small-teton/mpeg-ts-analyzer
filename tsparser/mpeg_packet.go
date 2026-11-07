@@ -5,6 +5,7 @@ import (
 	"io"
 	"sort"
 
+	"github.com/small-teton/mpeg-ts-analyzer/v2/internal/analysis"
 	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 )
 
@@ -276,7 +277,7 @@ type programAnalyzer struct {
 	lastPcrPos    int64
 	hasLastPcr    bool
 	maxDelay      float64
-	pcrInterval   pcrIntervalTracker
+	pcr           analysis.PCRCheck
 	pcrPtsSamples int
 	collectJitter bool
 	pcrJitter     PcrJitter
@@ -284,11 +285,12 @@ type programAnalyzer struct {
 	anomaly       *TimestampAnomaly
 	series        *programSeries // nil unless time series are collected
 	programInfos  []ProgramInfo  // elementary streams of the current layout
-	// pcrBreak makes the next PCR start a new timing segment after the
-	// PCR_PID changed.
-	pcrBreak bool
-	stopped  bool
-	end      int64 // offset after the last packet analyzed, once stopped
+	// pcrDiscontinuityPending is set by a packet of the PCR_PID with
+	// discontinuity_indicator set but no PCR: the next PCR of the PID starts
+	// the new time base (ISO/IEC 13818-1, 2.4.3.5).
+	pcrDiscontinuityPending bool
+	stopped                 bool
+	end                     int64 // offset after the last packet analyzed, once stopped
 }
 
 // newProgramAnalyzer prepares the analysis of one program from offset start.
@@ -330,36 +332,12 @@ func (a *programAnalyzer) observe(tsPacket *TsPacket, pos int64, duplicate bool)
 	// PCR-based analysis (bitrate, jitter, timestamps) runs against them.
 	// The PCR of a packet with a transport error is not trusted; a scrambled
 	// packet's adaptation field is clear, so its PCR is used.
-	if tsPacket.HasAf() && tsPacket.adaptationField.PcrFlag() && !tsPacket.transportError() && a.pcrPid != 0 && a.pcrPid != nullPidValue && pid == a.pcrPid {
-		// The first PCR after a PCR_PID change is handled as a discontinuity, so
-		// no interval, jitter estimate or bitrate window spans the change.
-		pcr, discontinuity := tsPacket.Pcr(), tsPacket.adaptationField.DiscontinuityIndicator() || a.pcrBreak
-		a.pcrBreak = false
-		if a.bitrate != nil {
-			a.bitrate.MarkPcr(pcr, discontinuity)
-		}
-		if a.options.DumpTimestamp {
-			tsPacket.adaptationField.DumpPcr(a.lastPcr)
-		}
-		if a.collectJitter {
-			a.pcrJitter.Add(pos, pid, pcr, discontinuity)
-		}
-		// Complete the PCR bracket for every active PES, including short PES
-		// packets which have no continuation packet after this PCR.
-		for _, activePes := range a.pesMap {
-			if activePes != nil && !activePes.hasNextPcr && (!activePes.hasPrevPcr || pcr > activePes.prevPcr) {
-				activePes.nextPcr = pcr
-				activePes.nextPcrPos = pos
-				activePes.hasNextPcr = true
-			}
-		}
-		intervalMs, measured := a.pcrInterval.Add(pcr, discontinuity)
-		if a.series != nil {
-			a.series.addPcr(pos, pcr, discontinuity, intervalMs, measured)
-		}
-		a.lastPcr = pcr
-		a.lastPcrPos = pos
-		a.hasLastPcr = true
+	pcrCarrier := a.pcrPid != 0 && a.pcrPid != nullPidValue && pid == a.pcrPid && !tsPacket.transportError() && tsPacket.HasAf()
+	if pcrCarrier && !tsPacket.adaptationField.PcrFlag() && tsPacket.adaptationField.DiscontinuityIndicator() {
+		a.pcrDiscontinuityPending = true
+	}
+	if pcrCarrier && tsPacket.adaptationField.PcrFlag() {
+		a.observePcr(tsPacket, pos)
 	}
 	if !exist || duplicate {
 		return
@@ -397,6 +375,52 @@ func (a *programAnalyzer) observe(tsPacket *TsPacket, pos int64, duplicate bool)
 	} else {
 		pes.Append(tsPacket.Payload())
 	}
+}
+
+// observePcr feeds the PCR of tsPacket, a trusted packet of the PCR_PID at
+// pos, to every PCR-based result. analysis.PCRCheck classifies it once against
+// the previous PCR, and the bitrate time base, the time series and the PCR-PTS
+// bracket of the active PES packets follow that classification; the jitter
+// estimate classifies its stored samples with the same policy.
+func (a *programAnalyzer) observePcr(tsPacket *TsPacket, pos int64) {
+	pid := tsPacket.Pid()
+	pcr := tsPacket.Pcr()
+	declared := tsPacket.adaptationField.DiscontinuityIndicator() || a.pcrDiscontinuityPending
+	a.pcrDiscontinuityPending = false
+	step := a.pcr.Observe(analysis.PCR{PID: pid, Offset: pos, Value: pcr, DiscontinuityIndicator: declared})
+	sample := pcrSample{pos: pos, pid: pid, pcr: pcr, discontinuity: declared}
+	if a.bitrate != nil {
+		a.bitrate.markPcrStep(sample, step)
+	}
+	if a.options.DumpTimestamp {
+		tsPacket.adaptationField.DumpPcr(a.lastPcr)
+	}
+	if a.collectJitter {
+		a.pcrJitter.Add(pos, pid, pcr, declared)
+	}
+	for _, activePes := range a.pesMap {
+		if activePes == nil || activePes.hasNextPcr {
+			continue
+		}
+		if step.Boundary() {
+			// The PES started in the previous time base: no PCR-PTS/DTS gap
+			// spans the discontinuity.
+			activePes.hasPrevPcr = false
+		}
+		// Complete the PCR bracket for every active PES, including short
+		// PES packets which have no continuation packet after this PCR.
+		if !activePes.hasPrevPcr || pcr > activePes.prevPcr {
+			activePes.nextPcr = pcr
+			activePes.nextPcrPos = pos
+			activePes.hasNextPcr = true
+		}
+	}
+	if a.series != nil {
+		a.series.addPcr(pos, pcr, step)
+	}
+	a.lastPcr = pcr
+	a.lastPcrPos = pos
+	a.hasLastPcr = true
 }
 
 // completePes parses a buffered PES and records its timestamps.
@@ -472,7 +496,7 @@ func (a *programAnalyzer) setLayout(pmtPid, pcrPid uint16, programInfos []Progra
 	}
 	a.programInfos = programInfos
 	if pcrPid != a.pcrPid {
-		a.pcrPid, a.pcrBreak = pcrPid, true
+		a.pcrPid, a.pcrDiscontinuityPending = pcrPid, false
 		a.lastPcr, a.hasLastPcr = 0, false
 		for _, pes := range a.pesMap {
 			if pes != nil && !pes.hasNextPcr {
@@ -494,7 +518,7 @@ func (a *programAnalyzer) stop(end int64) {
 }
 
 func (a *programAnalyzer) complianceReport() complianceReport {
-	return newComplianceReport(a.pcrInterval.maxMs(), a.pcrInterval.intervals, a.maxDelay, a.pcrPtsSamples)
+	return newComplianceReport(a.pcr.Interval(), a.pcr.Discontinuities(), a.maxDelay, a.pcrPtsSamples)
 }
 
 func crc32(buf []byte) uint32 {

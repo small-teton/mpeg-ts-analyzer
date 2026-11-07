@@ -3,6 +3,8 @@ package tsparser
 import (
 	"fmt"
 	"sort"
+
+	"github.com/small-teton/mpeg-ts-analyzer/v2/internal/analysis"
 )
 
 // Per-PID bitrate statistics for the selected program.
@@ -26,10 +28,13 @@ import (
 // understate as a per-second rate, so it is dropped from the peak.
 //
 // Bytes seen before the first PCR have no time reference and are dropped
-// entirely. A PCR discontinuity / reset / wrap (see isSegmentBoundary) breaks
-// the clock: the bytes waiting across such a gap are dropped (their real
-// duration is unknown) and the elapsed clock does not advance over the gap, so a
-// broken stream does not inflate or deflate the numbers.
+// entirely. A PCR discontinuity (a declared discontinuity, a PCR_PID change, an
+// undeclared backward step or a forward jump of more than 1000 ms, classified
+// by analysis.PCRClock as for every PCR-based result) breaks the clock: the
+// bytes waiting across such a gap are dropped (their real duration is unknown)
+// and the elapsed clock does not advance over the gap, so a broken stream does
+// not inflate or deflate the numbers. A 33-bit PCR wraparound is a normal
+// interval and keeps the clock running.
 //
 // Only PIDs of the selected program are counted (the tool analyses one program
 // at a time; a multi-program capture interleaves other programs' PIDs in the
@@ -137,6 +142,15 @@ func (b *BitrateStats) CountPacket(pid uint16) {
 // it, attributing the pending bytes to the current 1-second window.
 func (b *BitrateStats) MarkPcr(pcr uint64, discontinuity bool) {
 	cur := pcrSample{pcr: pcr, discontinuity: discontinuity}
+	step := analysis.PCRStep{Kind: analysis.PCRStepFirst}
+	if b.started {
+		step = pcrStep(b.prev, cur)
+	}
+	b.markPcrStep(cur, step)
+}
+
+// markPcrStep records the PCR cur, classified as step against the previous one.
+func (b *BitrateStats) markPcrStep(cur pcrSample, step analysis.PCRStep) {
 	if !b.started {
 		// Drop bytes seen before the first PCR: they have no time reference.
 		b.started = true
@@ -145,7 +159,7 @@ func (b *BitrateStats) MarkPcr(pcr uint64, discontinuity bool) {
 		b.clearPending()
 		return
 	}
-	if isSegmentBoundary(b.prev, cur) {
+	if step.Boundary() {
 		// The gap's real duration is unknown: drop its bytes and freeze the
 		// clock across it. The next interval resumes at the same elapsed time.
 		b.segments++
@@ -162,7 +176,7 @@ func (b *BitrateStats) MarkPcr(pcr uint64, discontinuity bool) {
 		s.totalBytes += bytes
 		s.buckets[bucket] += bytes
 	}
-	b.elapsedTicks += pcr - b.prev.pcr
+	b.elapsedTicks += step.Ticks
 	b.prev = cur
 	b.clearPending()
 }

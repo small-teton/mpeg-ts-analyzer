@@ -799,3 +799,76 @@ func TestScanBoundsPesRetentionForLongContinuation(t *testing.T) {
 		t.Errorf("ptsDtsFlags = %d, pts = %d, want 2, 90000", pes.ptsDtsFlags, pes.pts)
 	}
 }
+
+// TestBufferPesPcrPtsGapNotAcrossDiscontinuity keeps a PCR-PTS/DTS gap from
+// spanning a PCR discontinuity: a PES that starts in one time base is not
+// bracketed by the first PCR of the next, so it gives no gap, while the same
+// PES before a continuous PCR does.
+func TestBufferPesPcrPtsGapNotAcrossDiscontinuity(t *testing.T) {
+	const ms = uint64(pcrTicksPerMs)
+	programInfos := []ProgramInfo{{streamType: 0x02, elementaryPid: 0x31}}
+	run := func(next []byte) complianceCheck {
+		t.Helper()
+		packets := [][]byte{
+			buildPcrPacket(0x31, 1000*ms),
+			buildPesTsPacket(0x31, 0, encodePtsOnlyPes(1200*90)),
+			next,
+			buildPesTsPacket(0x31, 1, encodePtsOnlyPes(1240*90)),
+		}
+		var pos int64
+		analysis, err := bufferPes(bytes.NewReader(bytes.Join(packets, nil)), &pos, 0x30, 0x31, programInfos, nil, options.Options{}, 188, 0, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return analysis.compliance.maxPcrPtsGap
+	}
+	if got := run(buildPcrPacket(0x31, 1040*ms)); got.observations != 1 {
+		t.Errorf("continuous: %+v", got)
+	}
+	for name, next := range map[string][]byte{
+		"declared":     buildPcrPacketDI(0x31, 61_000*ms),
+		"backward":     buildPcrPacket(0x31, 500*ms),
+		"forward jump": buildPcrPacket(0x31, 3000*ms),
+	} {
+		if got := run(next); got.observations != 0 {
+			t.Errorf("%s: a gap was measured across the discontinuity: %+v", name, got)
+		}
+	}
+}
+
+// TestBufferPesDiscontinuityIndicatorWithoutPcr declares a discontinuity with
+// discontinuity_indicator on a packet of the PCR_PID that carries no PCR: the
+// next PCR starts the new time base. The indicator in a packet with
+// transport_error_indicator is not trusted.
+func TestBufferPesDiscontinuityIndicatorWithoutPcr(t *testing.T) {
+	const ms = uint64(pcrTicksPerMs)
+	indicatorOnly := func(pid uint16, tei bool) []byte {
+		pkt := buildPcrPacketDI(pid, 0)
+		pkt[5] &^= 0x10 // no PCR
+		if tei {
+			pkt[1] |= 0x80
+		}
+		return pkt
+	}
+	programInfos := []ProgramInfo{{streamType: 0x02, elementaryPid: 0x31}}
+	for _, tt := range []struct {
+		name       string
+		marker     []byte
+		undeclared int
+	}{
+		{"declared earlier", indicatorOnly(0x31, false), 0},
+		{"indicator in a TEI packet", indicatorOnly(0x31, true), 1},
+		{"indicator on another PID", indicatorOnly(0x32, false), 1},
+	} {
+		marker := tt.marker
+		packets := [][]byte{buildPcrPacket(0x31, 5000*ms), marker, buildPcrPacket(0x31, 1000*ms), buildPcrPacket(0x31, 1040*ms)}
+		var pos int64
+		analysis, err := bufferPes(bytes.NewReader(bytes.Join(packets, nil)), &pos, 0x30, 0x31, programInfos, nil, options.Options{}, 188, 0, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := analysis.compliance.pcrDiscontinuities; got.Undeclared != tt.undeclared || got.PCRs != 3 {
+			t.Errorf("%s: %+v", tt.name, got)
+		}
+	}
+}

@@ -72,8 +72,33 @@ type ReportCheck struct {
 }
 
 type ReportCompliance struct {
-	MaxPCRInterval  ReportCheck `json:"max_pcr_interval"`
-	MaxPCRPTSDTSGap ReportCheck `json:"max_pcr_pts_dts_gap"`
+	MaxPCRInterval     ReportCheck                 `json:"max_pcr_interval"`
+	PCRDiscontinuities ReportPCRDiscontinuityCheck `json:"pcr_discontinuities"`
+	MaxPCRPTSDTSGap    ReportCheck                 `json:"max_pcr_pts_dts_gap"`
+}
+
+// ReportPCRDiscontinuityCheck classifies every PCR of the program against the
+// previous one. Status is ng when at least one discontinuity has no
+// discontinuity_indicator (kind backward or forward_jump), skipped with fewer
+// than two PCRs, and ok otherwise. Items lists each kind other than continuous
+// steps that occurred, in a fixed order: wraparound, declared, pcr_pid_change,
+// backward, forward_jump.
+type ReportPCRDiscontinuityCheck struct {
+	Status          string          `json:"status"`
+	Reason          string          `json:"reason,omitempty"`
+	PCRCount        int             `json:"pcr_count"`
+	UndeclaredCount int             `json:"undeclared_count"`
+	JumpLimitMs     float64         `json:"jump_limit_ms"`
+	Items           []ReportPCRStep `json:"items"`
+}
+
+// ReportPCRStep is how often one kind of PCR step occurred, with the first
+// PCR packet of that kind and how far the PCR jumped there.
+type ReportPCRStep struct {
+	Kind             string  `json:"kind"`
+	Count            int     `json:"count"`
+	FirstOffsetBytes int64   `json:"first_offset_bytes"`
+	FirstJumpMs      float64 `json:"first_jump_ms"`
 }
 
 type ReportContinuityPID struct {
@@ -100,8 +125,12 @@ type ReportTimestampAnomalies struct {
 	Items  []ReportTimestampAnomaly `json:"items"`
 }
 
+// ReportPCRDiscontinuity is one boundary between timing segments of the PCR
+// jitter estimate. Kind is declared, pcr_pid_change, backward or forward_jump
+// (see PCR discontinuities in docs/reference/json-output.md).
 type ReportPCRDiscontinuity struct {
 	OffsetBytes int64   `json:"offset_bytes"`
+	Kind        string  `json:"kind"`
 	JumpMs      float64 `json:"jump_ms"`
 	FromSegment int     `json:"from_segment"`
 	ToSegment   int     `json:"to_segment"`
@@ -313,7 +342,25 @@ func reportCheck(c complianceCheck) ReportCheck {
 }
 
 func reportCompliance(r complianceReport) *ReportCompliance {
-	return &ReportCompliance{MaxPCRInterval: reportCheck(r.maxPcrInterval), MaxPCRPTSDTSGap: reportCheck(r.maxPcrPtsGap)}
+	return &ReportCompliance{
+		MaxPCRInterval:     reportCheck(r.maxPcrInterval),
+		PCRDiscontinuities: reportPcrDiscontinuities(r.pcrDiscontinuities),
+		MaxPCRPTSDTSGap:    reportCheck(r.maxPcrPtsGap),
+	}
+}
+
+func reportPcrDiscontinuities(d analysis.PCRDiscontinuityResult) ReportPCRDiscontinuityCheck {
+	r := ReportPCRDiscontinuityCheck{
+		Status: pcrDiscontinuityStatus(d), PCRCount: d.PCRs, UndeclaredCount: d.Undeclared,
+		JumpLimitMs: analysis.PCRJumpLimitMs, Items: []ReportPCRStep{},
+	}
+	if d.Status == analysis.StatusSkipped {
+		r.Reason = pcrDiscontinuitiesSkippedWhy
+	}
+	for _, step := range d.Steps {
+		r.Items = append(r.Items, ReportPCRStep{Kind: step.Kind.String(), Count: step.Count, FirstOffsetBytes: step.FirstOffset, FirstJumpMs: step.FirstJumpMs})
+	}
+	return r
 }
 
 func reportContinuity(s *continuityCounterSummary) *ReportContinuity {
@@ -372,7 +419,7 @@ func reportJitter(j *PcrJitter) *ReportPCRJitter {
 	r.Estimate.SegmentCount = res.segments
 	r.Estimate.Observations = res.measured
 	for _, d := range res.discontinuities {
-		r.Estimate.Discontinuities = append(r.Estimate.Discontinuities, ReportPCRDiscontinuity{d.pos, d.jumpMs, d.fromSeg, d.toSeg})
+		r.Estimate.Discontinuities = append(r.Estimate.Discontinuities, ReportPCRDiscontinuity{d.pos, d.kind.String(), d.jumpMs, d.fromSeg, d.toSeg})
 	}
 	if e.estimated {
 		est := &r.Estimate

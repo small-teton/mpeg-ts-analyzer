@@ -3,10 +3,32 @@ package tsparser
 import (
 	"strings"
 	"testing"
+
+	"github.com/small-teton/mpeg-ts-analyzer/v2/internal/analysis"
 )
 
+// pcrResults returns the PCR results of PCRs on PID 0x100 with the given
+// values in milliseconds; a negative value is declared with
+// discontinuity_indicator at its absolute value.
+func pcrResults(values ...int64) (analysis.PCRIntervalResult, analysis.PCRDiscontinuityResult) {
+	var c analysis.PCRCheck
+	for i, v := range values {
+		declared := v < 0
+		if declared {
+			v = -v
+		}
+		c.Observe(analysis.PCR{PID: 0x100, Offset: int64(i) * 188, Value: uint64(v) * pcrTicksPerMs, DiscontinuityIndicator: declared})
+	}
+	return c.Interval(), c.Discontinuities()
+}
+
+func complianceOf(maxGapMs float64, gapSamples int, pcrMs ...int64) complianceReport {
+	interval, discontinuities := pcrResults(pcrMs...)
+	return newComplianceReport(interval, discontinuities, maxGapMs, gapSamples)
+}
+
 func TestComplianceBoundaryIsOK(t *testing.T) {
-	report := newComplianceReport(100, 1, 1000, 1)
+	report := complianceOf(1000, 1, 1000, 1100)
 	if got := report.maxPcrInterval.status(); got != complianceOK {
 		t.Errorf("PCR boundary status = %s, want OK", got)
 	}
@@ -21,6 +43,7 @@ func TestComplianceBoundaryIsOK(t *testing.T) {
 	for _, want := range []string{
 		"Compliance Check Results:",
 		"Max PCR interval: 100.000000ms [OK, limit: <= 100.000000ms]",
+		"PCR discontinuities: 0 undeclared in 2 PCRs [OK, limit: 0 without discontinuity_indicator]",
 		"PCR-PTS/DTS max gap: 1000.000000ms [OK, limit: <= 1000.000000ms]",
 	} {
 		if !strings.Contains(out, want) {
@@ -30,24 +53,35 @@ func TestComplianceBoundaryIsOK(t *testing.T) {
 }
 
 func TestComplianceNG(t *testing.T) {
-	report := newComplianceReport(100.001, 1, 1000.001, 1)
+	// A 101 ms interval, then an undeclared backward step.
+	report := complianceOf(1000.001, 1, 1000, 1101, 500)
 	failures := report.failures()
-	if len(failures) != 2 || failures[0] != "Max PCR interval" || failures[1] != "PCR-PTS/DTS max gap" {
+	if len(failures) != 3 || failures[0] != "Max PCR interval" || failures[1] != "PCR discontinuities" || failures[2] != "PCR-PTS/DTS max gap" {
 		t.Fatalf("failures = %v", failures)
 	}
 	err := (&ComplianceError{Checks: failures}).Error()
-	if err != "compliance check failed: Max PCR interval, PCR-PTS/DTS max gap" {
+	if err != "compliance check failed: Max PCR interval, PCR discontinuities, PCR-PTS/DTS max gap" {
 		t.Errorf("ComplianceError = %q", err)
 	}
 	out := captureStdout(t, report.dump)
-	if strings.Count(out, "[NG,") != 2 {
+	for _, want := range []string{
+		"Max PCR interval: 101.000000ms [NG, limit: <= 100.000000ms]",
+		"PCR discontinuities: 1 undeclared in 3 PCRs [NG, limit: 0 without discontinuity_indicator]",
+		"  - backward      : 1, first at 0x00000178 (PCR jumped -601.000ms)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("NG output missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Count(out, "[NG,") != 3 {
 		t.Errorf("NG output =\n%s", out)
 	}
 }
 
 func TestComplianceSkipped(t *testing.T) {
-	report := newComplianceReport(0, 0, 0, 0)
-	if report.maxPcrInterval.status() != complianceSkipped || report.maxPcrPtsGap.status() != complianceSkipped {
+	report := complianceOf(0, 0)
+	if report.maxPcrInterval.status() != complianceSkipped || report.maxPcrPtsGap.status() != complianceSkipped ||
+		report.pcrDiscontinuities.Status != analysis.StatusSkipped {
 		t.Fatalf("statuses = %s, %s", report.maxPcrInterval.status(), report.maxPcrPtsGap.status())
 	}
 	if failures := report.failures(); len(failures) != 0 {
@@ -56,6 +90,7 @@ func TestComplianceSkipped(t *testing.T) {
 	out := captureStdout(t, report.dump)
 	for _, want := range []string{
 		"Max PCR interval: SKIPPED (need at least two comparable PCR observations)",
+		"PCR discontinuities: SKIPPED (need at least two PCR observations)",
 		"PCR-PTS/DTS max gap: SKIPPED (need a parsed PTS/DTS bracketed by PCR observations)",
 	} {
 		if !strings.Contains(out, want) {
@@ -64,41 +99,20 @@ func TestComplianceSkipped(t *testing.T) {
 	}
 }
 
-func TestPcrIntervalTracker(t *testing.T) {
-	const ms = uint64(pcrTicksPerMs)
-	type obs struct {
-		pcr           uint64
-		discontinuity bool
+// TestComplianceDeclaredDiscontinuitiesPass lists declared discontinuities
+// without failing: a declared time-base change is legal.
+func TestComplianceDeclaredDiscontinuitiesPass(t *testing.T) {
+	report := complianceOf(0, 0, 1000, 1040, -9000, 9040)
+	if failures := report.failures(); len(failures) != 0 {
+		t.Errorf("failures = %v", failures)
 	}
-	tests := []struct {
-		name      string
-		obs       []obs
-		wantMaxMs float64
-		wantCount int
-	}{
-		{"single PCR", []obs{{27_000_000, false}}, 0, 0},
-		{"ordinary intervals", []obs{{0, false}, {40 * ms, false}, {80 * ms, false}}, 40, 2},
-		{"exact 100 ms boundary", []obs{{1000 * ms, false}, {1100 * ms, false}}, 100, 1},
-		{"forward jump with discontinuity_indicator", []obs{{0, false}, {40 * ms, false}, {10_040 * ms, true}, {10_080 * ms, false}}, 40, 2},
-		{"backward reset with discontinuity_indicator", []obs{{5000 * ms, false}, {5040 * ms, false}, {100 * ms, true}, {150 * ms, false}}, 50, 2},
-		{"wraparound", []obs{{pcrWrapTicks - 20*ms, false}, {20 * ms, false}, {60 * ms, false}}, 40, 2},
-		{"wraparound at the 1000 ms limit", []obs{{pcrWrapTicks - 600*ms, false}, {400 * ms, false}}, 1000, 1},
-		{"undeclared backward reset", []obs{{5000 * ms, false}, {5040 * ms, false}, {100 * ms, false}, {130 * ms, false}}, 40, 2},
-		{"backward beyond the wrap limit", []obs{{pcrWrapTicks - 600*ms, false}, {401 * ms, false}, {441 * ms, false}}, 40, 1},
-		{"undeclared forward jump", []obs{{0, false}, {2000 * ms, false}}, 2000, 1},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var tracker pcrIntervalTracker
-			for _, o := range tt.obs {
-				tracker.Add(o.pcr, o.discontinuity)
-			}
-			if got := tracker.maxMs(); got != tt.wantMaxMs {
-				t.Errorf("maxMs = %f, want %f", got, tt.wantMaxMs)
-			}
-			if tracker.intervals != tt.wantCount {
-				t.Errorf("intervals = %d, want %d", tracker.intervals, tt.wantCount)
-			}
-		})
+	out := captureStdout(t, report.dump)
+	for _, want := range []string{
+		"PCR discontinuities: 0 undeclared in 4 PCRs [OK,",
+		"  - declared      : 1, first at 0x00000178 (PCR jumped +7960.000ms)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
 	}
 }
