@@ -59,7 +59,7 @@
     },
     "transport_errors": {
       "$ref": "json-schema-v2.json#/$defs/affectedPackets",
-      "description": "Packets with transport_error_indicator set, for the whole multiplex, from the first packet of the range. Absent when no program was analyzed."
+      "description": "Packets with transport_error_indicator set, for the whole multiplex, from the first packet of the range. Absent when no program was analyzed. Only the fixed 4-byte TS header of such a packet is read, so a malformed adaptation field or a reserved adaptation_field_control does not stop the count; each pid is the one in the damaged header."
     },
     "scrambled_packets": {
       "$ref": "json-schema-v2.json#/$defs/affectedPackets",

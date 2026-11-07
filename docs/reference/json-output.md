@@ -731,7 +731,13 @@ acquired and the null PID; they are absent when no analysis ran (`incomplete`,
 
 The payload of an affected packet is never parsed as PSI or PES, so it
 contributes no PSI transition, PES header, PTS/DTS, timestamp anomaly or
-PCR-PTS/DTS gap; the PAT/PMT warnings it causes are listed in `warnings`. See
+PCR-PTS/DTS gap; the PAT/PMT warnings it causes are listed in `warnings`.
+Nothing after the 4-byte TS header of a packet with a transport error is
+parsed, so such a packet is counted, with the PID of its header, even when
+its `adaptation_field_control` is reserved or its adaptation field is
+malformed, and the analysis continues after it. Because the error may also
+have changed the header, `pid` is the PID as read from the damaged packet,
+not necessarily the stream it belonged to. See
 [Transport errors and scrambled packets](../cli/usage.md#transport-errors-and-scrambled-packets-always-on)
 for the complete policy. Neither object takes part in `--fail-on-error`.
 
@@ -2243,8 +2249,17 @@ $ mpeg-ts-analyzer sample_data/sample_188byte_two_programs_mpeg2_160x120_25fps_m
 - The packet size is detected from the bytes at `--offset`, or from the last
   64 KiB of the file near its end; `--packet-size` can force it. For 192-byte
   M2TS, offsets point at the 4-byte arrival timestamp that starts each packet.
-- A packet without a sync byte is listed with `"valid": false`. An incomplete
-  last packet ends the page with a warning.
+- A packet without a sync byte is listed with `"valid": false`, and so is a
+  packet without `transport_error` whose header or adaptation field cannot be
+  parsed (for example a reserved `adaptation_field_control`). A packet with
+  `transport_error` is always listed with its header fields as decoded, even
+  when the rest of it is malformed. An incomplete last packet ends the page
+  with a warning.
+- `pcr_ms` is the PCR of the packet's adaptation field. For a packet with
+  `transport_error`, whose adaptation field the analysis does not parse, it is
+  read from the packet's bytes when `PCR_flag` is set and
+  `adaptation_field_length` can hold it, as the packet detail shows it; the
+  analysis never uses that PCR.
 - A packet in which PSI sections start has `sections`: for each long-form
   section (`section_syntax_indicator` 1) starting after the `pointer_field`,
   in order, its `table_id`, `table_id_extension`, `version_number`,

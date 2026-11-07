@@ -12,6 +12,12 @@ import (
 // A TEI packet has at least one uncorrectable bit error somewhere in it, so
 // nothing beyond the fields needed to count it is used:
 //
+//   - Parsing: TsPacket.Parse decodes only its fixed 4-byte header. Its
+//     adaptation field is never parsed, so a reserved adaptation_field_control
+//     or a malformed adaptation field is not a parse error, and no PCR,
+//     discontinuity_indicator or other adaptation field value of the packet
+//     is used anywhere. Its PID is the one in that header, which the error
+//     may have changed.
 //   - PSI: the packet is ignored and the section in progress on its PID is
 //     discarded (psiSectionReader), so no PAT or PMT is built from it.
 //   - PES: the payload is not used. Since it may continue the PES packet in

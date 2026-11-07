@@ -40,6 +40,25 @@
 // -clean the same stream is written without the affected packets: each is a
 // normal packet of its slot (slot 0 a null packet, slot 7 a null packet).
 //
+// With -malformed, every TEI packet is also damaged where a parser that read
+// past the fixed 4-byte header would fail, while its PID, continuity counter
+// sequence and payload presence stay as in the default stream:
+//
+//   - 0 (null): adaptation_field_control 0 (reserved).
+//   - 25 (audio): adaptation_field_length 200, past the end of the packet.
+//   - 30 (video): transport_private_data_flag set, with a
+//     transport_private_data_length (200) past the adaptation field.
+//   - 39 (PAT): adaptation_field_control 0, with the PAT's previous
+//     continuity_counter, since a packet with control 0 does not increment it.
+//   - 43 (PMT): adaptation_field_control 3 with adaptation_field_length 255.
+//   - 70 (video, also scrambled): OPCR_flag and transport_private_data_flag
+//     set, with a transport_private_data_length (200) past the adaptation
+//     field.
+//
+// The analysis of this stream must equal that of the default stream: every
+// TEI packet is counted with the PID of its header and nothing past that
+// header is used. -malformed and -clean cannot be combined.
+//
 // With -m2ts, each packet gets a 4-byte TP_extra_header whose
 // arrival_time_stamp advances by one 20 ms slot per packet.
 package main
@@ -207,9 +226,41 @@ func scramble(p []byte, control byte) []byte {
 	return p
 }
 
+// malformPrivateData sets transport_private_data_flag and the extra flags in
+// the adaptation field of p, and writes a transport_private_data_length of
+// 200, which runs past the adaptation field, after the PCR and OPCR. The
+// adaptation field of p must hold a PCR.
+func malformPrivateData(p []byte, flags byte) []byte {
+	p[5] |= 0x02 | flags
+	at := 6 + 6 // after the PCR
+	if p[5]&0x08 != 0 {
+		at += 6 // OPCR
+	}
+	p[at] = 200
+	return p
+}
+
+// malform damages the TEI packet of slot as listed in the package comment.
+func malform(slot int, p []byte) []byte {
+	switch slot {
+	case 0, 39:
+		p[3] &^= 0x30 // adaptation_field_control 0
+	case 25:
+		p[4] = 200
+	case 30:
+		p = malformPrivateData(p, 0)
+	case 43:
+		p[3] |= 0x30
+		p[4] = 255
+	case 70:
+		p = malformPrivateData(p, 0x08) // OPCR_flag
+	}
+	return p
+}
+
 // generate returns the 188-byte stream, with the affected packets unless
-// clean is set.
-func generate(clean bool) []byte {
+// clean is set; with malformed, the TEI packets are also malformed.
+func generate(clean, malformed bool) []byte {
 	affected := func(slot int) bool {
 		if clean {
 			return false
@@ -229,6 +280,11 @@ func generate(clean bool) []byte {
 			s := patSection(0, pmtPid)
 			if affected(slot) && slot == 39 {
 				s = patSection(1, 0x1001)
+			}
+			if malformed && slot == 39 {
+				// adaptation_field_control 0 does not increment the counter.
+				p = psiPacket(0x0000, patCC-1, s)
+				break
 			}
 			p = psiPacket(0x0000, patCC, s)
 			patCC++
@@ -269,6 +325,9 @@ func generate(clean bool) []byte {
 			default:
 				p = scramble(p, 2)
 			}
+			if malformed && p[1]&0x80 != 0 {
+				p = malform(slot, p)
+			}
 		}
 		out = append(out, p...)
 	}
@@ -291,12 +350,13 @@ func main() {
 	output := flag.String("output", "", "output transport stream")
 	asM2TS := flag.Bool("m2ts", false, "write 192-byte M2TS packets")
 	clean := flag.Bool("clean", false, "write the stream without the affected packets")
+	malformed := flag.Bool("malformed", false, "also damage the header or adaptation field of each TEI packet")
 	flag.Parse()
-	if *output == "" {
-		fmt.Fprintln(os.Stderr, "usage: generate_transport_errors -output <out.ts> [-m2ts] [-clean]")
+	if *output == "" || *clean && *malformed {
+		fmt.Fprintln(os.Stderr, "usage: generate_transport_errors -output <out.ts> [-m2ts] [-clean | -malformed]")
 		os.Exit(2)
 	}
-	data := generate(*clean)
+	data := generate(*clean, *malformed)
 	if *asM2TS {
 		data = m2ts(data)
 	}

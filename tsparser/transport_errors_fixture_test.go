@@ -21,9 +21,12 @@ var transportErrorsFixtures = []struct {
 	path       string
 	packetSize int64
 	m2ts       bool
+	// malformed is the twin written with -malformed, whose TEI packets also
+	// have a header or adaptation field that cannot be parsed.
+	malformed string
 }{
-	{"../sample_data/sample_188byte_transport_errors.ts", 188, false},
-	{"../sample_data/sample_192byte_transport_errors.ts", 192, true},
+	{"../sample_data/sample_188byte_transport_errors.ts", 188, false, "../sample_data/sample_188byte_transport_errors_malformed.ts"},
+	{"../sample_data/sample_192byte_transport_errors.ts", 192, true, "../sample_data/sample_192byte_transport_errors_malformed.ts"},
 }
 
 func generateTransportErrors(t *testing.T, args ...string) string {
@@ -42,16 +45,18 @@ func TestTransportErrorsFixtureGenerator(t *testing.T) {
 		if fixture.m2ts {
 			args = append(args, "-m2ts")
 		}
-		generated, err := os.ReadFile(generateTransportErrors(t, args...))
-		if err != nil {
-			t.Fatal(err)
-		}
-		committed, err := os.ReadFile(fixture.path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(generated, committed) {
-			t.Errorf("%s does not match the generator output", fixture.path)
+		for path, extra := range map[string][]string{fixture.path: nil, fixture.malformed: {"-malformed"}} {
+			generated, err := os.ReadFile(generateTransportErrors(t, append(args, extra...)...))
+			if err != nil {
+				t.Fatal(err)
+			}
+			committed, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(generated, committed) {
+				t.Errorf("%s does not match the generator output", path)
+			}
 		}
 	}
 }
@@ -225,5 +230,156 @@ func TestTransportErrorsText(t *testing.T) {
 	want = "Transport Error Indicator: no packets with transport_error_indicator set\nTransport Scrambling: no scrambled packets\n"
 	if !strings.Contains(out, want) {
 		t.Errorf("healthy: %s", out)
+	}
+}
+
+// malformedTEISlots are the slots of the TEI packets that the -malformed
+// fixture damages, with the adaptation_field_control each one ends up with.
+var malformedTEISlots = map[int64]uint8{0: 0, 25: 3, 30: 3, 39: 0, 43: 3, 70: 3}
+
+// The TEI packets of the malformed twin cannot be parsed as clear packets:
+// with transport_error_indicator cleared, each one is a parse error.
+func TestTransportErrorsMalformedFixtureIsMalformed(t *testing.T) {
+	for _, fixture := range transportErrorsFixtures {
+		data, err := os.ReadFile(fixture.malformed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for slot := range int64(100) {
+			raw := data[(slot+1)*fixture.packetSize-tsPayloadSize : (slot+1)*fixture.packetSize]
+			_, damaged := malformedTEISlots[slot]
+			if raw[1]&0x80 != 0 != damaged {
+				t.Fatalf("%s: slot %d transport_error_indicator %d", fixture.malformed, slot, raw[1]>>7)
+			}
+			if !damaged {
+				continue
+			}
+			clear := NewTsPacket()
+			clear.Append(raw)
+			clear.buf[1] &^= 0x80
+			if err := clear.Parse(); err == nil {
+				t.Errorf("%s: slot %d parses without transport_error_indicator", fixture.malformed, slot)
+			}
+		}
+	}
+}
+
+// Damaging the TEI packets beyond their fixed header changes nothing: the
+// analysis, the summary and the text output equal those of the twin with
+// well-formed TEI packets.
+func TestTransportErrorsMalformedFixture(t *testing.T) {
+	for _, fixture := range transportErrorsFixtures {
+		want, err := decodeRangeAnalysis(t, fixture.path, options.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := decodeRangeAnalysis(t, fixture.malformed, options.Options{})
+		if err != nil {
+			t.Fatalf("%s: %v", fixture.malformed, err)
+		}
+		got.Input.Path, want.Input.Path = "", ""
+		if got.Status != "complete" || !jsonEqual(t, got, want) {
+			t.Errorf("%s: analysis\n%s\nwant\n%s", fixture.malformed, toJSON(t, got), toJSON(t, want))
+		}
+
+		summary := func(path string) AnalysisReport {
+			report, err := decodeJSONReport(t, func() error { return ParseTsFile(path, options.Options{Format: "json"}) })
+			if err != nil {
+				t.Fatalf("%s: %v", path, err)
+			}
+			report.Input.Path = ""
+			return report
+		}
+		if got, want := summary(fixture.malformed), summary(fixture.path); got.Status != "complete" || !jsonEqual(t, got, want) {
+			t.Errorf("%s: summary\n%s\nwant\n%s", fixture.malformed, toJSON(t, got), toJSON(t, want))
+		}
+
+		text := func(path string) string {
+			out := captureStdout(t, func() {
+				if err := ParseTsFile(path, options.Options{}); err != nil {
+					t.Errorf("%s: %v", path, err)
+				}
+			})
+			_, rest, _ := strings.Cut(out, "\n") // the input file line
+			return rest
+		}
+		if got, want := text(fixture.malformed), text(fixture.path); got != want {
+			t.Errorf("%s: text\n%s\nwant\n%s", fixture.malformed, got, want)
+		}
+	}
+}
+
+// Every packet of the malformed twin is listed as valid, with the header
+// fields as decoded; the PCR of a TEI packet is listed from its bytes.
+func TestTransportErrorsMalformedPackets(t *testing.T) {
+	for _, fixture := range transportErrorsFixtures {
+		page, err := decodePacketsPage(t, fixture.malformed, options.Options{Count: 100})
+		if err != nil || len(page.Packets) != 100 {
+			t.Fatalf("%s: %v %d packets", fixture.malformed, err, len(page.Packets))
+		}
+		pcrMs := map[int64]float64{30: 11600, 70: 11400} // slot 30 carries a PCR 1 s late
+		for slot, packet := range page.Packets {
+			afc, damaged := malformedTEISlots[int64(slot)]
+			if !packet.Valid || packet.TransportError != damaged {
+				t.Errorf("%s: slot %d %+v", fixture.malformed, slot, packet)
+			}
+			if !damaged {
+				continue
+			}
+			pcr, hasPcr := pcrMs[int64(slot)]
+			if packet.AdaptationFieldControl != afc || (packet.PCRMs != nil) != hasPcr || hasPcr && *packet.PCRMs != pcr || packet.Sections != nil {
+				t.Errorf("%s: slot %d %s", fixture.malformed, slot, toJSON(t, packet))
+			}
+		}
+
+		// The detail decodes each damaged packet from its bytes.
+		for slot := range malformedTEISlots {
+			detail, err := decodePacketDetail(t, fixture.malformed, options.Options{Offset: slot * fixture.packetSize})
+			if err != nil || detail.Status != "complete" || detail.Packet == nil {
+				t.Errorf("%s: slot %d detail %v %s", fixture.malformed, slot, err, toJSON(t, detail))
+			}
+		}
+	}
+}
+
+// The dumps of the malformed twin run to the end and print, for each damaged
+// TEI packet with an adaptation field, that it was not parsed.
+func TestTransportErrorsMalformedDump(t *testing.T) {
+	opts := options.Options{DumpHeader: true, DumpPayload: true, DumpAdaptationField: true}
+	out := captureStdout(t, func() {
+		if err := ParseTsFile(transportErrorsFixtures[0].malformed, opts); err != nil {
+			t.Error(err)
+		}
+	})
+	if !strings.Contains(out, "not parsed: transport_error_indicator is set\n") || !strings.Contains(out, "Transport Error Indicator: 6 packets in 5 PIDs") {
+		t.Errorf("dump:\n%s", out)
+	}
+}
+
+// Without transport_error_indicator the same damage is a parse error: with
+// the indicator cleared on the audio packet of slot 25 (adaptation_field_length
+// 200) or the PAT of slot 39 (adaptation_field_control 0), the range analysis
+// fails there and the packet list shows the packet as invalid.
+func TestTransportErrorsMalformedWithoutIndicator(t *testing.T) {
+	fixture := transportErrorsFixtures[0]
+	data, err := os.ReadFile(fixture.malformed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for slot, want := range map[int64]string{25: "invalid adaptation_field_length: 200", 39: "invalid adaptation_field_control: 0 (reserved)"} {
+		damaged := slices.Clone(data)
+		damaged[slot*188+1] &^= 0x80
+		path := filepath.Join(t.TempDir(), "damaged.ts")
+		if err := os.WriteFile(path, damaged, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		report, err := decodeRangeAnalysis(t, path, options.Options{})
+		if err == nil || !strings.Contains(err.Error(), want) || report.Status != "failed" {
+			t.Errorf("slot %d: %v %s", slot, err, toJSON(t, report))
+		}
+		page, err := decodePacketsPage(t, path, options.Options{Count: 100})
+		if err != nil || page.Packets[slot].Valid {
+			t.Errorf("slot %d: %v %s", slot, err, toJSON(t, page.Packets[slot]))
+		}
 	}
 }

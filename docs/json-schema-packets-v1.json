@@ -137,7 +137,7 @@
         },
         "valid": {
           "type": "boolean",
-          "description": "False when the packet has no sync byte; the other fields are then absent or zero."
+          "description": "False when the packet has no sync byte, or has no transport_error_indicator and a header or adaptation field that cannot be parsed (for example a reserved adaptation_field_control); the other fields are then absent or zero. A packet with transport_error_indicator set and a sync byte is always valid."
         },
         "pid": {
           "$ref": "json-schema-v2.json#/$defs/pid"
@@ -165,7 +165,8 @@
         },
         "pcr_ms": {
           "type": "number",
-          "minimum": 0
+          "minimum": 0,
+          "description": "PCR of the adaptation field, in milliseconds. For a packet with transport_error, read from the packet's bytes when PCR_flag is set and adaptation_field_length can hold it, without checking the rest of the field; the analysis does not use that PCR."
         },
         "sections": {
           "type": "array",
