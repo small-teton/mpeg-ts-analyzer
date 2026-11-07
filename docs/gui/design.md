@@ -131,6 +131,16 @@ separate Analyze step per screen.
 - Fetching a packet page is short and does not use the dialog; the list shows
   a small loading indicator, and only the most recently requested page is
   displayed.
+- A failed analysis (`status: "failed"`) closes the progress dialog and opens
+  the modal **Analysis failed** dialog with the CLI's `error`; the previous
+  result, if any, stays shown. When the `reason` says that the range could not
+  start program analysis (`insufficient_data_for_sync`, `pat_not_observed`,
+  `pat_not_acquired`), the dialog first says what to do in the GUI (select a
+  longer range, or a range that includes a complete PAT); the CLI's error
+  follows with the evidence (range, aligned packets, what was on PID 0). Such
+  a range has no programs and no checks, so it adds no Overview card,
+  transport-health row, finding or other popup
+  (`report::failure_message`).
 
 ## Screens
 
