@@ -157,12 +157,12 @@ check (`CheckDetail`).
   Check, Value, Status and Help, grouped by category. The order is fixed:
   Timing (Max PCR interval, PCR jitter estimate), PES / Timestamps
   (PCR → PTS/DTS gap, PTS/DTS anomalies), Integrity (Continuity counter,
-  Transport errors, Scrambled packets).
+  Transport errors, Scrambled packets, TS synchronization).
   Structure and Multiplexing join as their checks land (#157). A check is
   listed when the CLI reported it. There is no scope column or badge: the
   selected program is shown above, and exceptions (Continuity counter,
-  Transport errors and Scrambled packets cover the whole multiplex) are on the
-  detail page. Status is the CLI's status
+  Transport errors, Scrambled packets and TS synchronization cover the whole
+  multiplex) are on the detail page. Status is the CLI's status
   verbatim as a badge sized to its text (at least 48 points wide); a status
   the GUI does not describe is shown in the neutral color with a tooltip
   saying so. Help holds the focusable
@@ -213,8 +213,9 @@ check (`CheckDetail`).
   (`overview::findings`): a finding for each failed compliance check, each
   PTS/DTS anomaly group, each continuity event (one finding for the check if
   the CLI reported errors without events), PCR jitter, each PID of
-  `transport_errors` and `scrambled_packets` (at its first offset) and each
-  analyzer warning. Any status other than `ok`, `skipped` and `not_assessable`,
+  `transport_errors` and `scrambled_packets` (at its first offset), TS
+  synchronization (one finding at the first loss offset) and each analyzer
+  warning. Any status other than `ok`, `skipped` and `not_assessable`,
   including one the GUI does not know, is a finding with the CLI's status as
   its badge, so an `NG` or `WARNING` row can never sit next to an empty list.
   Each finding names its scope (program or whole multiplex); its check link
@@ -349,8 +350,8 @@ range in a saved file are clamped when they are used.
 - Status badges: white Inter SemiBold 14 px text on a solid fill, 10 × 3
   points of padding, at least 48 points wide, 4-point radius. Fills by
   class, the same in light and dark: success (`ok`, `complete`) `#2E7D32`,
-  failure (`ng`, `errors`, `failed`) `#C62828`, warning (`warning`,
-  `anomalies`) `#9A6700`, neutral (`not_assessable`, `skipped`, unknown)
+  failure (`ng`, `errors`, `failed`, `lost`) `#C62828`, warning (`warning`,
+  `anomalies`, `recovered`) `#9A6700`, neutral (`not_assessable`, `skipped`, unknown)
   `#59636E`; each is at least 4.5:1 against white.
 - Tables (Transport health, Verdicts) use Material 3-style tonal surfaces
   with values fixed per appearance (light / dark): header row `#E5E7EA` /

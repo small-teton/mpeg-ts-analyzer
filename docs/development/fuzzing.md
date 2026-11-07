@@ -10,6 +10,8 @@ The parser has focused Go fuzz targets for its untrusted-input boundaries:
 - descriptors
 - PES headers
 - 188-byte TS / 192-byte M2TS packet-size detection and PAT discovery
+- TS synchronization loss and the bounded realignment of the analysis pass,
+  for both packet sizes
 
 The seed corpus includes valid minimal structures, truncated forms, and both
 supported packet sizes. Every target rejects inputs larger than a
@@ -34,6 +36,7 @@ go test ./tsparser -run '^$' -fuzz '^FuzzDescriptors$' -fuzztime 5m
 go test ./tsparser -run '^$' -fuzz '^FuzzDVBText$' -fuzztime 5m
 go test ./tsparser -run '^$' -fuzz '^FuzzPesHeader$' -fuzztime 5m
 go test ./tsparser -run '^$' -fuzz '^FuzzPacketDiscovery$' -fuzztime 5m
+go test ./tsparser -run '^$' -fuzz '^FuzzSyncRecovery$' -fuzztime 5m
 ```
 
 Before opening a pull request, use a longer duration (for example, `-fuzztime
