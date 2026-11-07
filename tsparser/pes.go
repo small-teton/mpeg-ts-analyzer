@@ -1,7 +1,10 @@
 package tsparser
 
 import (
+	"errors"
 	"fmt"
+
+	"github.com/small-teton/mpeg-ts-analyzer/v2/internal/analysis"
 )
 
 // maxPesHeaderSize is the largest PES header that ISO/IEC 13818-1 allows: the
@@ -26,16 +29,19 @@ type Pes struct {
 	buf []byte
 	// received counts every payload byte appended to this PES packet,
 	// including the bytes beyond maxPesHeaderSize that are not retained.
-	received     int64
-	pos          int64
-	newBitReader func() bitReader
-	prevPcr      uint64
-	nextPcr      uint64
-	prevPcrPos   int64
-	nextPcrPos   int64
+	received   int64
+	pos        int64
+	prevPcr    uint64
+	nextPcr    uint64
+	prevPcrPos int64
+	nextPcrPos int64
 	// PCR values wrap to zero, so presence is tracked separately.
 	hasPrevPcr bool
 	hasNextPcr bool
+	// prevAnchor and nextAnchor are the PCRs before and after the start of
+	// the PES packet, which place it on the program's PCR timeline.
+	prevAnchor pcrAnchor
+	nextAnchor pcrAnchor
 
 	packetStartCodePrefix            uint32
 	streamID                         uint8
@@ -99,6 +105,8 @@ func (p *Pes) Initialize(pid uint16, pos int64, prevPcr uint64, prevPcrPos int64
 	p.nextPcrPos = 0
 	p.hasPrevPcr = hasPrevPcr
 	p.hasNextPcr = false
+	p.prevAnchor = pcrAnchor{}
+	p.nextAnchor = pcrAnchor{}
 
 	p.packetStartCodePrefix = 0
 	p.streamID = 0
@@ -159,243 +167,227 @@ func (p *Pes) Append(buf []byte) {
 	}
 }
 
-// Parse PES header.
-func (p *Pes) Parse() error {
-	var bb bitReader
-	if p.newBitReader != nil {
-		bb = p.newBitReader()
-	} else {
-		bb = newDefaultBitReader()
-	}
-	bb.Set(p.buf)
+// PES header checks (ISO/IEC 13818-1, clause 2.4.3.6 and 2.4.3.7).
+//
+// Parse decodes the header from the retained bytes only (at most
+// maxPesHeaderSize, which holds every possible header) and rejects a header
+// whose fields cannot be trusted, classified as an analysis.PESHeaderProblem:
+//
+//   - PESHeaderBadStartCode: packet_start_code_prefix is not 0x000001, or the
+//     stream_id is below 0xBC (those values are not PES stream_ids).
+//   - PESHeaderBadFlags: the optional header does not start with '10', or
+//     PTS_DTS_flags is the forbidden '01'.
+//   - PESHeaderInconsistentLength: PES_header_data_length is smaller than the
+//     fields its flags announce (PTS 5 bytes, PTS+DTS 10, ESCR 6, ES_rate 3,
+//     DSM trick mode 1, additional_copy_info 1, previous_PES_CRC 2, and the
+//     PES_extension with the fields its own flags announce), or a non-zero PES_packet_length is smaller than the
+//     3 flag bytes plus PES_header_data_length. A PES_packet_length of 0
+//     ("unbounded") is accepted for every stream.
+//   - PESHeaderBadMarkerBits: a PTS or DTS field does not start with its
+//     4-bit prefix ('0010' for a PTS alone, '0011' and '0001' for PTS and
+//     DTS) or one of its three marker_bits is 0. Its value would not be
+//     trustworthy.
+//   - PESHeaderTruncated: the bytes end before the fixed header or before
+//     the PES_header_data_length bytes of optional fields and stuffing.
+//
+// Streams that carry no optional header (program_stream_map, padding,
+// private_stream_2, ECM, EMM, DSMCC, H.222.1 type E and the directory) end
+// after PES_packet_length. Elementary-stream payload is never read.
 
-	var err error
-	if p.packetStartCodePrefix, err = bb.ReadUint32(24); err != nil {
-		return fmt.Errorf("failed to read pes packet_start_code_prefix: %w", err)
+// pesHeaderError is a PES header that cannot be trusted.
+type pesHeaderError struct {
+	problem analysis.PESHeaderProblem
+	message string
+}
+
+func (e *pesHeaderError) Error() string { return e.message }
+
+func pesError(problem analysis.PESHeaderProblem, format string, args ...any) error {
+	return &pesHeaderError{problem: problem, message: fmt.Sprintf(format, args...)}
+}
+
+// pesProblem returns the header problem of a Parse error.
+func pesProblem(err error) analysis.PESHeaderProblem {
+	var headerErr *pesHeaderError
+	if errors.As(err, &headerErr) {
+		return headerErr.problem
 	}
-	if p.packetStartCodePrefix != 0x000001 {
-		return fmt.Errorf("invalid pes packet_start_code_prefix: 0x%06x", p.packetStartCodePrefix)
-	}
-	if p.streamID, err = bb.ReadUint8(8); err != nil {
-		return fmt.Errorf("failed to read pes stream_id: %w", err)
-	}
-	if p.pesPacketLength, err = bb.ReadUint16(16); err != nil {
-		return fmt.Errorf("failed to read pes pes_packet_length: %w", err)
-	}
-	switch p.streamID {
-	case 0xBC, 0xBF, 0xF0, 0xF1, 0xFF, 0xF2, 0xF8:
-		// These streams carry no optional header. pes_packet_length is
-		// attacker-controlled; reject a length that runs past the payload
-		// received for this PES packet (retained or not).
-		if 6+int64(p.pesPacketLength) > p.received {
-			return fmt.Errorf("invalid pes_packet_length: %d", p.pesPacketLength)
+	return analysis.PESHeaderOK
+}
+
+// Optional field sizes in bytes, announced by the flags of the PES header.
+const (
+	pesPtsSize       = 5
+	pesEscrSize      = 6
+	pesEsRateSize    = 3
+	pesTrickModeSize = 1
+	pesCopyInfoSize  = 1
+	pesCrcSize       = 2
+	pesExtensionMin  = 1
+)
+
+// Parse decodes the PES header and checks it; see the comment above. It
+// returns a *pesHeaderError when the header cannot be trusted.
+func (p *Pes) Parse() error {
+	b := p.buf
+	if len(b) >= 3 {
+		p.packetStartCodePrefix = uint32(b[0])<<16 | uint32(b[1])<<8 | uint32(b[2])
+		if p.packetStartCodePrefix != 0x000001 {
+			return pesError(analysis.PESHeaderBadStartCode, "invalid pes packet_start_code_prefix: 0x%06x", p.packetStartCodePrefix)
 		}
+	}
+	if len(b) >= 4 {
+		p.streamID = b[3]
+		if p.streamID < 0xBC {
+			return pesError(analysis.PESHeaderBadStartCode, "invalid pes stream_id: 0x%02x", p.streamID)
+		}
+	}
+	if len(b) < 6 {
+		return pesError(analysis.PESHeaderTruncated, "pes header truncated: %d bytes before PES_packet_length ends", len(b))
+	}
+	p.pesPacketLength = uint16(b[4])<<8 | uint16(b[5])
+	switch p.streamID {
+	case 0xBC, 0xBE, 0xBF, 0xF0, 0xF1, 0xFF, 0xF2, 0xF8:
+		// These streams carry no optional header.
 		return nil
 	}
-	if err = bb.Skip(2); err != nil {
-		return fmt.Errorf("failed to skip in pes: 10: %w", err)
-	} // '10'
-	if p.pesScramblingControl, err = bb.ReadUint8(2); err != nil {
-		return fmt.Errorf("failed to read pes pes_scrambling_control: %w", err)
+	if len(b) < 9 {
+		return pesError(analysis.PESHeaderTruncated, "pes header truncated: %d bytes of the 9-byte fixed header", len(b))
 	}
-	if p.pesPriority, err = bb.ReadUint8(1); err != nil {
-		return fmt.Errorf("failed to read pes pes_priority: %w", err)
+	if b[6]>>6 != 0x2 {
+		return pesError(analysis.PESHeaderBadFlags, "pes optional header starts with '%02b', not '10'", b[6]>>6)
 	}
-	if p.dataAlignmentIndicator, err = bb.ReadUint8(1); err != nil {
-		return fmt.Errorf("failed to read pes data_alignment_indicator: %w", err)
+	p.pesScramblingControl = b[6] >> 4 & 0x3
+	p.pesPriority = b[6] >> 3 & 0x1
+	p.dataAlignmentIndicator = b[6] >> 2 & 0x1
+	p.copyright = b[6] >> 1 & 0x1
+	p.originalOrCopy = b[6] & 0x1
+	p.ptsDtsFlags = b[7] >> 6
+	p.escrFlag = b[7] >> 5 & 0x1
+	p.esRateFlag = b[7] >> 4 & 0x1
+	p.dsmTrickModeFlag = b[7] >> 3 & 0x1
+	p.additionalCopyInfoFlag = b[7] >> 2 & 0x1
+	p.pesCrcFlag = b[7] >> 1 & 0x1
+	p.pesExtensionFlag = b[7] & 0x1
+	p.pesHeaderDataLength = b[8]
+	if p.ptsDtsFlags == 1 {
+		return pesError(analysis.PESHeaderBadFlags, "forbidden pes PTS_DTS_flags '01'")
 	}
-	if p.copyright, err = bb.ReadUint8(1); err != nil {
-		return fmt.Errorf("failed to read pes copyright: %w", err)
+	required := 0
+	switch p.ptsDtsFlags {
+	case 2:
+		required = pesPtsSize
+	case 3:
+		required = 2 * pesPtsSize
 	}
-	if p.originalOrCopy, err = bb.ReadUint8(1); err != nil {
-		return fmt.Errorf("failed to read pes original_or_copy: %w", err)
+	required += int(p.escrFlag)*pesEscrSize + int(p.esRateFlag)*pesEsRateSize + int(p.dsmTrickModeFlag)*pesTrickModeSize +
+		int(p.additionalCopyInfoFlag)*pesCopyInfoSize + int(p.pesCrcFlag)*pesCrcSize + int(p.pesExtensionFlag)*pesExtensionMin
+	if int(p.pesHeaderDataLength) < required {
+		return pesError(analysis.PESHeaderInconsistentLength, "pes PES_header_data_length %d is smaller than the %d bytes its flags announce", p.pesHeaderDataLength, required)
 	}
-	if p.ptsDtsFlags, err = bb.ReadUint8(2); err != nil {
-		return fmt.Errorf("failed to read pes pts_fts_flag: %w", err)
+	if p.pesPacketLength != 0 && int(p.pesPacketLength) < 3+int(p.pesHeaderDataLength) {
+		return pesError(analysis.PESHeaderInconsistentLength, "pes PES_packet_length %d is smaller than its header (%d bytes)", p.pesPacketLength, 3+int(p.pesHeaderDataLength))
 	}
-	if p.escrFlag, err = bb.ReadUint8(1); err != nil {
-		return fmt.Errorf("failed to read pes escr_flag: %w", err)
+	if len(b) < 9+int(p.pesHeaderDataLength) {
+		return pesError(analysis.PESHeaderTruncated, "pes header truncated: %d of %d bytes", len(b), 9+int(p.pesHeaderDataLength))
 	}
-	if p.esRateFlag, err = bb.ReadUint8(1); err != nil {
-		return fmt.Errorf("failed to read pes es_rate_flag: %w", err)
-	}
-	if p.dsmTrickModeFlag, err = bb.ReadUint8(1); err != nil {
-		return fmt.Errorf("failed to read pes dsm_trick_mode_flag: %w", err)
-	}
-	if p.additionalCopyInfoFlag, err = bb.ReadUint8(1); err != nil {
-		return fmt.Errorf("failed to read pes additional_copy_info_flag: %w", err)
-	}
-	if p.pesCrcFlag, err = bb.ReadUint8(1); err != nil {
-		return fmt.Errorf("failed to read pes pes_crc_flag: %w", err)
-	}
-	if p.pesExtensionFlag, err = bb.ReadUint8(1); err != nil {
-		return fmt.Errorf("failed to read pes pes_extension_flag: %w", err)
-	}
-	if p.pesHeaderDataLength, err = bb.ReadUint8(8); err != nil {
-		return fmt.Errorf("failed to read pes pes_header_data_length: %w", err)
+	if p.pesExtensionFlag == 1 {
+		extension := b[9+required-pesExtensionMin : 9+int(p.pesHeaderDataLength)]
+		if need := pesExtensionSize(extension); need > len(extension) {
+			return pesError(analysis.PESHeaderInconsistentLength, "pes PES_extension needs %d bytes, PES_header_data_length leaves %d", need, len(extension))
+		}
 	}
 
-	if p.ptsDtsFlags == 2 {
-		if err = bb.Skip(4); err != nil {
-			return fmt.Errorf("failed to skip in pes: 0011 (PtsDtsFlag=2): %w", err)
-		} // '0011'
-		var first, second, third uint64
-		if first, err = bb.ReadUint64(3); err != nil {
-			return fmt.Errorf("failed to read pes pts first (PtsDtsFlag=2): %w", err)
+	o := b[9:]
+	var ok bool
+	switch p.ptsDtsFlags {
+	case 2:
+		if p.pts, ok = pesTimestamp(o, 0x2); !ok {
+			return pesError(analysis.PESHeaderBadMarkerBits, "invalid pes PTS prefix or marker_bit")
 		}
-		p.pts = first << 30
-		if err = bb.Skip(1); err != nil {
-			return fmt.Errorf("failed to skip in pes: first pts marker_bit (PtsDtsFlag=2): %w", err)
-		} // marker_bit
-		if second, err = bb.ReadUint64(15); err != nil {
-			return fmt.Errorf("failed to read pes pts second (PtsDtsFlag=2): %w", err)
+		o = o[pesPtsSize:]
+	case 3:
+		if p.pts, ok = pesTimestamp(o, 0x3); !ok {
+			return pesError(analysis.PESHeaderBadMarkerBits, "invalid pes PTS prefix or marker_bit")
 		}
-		p.pts |= second << 15
-		if err = bb.Skip(1); err != nil {
-			return fmt.Errorf("failed to skip in pes: second pts marker_bit (PtsDtsFlag=2): %w", err)
-		} // marker_bit
-		if third, err = bb.ReadUint64(15); err != nil {
-			return fmt.Errorf("failed to read pes pts third (PtsDtsFlag=2): %w", err)
+		if p.dts, ok = pesTimestamp(o[pesPtsSize:], 0x1); !ok {
+			return pesError(analysis.PESHeaderBadMarkerBits, "invalid pes DTS prefix or marker_bit")
 		}
-		p.pts |= third
-		if err = bb.Skip(1); err != nil {
-			return fmt.Errorf("failed to skip in pes: third pts marker_bit (PtsDtsFlag=2): %w", err)
-		} // marker_bit
-	}
-	if p.ptsDtsFlags == 3 {
-		if err = bb.Skip(4); err != nil {
-			return fmt.Errorf("failed to skip in pes: 0011 (PtsDtsFlag=3): %w", err)
-		} // '0011'
-		var first, second, third uint64
-		if first, err = bb.ReadUint64(3); err != nil {
-			return fmt.Errorf("failed to read pes pts first (PtsDtsFlag=3): %w", err)
-		}
-		p.pts = first << 30
-		if err = bb.Skip(1); err != nil {
-			return fmt.Errorf("failed to skip in pes: first pts marker_bit (PtsDtsFlag=3): %w", err)
-		} // marker_bit
-		if second, err = bb.ReadUint64(15); err != nil {
-			return fmt.Errorf("failed to read pes pts second (PtsDtsFlag=3): %w", err)
-		}
-		p.pts |= second << 15
-		if err = bb.Skip(1); err != nil {
-			return fmt.Errorf("failed to skip in pes: second pts marker_bit (PtsDtsFlag=3): %w", err)
-		} // marker_bit
-		if third, err = bb.ReadUint64(15); err != nil {
-			return fmt.Errorf("failed to read pes pts third (PtsDtsFlag=3): %w", err)
-		}
-		p.pts |= third
-		if err = bb.Skip(1); err != nil {
-			return fmt.Errorf("failed to skip in pes: third pts marker_bit (PtsDtsFlag=3): %w", err)
-		} // marker_bit
-		if err = bb.Skip(4); err != nil {
-			return fmt.Errorf("failed to skip in pes: pts-dts 0001 (PtsDtsFlag=3): %w", err)
-		} // '0001'
-		if first, err = bb.ReadUint64(3); err != nil {
-			return fmt.Errorf("failed to read pes dts first (PtsDtsFlag=3): %w", err)
-		}
-		p.dts = first << 30
-		if err = bb.Skip(1); err != nil {
-			return fmt.Errorf("failed to skip in pes: first dts marker_bit (PtsDtsFlag=3): %w", err)
-		} // marker_bit
-		if second, err = bb.ReadUint64(15); err != nil {
-			return fmt.Errorf("failed to read pes dts second (PtsDtsFlag=3): %w", err)
-		}
-		p.dts |= second << 15
-		if err = bb.Skip(1); err != nil {
-			return fmt.Errorf("failed to skip in pes: second dts marker_bit (PtsDtsFlag=3): %w", err)
-		} // marker_bit
-		if third, err = bb.ReadUint64(15); err != nil {
-			return fmt.Errorf("failed to read pes dts third (PtsDtsFlag=3): %w", err)
-		}
-		p.dts |= third
-		if err = bb.Skip(1); err != nil {
-			return fmt.Errorf("failed to skip in pes: third dts marker_bit (PtsDtsFlag=3): %w", err)
-		} // marker_bit
+		o = o[2*pesPtsSize:]
 	}
 	if p.escrFlag == 1 {
-		if err = bb.Skip(2); err != nil {
-			return fmt.Errorf("failed to skip in pes: reserved(EscrFlag=1): %w", err)
-		} // reserved
-		var first, second, third uint64
-		if first, err = bb.ReadUint64(3); err != nil {
-			return fmt.Errorf("failed to read pes escr first: %w", err)
-		}
-		p.escrBase = first << 30
-		if err = bb.Skip(1); err != nil {
-			return fmt.Errorf("failed to skip in pes: first ercr marker_bit: %w", err)
-		} // marker_bit
-		if second, err = bb.ReadUint64(15); err != nil {
-			return fmt.Errorf("failed to read pes escr second: %w", err)
-		}
-		p.escrBase |= second << 15
-		if err = bb.Skip(1); err != nil {
-			return fmt.Errorf("failed to skip in pes: second ercr marker_bit: %w", err)
-		} // marker_bit
-		if third, err = bb.ReadUint64(15); err != nil {
-			return fmt.Errorf("failed to read pes escr third: %w", err)
-		}
-		p.escrBase |= third
-		if err = bb.Skip(1); err != nil {
-			return fmt.Errorf("failed to skip in pes: third escr marker_bit: %w", err)
-		} // marker_bit
-		if p.escrExtension, err = bb.ReadUint16(9); err != nil {
-			return fmt.Errorf("failed to read pes escr_extension: %w", err)
-		}
-		if err = bb.Skip(1); err != nil {
-			return fmt.Errorf("failed to skip in pes: escr_extension marker_bit: %w", err)
-		} // marker_bit
+		// reserved(2) base[32..30](3) marker base[29..15](15) marker
+		// base[14..0](15) marker extension(9) marker
+		v := uint64(o[0])<<40 | uint64(o[1])<<32 | uint64(o[2])<<24 | uint64(o[3])<<16 | uint64(o[4])<<8 | uint64(o[5])
+		p.escrBase = (v>>43&0x7)<<30 | (v>>27&0x7FFF)<<15 | v>>11&0x7FFF
+		p.escrExtension = uint16(v >> 1 & 0x1FF)
+		o = o[pesEscrSize:]
 	}
 	if p.esRateFlag == 1 {
-		if err = bb.Skip(1); err != nil {
-			return fmt.Errorf("failed to skip in pes: first es_rate marker_bit: %w", err)
-		} // marker_bit
-		if p.esRate, err = bb.ReadUint32(22); err != nil {
-			return fmt.Errorf("failed to read pes es_rate: %w", err)
-		}
-		if err = bb.Skip(1); err != nil {
-			return fmt.Errorf("failed to skip in pes: second es_rate marker_bit: %w", err)
-		} // marker_bit
+		// marker ES_rate(22) marker
+		p.esRate = (uint32(o[0])<<16 | uint32(o[1])<<8 | uint32(o[2])) >> 1 & 0x3FFFFF
+		o = o[pesEsRateSize:]
 	}
 	if p.dsmTrickModeFlag == 1 {
-		if p.trickModeControl, err = bb.ReadUint8(3); err != nil {
-			return fmt.Errorf("failed to read pes trick_mode_control: %w", err)
-		}
+		p.trickModeControl = o[0] >> 5
 		switch p.trickModeControl {
 		case 0x00, 0x03: // fast_forward, freeze_frame
-			if p.fieldID, err = bb.ReadUint8(2); err != nil {
-				return fmt.Errorf("failed to read pes field_id: %w", err)
-			}
-			if p.intraSliceRefresh, err = bb.ReadUint8(1); err != nil {
-				return fmt.Errorf("failed to read pes intra_slice_refresh: %w", err)
-			}
-			if p.frequencyTruncation, err = bb.ReadUint8(2); err != nil {
-				return fmt.Errorf("failed to read pes frequency_truncation: %w", err)
-			}
+			p.fieldID = o[0] >> 3 & 0x3
+			p.intraSliceRefresh = o[0] >> 2 & 0x1
+			p.frequencyTruncation = o[0] & 0x3
 		case 0x01: // slow_motion, slow_reverse
-			if p.repCntrl, err = bb.ReadUint8(5); err != nil {
-				return fmt.Errorf("failed to read pes rep_cntrl: %w", err)
-			}
-		default:
-			if err = bb.Skip(5); err != nil {
-				return fmt.Errorf("failed to skip in pes: dsm_trick_mode reserved: %w", err)
-			} // reserved
+			p.repCntrl = o[0] & 0x1F
 		}
+		o = o[pesTrickModeSize:]
 	}
 	if p.additionalCopyInfoFlag == 1 {
-		if err = bb.Skip(1); err != nil {
-			return fmt.Errorf("failed to skip in pes: additional_copy_info marker_bit: %w", err)
-		} // marker_bit
-		if p.additionalCopyInfo, err = bb.ReadUint8(7); err != nil {
-			return fmt.Errorf("failed to read pes additional_copy_info: %w", err)
-		}
+		p.additionalCopyInfo = o[0] & 0x7F // after a marker_bit
+		o = o[pesCopyInfoSize:]
 	}
 	if p.pesCrcFlag == 1 {
-		if p.previousPesPacketCrc, err = bb.ReadUint16(16); err != nil {
-			return fmt.Errorf("failed to read pes previous_pes_packet_crc: %w", err)
-		}
+		p.previousPesPacketCrc = uint16(o[0])<<8 | uint16(o[1])
 	}
 	return nil
+}
+
+// pesExtensionSize returns the number of bytes the PES_extension starting at
+// b announces: its flag byte, 16 bytes of PES_private_data, the
+// length-prefixed pack_header, 2 bytes each of program_packet_sequence_counter
+// and P-STD buffer, and the length-prefixed PES_extension_2 data. A length
+// byte beyond b counts as needed, so the result exceeds len(b) whenever the
+// announced fields do not fit.
+func pesExtensionSize(b []byte) int {
+	flags, n := b[0], 1
+	if flags&0x80 != 0 { // PES_private_data_flag
+		n += 16
+	}
+	if flags&0x40 != 0 { // pack_header_field_flag
+		if n >= len(b) {
+			return n + 1
+		}
+		n += 1 + int(b[n])
+	}
+	if flags&0x20 != 0 { // program_packet_sequence_counter_flag
+		n += 2
+	}
+	if flags&0x10 != 0 { // P-STD_buffer_flag
+		n += 2
+	}
+	if flags&0x01 != 0 { // PES_extension_flag_2
+		if n >= len(b) {
+			return n + 1
+		}
+		n += 1 + int(b[n]&0x7F)
+	}
+	return n
+}
+
+// pesTimestamp decodes a 5-byte PTS or DTS field: a 4-bit prefix, then the
+// 33-bit value in parts of 3, 15 and 15 bits, each followed by a marker_bit.
+// ok is false when the prefix differs or a marker_bit is 0.
+func pesTimestamp(b []byte, prefix byte) (uint64, bool) {
+	value := uint64(b[0]>>1&0x7)<<30 | uint64(b[1])<<22 | uint64(b[2]>>1)<<15 | uint64(b[3])<<7 | uint64(b[4]>>1)
+	return value, b[0]>>4 == prefix && b[0]&b[2]&b[4]&0x1 == 1
 }
 
 // DumpTimestamp dump PTS and DTS

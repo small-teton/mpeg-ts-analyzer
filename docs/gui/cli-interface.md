@@ -60,7 +60,9 @@ switching programs or screens never runs the CLI again.
   (`psi_health`, which lists the PMT of every announced program; the GUI shows
   the selected program's), referenced and unreferenced PIDs
   (`pid_references`) and warnings are per range, as the CLI checks them
-  across the multiplex. Bitrate and jitter are collected without the `--dump-*` flags.
+  across the multiplex. PES header and PTS repetition results (`pes_headers`,
+  `pts_repetition`) are reported once per range and list every elementary
+  stream by `program_number` and PID. Bitrate and jitter are collected without the `--dump-*` flags.
 - **PSI layout**: each PAT/PMT section seen (offset, version), the interval each
   layout applies to, the PIDs that change, and every PID observed in the range.
   The GUI keeps this to label packets and to mark changes on the plots (#93,

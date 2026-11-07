@@ -118,6 +118,10 @@ func TestPidReferencesFixtures(t *testing.T) {
 	}
 }
 
+// pesSummaryStart begins the PES header and PTS repetition summary, which
+// follows the PID reference summary.
+const pesSummaryStart = "-----------------------------\nPES Headers: "
+
 func TestPidReferencesText(t *testing.T) {
 	out := captureStdout(t, func() {
 		if err := ParseTsFile(pidReferencesFixtures[0].path, options.Options{}); err != nil {
@@ -135,7 +139,7 @@ func TestPidReferencesText(t *testing.T) {
 		"  PID 0x0500 : insufficient data, 2 packets from 0x0001c8c8 to 0x0001d488, 350.0 ms",
 		"",
 	}, "\n")
-	if !strings.HasSuffix(out, want) {
+	if !strings.Contains(out, want+pesSummaryStart) {
 		t.Errorf("text summary:\n%s\nwant suffix:\n%s", out, want)
 	}
 
@@ -145,7 +149,7 @@ func TestPidReferencesText(t *testing.T) {
 		}
 	})
 	want = "Referenced PIDs: 4 references, silence limit 5000 ms [OK]\nUnreferenced PIDs: none [OK]\n"
-	if !strings.HasSuffix(out, want) {
+	if !strings.Contains(out, want+pesSummaryStart) {
 		t.Errorf("healthy: %s", out)
 	}
 
@@ -156,7 +160,7 @@ func TestPidReferencesText(t *testing.T) {
 		}
 	})
 	want = "Referenced PIDs: 5 references, silence limit 5000 ms [OK]\nUnreferenced PIDs: not checked (program_layouts_unknown) [SKIPPED]\n"
-	if !strings.HasSuffix(out, want) {
+	if !strings.Contains(out, want+pesSummaryStart) {
 		t.Errorf("selected program: %s", out)
 	}
 }

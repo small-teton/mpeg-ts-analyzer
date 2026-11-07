@@ -191,6 +191,123 @@
       "pids": []
     }
   },
+  "pes_headers": {
+    "status": "ok",
+    "checked_count": 106,
+    "error_count": 0,
+    "unchecked_count": 0,
+    "errors": [],
+    "pids": [
+      {
+        "program_number": 1,
+        "pid": "0x0100",
+        "stream_type": "0x02",
+        "label": "video",
+        "status": "ok",
+        "checked_count": 47,
+        "error_count": 0,
+        "unchecked_count": 0,
+        "errors": []
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0101",
+        "stream_type": "0x03",
+        "label": "audio",
+        "status": "ok",
+        "checked_count": 6,
+        "error_count": 0,
+        "unchecked_count": 0,
+        "errors": []
+      },
+      {
+        "program_number": 2,
+        "pid": "0x0102",
+        "stream_type": "0x02",
+        "label": "video",
+        "status": "ok",
+        "checked_count": 47,
+        "error_count": 0,
+        "unchecked_count": 0,
+        "errors": []
+      },
+      {
+        "program_number": 2,
+        "pid": "0x0103",
+        "stream_type": "0x03",
+        "label": "audio",
+        "status": "ok",
+        "checked_count": 6,
+        "error_count": 0,
+        "unchecked_count": 0,
+        "errors": []
+      }
+    ]
+  },
+  "pts_repetition": {
+    "limit_ms": 700,
+    "status": "ok",
+    "pts_count": 106,
+    "interval_count": 94,
+    "max_interval_ms": 414.2792962962963,
+    "max_interval_start_offset_bytes": 119944,
+    "max_interval_end_offset_bytes": 151152,
+    "exceeded_count": 0,
+    "pids": [
+      {
+        "program_number": 1,
+        "pid": "0x0100",
+        "stream_type": "0x02",
+        "label": "video",
+        "status": "ok",
+        "pts_count": 47,
+        "interval_count": 43,
+        "max_interval_ms": 69.9028888888889,
+        "max_interval_start_offset_bytes": 140248,
+        "max_interval_end_offset_bytes": 157168,
+        "exceeded_count": 0
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0101",
+        "stream_type": "0x03",
+        "label": "audio",
+        "status": "ok",
+        "pts_count": 6,
+        "interval_count": 4,
+        "max_interval_ms": 414.2792962962963,
+        "max_interval_start_offset_bytes": 119944,
+        "max_interval_end_offset_bytes": 151152,
+        "exceeded_count": 0
+      },
+      {
+        "program_number": 2,
+        "pid": "0x0102",
+        "stream_type": "0x02",
+        "label": "video",
+        "status": "ok",
+        "pts_count": 47,
+        "interval_count": 43,
+        "max_interval_ms": 68.40577777777777,
+        "max_interval_start_offset_bytes": 147392,
+        "max_interval_end_offset_bytes": 158484,
+        "exceeded_count": 0
+      },
+      {
+        "program_number": 2,
+        "pid": "0x0103",
+        "stream_type": "0x03",
+        "label": "audio",
+        "status": "ok",
+        "pts_count": 6,
+        "interval_count": 4,
+        "max_interval_ms": 391.54303703703704,
+        "max_interval_start_offset_bytes": 122952,
+        "max_interval_end_offset_bytes": 154160,
+        "exceeded_count": 0
+      }
+    ]
+  },
   "psi_health": {
     "status": "ok",
     "repetition_limit_ms": 500,

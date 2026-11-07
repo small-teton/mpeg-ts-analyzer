@@ -214,6 +214,91 @@
       "pids": []
     }
   },
+  "pes_headers": {
+    "status": "errors",
+    "checked_count": 87,
+    "error_count": 1,
+    "unchecked_count": 0,
+    "first_error_offset_bytes": 19928,
+    "errors": [
+      {
+        "kind": "bad_marker_bits",
+        "count": 1,
+        "first_offset_bytes": 19928
+      }
+    ],
+    "pids": [
+      {
+        "program_number": 1,
+        "pid": "0x0100",
+        "stream_type": "0x02",
+        "label": "video",
+        "status": "errors",
+        "checked_count": 58,
+        "error_count": 1,
+        "unchecked_count": 0,
+        "first_error_offset_bytes": 19928,
+        "errors": [
+          {
+            "kind": "bad_marker_bits",
+            "count": 1,
+            "first_offset_bytes": 19928
+          }
+        ]
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0101",
+        "stream_type": "0x03",
+        "label": "audio",
+        "status": "ok",
+        "checked_count": 29,
+        "error_count": 0,
+        "unchecked_count": 0,
+        "errors": []
+      }
+    ]
+  },
+  "pts_repetition": {
+    "limit_ms": 700,
+    "status": "ng",
+    "pts_count": 77,
+    "interval_count": 72,
+    "max_interval_ms": 800,
+    "max_interval_start_offset_bytes": 11468,
+    "max_interval_end_offset_bytes": 18988,
+    "exceeded_count": 1,
+    "first_exceeded_offset_bytes": 18988,
+    "pids": [
+      {
+        "program_number": 1,
+        "pid": "0x0100",
+        "stream_type": "0x02",
+        "label": "video",
+        "status": "ok",
+        "pts_count": 57,
+        "interval_count": 54,
+        "max_interval_ms": 40.1,
+        "max_interval_start_offset_bytes": 10528,
+        "max_interval_end_offset_bytes": 10904,
+        "exceeded_count": 0
+      },
+      {
+        "program_number": 1,
+        "pid": "0x0101",
+        "stream_type": "0x03",
+        "label": "audio",
+        "status": "ng",
+        "pts_count": 20,
+        "interval_count": 18,
+        "max_interval_ms": 800,
+        "max_interval_start_offset_bytes": 11468,
+        "max_interval_end_offset_bytes": 18988,
+        "exceeded_count": 1,
+        "first_exceeded_offset_bytes": 18988
+      }
+    ]
+  },
   "programs": [
     {
       "program_number": 1,
@@ -252,7 +337,7 @@
           "status": "ng",
           "value_ms": 1200,
           "limit_ms": 1000,
-          "observations": 82
+          "observations": 72
         }
       },
       "timestamp_anomalies": {
@@ -992,9 +1077,7 @@
           {
             "pid": "0x0101",
             "offset_bytes": 12220,
-            "elapsed_ms": 1200,
-            "pts_ms": 12500,
-            "pcr_gap_ms": 1200
+            "elapsed_ms": 1200
           },
           {
             "pid": "0x0100",
@@ -1013,9 +1096,7 @@
           {
             "pid": "0x0101",
             "offset_bytes": 12972,
-            "elapsed_ms": 1280,
-            "pts_ms": 12580,
-            "pcr_gap_ms": 1200
+            "elapsed_ms": 1280
           },
           {
             "pid": "0x0100",
@@ -1034,9 +1115,7 @@
           {
             "pid": "0x0101",
             "offset_bytes": 13724,
-            "elapsed_ms": 1360,
-            "pts_ms": 12660,
-            "pcr_gap_ms": 1200
+            "elapsed_ms": 1360
           },
           {
             "pid": "0x0100",
@@ -1055,9 +1134,7 @@
           {
             "pid": "0x0101",
             "offset_bytes": 14476,
-            "elapsed_ms": 1440,
-            "pts_ms": 12740,
-            "pcr_gap_ms": 1200
+            "elapsed_ms": 1440
           },
           {
             "pid": "0x0100",
@@ -1076,9 +1153,7 @@
           {
             "pid": "0x0101",
             "offset_bytes": 15228,
-            "elapsed_ms": 1520,
-            "pts_ms": 12820,
-            "pcr_gap_ms": 1200
+            "elapsed_ms": 1520
           },
           {
             "pid": "0x0100",
@@ -1097,9 +1172,7 @@
           {
             "pid": "0x0101",
             "offset_bytes": 15980,
-            "elapsed_ms": 1600,
-            "pts_ms": 12900,
-            "pcr_gap_ms": 1200
+            "elapsed_ms": 1600
           },
           {
             "pid": "0x0100",
@@ -1118,9 +1191,7 @@
           {
             "pid": "0x0101",
             "offset_bytes": 16732,
-            "elapsed_ms": 1680,
-            "pts_ms": 12980,
-            "pcr_gap_ms": 1200
+            "elapsed_ms": 1680
           },
           {
             "pid": "0x0100",
@@ -1139,9 +1210,7 @@
           {
             "pid": "0x0101",
             "offset_bytes": 17484,
-            "elapsed_ms": 1760,
-            "pts_ms": 13060,
-            "pcr_gap_ms": 1200
+            "elapsed_ms": 1760
           },
           {
             "pid": "0x0100",
@@ -1160,9 +1229,7 @@
           {
             "pid": "0x0101",
             "offset_bytes": 18236,
-            "elapsed_ms": 1840,
-            "pts_ms": 13140,
-            "pcr_gap_ms": 1200
+            "elapsed_ms": 1840
           },
           {
             "pid": "0x0100",
@@ -1205,13 +1272,6 @@
             "elapsed_ms": 2000,
             "pts_ms": 13300,
             "pcr_gap_ms": 1200
-          },
-          {
-            "pid": "0x0100",
-            "offset_bytes": 19928,
-            "elapsed_ms": 2040,
-            "pts_ms": 12220,
-            "pcr_gap_ms": 100
           },
           {
             "pid": "0x0100",
