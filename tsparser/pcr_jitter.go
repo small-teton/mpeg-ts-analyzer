@@ -107,12 +107,14 @@ func pcrTickNs(ticks float64) float64 { return ticks * 1000.0 / 27.0 }
 
 // pcrSample is one PCR observation: the byte offset and PID of the
 // PCR-carrying packet and the PCR value in 27 MHz ticks. discontinuity is set
-// when the PCR is declared to start a new time base (see analysis.PCR).
+// when the PCR is declared to start a new time base, and pidChanged when a
+// PMT version changed the PCR_PID since the previous PCR (see analysis.PCR).
 type pcrSample struct {
 	pos           int64
 	pid           uint16
 	pcr           uint64
 	discontinuity bool
+	pidChanged    bool
 }
 
 // pcrStep classifies cur against the PCR before it, prev, with the policy
@@ -120,7 +122,7 @@ type pcrSample struct {
 func pcrStep(prev, cur pcrSample) analysis.PCRStep {
 	var clock analysis.PCRClock
 	clock.Observe(analysis.PCR{PID: prev.pid, Value: prev.pcr, DiscontinuityIndicator: prev.discontinuity})
-	return clock.Observe(analysis.PCR{PID: cur.pid, Value: cur.pcr, DiscontinuityIndicator: cur.discontinuity})
+	return clock.Observe(analysis.PCR{PID: cur.pid, Value: cur.pcr, DiscontinuityIndicator: cur.discontinuity, PCRPIDChanged: cur.pidChanged})
 }
 
 // pcrDiscontinuity records a segment boundary: where it happened, its kind and
@@ -166,8 +168,11 @@ type PcrJitter struct {
 // Add records one PCR observation of the packet at pos on pid. discontinuity is
 // the PCR packet's adaptation_field discontinuity_indicator.
 func (j *PcrJitter) Add(pos int64, pid uint16, pcr uint64, discontinuity bool) {
-	j.samples = append(j.samples, pcrSample{pos: pos, pid: pid, pcr: pcr, discontinuity: discontinuity})
+	j.add(pcrSample{pos: pos, pid: pid, pcr: pcr, discontinuity: discontinuity})
 }
+
+// add records one PCR observation.
+func (j *PcrJitter) add(s pcrSample) { j.samples = append(j.samples, s) }
 
 // timedSample is a sample of a timing segment with its PCR counted from the
 // segment start across a wraparound, so values within a segment increase.

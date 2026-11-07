@@ -308,8 +308,12 @@ type programAnalyzer struct {
 	// discontinuity_indicator set but no PCR: the next PCR of the PID starts
 	// the new time base (ISO/IEC 13818-1, 2.4.3.5).
 	pcrDiscontinuityPending bool
-	stopped                 bool
-	end                     int64 // offset after the last packet analyzed, once stopped
+	// pcrPidChanged is set when a PMT version changes the PCR_PID: the next
+	// PCR is a pcr_pid_change step even if the PCR_PID changed back to the
+	// PID of the previous PCR in the meantime.
+	pcrPidChanged bool
+	stopped       bool
+	end           int64 // offset after the last packet analyzed, once stopped
 }
 
 // newProgramAnalyzer prepares the analysis of one program from offset start.
@@ -405,9 +409,10 @@ func (a *programAnalyzer) observePcr(tsPacket *TsPacket, pos int64) {
 	pid := tsPacket.Pid()
 	pcr := tsPacket.Pcr()
 	declared := tsPacket.adaptationField.DiscontinuityIndicator() || a.pcrDiscontinuityPending
-	a.pcrDiscontinuityPending = false
-	step := a.pcr.Observe(analysis.PCR{PID: pid, Offset: pos, Value: pcr, DiscontinuityIndicator: declared})
-	sample := pcrSample{pos: pos, pid: pid, pcr: pcr, discontinuity: declared}
+	pidChanged := a.pcrPidChanged
+	a.pcrDiscontinuityPending, a.pcrPidChanged = false, false
+	step := a.pcr.Observe(analysis.PCR{PID: pid, Offset: pos, Value: pcr, DiscontinuityIndicator: declared, PCRPIDChanged: pidChanged})
+	sample := pcrSample{pos: pos, pid: pid, pcr: pcr, discontinuity: declared, pidChanged: pidChanged}
 	if a.bitrate != nil {
 		a.bitrate.markPcrStep(sample, step)
 	}
@@ -415,7 +420,7 @@ func (a *programAnalyzer) observePcr(tsPacket *TsPacket, pos int64) {
 		tsPacket.adaptationField.DumpPcr(a.lastPcr)
 	}
 	if a.collectJitter {
-		a.pcrJitter.Add(pos, pid, pcr, declared)
+		a.pcrJitter.add(sample)
 	}
 	for _, activePes := range a.pesMap {
 		if activePes == nil || activePes.hasNextPcr {
@@ -515,7 +520,7 @@ func (a *programAnalyzer) setLayout(pmtPid, pcrPid uint16, programInfos []Progra
 	}
 	a.programInfos = programInfos
 	if pcrPid != a.pcrPid {
-		a.pcrPid, a.pcrDiscontinuityPending = pcrPid, false
+		a.pcrPid, a.pcrDiscontinuityPending, a.pcrPidChanged = pcrPid, false, true
 		a.lastPcr, a.hasLastPcr = 0, false
 		for _, pes := range a.pesMap {
 			if pes != nil && !pes.hasNextPcr {

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/small-teton/mpeg-ts-analyzer/v2/internal/analysis"
 	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 )
 
@@ -870,5 +871,54 @@ func TestBufferPesDiscontinuityIndicatorWithoutPcr(t *testing.T) {
 		if got := analysis.compliance.pcrDiscontinuities; got.Undeclared != tt.undeclared || got.PCRs != 3 {
 			t.Errorf("%s: %+v", tt.name, got)
 		}
+	}
+}
+
+// TestProgramAnalyzerPcrPidChangedAwayAndBack changes the PCR_PID to another
+// PID and back before any PCR arrives on the interim PID: the next PCR on the
+// original PID is still a pcr_pid_change step, so no interval, jitter
+// segment, bitrate interval, series interval or PCR-PTS/DTS bracket spans the
+// two layout changes.
+func TestProgramAnalyzerPcrPidChangedAwayAndBack(t *testing.T) {
+	const ms = uint64(pcrTicksPerMs)
+	const pcrPid, interim, video = 0x31, 0x32, 0x40
+	infos := []ProgramInfo{{streamType: 0x02, elementaryPid: video}}
+	a := newProgramAnalyzer(options.Options{}, 0, 1, 0x30, pcrPid, infos, true)
+	pos := int64(0)
+	feed := func(data []byte) {
+		t.Helper()
+		a.observe(parsedPacket(t, data, pos, false, 0), pos, false)
+		pos += 188
+	}
+	feed(buildPcrPacket(pcrPid, 1000*ms))
+	feed(buildPcrPacket(pcrPid, 1040*ms))
+	feed(buildPesTsPacket(video, 0, encodePtsOnlyPes(1200*90)))
+	a.setLayout(0x30, interim, infos)
+	a.setLayout(0x30, pcrPid, infos)
+	feed(buildPcrPacket(pcrPid, 1080*ms))
+	feed(buildPcrPacket(pcrPid, 1120*ms))
+	feed(buildPesTsPacket(video, 1, encodePtsOnlyPes(1300*90)))
+	a.finish()
+
+	if got := a.pcr.Interval(); got.Intervals != 2 || got.MaxMs != 40 {
+		t.Errorf("interval = %+v, want 2 intervals of 40 ms", got)
+	}
+	d := a.pcr.Discontinuities()
+	if len(d.Steps) != 1 || d.Steps[0].Kind != analysis.PCRStepPIDChange || d.Steps[0].FirstOffset != 3*188 || d.Undeclared != 0 {
+		t.Errorf("discontinuities = %+v", d)
+	}
+	res := analyzePcrJitter(a.pcrJitter.samples)
+	if res.segments != 2 || len(res.discontinuities) != 1 || res.discontinuities[0].kind != analysis.PCRStepPIDChange {
+		t.Errorf("jitter = %+v", res)
+	}
+	if a.bitrate.segments != 2 {
+		t.Errorf("bitrate segments = %d, want 2", a.bitrate.segments)
+	}
+	if p := a.series.pcr[2]; !p.discontinuity || p.hasInterval {
+		t.Errorf("series point at the change = %+v", p)
+	}
+	// The first PES started before the change has no bracket across it.
+	if a.pcrPtsSamples != 0 {
+		t.Errorf("PCR-PTS/DTS samples = %d, want 0", a.pcrPtsSamples)
 	}
 }

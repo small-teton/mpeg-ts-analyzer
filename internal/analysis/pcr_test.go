@@ -30,6 +30,8 @@ func TestPCRClockClassifiesEveryStep(t *testing.T) {
 			PCRStep{Kind: PCRStepBackward, JumpTicks: int64(2000*ms) - int64(top)}},
 		{"declared", PCR{PID: 0x100, Value: 1000 * ms}, PCR{PID: 0x100, Value: 1040 * ms, DiscontinuityIndicator: true},
 			PCRStep{Kind: PCRStepDeclared, JumpTicks: 40 * ms}},
+		{"PCR_PID changed away and back", PCR{PID: 0x100, Value: 1000 * ms}, PCR{PID: 0x100, Value: 1040 * ms, PCRPIDChanged: true},
+			PCRStep{Kind: PCRStepPIDChange, JumpTicks: 40 * ms}},
 		{"PID change takes precedence", PCR{PID: 0x100, Value: 1000 * ms}, PCR{PID: 0x101, Value: 1040 * ms, DiscontinuityIndicator: true},
 			PCRStep{Kind: PCRStepPIDChange, JumpTicks: 40 * ms}},
 	}
@@ -83,7 +85,7 @@ func TestPCRCheckSkippedBelowTwoPCRs(t *testing.T) {
 	if got := c.Discontinuities(); !reflect.DeepEqual(got, want) {
 		t.Errorf("one PCR: %+v", got)
 	}
-	if got := c.Interval(); got != (PCRIntervalResult{}) {
+	if got := c.Interval(); got != (PCRIntervalResult{Status: StatusSkipped, LimitMs: 100}) {
 		t.Errorf("interval = %+v", got)
 	}
 }
@@ -106,7 +108,7 @@ func TestPCRCheckAggregatesKinds(t *testing.T) {
 	for _, p := range pcrs {
 		c.Observe(p)
 	}
-	if got, want := c.Interval(), (PCRIntervalResult{MaxMs: 160, Intervals: 4}); got != want {
+	if got, want := c.Interval(), (PCRIntervalResult{Status: StatusErrors, MaxMs: 160, LimitMs: 100, Intervals: 4}); got != want {
 		t.Errorf("interval = %+v, want %+v", got, want)
 	}
 	want := PCRDiscontinuityResult{Status: StatusErrors, PCRs: 10, Undeclared: 3, Steps: []PCRStepCount{
@@ -131,5 +133,21 @@ func TestPCRCheckDeclaredOnlyIsOK(t *testing.T) {
 	}
 	if c.Interval().Intervals != 0 {
 		t.Errorf("an interval was measured across a declared discontinuity")
+	}
+}
+
+// TestPCRCheckIntervalStatus judges the interval against the inclusive 100 ms
+// limit (ISO/IEC 13818-1, 2.7.2).
+func TestPCRCheckIntervalStatus(t *testing.T) {
+	for _, tt := range []struct {
+		stepMs uint64
+		want   Status
+	}{{100, StatusOK}, {101, StatusErrors}} {
+		var c PCRCheck
+		c.Observe(PCR{PID: 0x100, Value: 0})
+		c.Observe(PCR{PID: 0x100, Value: tt.stepMs * ms})
+		if got := c.Interval(); got.Status != tt.want || got.MaxMs != float64(tt.stepMs) || got.Intervals != 1 {
+			t.Errorf("%d ms: %+v", tt.stepMs, got)
+		}
 	}
 }

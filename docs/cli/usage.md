@@ -145,7 +145,7 @@ PCR-based result uses the same classification:
 | `continuous` | 0 to 1000 ms later, same PID, no `discontinuity_indicator` | yes | no | not listed |
 | `wraparound` | Smaller, but 0 to 1000 ms later counted across the 2^33 × 300 wrap | yes | no | listed, legal |
 | `declared` | `discontinuity_indicator` on the PCR packet, or on an earlier packet of the `PCR_PID` that carried no PCR (the next PCR then starts the new time base) | no | yes | listed, legal |
-| `pcr_pid_change` | The PCR comes from another PID than the previous one, after a PMT version changed the `PCR_PID` | no | yes | listed, legal |
+| `pcr_pid_change` | A PMT version changed the `PCR_PID` since the previous PCR, even if a later version changed it back before a PCR arrived on the other PID | no | yes | listed, legal |
 | `backward` | Otherwise smaller, without `discontinuity_indicator` | no | yes | **undeclared** |
 | `forward_jump` | More than 1000 ms later, without `discontinuity_indicator` | no | yes | **undeclared** |
 

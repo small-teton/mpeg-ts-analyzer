@@ -11,9 +11,10 @@ import "fmt"
 //
 //   - first: the first PCR of the analyzed range (range acquisition). It has
 //     no predecessor, so no interval is measured.
-//   - pcr_pid_change: the PCR comes from a different PID than the previous
-//     one, because a PMT version changed the PCR_PID. The two PIDs need not
-//     share a clock, so the pair is not compared.
+//   - pcr_pid_change: a PMT version changed the PCR_PID since the previous
+//     PCR (PCR.PCRPIDChanged), or the PCR comes from a different PID than the
+//     previous one. The PIDs need not share a clock, so the pair is not
+//     compared, even when the PCR_PID changed away and back again.
 //   - declared: a system time-base discontinuity signalled with
 //     discontinuity_indicator on the PCR_PID (ISO/IEC 13818-1, 2.4.3.4 and
 //     2.4.3.5); the PCR is the first sample of a new time base. Legal.
@@ -66,12 +67,16 @@ const (
 // DiscontinuityIndicator is set when the PCR packet has
 // discontinuity_indicator set, or when an earlier packet of the PCR_PID had it
 // set without carrying a PCR since the previous PCR: the next PCR of the PID
-// then starts the new time base (ISO/IEC 13818-1, 2.4.3.5).
+// then starts the new time base (ISO/IEC 13818-1, 2.4.3.5). PCRPIDChanged
+// is set when a PMT version changed the program's PCR_PID since the previous
+// PCR, even if a later version changed it back to the previous PCR's PID
+// before a PCR arrived on the interim PID.
 type PCR struct {
 	PID                    uint16
 	Offset                 int64
 	Value                  uint64
 	DiscontinuityIndicator bool
+	PCRPIDChanged          bool
 }
 
 // PCRStepKind classifies a PCR relative to the previous PCR of its program.
@@ -157,7 +162,7 @@ func (c *PCRClock) Observe(p PCR) PCRStep {
 	step := PCRStep{JumpTicks: int64(p.Value) - int64(prev.Value)}
 	limit := uint64(PCRJumpLimitMs * PCRTicksPerMs)
 	switch {
-	case p.PID != prev.PID:
+	case p.PID != prev.PID || p.PCRPIDChanged:
 		step.Kind = PCRStepPIDChange
 	case p.DiscontinuityIndicator:
 		step.Kind = PCRStepDeclared
@@ -210,16 +215,26 @@ func (c *PCRCheck) Observe(p PCR) PCRStep {
 }
 
 // PCRIntervalResult is the maximum PCR interval: the largest comparable
-// interval and how many intervals were measured. Status is left to the
-// report, which judges it against MaxPCRIntervalMs.
+// interval, the limit it is judged against and how many intervals were
+// measured. Status is StatusSkipped without a measured interval, StatusOK when
+// MaxMs is at most LimitMs (inclusive) and StatusErrors otherwise.
 type PCRIntervalResult struct {
+	Status    Status
 	MaxMs     float64
+	LimitMs   float64
 	Intervals int
 }
 
 // Interval returns the maximum PCR interval measured so far.
 func (c *PCRCheck) Interval() PCRIntervalResult {
-	return PCRIntervalResult{MaxMs: float64(c.maxTicks) / PCRTicksPerMs, Intervals: c.intervals}
+	r := PCRIntervalResult{Status: StatusOK, MaxMs: float64(c.maxTicks) / PCRTicksPerMs, LimitMs: MaxPCRIntervalMs, Intervals: c.intervals}
+	switch {
+	case c.intervals == 0:
+		r.Status = StatusSkipped
+	case r.MaxMs > r.LimitMs:
+		r.Status = StatusErrors
+	}
+	return r
 }
 
 // PCRStepCount is how often one kind of step occurred, with the byte offset

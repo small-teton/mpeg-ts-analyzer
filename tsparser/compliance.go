@@ -26,9 +26,15 @@ type complianceCheck struct {
 	limitMs      float64
 	observations int
 	skippedWhy   string
+	// judged is the status decided by internal/analysis; when it is empty,
+	// the status is judged here against limitMs.
+	judged complianceStatus
 }
 
 func (c complianceCheck) status() complianceStatus {
+	if c.judged != "" {
+		return c.judged
+	}
 	if c.observations == 0 {
 		return complianceSkipped
 	}
@@ -64,9 +70,10 @@ func newComplianceReport(interval analysis.PCRIntervalResult, discontinuities an
 		maxPcrInterval: complianceCheck{
 			name:         "Max PCR interval",
 			valueMs:      interval.MaxMs,
-			limitMs:      analysis.MaxPCRIntervalMs,
+			limitMs:      interval.LimitMs,
 			observations: interval.Intervals,
 			skippedWhy:   "need at least two comparable PCR observations",
+			judged:       analysisComplianceStatus(interval.Status),
 		},
 		pcrDiscontinuities: discontinuities,
 		maxPcrPtsGap: complianceCheck{
@@ -76,6 +83,19 @@ func newComplianceReport(interval analysis.PCRIntervalResult, discontinuities an
 			observations: pcrPtsSamples,
 			skippedWhy:   "need a parsed PTS/DTS bracketed by PCR observations",
 		},
+	}
+}
+
+// analysisComplianceStatus maps the status of an analysis check with a limit
+// to the compliance status.
+func analysisComplianceStatus(s analysis.Status) complianceStatus {
+	switch s {
+	case analysis.StatusSkipped:
+		return complianceSkipped
+	case analysis.StatusErrors:
+		return complianceNG
+	default:
+		return complianceOK
 	}
 }
 
