@@ -28,6 +28,18 @@ Work is tracked in #101 (milestone GUI v0.1).
   opening another file, a packet page leaving the cache) only sends the
   supervisor a message, so the UI thread never waits for the process, even when
   a CLI has closed its output and keeps running.
+- Arguments reach the CLI as native OS strings: the input and CLI paths stay
+  `PathBuf`/`OsString` and are converted lossily only for display, so a Unix
+  file name that is not UTF-8 is analyzed, paged and decoded under the same
+  name.
+- Everything read from the CLI is bounded, since any executable can be chosen
+  as the CLI ([limits](cli-interface.md#output-limits)). JSON is parsed as it
+  is read from the pipe, so the raw document never coexists with the parsed
+  one; output past its limit is rejected, never truncated, and the process is
+  killed. Only the latest progress event and a bounded tail of stderr
+  diagnostics are kept. A cancelled run's readers stop at their next read, and
+  the kill ends a producer that never finishes, so its partly read output is
+  released promptly.
 - Analysis logic and verdicts live only in the CLI, so the GUI and the CLI
   cannot disagree. CLI changes for the GUI add output surfaces; they do not
   change analysis results.

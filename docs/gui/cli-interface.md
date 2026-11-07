@@ -119,6 +119,39 @@ schema 2.x (PCR jitter with `estimate` and `delivery`) and packet schema 1.x; a
 CLI that writes analysis schema 1.x is rejected with a request to update the
 CLI.
 
+## Output limits
+
+Settings accepts any executable as the CLI, so the GUI bounds what it reads
+from every run (`Limits` in `gui/src/cli/bounded.rs`). JSON documents are
+parsed as they are read; a document is read up to its limit and rejected at the
+first byte past it, never truncated. The rejected run is killed, and the error
+names the output and the limit, for example *The CLI wrote more than 320 MiB of
+--output analysis JSON (the limit for a 64 MiB range); the output was rejected.
+Analyze a smaller range, or check the CLI chosen in Settings.*
+
+| Output | Limit | Today's CLI writes |
+|---|---|---|
+| `--capabilities` | 64 KiB | about 500 bytes |
+| `--output packets` | 1 MiB + 4 KiB per requested packet (1.4 MiB for the default page of 100, about 40 MiB for the largest of 10,000) | about 300 bytes per packet |
+| `--output packet` | 1 MiB | under 8 KiB |
+| `--output analysis` | 64 MiB + 4 bytes per byte of the range (320 MiB for the default 64 MiB) | 0.22–0.24 bytes per input byte on the samples |
+| stderr diagnostics | the latest 64 KiB of lines, each cut at 4 KiB | — |
+| progress events | the latest event only | one per progress step |
+
+The analysis limit follows the range because its series (PCR, PES, PCR jitter,
+bitrate windows) grow with it: one program with a PCR, a jitter sample and a
+timestamped PES start in every 188-byte packet writes about 1.3 bytes per input
+byte, and the factor of 4 leaves room for several programs sharing PIDs. The
+fixed part covers the PSI layout and summaries.
+
+Dropped diagnostics are replaced by a marker such as `[… 120 earlier diagnostic
+lines (6.4 KiB) omitted …]`, and a cut line ends with `[… N more bytes of this
+line omitted]`. Progress events are coalesced to the newest one, and the UI is
+asked to repaint only when it has taken the previous one. A process that keeps
+a pipe open after being killed (for example through a child of its own that
+does not write) can leave its reader thread waiting, holding at most the limit
+for that output.
+
 ## Related issues
 
 Tracking: #101 (milestone GUI v0.1).

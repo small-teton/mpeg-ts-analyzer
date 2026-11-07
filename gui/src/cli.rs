@@ -1,15 +1,20 @@
 //! Running the mpeg-ts-analyzer CLI as a subprocess.
 
+mod bounded;
 mod process;
 
-use std::io::{BufRead, BufReader, Read};
+use std::ffi::OsString;
+use std::io::{self, BufReader, Read};
 use std::path::{Path, PathBuf};
-use std::process::{ChildStderr, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::report::{self, AnalysisReport, Capabilities, ProgressEvent};
+use crate::report::{self, AnalysisReport, Capabilities, PacketDetail, PacketsPage, ProgressEvent};
+pub use bounded::Limits;
+use bounded::{DiagnosticTail, Limited, OutputLimit};
 use process::{Finished, Process};
 
 /// Overrides the CLI location, mainly for development against a locally built CLI.
@@ -166,8 +171,56 @@ const CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 /// Like [`check`], but the program is killed if it has not answered within
 /// `timeout`.
 pub fn check_with_timeout(path: &Path, timeout: Duration) -> Result<Cli, String> {
-    let mut child = command(path)
-        .arg("--capabilities")
+    let mut command = command(path);
+    command.arg("--capabilities");
+    check_command(command, path, timeout, &Limits::DEFAULT)
+}
+
+/// What became of a JSON document read from a pipe.
+enum Document<T> {
+    Parsed(T),
+    /// It did not parse; the error to show.
+    Unreadable(String),
+    /// Nothing but whitespace was written.
+    Empty,
+    /// More than its limit was written; the error to show.
+    Rejected(String),
+}
+
+/// Parses one JSON document with `parse` as it is read from `pipe`, through a
+/// reader that rejects the first byte past `limit`. The output is read to its
+/// end (within the limit) even when the parse stops early, so the process is
+/// neither left blocked on a full pipe nor killed by a closed one; `unreadable` makes the error for it from the
+/// parse error and the first `prefix` bytes of the output.
+fn read_document<T>(
+    pipe: impl Read,
+    limit: &OutputLimit,
+    prefix: usize,
+    parse: impl FnOnce(&mut dyn Read) -> Result<T, String>,
+    unreadable: impl FnOnce(String, &[u8]) -> String,
+) -> Document<T> {
+    let mut limited = Limited::new(pipe, limit.bytes).keeping_prefix(prefix);
+    let parsed = parse(&mut BufReader::new(&mut limited));
+    if !limited.exceeded() {
+        let _ = io::copy(&mut limited, &mut io::sink());
+    }
+    if limited.exceeded() {
+        return Document::Rejected(limit.rejected());
+    }
+    match parsed {
+        Ok(value) => Document::Parsed(value),
+        Err(_) if !limited.had_content() => Document::Empty,
+        Err(err) => Document::Unreadable(unreadable(err, limited.prefix())),
+    }
+}
+
+fn check_command(
+    mut command: Command,
+    path: &Path,
+    timeout: Duration,
+    limits: &Limits,
+) -> Result<Cli, String> {
+    let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -178,16 +231,39 @@ pub fn check_with_timeout(path: &Path, timeout: Duration) -> Result<Cli, String>
                 path.display()
             )
         })?;
-    let mut stdout = child.stdout.take().expect("stdout is piped");
+    let stdout = child.stdout.take().expect("stdout is piped");
     // The output is read on a thread and waited for with the same deadline: a
     // program can exit while a process it started keeps stdout open.
+    let limit = limits.capabilities();
     let (output_tx, output) = mpsc::channel();
-    thread::spawn(move || {
-        let mut out = Vec::new();
-        let _ = output_tx.send(stdout.read_to_end(&mut out).map(|_| out));
-    });
+    {
+        let limit = limit.clone();
+        thread::spawn(move || {
+            let document = read_document(
+                stdout,
+                &limit,
+                0,
+                |json| serde_json::from_reader::<_, Capabilities>(json).map_err(|e| e.to_string()),
+                |err, _| err,
+            );
+            let _ = output_tx.send(document);
+        });
+    }
     let deadline = Instant::now() + timeout;
+    let mut document = None;
     let status = loop {
+        if document.is_none() {
+            document = output.try_recv().ok();
+        }
+        if let Some(Document::Rejected(err)) = &document {
+            // Waiting for a program that keeps writing is pointless.
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!(
+                "{}: {err} Is it the mpeg-ts-analyzer CLI?",
+                path.display()
+            ));
+        }
         match child.try_wait() {
             Ok(Some(status)) => break status,
             Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
@@ -203,24 +279,37 @@ pub fn check_with_timeout(path: &Path, timeout: Duration) -> Result<Cli, String>
             Err(err) => return Err(format!("Cannot wait for {}: {err}", path.display())),
         }
     };
-    let stdout = output
-        .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-        .map_err(|_| {
-            format!(
-                "{} did not finish its --capabilities output within {} s; is it the mpeg-ts-analyzer CLI?",
-                path.display(),
-                timeout.as_secs()
-            )
-        })?
-        .map_err(|err| format!("Cannot read the --capabilities output: {err}"))?;
+    let document = match document {
+        Some(document) => document,
+        None => output
+            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+            .map_err(|_| {
+                format!(
+                    "{} did not finish its --capabilities output within {} s; is it the mpeg-ts-analyzer CLI?",
+                    path.display(),
+                    timeout.as_secs()
+                )
+            })?,
+    };
+    if let Document::Rejected(err) = document {
+        return Err(format!(
+            "{}: {err} Is it the mpeg-ts-analyzer CLI?",
+            path.display()
+        ));
+    }
     if !status.success() {
         return Err(format!(
             "{} does not support --capabilities; a newer CLI is needed.",
             path.display()
         ));
     }
-    let caps: Capabilities = serde_json::from_slice(&stdout)
-        .map_err(|err| format!("Unreadable --capabilities output: {err}"))?;
+    let caps = match document {
+        Document::Parsed(caps) => caps,
+        Document::Empty => return Err("Unreadable --capabilities output: it was empty".to_owned()),
+        Document::Unreadable(err) | Document::Rejected(err) => {
+            return Err(format!("Unreadable --capabilities output: {err}"));
+        }
+    };
     // Start runs `--format json --output analysis --progress json`.
     if !caps.supports_json("analysis", ANALYSIS_SCHEMA_MAJOR) || !caps.supports_progress("json") {
         let analysis = caps
@@ -252,12 +341,61 @@ pub enum JobUpdate {
     Finished(Result<Box<AnalysisReport>, String>),
 }
 
+/// The latest progress event not yet taken by the UI. Only the newest one
+/// matters, so a CLI writing progress as fast as it can holds one event here,
+/// not a queue of them. The lock is held only to swap the value.
+#[derive(Clone, Default)]
+struct LatestProgress(Arc<Mutex<Option<ProgressEvent>>>);
+
+impl LatestProgress {
+    /// Stores `event`; true when the slot was empty, i.e. the UI has taken
+    /// the previous one and needs a repaint to take this one.
+    fn put(&self, event: ProgressEvent) -> bool {
+        self.lock().replace(event).is_none()
+    }
+
+    fn take(&self) -> Option<ProgressEvent> {
+        self.lock().take()
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, Option<ProgressEvent>> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+/// Reads an analysis's stderr: progress events go to `progress`, and a
+/// bounded tail of the other lines is kept as diagnostics.
+fn read_analysis_stderr(
+    limits: Limits,
+    progress: LatestProgress,
+    repaint: impl Fn() + Send + 'static,
+) -> process::StderrReader {
+    Box::new(move |stderr| {
+        let mut reader = BufReader::new(stderr);
+        let mut diagnostics = DiagnosticTail::new(limits.diagnostics);
+        let mut line = Vec::new();
+        while let Ok(Some(dropped)) =
+            bounded::read_line(&mut reader, limits.diagnostic_line, &mut line)
+        {
+            match serde_json::from_slice::<ProgressEvent>(&line) {
+                Ok(event) if dropped == 0 && event.kind == "progress" => {
+                    if progress.put(event) {
+                        repaint();
+                    }
+                }
+                _ => diagnostics.push(&line, dropped),
+            }
+        }
+        diagnostics.finish()
+    })
+}
+
 /// A range analysis running in a child process.
 pub struct AnalysisJob {
     /// Dropping the job (closing the app, opening another file) kills the
     /// process, since dropping a `Child` does not.
-    process: Process,
-    progress: Receiver<ProgressEvent>,
+    process: Process<Document<AnalysisReport>>,
+    progress: LatestProgress,
     result: Receiver<Result<Box<AnalysisReport>, String>>,
     latest: Option<ProgressEvent>,
 }
@@ -289,55 +427,71 @@ impl AnalysisJob {
                 "--limit",
                 &limit.to_string(),
             ]);
-        Self::spawn(command, repaint)
+        Self::spawn(command, Limits::DEFAULT, limit, repaint)
             .map_err(|err| format!("Cannot start {}: {err}", cli.path.display()))
     }
 
+    /// Runs `command` as an analysis of `range_bytes` of input, reading its
+    /// output within `limits`.
     fn spawn(
         command: Command,
+        limits: Limits,
+        range_bytes: u64,
         repaint: impl Fn() + Send + Clone + 'static,
-    ) -> std::io::Result<Self> {
+    ) -> io::Result<Self> {
         // stderr carries progress events and, on failure, diagnostics.
-        let (progress_tx, progress) = mpsc::channel();
-        let stderr_repaint = repaint.clone();
-        let read_stderr = move |stderr: ChildStderr| {
-            let mut diagnostics = String::new();
-            for line in BufReader::new(stderr).lines().map_while(Result::ok) {
-                match serde_json::from_str::<ProgressEvent>(&line) {
-                    Ok(event) if event.kind == "progress" => {
-                        let _ = progress_tx.send(event);
-                        stderr_repaint();
-                    }
-                    _ => {
-                        diagnostics.push_str(&line);
-                        diagnostics.push('\n');
-                    }
-                }
-            }
-            diagnostics
-        };
+        let progress = LatestProgress::default();
+        let read_stderr = read_analysis_stderr(limits, progress.clone(), repaint.clone());
 
         // stdout carries the JSON document, written once the analysis ends.
+        // It is parsed as it is read, so the raw document is never held.
+        let limit = limits.analysis(range_bytes);
+        let read_stdout: process::StdoutReader<Document<AnalysisReport>> = Box::new(move |pipe| {
+            let document = read_document(
+                pipe,
+                &limit,
+                bounded::PREFIX_BYTES,
+                |json| report::read_analysis(json, ANALYSIS_SCHEMA_MAJOR),
+                |err, prefix| {
+                    report::unsupported_analysis(prefix, ANALYSIS_SCHEMA_MAJOR).unwrap_or(err)
+                },
+            );
+            let refused = matches!(document, Document::Rejected(_));
+            process::Output {
+                value: document,
+                refused,
+            }
+        });
+
         let (result_tx, result) = mpsc::channel();
         let process = Process::spawn(
             command,
-            Some(Box::new(read_stderr)),
+            read_stdout,
+            Some(read_stderr),
             move |Finished {
                       status,
                       stdout,
                       diagnostics,
                   }| {
-                let outcome = match stdout {
-                    Ok(json) if json.iter().any(|b| !b.is_ascii_whitespace()) => {
-                        report::parse_analysis(&json, ANALYSIS_SCHEMA_MAJOR).map(Box::new)
+                let failed = |status: io::Result<std::process::ExitStatus>| match status {
+                    Ok(status) if !diagnostics.trim().is_empty() => {
+                        format!("The CLI failed ({status}): {}", diagnostics.trim())
                     }
-                    _ => Err(match status {
-                        Ok(status) if !diagnostics.trim().is_empty() => {
-                            format!("The CLI failed ({status}): {}", diagnostics.trim())
+                    Ok(status) => format!("The CLI ended without a result ({status})."),
+                    Err(err) => format!("The CLI could not be waited for: {err}"),
+                };
+                let outcome = match stdout {
+                    Document::Parsed(report) => Ok(Box::new(report)),
+                    Document::Rejected(err) => Err(err),
+                    Document::Empty => Err(failed(status)),
+                    // A CLI that failed says why on stderr; that is more use
+                    // than the parse error of whatever it wrote.
+                    Document::Unreadable(err) => match &status {
+                        Ok(code) if !code.success() && !diagnostics.trim().is_empty() => {
+                            Err(failed(status))
                         }
-                        Ok(status) => format!("The CLI ended without a result ({status})."),
-                        Err(err) => format!("The CLI could not be waited for: {err}"),
-                    }),
+                        _ => Err(err),
+                    },
                 };
                 let _ = result_tx.send(outcome);
                 repaint();
@@ -366,7 +520,7 @@ impl AnalysisJob {
 
     /// Collects what happened since the last call.
     pub fn poll(&mut self) -> JobUpdate {
-        while let Ok(event) = self.progress.try_recv() {
+        if let Some(event) = self.progress.take() {
             self.latest = Some(event);
         }
         match self.result.try_recv() {
@@ -379,40 +533,86 @@ impl AnalysisJob {
     }
 }
 
+/// The reply a [`Request`] expects: how to parse it and the most of it to read.
+pub struct Reply<T> {
+    limit: OutputLimit,
+    parse: fn(&mut dyn Read) -> Result<T, String>,
+}
+
+impl Reply<PacketsPage> {
+    /// A page of `count` packets from `--output packets`.
+    pub fn packets_page(count: u64) -> Self {
+        Self {
+            limit: Limits::DEFAULT.packets_page(count),
+            parse: |json| report::parse_packets_page(json, PACKETS_SCHEMA_MAJOR),
+        }
+    }
+}
+
+impl Reply<PacketDetail> {
+    /// One decoded packet from `--output packet`.
+    pub fn packet_detail() -> Self {
+        Self {
+            limit: Limits::DEFAULT.packet_detail(),
+            parse: |json| report::parse_packet_detail(json, PACKETS_SCHEMA_MAJOR),
+        }
+    }
+}
+
+impl<T> Reply<T> {
+    /// The same reply read within another limit.
+    #[cfg(test)]
+    pub(crate) fn with_limit(self, limit: OutputLimit) -> Self {
+        Self { limit, ..self }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new(limit: OutputLimit, parse: fn(&mut dyn Read) -> Result<T, String>) -> Self {
+        Self { limit, parse }
+    }
+}
+
 /// A short CLI run that writes one JSON document, such as a page of packets.
 /// Dropping the request kills the process.
 pub struct Request<T> {
-    process: Process,
+    process: Process<Result<T, String>>,
     result: Receiver<Result<T, String>>,
 }
 
 impl<T: Send + 'static> Request<T> {
-    /// Runs the CLI with `args` and parses its stdout with `parse`.
+    /// Runs the CLI with `args` and parses its stdout as `reply`. The
+    /// arguments are native strings, so a path that is not UTF-8 reaches the
+    /// CLI unchanged.
     pub fn start(
         cli: &Cli,
-        args: Vec<String>,
-        parse: fn(&[u8]) -> Result<T, String>,
+        args: Vec<OsString>,
+        reply: Reply<T>,
         repaint: impl Fn() + Send + 'static,
     ) -> Result<Self, String> {
         let mut command = command(&cli.path);
         command.args(&args);
-        Self::spawn(command, parse, repaint)
+        Self::spawn(command, reply, repaint)
             .map_err(|err| format!("Cannot start {}: {err}", cli.path.display()))
     }
 
     pub(crate) fn spawn(
         command: Command,
-        parse: fn(&[u8]) -> Result<T, String>,
+        reply: Reply<T>,
         repaint: impl Fn() + Send + 'static,
-    ) -> std::io::Result<Self> {
+    ) -> io::Result<Self> {
         let (result_tx, result) = mpsc::channel();
-        let process = Process::spawn(command, None, move |finished| {
-            let outcome = match finished.stdout {
-                Ok(json) if json.iter().any(|b| !b.is_ascii_whitespace()) => parse(&json),
-                Ok(_) => Err("The CLI ended without a result.".to_owned()),
-                Err(err) => Err(format!("Cannot read the CLI output: {err}")),
+        let Reply { limit, parse } = reply;
+        let read_stdout: process::StdoutReader<Result<T, String>> = Box::new(move |pipe| {
+            let (value, refused) = match read_document(pipe, &limit, 0, parse, |err, _| err) {
+                Document::Parsed(value) => (Ok(value), false),
+                Document::Unreadable(err) => (Err(err), false),
+                Document::Empty => (Err("The CLI ended without a result.".to_owned()), false),
+                Document::Rejected(err) => (Err(err), true),
             };
-            let _ = result_tx.send(outcome);
+            process::Output { value, refused }
+        });
+        let process = Process::spawn(command, read_stdout, None, move |finished| {
+            let _ = result_tx.send(finished.stdout);
             repaint();
         })?;
         Ok(Self { process, result })
@@ -460,6 +660,7 @@ pub(crate) fn fake_cli(dir: &Path, script: &str) -> Cli {
 #[cfg(test)]
 pub(crate) use process::{
     closes_output_and_hangs, returns_promptly, wait_for_closed_output, wait_until_exited,
+    wait_until_released,
 };
 
 /// Runs the CLI named by MPEG_TS_ANALYZER_CLI (e.g. via `make gui-test`) on a
@@ -543,7 +744,13 @@ mod tests {
     #[test]
     fn cancels_an_analysis_whose_cli_closed_its_output_and_hangs() {
         let marker = tempfile_dir("job-closed").join("closed");
-        let job = AnalysisJob::spawn(closes_output_and_hangs(&marker), || {}).expect("start");
+        let job = AnalysisJob::spawn(
+            closes_output_and_hangs(&marker),
+            Limits::DEFAULT,
+            1000,
+            || {},
+        )
+        .expect("start");
         let child = job.child();
         wait_for_closed_output(&marker);
         assert!(!child.is_set(), "the fake CLI ended by itself");
@@ -563,7 +770,13 @@ mod tests {
     #[test]
     fn dropping_a_job_whose_cli_closed_its_output_stops_it() {
         let marker = tempfile_dir("job-drop-closed").join("closed");
-        let job = AnalysisJob::spawn(closes_output_and_hangs(&marker), || {}).expect("start");
+        let job = AnalysisJob::spawn(
+            closes_output_and_hangs(&marker),
+            Limits::DEFAULT,
+            1000,
+            || {},
+        )
+        .expect("start");
         let child = job.child();
         wait_for_closed_output(&marker);
         assert!(
@@ -578,7 +791,7 @@ mod tests {
         let marker = tempfile_dir("request-closed").join("closed");
         let request = Request::spawn(
             closes_output_and_hangs(&marker),
-            |_| Ok::<(), String>(()),
+            Reply::new(Limits::DEFAULT.packet_detail(), |_| Ok::<(), String>(())),
             || {},
         )
         .expect("start");
@@ -747,6 +960,256 @@ mod tests {
         };
         assert!(err.contains("did not answer"), "{err}");
         assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    /// Limits small enough that the tests never write anything near the
+    /// production sizes.
+    fn small_limits(bytes: u64) -> Limits {
+        Limits {
+            capabilities: bytes,
+            packets_base: bytes,
+            packets_per_packet: 0,
+            packet_detail: bytes,
+            analysis_base: bytes,
+            analysis_per_input_byte: 0,
+            diagnostics: 1024,
+            diagnostic_line: 256,
+        }
+    }
+
+    /// Writes `document` padded with spaces to exactly `len` bytes.
+    fn padded(dir: &Path, name: &str, document: &[u8], len: usize) -> PathBuf {
+        assert!(document.len() <= len, "{name} is longer than {len}");
+        let mut content = document.to_vec();
+        content.resize(len, b' ');
+        let path = dir.join(name);
+        std::fs::write(&path, content).expect("write the document");
+        path
+    }
+
+    fn wait_request<T: Send + 'static>(request: &Request<T>) -> Result<T, String> {
+        let deadline = Instant::now() + Duration::from_secs(60);
+        loop {
+            if let Some(result) = request.poll() {
+                return result;
+            }
+            assert!(Instant::now() < deadline, "the request timed out");
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    const CAPABILITIES: &[u8] = include_bytes!("../tests/fixtures/capabilities.json");
+    const PACKETS_PAGE: &[u8] = include_bytes!("../tests/fixtures/packets_page_188.json");
+    const PACKET_DETAIL: &[u8] = include_bytes!("../tests/fixtures/packet_detail_pat_188.json");
+    const ANALYSIS: &[u8] = include_bytes!("../tests/fixtures/analysis_two_programs_188.json");
+
+    #[test]
+    fn capabilities_are_read_up_to_their_limit() {
+        let dir = tempfile_dir("caps-limit");
+        let limit = 4096;
+        let fits = padded(&dir, "fits.json", CAPABILITIES, limit);
+        let cli = check_command(
+            process::prints_file(&fits),
+            &fits,
+            Duration::from_secs(30),
+            &small_limits(limit as u64),
+        )
+        .expect("a reply of exactly the limit is read");
+        assert!(cli.packet_outputs);
+
+        let over = padded(&dir, "over.json", CAPABILITIES, limit + 1);
+        let Err(err) = check_command(
+            process::prints_file(&over),
+            &over,
+            Duration::from_secs(30),
+            &small_limits(limit as u64),
+        ) else {
+            panic!("accepted")
+        };
+        assert!(
+            err.contains(
+                "wrote more than 4 KiB of --capabilities JSON (the limit for a capabilities reply)"
+            ),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn packet_replies_are_read_up_to_their_limit() {
+        let dir = tempfile_dir("packets-limit");
+        let limit = 64 * 1024;
+        let limits = small_limits(limit as u64);
+        for (fits, expected) in [(true, None), (false, Some("--output packets JSON"))] {
+            let len = if fits { limit } else { limit + 1 };
+            let file = padded(&dir, "page.json", PACKETS_PAGE, len);
+            let reply = Reply::packets_page(100).with_limit(limits.packets_page(100));
+            let request = Request::spawn(process::prints_file(&file), reply, || {}).unwrap();
+            let result = wait_request(&request);
+            match expected {
+                None => assert!(!result.expect("page").packets.is_empty()),
+                Some(text) => {
+                    let err = result.expect_err("rejected");
+                    assert!(err.contains(text), "{err}");
+                    assert!(err.contains("the limit for a page of 100 packets"), "{err}");
+                }
+            }
+        }
+        for (fits, expected) in [(true, None), (false, Some("--output packet JSON"))] {
+            let len = if fits { limit } else { limit + 1 };
+            let file = padded(&dir, "detail.json", PACKET_DETAIL, len);
+            let reply = Reply::packet_detail().with_limit(limits.packet_detail());
+            let request = Request::spawn(process::prints_file(&file), reply, || {}).unwrap();
+            match (wait_request(&request), expected) {
+                (Ok(detail), None) => assert!(detail.packet.is_some()),
+                (Err(err), Some(text)) => {
+                    assert!(err.contains(text), "{err}");
+                    assert!(err.contains("the limit for one decoded packet"), "{err}");
+                }
+                (result, _) => panic!("{:?}", result.err()),
+            }
+        }
+    }
+
+    #[test]
+    fn analysis_output_is_read_up_to_its_limit() {
+        let dir = tempfile_dir("analysis-limit");
+        let limit = ANALYSIS.len() + 100;
+        let limits = small_limits(limit as u64);
+        let fits = padded(&dir, "fits.json", ANALYSIS, limit);
+        let mut job =
+            AnalysisJob::spawn(process::prints_file(&fits), limits, 1000, || {}).expect("start");
+        let report = wait(&mut job).0.expect("a document of exactly the limit");
+        assert_eq!(report.programs.len(), 2);
+
+        let over = padded(&dir, "over.json", ANALYSIS, limit + 1);
+        let mut job =
+            AnalysisJob::spawn(process::prints_file(&over), limits, 1000, || {}).expect("start");
+        let err = wait(&mut job).0.expect_err("rejected");
+        assert!(
+            err.contains("of --output analysis JSON (the limit for a 1000 bytes range)"),
+            "{err}"
+        );
+        assert!(err.contains("Analyze a smaller range"), "{err}");
+    }
+
+    /// The limit grows with the analyzed range.
+    #[test]
+    fn the_analysis_limit_scales_with_the_range() {
+        let limits = Limits {
+            analysis_per_input_byte: 2,
+            ..small_limits(100)
+        };
+        assert_eq!(limits.analysis(1000).bytes, 2100);
+    }
+
+    /// A CLI that writes without end has its output rejected at the limit
+    /// and is stopped, without the GUI holding more than the limit.
+    #[test]
+    fn endless_analysis_output_is_rejected_and_stopped() {
+        let mut job = AnalysisJob::spawn(
+            process::fake_process("stdout-forever"),
+            small_limits(256 * 1024),
+            1000,
+            || {},
+        )
+        .expect("start");
+        let child = job.child();
+        let err = wait(&mut job).0.expect_err("rejected");
+        assert!(
+            err.contains("more than 256 KiB of --output analysis JSON"),
+            "{err}"
+        );
+        assert!(wait_until_released(&child), "the CLI kept running");
+    }
+
+    /// Only a marked tail of a flood of diagnostics is kept, and an endless
+    /// line is cut.
+    #[test]
+    fn keeps_a_bounded_tail_of_diagnostic_spam() {
+        let mut job = AnalysisJob::spawn(
+            process::fake_process("diagnostics:5000"),
+            small_limits(1024 * 1024),
+            1000,
+            || {},
+        )
+        .expect("start");
+        let err = wait(&mut job).0.expect_err("the fake CLI fails");
+        assert!(err.starts_with("The CLI failed ("), "{err}");
+        assert!(err.contains(" earlier diagnostic lines ("), "{err}");
+        assert!(err.contains("omitted …]"), "{err}");
+        assert!(err.contains("diagnostic line 4999"), "{err}");
+        assert!(
+            err.contains("[… 4744 more bytes of this line omitted]"),
+            "{err}"
+        );
+        // The 1 KiB tail, its marker, and the start of the message.
+        assert!(err.len() < 1500, "{} bytes kept", err.len());
+    }
+
+    /// A flood of progress events is coalesced to the latest one; the UI is
+    /// asked to repaint once per event it takes, not once per event written.
+    #[test]
+    fn coalesces_progress_spam() {
+        let events = 20_000;
+        let repaints = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = Arc::clone(&repaints);
+        let mut job = AnalysisJob::spawn(
+            process::fake_process(&format!("progress:{events}")),
+            Limits::DEFAULT,
+            1000,
+            move || {
+                counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            },
+        )
+        .expect("start");
+        let deadline = Instant::now() + Duration::from_secs(60);
+        let mut polls = 0;
+        loop {
+            polls += 1;
+            if let JobUpdate::Running(Some(progress)) = job.poll()
+                && progress.processed_bytes == events
+            {
+                assert!(progress.done);
+                break;
+            }
+            assert!(Instant::now() < deadline, "the progress did not arrive");
+            thread::sleep(Duration::from_millis(20));
+        }
+        let repaints = repaints.load(std::sync::atomic::Ordering::SeqCst);
+        assert!(
+            repaints <= polls + 1,
+            "{repaints} repaints for {polls} polls"
+        );
+        let child = job.child();
+        drop(job);
+        assert!(wait_until_released(&child), "the CLI kept running");
+    }
+
+    /// A Unix file name need not be UTF-8; the CLI is given the name as is.
+    #[cfg(unix)]
+    #[test]
+    fn passes_a_non_utf8_input_path_to_the_analysis() {
+        use std::os::unix::ffi::{OsStrExt, OsStringExt};
+        let dir = tempfile_dir("non-utf8-analysis");
+        let document = dir.join("doc.json");
+        std::fs::write(&document, ANALYSIS).unwrap();
+        let recorded = dir.join("arg");
+        let cli = fake_cli(
+            &dir,
+            &format!(
+                "printf '%s' \"$1\" > '{}'\ncat '{}'",
+                recorded.display(),
+                document.display()
+            ),
+        );
+        let input = dir.join(std::ffi::OsString::from_vec(b"caf\xe9.ts".to_vec()));
+        assert!(input.to_str().is_none());
+        let mut job = AnalysisJob::start(&cli, &input, 0, 1000, || {}).expect("start");
+        wait(&mut job).0.expect("report");
+        assert_eq!(
+            std::fs::read(&recorded).unwrap(),
+            input.as_os_str().as_bytes()
+        );
     }
 
     #[test]
