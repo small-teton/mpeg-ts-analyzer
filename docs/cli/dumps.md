@@ -149,6 +149,7 @@ TS Sync: no sync loss detected
 -----------------------------
 Compliance Check Results:
 Max PCR interval: 80.000000ms [OK, limit: <= 100.000000ms]
+PCR discontinuities: 0 undeclared in 60 PCRs [OK]
 PCR-PTS/DTS max gap: 726.666667ms [OK, limit: <= 1000.000000ms]
 ```
 
@@ -220,6 +221,13 @@ $ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_
   Discontinuities  : 0
 ```
 
+The estimate is made within timing segments: a declared discontinuity, a
+`PCR_PID` change, an undeclared backward step or a forward jump of more than
+1000 ms starts a new one, and `Discontinuities` lists each with its kind, for
+example `- 0x000066d0 : backward, PCR jumped -1960.000ms (segment 3 -> 4)`. A
+33-bit wraparound does not split the estimate. These are the same steps as in
+the [PCR discontinuity check](usage.md#pcr-steps).
+
 When no estimate can be made (fewer than 3 PCRs, or too many discontinuities),
 the summary says `analysis skipped` with the reason, still followed by the
 `Delivery` line. PCR jitter does not affect `--fail-on-error`. The JSON form is
@@ -256,4 +264,5 @@ Reading the output:
   stuffing is mux-wide, so it is listed separately and left out of the total.
 - Byte counts are TS-layer: 188 bytes per packet, including for 192-byte M2TS.
 - The segment count next to the duration reflects PCR discontinuities found in
-  the stream.
+  the stream (see [PCR steps](usage.md#pcr-steps)); a PCR wraparound keeps the
+  clock running.

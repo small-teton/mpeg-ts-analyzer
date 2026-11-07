@@ -167,7 +167,7 @@ check (`CheckDetail`).
 
 - **Transport health table**: one non-collapsible table with the columns
   Check, Value, Status and Help, grouped by category. The order is fixed:
-  Timing (Max PCR interval, PCR jitter estimate), PES / Timestamps
+  Timing (Max PCR interval, PCR discontinuities, PCR jitter estimate), PES / Timestamps
   (PCR → PTS/DTS gap, PTS/DTS anomalies), Integrity (Continuity counter,
   Transport errors, Scrambled packets, TS synchronization).
   Structure and Multiplexing join as their checks land (#157). A check is
@@ -193,7 +193,8 @@ check (`CheckDetail`).
   order. `overview::row` turns the report into a check's value, status and
   current result (only fields the CLI provided). A new check is one
   `check_help` entry and one `row` arm. The texts state the CLI's thresholds
-  (100 ms, 1000 ms, ±500 ns, ±25 µs) and, for PCR jitter, the byte-position
+  (100 ms, 1000 ms, ±500 ns, ±25 µs), the PCR step kinds and the 1000 ms jump
+  limit of PCR discontinuities, and, for PCR jitter, the byte-position
   model, the delivery assessment (1-second window rates within ±1 %, no
   estimate beyond 1 ms) and `not_assessable`.
 - **Detail page**: opened by the information button or a findings link, inside
@@ -222,7 +223,8 @@ check (`CheckDetail`).
   announced as `Status: <status>`; Back, the information buttons, the finding
   actions and the navigation buttons are named buttons reachable with Tab.
 - **Findings** are one normalized list built from the report
-  (`overview::findings`): a finding for each failed compliance check, each
+  (`overview::findings`): a finding for each failed compliance check (for PCR
+  discontinuities, one per undeclared kind at its first PCR), each
   PTS/DTS anomaly group, each continuity event (one finding for the check if
   the CLI reported errors without events), PCR jitter, each PID of
   `transport_errors` and `scrambled_packets` (at its first offset), TS

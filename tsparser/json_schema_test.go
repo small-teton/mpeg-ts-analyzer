@@ -294,6 +294,7 @@ func summarySchemaCases() []schemaCase {
 			opts: options.Options{DumpPcrJitter: true, DumpBitrate: true, FailOnError: true}, wantErr: true,
 			want: map[string]any{
 				"/status": "complete", "/compliance/max_pcr_interval/status": "ng", "/compliance/max_pcr_pts_dts_gap/status": "ng",
+				"/compliance/pcr_discontinuities/status": "ok", "/compliance/pcr_discontinuities/reason": absent{},
 				"/timestamp_anomalies/status": "anomalies", "/continuity_counter/status": "errors",
 				"/pcr_jitter/status": "ng", "/pcr_jitter/reason": absent{}, "/pcr_jitter/delivery/assessment": "constant",
 				"/pcr_jitter/delivery/max_deviation_percent": 0, "/pcr_jitter/estimate/min_jitter_ns": -50_000,
@@ -306,6 +307,8 @@ func summarySchemaCases() []schemaCase {
 			want: map[string]any{
 				"/status": "complete", "/compliance/max_pcr_interval/status": "skipped", "/compliance/max_pcr_interval/reason": present{},
 				"/compliance/max_pcr_interval/value_ms": absent{}, "/compliance/max_pcr_interval/observations": 0,
+				"/compliance/pcr_discontinuities/status": "skipped", "/compliance/pcr_discontinuities/reason": present{},
+				"/compliance/pcr_discontinuities/pcr_count": 1, "/compliance/pcr_discontinuities/items": []any{},
 				"/pcr_jitter/status": "skipped", "/pcr_jitter/reason": present{}, "/pcr_jitter/estimate/observations": 0,
 				"/pcr_jitter/estimate/max_abs_jitter_ns": absent{}, "/pcr_jitter/estimate/discontinuities": []any{},
 				"/pcr_jitter/delivery/assessment": "unknown", "/pcr_jitter/delivery/window_count": 0,
@@ -320,6 +323,15 @@ func summarySchemaCases() []schemaCase {
 				"/status": "complete", "/transport_errors/status": "data_excluded", "/transport_errors/first_offset_bytes": 0,
 				"/transport_errors/pids/4/label": "null", "/transport_errors/pids/4/excluded_packet_count": 0,
 				"/scrambled_packets/status": "data_excluded", "/scrambled_packets/pids/3/pid": "0x0200",
+			},
+		},
+		{
+			name: "complete with PCR discontinuities", schema: summarySchemaFile, path: fixedPath(pcrDiscontinuitiesFixtures[0].path),
+			opts: options.Options{DumpPcrJitter: true},
+			want: map[string]any{
+				"/status": "complete", "/compliance/pcr_discontinuities/status": "ng", "/compliance/pcr_discontinuities/undeclared_count": 2,
+				"/compliance/pcr_discontinuities/items/0/kind": "wraparound", "/compliance/pcr_discontinuities/items/4/kind": "forward_jump",
+				"/pcr_jitter/estimate/discontinuities/0/kind": "declared",
 			},
 		},
 		{
@@ -464,6 +476,14 @@ func analysisSchemaCases() []schemaCase {
 			want: map[string]any{
 				"/status": "complete", "/transport_errors/status": "data_excluded", "/transport_errors/packet_count": 6,
 				"/scrambled_packets/excluded_packet_count": 5, "/scrambled_packets/first_offset_bytes": 7 * 192,
+			},
+		},
+		{
+			name: "complete with PCR discontinuities in M2TS", schema: analysisSchemaFile, path: fixedPath(pcrDiscontinuitiesFixtures[1].path), opts: analysis,
+			want: map[string]any{
+				"/status": "complete", "/programs/0/compliance/pcr_discontinuities/status": "ng",
+				"/programs/0/compliance/pcr_discontinuities/items/2/first_offset_bytes": 202 * 192,
+				"/programs/0/pcr_jitter/estimate/discontinuities/4/kind":                "pcr_pid_change",
 			},
 		},
 		{

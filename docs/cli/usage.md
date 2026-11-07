@@ -4,7 +4,8 @@
 
 The command-line analyzer parses TS packets and checks whether the stream conforms to the following requirements defined in the specification:
 
-- **Max PCR interval** should be no greater than 100 ms (ISO/IEC 13818-1, Section 2.7.2); intervals are not measured across a PCR that carries `discontinuity_indicator`, and a PCR wraparound is measured as a normal interval (see [Timing compliance verdicts](#timing-compliance-verdicts-and---fail-on-error))
+- **Max PCR interval** should be no greater than 100 ms (ISO/IEC 13818-1, Section 2.7.2); intervals are measured only between comparable PCRs, and a PCR wraparound is a normal interval (see [Timing compliance verdicts](#timing-compliance-verdicts-and---fail-on-error))
+- **PCR discontinuities** must be declared with `discontinuity_indicator` (ISO/IEC 13818-1, Section 2.4.3.5); a PCR that jumps backward, or more than 1000 ms forward, without it is reported (ETSI TR 101 290 PCR_discontinuity_indicator_error)
 - **PCR-PTS/DTS max gap** (decode delay) should be no greater than 1000 ms; DTS is used when both timestamps are present, otherwise PTS is used
 - **PTS/DTS anomalies** — timestamps going backward, 33-bit wraparound, large forward jumps (splicing/ad insertion), or DTS later than PTS — are detected and reported (always on; silent when the stream is healthy)
 
@@ -106,6 +107,7 @@ TS Sync: no sync loss detected
 -----------------------------
 Compliance Check Results:
 Max PCR interval: 80.000000ms [OK, limit: <= 100.000000ms]
+PCR discontinuities: 0 undeclared in 60 PCRs [OK]
 PCR-PTS/DTS max gap: 726.666667ms [OK, limit: <= 1000.000000ms]
 -----------------------------
 Continuity Counter: no errors detected
@@ -116,37 +118,77 @@ Transport Scrambling: no scrambled packets
 
 ## Timing compliance verdicts and `--fail-on-error`
 
-The maximum PCR interval and PCR-to-PTS/DTS gap verdicts are always printed.
-The gap uses DTS when both PTS and DTS are present, otherwise PTS. It measures
-the decode timeline rather than the presentation delay of reordered frames. The
-limits are inclusive, so exactly 100 ms and 1000 ms are `OK`. When there are
-fewer than two comparable PCR observations, or no parsed PTS/DTS bracketed by
-PCR observations, the corresponding result is explicit and non-failing:
+The maximum PCR interval, PCR discontinuity and PCR-to-PTS/DTS gap verdicts
+are always printed. The gap uses DTS when both PTS and DTS are present,
+otherwise PTS. It measures the decode timeline rather than the presentation
+delay of reordered frames. The limits are inclusive, so exactly 100 ms and
+1000 ms are `OK`. When there are fewer than two comparable PCR observations,
+fewer than two PCRs at all, or no parsed PTS/DTS bracketed by PCR observations,
+the corresponding result is explicit and non-failing:
 
 ```text
 -----------------------------
 Compliance Check Results:
 Max PCR interval: SKIPPED (need at least two comparable PCR observations)
+PCR discontinuities: SKIPPED (need at least two PCR observations)
 PCR-PTS/DTS max gap: SKIPPED (need a parsed PTS/DTS bracketed by PCR observations)
 ```
 
-The maximum PCR interval is measured between consecutive PCRs on the selected
-program's PCR PID, one segment at a time:
+### PCR steps
 
-- A PCR packet with `discontinuity_indicator` starts a new segment, so no
-  interval is measured across a declared clock discontinuity, forward or
-  backward.
-- A PCR that wraps from the top of the 2^33 × 300 range back toward zero is a
-  normal interval and is measured across the wrap, as long as the wrapped
-  interval is at most 1000 ms.
-- Any other backward PCR without `discontinuity_indicator` is an undeclared
-  reset. It starts a new segment without producing an interval.
-- A forward jump without `discontinuity_indicator` is measured as is, because
-  a file has no arrival time that could distinguish it from a genuinely late
-  PCR. A large undeclared jump therefore reports `NG`.
+Every PCR of the selected program is compared with the previous one, and every
+PCR-based result uses the same classification:
+
+| Step | When | Interval measured | New timing segment | PCR discontinuities |
+| --- | --- | --- | --- | --- |
+| first | The first PCR of the analyzed range (range acquisition) | no | — | not counted |
+| `continuous` | 0 to 1000 ms later, same PID, no `discontinuity_indicator` | yes | no | not listed |
+| `wraparound` | Smaller, but 0 to 1000 ms later counted across the 2^33 × 300 wrap | yes | no | listed, legal |
+| `declared` | `discontinuity_indicator` on the PCR packet, or on an earlier packet of the `PCR_PID` that carried no PCR (the next PCR then starts the new time base) | no | yes | listed, legal |
+| `pcr_pid_change` | A PMT version changed the `PCR_PID` since the previous PCR, even if a later version changed it back before a PCR arrived on the other PID | no | yes | listed, legal |
+| `backward` | Otherwise smaller, without `discontinuity_indicator` | no | yes | **undeclared** |
+| `forward_jump` | More than 1000 ms later, without `discontinuity_indicator` | no | yes | **undeclared** |
+
+- **Max PCR interval** is the largest `continuous` or `wraparound` interval,
+  judged against 100 ms (ISO/IEC 13818-1, 2.7.2; ETSI TR 101 290 V1.4.1
+  indicator 2.3a, which withdrew the earlier 40 ms DVB recommendation). A file
+  has no arrival times, so the interval is the difference of the PCR values.
+- **PCR discontinuities** is `NG` when at least one step is `backward` or
+  `forward_jump`: the time base changed without the `discontinuity_indicator`
+  that ISO/IEC 13818-1, 2.4.3.5 requires (ETSI TR 101 290 indicator 2.3b,
+  PCR_discontinuity_indicator_error). Declared discontinuities, `PCR_PID`
+  changes and wraparounds are listed with their first offset but do not fail.
+- TR 101 290 2.3b reports any undeclared difference outside 0 to 100 ms. A
+  forward step between 100 ms and 1000 ms is instead measured as an interval
+  and fails Max PCR interval: in a file it cannot be told apart from a PCR that
+  genuinely arrived late (2.3a). Only a step that no late PCR explains, more
+  than ten times the limit, is a `forward_jump`.
+- A new timing segment also restarts the PCR jitter estimate, freezes the
+  bitrate clock and the elapsed time of `--output analysis` series, and ends
+  the PCR bracket of the PES packets in progress, so no PCR-to-PTS/DTS gap is
+  measured across it. A `wraparound` keeps all of them running, but a PES
+  packet whose PCRs straddle the wrap gets no gap.
+
+For example, the intentionally invalid
+`sample_data/sample_188byte_pcr_discontinuities.ts` passes through every kind:
+
+```text
+Max PCR interval: 40.000000ms [OK, limit: <= 100.000000ms]
+PCR discontinuities: 2 undeclared in 127 PCRs [NG]
+  - wraparound    : 1, first at 0x000024b8 (PCR jumped +40.000ms)
+  - declared      : 2, first at 0x00003ac0 (PCR jumped +5040.000ms)
+  - pcr_pid_change: 1, first at 0x00009458 (PCR jumped +40.000ms)
+  - backward      : 1, first at 0x000066d0 (PCR jumped -1960.000ms)
+  - forward_jump  : 1, first at 0x00007cd8 (PCR jumped +4040.000ms)
+```
+
+The jump of a wraparound is the interval counted across the wrap. See
+[PCR timing results](../reference/json-output.md#pcr-timing-results) for how
+each PCR-based result uses these steps.
 
 `--fail-on-error` is intended for CI. It preserves all normal output and exits
-with code 2 if either evaluated check is `NG`. Healthy and insufficient-data
+with code 2 if any evaluated check (max PCR interval, PCR discontinuities or
+PCR-to-PTS/DTS gap) is `NG`. Healthy and insufficient-data
 runs exit 0; usage, input, and parsing errors use exit 1. The PCR jitter
 estimate of `--dump-pcr-jitter` does not take part, whatever its status
 (see [Dump PCR jitter](dumps.md#dump-pcr-jitter)).
@@ -157,7 +199,7 @@ mpeg-ts-analyzer input.ts --fail-on-error
 
 The timing checks use inclusive limits: exactly 100 ms for the maximum PCR
 interval and exactly 1000 ms for the PCR-to-PTS/DTS gap are `OK`. A check is
-`SKIPPED` when there are not enough comparable observations; `SKIPPED` does not
+`SKIPPED` when there are not enough observations; `SKIPPED` does not
 make `--fail-on-error` fail. Exit codes are:
 
 - `0`: parsing completed and no evaluated timing check reported `NG`
@@ -170,6 +212,7 @@ Example default result:
 -----------------------------
 Compliance Check Results:
 Max PCR interval: 80.000000ms [OK, limit: <= 100.000000ms]
+PCR discontinuities: 0 undeclared in 60 PCRs [OK]
 PCR-PTS/DTS max gap: 726.666667ms [OK, limit: <= 1000.000000ms]
 ```
 
@@ -209,7 +252,8 @@ reported as warnings instead of producing a partial table; see
 Long captures can update the PAT or PMT while they are analyzed. The analyzer
 keeps collecting both tables and applies a new version once all its sections
 have arrived: a moved PMT is read from its new PID, a new `PCR_PID` starts a new
-PCR timing segment (no interval, jitter or bitrate window spans the change),
+PCR timing segment (a `pcr_pid_change` step: no interval, jitter, bitrate
+window or PCR-to-PTS/DTS gap spans the change),
 and elementary streams that are added, removed or change `stream_type` start
 or stop cleanly. Each applied change is printed with its offset in text mode
 and listed under `psi_transitions` in JSON; a program removed from the PAT

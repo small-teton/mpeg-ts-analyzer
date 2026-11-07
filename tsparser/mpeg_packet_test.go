@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/small-teton/mpeg-ts-analyzer/v2/internal/analysis"
 	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 )
 
@@ -797,5 +798,127 @@ func TestScanBoundsPesRetentionForLongContinuation(t *testing.T) {
 	}
 	if pes.ptsDtsFlags != 2 || pes.pts != 90000 {
 		t.Errorf("ptsDtsFlags = %d, pts = %d, want 2, 90000", pes.ptsDtsFlags, pes.pts)
+	}
+}
+
+// TestBufferPesPcrPtsGapNotAcrossDiscontinuity keeps a PCR-PTS/DTS gap from
+// spanning a PCR discontinuity: a PES that starts in one time base is not
+// bracketed by the first PCR of the next, so it gives no gap, while the same
+// PES before a continuous PCR does.
+func TestBufferPesPcrPtsGapNotAcrossDiscontinuity(t *testing.T) {
+	const ms = uint64(pcrTicksPerMs)
+	programInfos := []ProgramInfo{{streamType: 0x02, elementaryPid: 0x31}}
+	run := func(next []byte) complianceCheck {
+		t.Helper()
+		packets := [][]byte{
+			buildPcrPacket(0x31, 1000*ms),
+			buildPesTsPacket(0x31, 0, encodePtsOnlyPes(1200*90)),
+			next,
+			buildPesTsPacket(0x31, 1, encodePtsOnlyPes(1240*90)),
+		}
+		var pos int64
+		analysis, err := bufferPes(bytes.NewReader(bytes.Join(packets, nil)), &pos, 0x30, 0x31, programInfos, nil, options.Options{}, 188, 0, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return analysis.compliance.maxPcrPtsGap
+	}
+	if got := run(buildPcrPacket(0x31, 1040*ms)); got.observations != 1 {
+		t.Errorf("continuous: %+v", got)
+	}
+	for name, next := range map[string][]byte{
+		"declared":     buildPcrPacketDI(0x31, 61_000*ms),
+		"backward":     buildPcrPacket(0x31, 500*ms),
+		"forward jump": buildPcrPacket(0x31, 3000*ms),
+	} {
+		if got := run(next); got.observations != 0 {
+			t.Errorf("%s: a gap was measured across the discontinuity: %+v", name, got)
+		}
+	}
+}
+
+// TestBufferPesDiscontinuityIndicatorWithoutPcr declares a discontinuity with
+// discontinuity_indicator on a packet of the PCR_PID that carries no PCR: the
+// next PCR starts the new time base. The indicator in a packet with
+// transport_error_indicator is not trusted.
+func TestBufferPesDiscontinuityIndicatorWithoutPcr(t *testing.T) {
+	const ms = uint64(pcrTicksPerMs)
+	indicatorOnly := func(pid uint16, tei bool) []byte {
+		pkt := buildPcrPacketDI(pid, 0)
+		pkt[5] &^= 0x10 // no PCR
+		if tei {
+			pkt[1] |= 0x80
+		}
+		return pkt
+	}
+	programInfos := []ProgramInfo{{streamType: 0x02, elementaryPid: 0x31}}
+	for _, tt := range []struct {
+		name       string
+		marker     []byte
+		undeclared int
+	}{
+		{"declared earlier", indicatorOnly(0x31, false), 0},
+		{"indicator in a TEI packet", indicatorOnly(0x31, true), 1},
+		{"indicator on another PID", indicatorOnly(0x32, false), 1},
+	} {
+		marker := tt.marker
+		packets := [][]byte{buildPcrPacket(0x31, 5000*ms), marker, buildPcrPacket(0x31, 1000*ms), buildPcrPacket(0x31, 1040*ms)}
+		var pos int64
+		analysis, err := bufferPes(bytes.NewReader(bytes.Join(packets, nil)), &pos, 0x30, 0x31, programInfos, nil, options.Options{}, 188, 0, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := analysis.compliance.pcrDiscontinuities; got.Undeclared != tt.undeclared || got.PCRs != 3 {
+			t.Errorf("%s: %+v", tt.name, got)
+		}
+	}
+}
+
+// TestProgramAnalyzerPcrPidChangedAwayAndBack changes the PCR_PID to another
+// PID and back before any PCR arrives on the interim PID: the next PCR on the
+// original PID is still a pcr_pid_change step, so no interval, jitter
+// segment, bitrate interval, series interval or PCR-PTS/DTS bracket spans the
+// two layout changes.
+func TestProgramAnalyzerPcrPidChangedAwayAndBack(t *testing.T) {
+	const ms = uint64(pcrTicksPerMs)
+	const pcrPid, interim, video = 0x31, 0x32, 0x40
+	infos := []ProgramInfo{{streamType: 0x02, elementaryPid: video}}
+	a := newProgramAnalyzer(options.Options{}, 0, 1, 0x30, pcrPid, infos, true)
+	pos := int64(0)
+	feed := func(data []byte) {
+		t.Helper()
+		a.observe(parsedPacket(t, data, pos, false, 0), pos, false)
+		pos += 188
+	}
+	feed(buildPcrPacket(pcrPid, 1000*ms))
+	feed(buildPcrPacket(pcrPid, 1040*ms))
+	feed(buildPesTsPacket(video, 0, encodePtsOnlyPes(1200*90)))
+	a.setLayout(0x30, interim, infos)
+	a.setLayout(0x30, pcrPid, infos)
+	feed(buildPcrPacket(pcrPid, 1080*ms))
+	feed(buildPcrPacket(pcrPid, 1120*ms))
+	feed(buildPesTsPacket(video, 1, encodePtsOnlyPes(1300*90)))
+	a.finish()
+
+	if got := a.pcr.Interval(); got.Intervals != 2 || got.MaxMs != 40 {
+		t.Errorf("interval = %+v, want 2 intervals of 40 ms", got)
+	}
+	d := a.pcr.Discontinuities()
+	if len(d.Steps) != 1 || d.Steps[0].Kind != analysis.PCRStepPIDChange || d.Steps[0].FirstOffset != 3*188 || d.Undeclared != 0 {
+		t.Errorf("discontinuities = %+v", d)
+	}
+	res := analyzePcrJitter(a.pcrJitter.samples)
+	if res.segments != 2 || len(res.discontinuities) != 1 || res.discontinuities[0].kind != analysis.PCRStepPIDChange {
+		t.Errorf("jitter = %+v", res)
+	}
+	if a.bitrate.segments != 2 {
+		t.Errorf("bitrate segments = %d, want 2", a.bitrate.segments)
+	}
+	if p := a.series.pcr[2]; !p.discontinuity || p.hasInterval {
+		t.Errorf("series point at the change = %+v", p)
+	}
+	// The first PES started before the change has no bracket across it.
+	if a.pcrPtsSamples != 0 {
+		t.Errorf("PCR-PTS/DTS samples = %d, want 0", a.pcrPtsSamples)
 	}
 }

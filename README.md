@@ -17,6 +17,9 @@ bits.
 ## What it checks
 
 - **Max PCR interval**: no greater than 100 ms (ISO/IEC 13818-1, 2.7.2).
+- **PCR discontinuities**: a PCR that jumps backward, or more than 1000 ms
+  forward, without `discontinuity_indicator` (ISO/IEC 13818-1, 2.4.3.5);
+  declared discontinuities, `PCR_PID` changes and wraparounds are listed.
 - **PCR → PTS/DTS gap** (decode delay): no greater than 1000 ms.
 - **PTS/DTS anomalies**: timestamps going backward, wraparound, large forward
   jumps, or DTS later than PTS.
@@ -75,6 +78,7 @@ mpeg-ts-analyzer input.ts --format json    # the same, as one JSON document
 ```text
 Compliance Check Results:
 Max PCR interval: 80.000000ms [OK, limit: <= 100.000000ms]
+PCR discontinuities: 0 undeclared in 60 PCRs [OK]
 PCR-PTS/DTS max gap: 726.666667ms [OK, limit: <= 1000.000000ms]
 ```
 

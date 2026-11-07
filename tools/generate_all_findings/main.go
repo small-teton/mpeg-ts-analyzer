@@ -1,6 +1,7 @@
 // Command generate_all_findings writes a short, deterministic transport stream
 // in which every Overview transport-health check of the range analysis reports a
-// non-OK result. It is intentionally invalid: use it to demonstrate and test
+// non-OK result, except PCR discontinuities: its PCR clock is continuous
+// (tools/generate_pcr_discontinuities covers that check). It is intentionally invalid: use it to demonstrate and test
 // the verdicts, never as an example of a compliant stream.
 //
 // The stream has one program (program_number 1, PMT PID 0x1000) with MPEG-2
