@@ -49,8 +49,41 @@ GUI packages for macOS (Apple silicon), Linux (`.deb`, AppImage) and Windows
 (installer, portable zip) are published on the
 [releases page](https://github.com/small-teton/mpeg-ts-analyzer/releases) under
 `gui-v<version>` tags, separately from the CLI releases. Each package bundles a
-published CLI release, named in the release title and in its manifest file. The packages are not code-signed; the release notes
-explain how to open them and how to verify a download.
+published CLI release, named in the release title and in its manifest file.
+
+The macOS bundle has an ad-hoc signature that seals the app contents, but it is
+not signed with an Apple Developer ID or notarized. macOS therefore warns
+before the first launch; this warning does not mean that Apple has verified the
+publisher or checked this release for malware. See
+[Release security](../gui/release-security.md#identity-backed-code-signing-and-notarization-excluded-for-now)
+for the current signing model.
+
+This is an intentional trade-off for this personal OSS project. Distributing a
+Developer ID-signed and notarized build requires an Apple Developer Program
+membership, currently **US$99 per membership year** (or the local-currency
+equivalent). The project does not currently pay that recurring fee, so macOS
+users need the one-time first-launch override below. This can be reconsidered
+if project funding or user demand justifies it. See
+[Apple's membership details](https://developer.apple.com/programs/whats-included/)
+for the current fee.
+
+### Opening the macOS GUI for the first time
+
+1. Open the downloaded `.dmg`, drag `mpeg-ts-analyzer.app` to **Applications**,
+   and open the copied app from Applications. Do not run it from the mounted
+   disk image.
+2. macOS blocks the first launch because the app is not Developer ID-signed and
+   notarized. Dismiss the warning, then open **System Settings → Privacy &
+   Security**.
+3. Scroll down to **Security** and click **Open Anyway** for
+   `mpeg-ts-analyzer`. The button appears only after macOS has blocked a launch
+   attempt and is available for about an hour.
+4. Confirm the warning by clicking **Open** and authenticate if macOS asks.
+
+macOS saves the app as an exception, so later launches work normally. On a Mac
+managed by an organization, its security policy may prevent this override. See
+[Apple's official instructions](https://support.apple.com/guide/mac-help/mh40617/mac)
+for the current System Settings workflow.
 
 ### Updating the GUI
 

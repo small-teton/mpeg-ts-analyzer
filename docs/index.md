@@ -39,6 +39,8 @@ These pages are for contributors.
 
 - [Development](development/index.md): environment, tests and coverage, the
   GUI, dependency checks and the README demo.
+- [Architecture](development/architecture.md): the Go packages, the boundary
+  between parsing and analysis, and how to add a transport check.
 - [Fuzz testing](development/fuzzing.md)
 - [Sample data](development/sample-data.md): how the streams in `sample_data/`
   were made.

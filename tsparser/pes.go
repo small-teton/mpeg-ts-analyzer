@@ -4,17 +4,35 @@ import (
 	"fmt"
 )
 
+// maxPesHeaderSize is the largest PES header that ISO/IEC 13818-1 allows: the
+// 6 bytes of packet_start_code_prefix, stream_id and PES_packet_length, the 3
+// bytes of flags and PES_header_data_length, and at most 255 bytes of optional
+// fields and stuffing that PES_header_data_length can announce. A Pes retains
+// at most this many leading bytes of each PES packet, however long the packet
+// is or however far away the next payload_unit_start_indicator lies.
+//
+// Parse reads at most 32 bytes (the 9 fixed bytes plus PTS/DTS, ESCR, ES_rate,
+// DSM trick mode, additional_copy_info and previous_PES_packet_CRC), so the
+// limit never changes what it decodes; it also keeps the complete header
+// available for header-level checks, independent of the elementary-stream
+// payload size.
+const maxPesHeaderSize = 6 + 3 + 255
+
 // Pes Packetized Elementary Stream.
 type Pes struct {
 	pid               uint16
 	continuityCounter uint8
-	buf               []byte
-	pos               int64
-	newBitReader      func() bitReader
-	prevPcr           uint64
-	nextPcr           uint64
-	prevPcrPos        int64
-	nextPcrPos        int64
+	// buf holds the first bytes of the PES packet, at most maxPesHeaderSize.
+	buf []byte
+	// received counts every payload byte appended to this PES packet,
+	// including the bytes beyond maxPesHeaderSize that are not retained.
+	received     int64
+	pos          int64
+	newBitReader func() bitReader
+	prevPcr      uint64
+	nextPcr      uint64
+	prevPcrPos   int64
+	nextPcrPos   int64
 	// PCR values wrap to zero, so presence is tracked separately.
 	hasPrevPcr bool
 	hasNextPcr bool
@@ -59,14 +77,12 @@ type Pes struct {
 	pStdBufferScale                  uint8
 	pStdBufferSize                   uint16
 	pesExtensionFieldLength          uint8
-
-	data []byte
 }
 
 // NewPes create new PES instance
 func NewPes() *Pes {
 	pes := new(Pes)
-	pes.buf = make([]byte, 0, 65536)
+	pes.buf = make([]byte, 0, maxPesHeaderSize)
 	return pes
 }
 
@@ -75,6 +91,7 @@ func (p *Pes) Initialize(pid uint16, pos int64, prevPcr uint64, prevPcrPos int64
 	p.pid = pid
 	p.continuityCounter = 0
 	p.buf = p.buf[0:0]
+	p.received = 0
 	p.pos = pos
 	p.prevPcr = prevPcr
 	p.nextPcr = 0
@@ -131,9 +148,15 @@ func (p *Pes) ContinuityCounter() uint8 { return p.continuityCounter }
 // SetContinuityCounter set current continuity_counter of TsPacket.
 func (p *Pes) SetContinuityCounter(continuityCounter uint8) { p.continuityCounter = continuityCounter }
 
-// Append append ts payload data for buffer.
+// Append adds the next TS payload of the PES packet. Only the first
+// maxPesHeaderSize bytes are retained, so the memory held per active PES stays
+// bounded even when a PID never starts another PES packet; the length of the
+// remaining bytes is still counted.
 func (p *Pes) Append(buf []byte) {
-	p.buf = append(p.buf, buf...)
+	p.received += int64(len(buf))
+	if room := maxPesHeaderSize - len(p.buf); room > 0 {
+		p.buf = append(p.buf, buf[:min(room, len(buf))]...)
+	}
 }
 
 // Parse PES header.
@@ -161,12 +184,12 @@ func (p *Pes) Parse() error {
 	}
 	switch p.streamID {
 	case 0xBC, 0xBF, 0xF0, 0xF1, 0xFF, 0xF2, 0xF8:
-		// pes_packet_length is attacker-controlled; reject a length that runs
-		// past the buffered data.
-		if 6+int(p.pesPacketLength) > len(p.buf) {
+		// These streams carry no optional header. pes_packet_length is
+		// attacker-controlled; reject a length that runs past the payload
+		// received for this PES packet (retained or not).
+		if 6+int64(p.pesPacketLength) > p.received {
 			return fmt.Errorf("invalid pes_packet_length: %d", p.pesPacketLength)
 		}
-		p.data = p.buf[6 : 6+p.pesPacketLength]
 		return nil
 	}
 	if err = bb.Skip(2); err != nil {

@@ -224,7 +224,7 @@ func scanPrograms(reader io.Reader, pos *int64, analyzers []*programAnalyzer, co
 			if !quiet {
 				fmt.Printf("packet loss. : pid=0x%04x. count=0x%x, pos=0x%08x\n", event.PID, event.Actual, event.Pos)
 			}
-			continuity.Add(event.PID)
+			continuity.Add(*event)
 			result.continuityEvents = append(result.continuityEvents, *event)
 		}
 		for _, analyzer := range analyzers {

@@ -6,6 +6,8 @@ import (
 	"io"
 	"sort"
 	"strings"
+
+	"github.com/small-teton/mpeg-ts-analyzer/v2/internal/analysis"
 )
 
 const jsonSchemaVersion = "2.0"
@@ -313,23 +315,13 @@ func reportCompliance(r complianceReport) *ReportCompliance {
 }
 
 func reportContinuity(s *continuityCounterSummary) *ReportContinuity {
-	r := &ReportContinuity{Status: "ok", PIDs: []ReportContinuityPID{}}
-	pids := make([]uint16, 0, len(s.counts))
-	for pid := range s.counts {
-		pids = append(pids, pid)
-	}
-	sort.Slice(pids, func(i, j int) bool { return pids[i] < pids[j] })
-	for _, pid := range pids {
-		label := s.labels[pid]
-		if label == "" {
-			label = "unknown"
-		}
-		count := s.counts[pid]
-		r.TotalErrorCount += count
-		r.PIDs = append(r.PIDs, ReportContinuityPID{PID: reportPID(pid), Label: label, ErrorCount: count})
-	}
-	if r.TotalErrorCount > 0 {
+	result := s.check.Result()
+	r := &ReportContinuity{Status: "ok", TotalErrorCount: result.TotalErrors, PIDs: []ReportContinuityPID{}}
+	if result.Status == analysis.StatusErrors {
 		r.Status = "errors"
+	}
+	for _, pid := range result.PIDs {
+		r.PIDs = append(r.PIDs, ReportContinuityPID{PID: reportPID(pid.PID), Label: pid.Label, ErrorCount: pid.Errors})
 	}
 	return r
 }

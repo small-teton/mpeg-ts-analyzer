@@ -126,20 +126,26 @@ jobs:
         mkdir -p out
         go test -coverprofile=out/bitbuffer.out -covermode=set ./bitbuffer/...
         go test -coverprofile=out/tsparser.out -covermode=set ./tsparser/...
+        go test -coverprofile=out/analysis.out -covermode=set ./internal/analysis/...
 
         echo "=== bitbuffer ==="
         go tool cover -func=out/bitbuffer.out
         echo ""
         echo "=== tsparser ==="
         go tool cover -func=out/tsparser.out
+        echo ""
+        echo "=== analysis ==="
+        go tool cover -func=out/analysis.out
 
         bitbuffer=$(go tool cover -func=out/bitbuffer.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')
         tsparser=$(go tool cover -func=out/tsparser.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')
+        analysis=$(go tool cover -func=out/analysis.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')
         echo "bitbuffer=$bitbuffer" >> "$GITHUB_OUTPUT"
         echo "tsparser=$tsparser" >> "$GITHUB_OUTPUT"
+        echo "analysis=$analysis" >> "$GITHUB_OUTPUT"
 
-        if [ "$bitbuffer" != "100.0" ] || [ "$tsparser" != "100.0" ]; then
-          echo "Expected 100.0% coverage for bitbuffer and tsparser; got $bitbuffer% and $tsparser%."
+        if [ "$bitbuffer" != "100.0" ] || [ "$tsparser" != "100.0" ] || [ "$analysis" != "100.0" ]; then
+          echo "Expected 100.0% coverage for bitbuffer, tsparser and analysis; got $bitbuffer%, $tsparser% and $analysis%."
           exit 1
         fi
 
