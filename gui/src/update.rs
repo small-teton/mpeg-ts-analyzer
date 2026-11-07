@@ -9,6 +9,7 @@
 //! checked with [`validate_url`] and whose redirects stay on GitHub.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::mpsc::{Receiver, channel};
 use std::time::Duration;
 
@@ -320,6 +321,22 @@ pub(crate) struct Available {
     pub notify_only: Option<String>,
 }
 
+impl Available {
+    /// An update to `version` bundling CLI 9.8.7, which cannot be downloaded:
+    /// what tests offer instead of a release on GitHub.
+    #[cfg(test)]
+    pub(crate) fn for_test(version: &str, notify_only: Option<&str>) -> Self {
+        Self {
+            version: Version::parse(version).expect("test version"),
+            bundled_cli_version: "9.8.7".to_owned(),
+            release_url: format!("https://github.com/{OWNER_REPO}/releases/tag/gui-v{version}"),
+            update: None,
+            package_name: String::new(),
+            notify_only: notify_only.map(str::to_owned),
+        }
+    }
+}
+
 /// Checks GitHub for a newer GUI release. Blocking; run it off the UI thread.
 fn check(current: &Version, kind: &InstallKind) -> Result<Option<Available>, String> {
     let client = client()?;
@@ -519,12 +536,29 @@ pub(crate) enum Phase {
     Installed(Box<Available>),
 }
 
+/// Looks for a newer release; [`check`] outside tests.
+type Checker =
+    Arc<dyn Fn(&Version, &InstallKind) -> Result<Option<Available>, String> + Send + Sync>;
+
+/// The checker of a new [`Updates`]. Tests never reach the network: they
+/// get a checker that fails, and install their own with `with_checker`.
+fn default_checker() -> Checker {
+    if cfg!(test) {
+        Arc::new(|_: &Version, _: &InstallKind| Err("tests do not reach the network".to_owned()))
+    } else {
+        Arc::new(check)
+    }
+}
+
 /// The update state of the app and its window.
 pub(crate) struct Updates {
     pub phase: Phase,
     kind: InstallKind,
+    checker: Checker,
     /// Whether the user asked; a startup check stays silent on failure.
     manual: bool,
+    /// The startup check has opened the window once; it does not again.
+    prompted: bool,
     pub window_open: bool,
     receiver: Option<Receiver<Message>>,
     /// A downloaded Windows installer, run from `on_exit`.
@@ -536,7 +570,9 @@ impl Updates {
         Self {
             phase: Phase::Idle,
             kind,
+            checker: default_checker(),
             manual: false,
+            prompted: false,
             window_open: false,
             receiver: None,
             install_on_exit: None,
@@ -553,10 +589,25 @@ impl Updates {
         }
     }
 
+    /// Replaces the release lookup, so tests can offer an update offline.
+    #[cfg(test)]
+    pub(crate) fn with_checker(
+        mut self,
+        checker: impl Fn(&Version, &InstallKind) -> Result<Option<Available>, String>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        self.checker = Arc::new(checker);
+        self
+    }
+
     /// Checks for an update off the UI thread. `manual` opens the window and
-    /// reports failures; the startup check only reports an update.
+    /// reports failures; the startup check opens it only for an update that
+    /// was not skipped (see [`Updates::poll`]).
     pub(crate) fn check(&mut self, ctx: &egui::Context, manual: bool) {
         if self.receiver.is_some() {
+            self.manual |= manual;
             self.window_open |= manual;
             return;
         }
@@ -565,23 +616,41 @@ impl Updates {
         self.phase = Phase::Checking;
         let (sender, receiver) = channel();
         let kind = self.kind.clone();
+        let checker = Arc::clone(&self.checker);
         let ctx = ctx.clone();
         std::thread::spawn(move || {
-            let _ = sender.send(Message::Checked(check(&current_version(), &kind)));
+            let _ = sender.send(Message::Checked(checker(&current_version(), &kind)));
             ctx.request_repaint();
         });
         self.receiver = Some(receiver);
     }
 
-    /// Takes in the result of a check, an install or a download.
-    pub(crate) fn poll(&mut self, ctx: &egui::Context) {
+    /// Whether a check is running.
+    #[cfg(test)]
+    pub(crate) fn checking(&self) -> bool {
+        matches!(self.phase, Phase::Checking)
+    }
+
+    /// Takes in the result of a check, an install or a download. The first
+    /// startup check that finds a version other than `skipped` opens the
+    /// window, once per launch.
+    pub(crate) fn poll(&mut self, ctx: &egui::Context, skipped: Option<&str>) {
         let Some(message) = self.receiver.as_ref().and_then(|r| r.try_recv().ok()) else {
             return;
         };
         self.receiver = None;
         let phase = std::mem::replace(&mut self.phase, Phase::Idle);
         self.phase = match (message, phase) {
-            (Message::Checked(Ok(Some(available))), _) => Phase::Available(Box::new(available)),
+            (Message::Checked(Ok(Some(available))), _) => {
+                if !self.manual
+                    && !self.prompted
+                    && skipped != Some(available.version.to_string().as_str())
+                {
+                    self.prompted = true;
+                    self.window_open = true;
+                }
+                Phase::Available(Box::new(available))
+            }
             (Message::Checked(Ok(None)), _) => Phase::UpToDate,
             (Message::Checked(Err(error)), _) => {
                 if !self.manual {
@@ -649,29 +718,49 @@ impl Updates {
         }
     }
 
-    /// The status-bar button that announces an update; nothing otherwise.
-    pub(crate) fn status_button(&mut self, ui: &mut egui::Ui) {
-        if let Phase::Available(available) = &self.phase
-            && ui
-                .small_button(format!("Update available: {}", available.version))
-                .clicked()
-        {
-            self.window_open = true;
+    /// The version a check has found, if it has found one.
+    pub(crate) fn available_version(&self) -> Option<&Version> {
+        match &self.phase {
+            Phase::Available(available) => Some(&available.version),
+            _ => None,
         }
     }
 
-    /// The window that shows the check and offers the update.
-    pub(crate) fn window(&mut self, ctx: &egui::Context, analysis_running: bool) {
+    /// The navigation rail's update button and About's "Check for Updates…":
+    /// shows the window, with a new manual check unless an update was found
+    /// or is being installed.
+    pub(crate) fn open(&mut self, ctx: &egui::Context) {
+        match self.phase {
+            Phase::Available(_) | Phase::Installing(_) | Phase::Installed(_) => {
+                self.window_open = true;
+            }
+            Phase::Idle | Phase::Checking | Phase::UpToDate | Phase::Failed(_) => {
+                self.check(ctx, true);
+            }
+        }
+    }
+
+    /// The window that shows the check and offers the update. Skip this
+    /// version stores the version in `skipped`.
+    pub(crate) fn window(
+        &mut self,
+        ctx: &egui::Context,
+        analysis_running: bool,
+        skipped: &mut Option<String>,
+    ) {
         if !self.window_open {
             return;
         }
         let mut open = true;
         let mut action = None;
+        // Centered, so a window opened at startup does not cover the rail.
         egui::Window::new("Software update")
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
             .default_width(380.0)
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
             .show(ctx, |ui| {
                 action = self.window_contents(ui, analysis_running);
             });
@@ -681,6 +770,12 @@ impl Updates {
             Some(Action::Install) => self.install(ctx),
             Some(Action::Restart) => self.restart(ctx),
             Some(Action::Close) => self.window_open = false,
+            Some(Action::Skip) => {
+                if let Some(version) = self.available_version() {
+                    *skipped = Some(version.to_string());
+                }
+                self.window_open = false;
+            }
             None => {}
         }
     }
@@ -719,22 +814,29 @@ impl Updates {
                 if let Some(reason) = &available.notify_only {
                     ui.weak(reason);
                     ui.add_space(4.0);
-                    if ui.button("Open release page").clicked() {
-                        ui.ctx()
-                            .open_url(egui::OpenUrl::new_tab(&available.release_url));
-                    }
-                } else {
-                    ui.horizontal(|ui| {
+                }
+                ui.horizontal(|ui| {
+                    if available.notify_only.is_some() {
+                        if ui.button("Open release page").clicked() {
+                            ui.ctx()
+                                .open_url(egui::OpenUrl::new_tab(&available.release_url));
+                        }
+                    } else {
                         let install = ui
                             .add_enabled(!analysis_running, egui::Button::new("Install"))
                             .on_disabled_hover_text("Wait until the analysis has finished.");
                         if install.clicked() {
                             action = Some(Action::Install);
                         }
-                        if ui.button("Later").clicked() {
-                            action = Some(Action::Close);
-                        }
-                    });
+                    }
+                    if ui.button("Later").clicked() {
+                        action = Some(Action::Close);
+                    }
+                    if ui.button("Skip this version").clicked() {
+                        action = Some(Action::Skip);
+                    }
+                });
+                if available.notify_only.is_none() {
                     ui.weak(install_note(&self.kind));
                 }
             }
@@ -789,6 +891,8 @@ enum Action {
     Install,
     Restart,
     Close,
+    /// Close, and do not open the window at startup for this version again.
+    Skip,
 }
 
 fn describe(ui: &mut egui::Ui, available: &Available) {
@@ -1091,26 +1195,24 @@ mod tests {
     use egui_kittest::kittest::{NodeT, Queryable};
 
     fn available(notify_only: Option<&str>) -> Box<Available> {
-        Box::new(Available {
-            version: v("9.9.9"),
-            bundled_cli_version: "9.8.7".to_owned(),
-            release_url: format!("https://github.com/{OWNER_REPO}/releases/tag/gui-v9.9.9"),
-            update: None,
-            package_name: String::new(),
-            notify_only: notify_only.map(str::to_owned),
-        })
+        Box::new(Available::for_test("9.9.9", notify_only))
     }
 
     fn mac() -> InstallKind {
         InstallKind::MacApp(PathBuf::from("/Applications/mpeg-ts-analyzer.app"))
     }
 
-    fn window(phase: Phase, kind: InstallKind, running: bool) -> Harness<'static, Updates> {
+    /// The updates and the skipped version of the settings.
+    type State = (Updates, Option<String>);
+
+    fn window(phase: Phase, kind: InstallKind, running: bool) -> Harness<'static, State> {
         let mut harness = Harness::builder()
             .with_size(eframe::egui::vec2(800.0, 600.0))
             .build_ui_state(
-                move |ui, updates: &mut Updates| updates.window(ui.ctx(), running),
-                Updates::with_phase(phase, kind),
+                move |ui, (updates, skipped): &mut State| {
+                    updates.window(ui.ctx(), running, skipped)
+                },
+                (Updates::with_phase(phase, kind), None),
             );
         // Not run(): the spinners of Checking and Installing keep repainting.
         harness.run_steps(4);
@@ -1127,7 +1229,22 @@ mod tests {
         assert!(!install.accesskit_node().is_disabled());
         harness.get_by_label("Later").click();
         harness.run();
-        assert!(!harness.state().window_open);
+        assert!(!harness.state().0.window_open);
+        assert_eq!(harness.state().1, None, "Later skipped the version");
+    }
+
+    #[test]
+    fn skip_this_version_remembers_the_version() {
+        for kind in [mac(), InstallKind::NotifyOnly("portable".to_owned())] {
+            let notify_only = matches!(kind, InstallKind::NotifyOnly(_)).then_some("portable");
+            let mut harness = window(Phase::Available(available(notify_only)), kind, false);
+            harness.get_by_label("Skip this version").click();
+            harness.run();
+            assert!(!harness.state().0.window_open);
+            assert_eq!(harness.state().1.as_deref(), Some("9.9.9"));
+            // The update is still available, for the rail's badge.
+            assert!(harness.state().0.available_version().is_some());
+        }
     }
 
     #[test]
@@ -1151,6 +1268,8 @@ mod tests {
         );
         harness.get_by_label(reason);
         harness.get_by_label("Open release page");
+        harness.get_by_label("Later");
+        harness.get_by_label("Skip this version");
         assert!(harness.query_by_label("Install").is_none());
     }
 
@@ -1176,30 +1295,5 @@ mod tests {
         let harness = window(Phase::Installed(available(None)), mac(), false);
         harness.get_by_label("GUI 9.9.9 is installed. Restart to use it.");
         harness.get_by_label("Restart now");
-    }
-
-    #[test]
-    fn the_status_bar_announces_an_update_and_opens_the_window() {
-        let mut updates = Updates::with_phase(Phase::Available(available(None)), mac());
-        updates.window_open = false;
-        let mut harness = Harness::new_ui_state(
-            |ui, updates: &mut Updates| updates.status_button(ui),
-            updates,
-        );
-        harness.run();
-        harness.get_by_label("Update available: 9.9.9").click();
-        harness.run();
-        assert!(harness.state().window_open);
-
-        let mut harness = Harness::new_ui_state(
-            |ui, updates: &mut Updates| updates.status_button(ui),
-            Updates::with_phase(Phase::UpToDate, mac()),
-        );
-        harness.run();
-        assert!(
-            harness
-                .query_by_label_contains("Update available")
-                .is_none()
-        );
     }
 }
