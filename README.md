@@ -40,6 +40,9 @@ bits.
 - **PES headers** of every elementary stream (truncated, bad start code,
   flags, lengths or PTS/DTS marker bits), and **PTS repetition**: a PTS at
   least every 700 ms on video and audio streams (ISO/IEC 13818-1, 2.7.4).
+- **Packet gaps** (report only): for every PID, the longest run of other
+  packets between two of its packets, in packets and estimated milliseconds,
+  to spot poorly interleaved (bursty) multiplexes. No verdict is attached.
 
 Results are text for people, or JSON with a published schema for CI and other
 programs. See [CLI usage][docs-cli-usage].

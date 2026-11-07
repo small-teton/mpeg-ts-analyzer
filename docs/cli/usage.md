@@ -128,6 +128,13 @@ Unreferenced PIDs: none [OK]
 -----------------------------
 PES Headers: 220 checked on 2 PIDs, no errors
 PTS Repetition (limit 700ms): max interval 66.666667ms over 214 intervals [OK]
+-----------------------------
+Max packet gaps (report only): 5 PIDs, time basis pcr_interpolated_file_position
+  PID 0x0000 : 43 packets, max gap 44 packets, 150.222 ms from 0x0001e27c to 0x00020388
+  PID 0x0011 : 10 packets, max gap 173 packets, 551.111 ms from 0x00016e74 to 0x0001ee3c
+  PID 0x0100 (program 1 PCR, program 1 ES stream_type 0x02) : 202 packets, max gap 16 packets, 43.871 ms from 0x0002e094 to 0x0002ed10
+  PID 0x0101 (program 1 ES stream_type 0x03) : 1359 packets, max gap 10 packets, 25.778 ms from 0x000069c0 to 0x000071d4
+  PID 0x1000 (program 1 PMT) : 43 packets, max gap 44 packets, 148.444 ms from 0x0001e338 to 0x00020444
 ```
 
 ## Timing compliance verdicts and `--fail-on-error`
@@ -773,6 +780,64 @@ error); PTS repetition and the other checks report that cause. Neither check
 takes part in `--fail-on-error`. See
 [JSON output](../reference/json-output.md#pes-headers-and-pts-repetition) for
 the complete rules.
+
+## Packet gaps (report only)
+
+The last block of every analysis lists, for every PID of the range except the
+null PID, the longest stretch of other packets between two consecutive
+packets of the PID. It is a report-only multiplexing diagnostic: a poorly
+interleaved remux that sends a stream in large blocks can starve it for a
+long stretch even when its average bitrate is right. There is no limit and no
+verdict, the exit status never changes and `--fail-on-error` ignores it.
+Output of the bursty remux `sample_data/sample_188byte_packet_gaps.ts` (see
+[Sample data](../development/sample-data.md)):
+
+```
+-----------------------------
+Max packet gaps (report only): 8 PIDs, time basis pcr_interpolated_file_position
+  PID 0x0000 : 25 packets, max gap 31 packets, 160.000 ms from 0x00004970 to 0x000060f0
+  PID 0x0011 : 13 packets, max gap 63 packets, 320.000 ms from 0x000066d0 to 0x000095d0
+  PID 0x0012 : 1 packet, no gap (no_consecutive_packets)
+  PID 0x0100 (program 1 ES stream_type 0x02) : 300 packets, max gap 5 packets, 30.000 ms from 0x000042d4 to 0x0000473c
+  PID 0x0101 (program 1 ES stream_type 0x03) : 36 packets, max gap 125 packets, at least 590.000 ms from 0x00011f24 to 0x00017bac
+  PID 0x0102 (program 1 ES stream_type 0x06) : 7 packets, max gap 63 packets, 320.000 ms from 0x00004a2c to 0x0000792c
+  PID 0x01ff (program 1 PCR) : 100 packets, max gap 7 packets, 40.000 ms from 0x000040a0 to 0x00004680
+  PID 0x1000 (program 1 PMT) : 25 packets, max gap 31 packets, 160.000 ms from 0x00005530 to 0x00006cb0
+```
+
+Each line is one PID, with the programs and roles that reference it (none for
+PSI/SI PIDs and PIDs that no PAT or PMT references), its packet count and its
+largest gap:
+
+- The gap is the number of packets of other PIDs (null packets included)
+  between two consecutive packets of the PID; the two packets are not counted.
+  It is exact, and it chooses the largest gap. `from` and `to` are the two
+  packets. Of equal gaps the first is shown, preferring one after the first
+  PCR, whose time can be interpolated.
+- The time is estimated from file position between PCRs, as for the PID
+  references above. `at least` marks a lower bound: the gap lies partly
+  before the first or after the last PCR of the analysis, or crosses a PCR
+  timing-segment boundary (here, the audio bursts around a declared PCR
+  discontinuity). A file has no arrival times, so even an exact value is an
+  estimate, and on a variable-bitrate stream gaps in packets and in time can
+  disagree. Without any PCR the time is unknown (`no_pcr_time_base`).
+- The time before the first and after the last packet of a PID is not a gap;
+  [PID references](#pid-references-always-on) judges absence and silence.
+- A PAT or PMT change that removes a PID, or references it again after an
+  earlier change removed it, starts a new chain: the packets on either side
+  of the change are not consecutive. The private data PID `0x0102` above is
+  removed for 1.6 s and re-added, and its gap across that absence (383
+  packets) is not counted. Its packet count and earlier gaps are kept.
+- A PID with a single packet, or no two packets within one stretch of the
+  layout, has `no gap (no_consecutive_packets)`.
+- The packets counted are those of the PID references: from the first packet
+  of the range, without packets with `transport_error_indicator` set (which
+  still take their place in the gaps of other PIDs). Packet counts match
+  TSDuck's `tsanalyze`.
+
+The state is one record per PID, shared with the PID references; nothing is
+kept per packet. The JSON result is `multiplexing.packet_gaps`
+([JSON output](../reference/json-output.md#multiplexing-packet-gaps)).
 
 ## Timestamp anomaly report (always on)
 

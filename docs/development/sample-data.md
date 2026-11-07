@@ -181,3 +181,22 @@ go run ./tools/generate_pes_health -m2ts -output sample_data/sample_192byte_pes_
 The defects, the expected results and the TSDuck and ffprobe cross-checks are
 described in
 [`tools/generate_pes_health`](https://github.com/small-teton/mpeg-ts-analyzer/tree/master/tools/generate_pes_health).
+
+## Packet-gap sample
+
+`sample_data/sample_188byte_packet_gaps.ts` and its 192-byte M2TS twin
+`sample_data/sample_192byte_packet_gaps.ts` (147 KiB and 150 KiB, 4 s) are a
+**poorly interleaved** remux for the report-only packet gaps: audio arrives in
+bursts of three packets every 320 ms, one burst is left out around a declared
+PCR discontinuity, a PCR-only PID carries the PCR, and a private-data stream
+is removed by one PMT change and added back by a later one. An SDT PID and a
+single-packet PID 0x0012 complete it. The capture starts before the first PAT.
+
+```bash
+go run ./tools/generate_packet_gaps -output sample_data/sample_188byte_packet_gaps.ts
+go run ./tools/generate_packet_gaps -m2ts -output sample_data/sample_192byte_packet_gaps.ts
+./mpeg-ts-analyzer sample_data/sample_188byte_packet_gaps.ts
+```
+
+The packets, the expected gaps and the cross-check are described in
+[`tools/generate_packet_gaps`](https://github.com/small-teton/mpeg-ts-analyzer/tree/master/tools/generate_packet_gaps).

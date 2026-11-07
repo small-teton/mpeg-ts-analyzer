@@ -363,6 +363,89 @@ $ ./mpeg-ts-analyzer sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_
       }
     ]
   },
+  "multiplexing": {
+    "packet_gaps": {
+      "time_basis": "pcr_interpolated_file_position",
+      "pids": [
+        {
+          "pid": "0x0000",
+          "references": [],
+          "packet_count": 43,
+          "status": "info",
+          "max_gap_packets": 44,
+          "max_gap_start_offset_bytes": 123516,
+          "max_gap_end_offset_bytes": 131976,
+          "max_gap_ms": 150.222,
+          "max_gap_exact": true
+        },
+        {
+          "pid": "0x0011",
+          "references": [],
+          "packet_count": 10,
+          "status": "info",
+          "max_gap_packets": 173,
+          "max_gap_start_offset_bytes": 93812,
+          "max_gap_end_offset_bytes": 126524,
+          "max_gap_ms": 551.111,
+          "max_gap_exact": true
+        },
+        {
+          "pid": "0x0100",
+          "references": [
+            {
+              "program_number": 1,
+              "role": "pcr"
+            },
+            {
+              "program_number": 1,
+              "role": "elementary_stream",
+              "stream_type": "0x02"
+            }
+          ],
+          "packet_count": 202,
+          "status": "info",
+          "max_gap_packets": 16,
+          "max_gap_start_offset_bytes": 188564,
+          "max_gap_end_offset_bytes": 191760,
+          "max_gap_ms": 43.871,
+          "max_gap_exact": true
+        },
+        {
+          "pid": "0x0101",
+          "references": [
+            {
+              "program_number": 1,
+              "role": "elementary_stream",
+              "stream_type": "0x03"
+            }
+          ],
+          "packet_count": 1359,
+          "status": "info",
+          "max_gap_packets": 10,
+          "max_gap_start_offset_bytes": 27072,
+          "max_gap_end_offset_bytes": 29140,
+          "max_gap_ms": 25.778,
+          "max_gap_exact": true
+        },
+        {
+          "pid": "0x1000",
+          "references": [
+            {
+              "program_number": 1,
+              "role": "pmt"
+            }
+          ],
+          "packet_count": 43,
+          "status": "info",
+          "max_gap_packets": 44,
+          "max_gap_start_offset_bytes": 123704,
+          "max_gap_end_offset_bytes": 132164,
+          "max_gap_ms": 148.444,
+          "max_gap_exact": true
+        }
+      ]
+    }
+  },
   "timestamp_anomalies": {
     "status": "ok",
     "items": []
@@ -408,6 +491,7 @@ Status and top-level reason values are:
 | `pes_headers.errors[].kind` | `truncated`, `bad_start_code`, `bad_flags`, `inconsistent_length`, `bad_marker_bits` |
 | `pts_repetition.status` (and per PID) | `ok`, `ng`, `insufficient_data`, `skipped` |
 | `pts_repetition` `reason` | `no_pes`, `untrusted_payload`, `malformed_headers`, `no_pcr_timing`, `no_pts`, `single_pts`, `not_video_or_audio`; totals also `no_video_or_audio` |
+| `multiplexing.packet_gaps.pids[].status` | `info`, `insufficient_data` (report only, never a verdict) |
 | `timestamp_anomalies.status` | `ok`, `anomalies` |
 
 Top-level and per-program `reason` values, and the `reason` values of
@@ -843,6 +927,123 @@ middle of a stream) are never unreferenced, and a PAT or PMT change applies
 from the packet after the one that completed it, with the grace period around
 it. See [PID references](../cli/usage.md#pid-references-always-on) for the
 complete policy. `pid_references` does not take part in `--fail-on-error`.
+
+## Multiplexing: packet gaps
+
+Every complete analysis (summary and `--output analysis`) has
+`multiplexing.packet_gaps`: for every PID of the range except the null PID,
+the largest gap between two consecutive packets of the PID. It is a
+**report-only** diagnostic of how the multiplex interleaves its PIDs: it has
+no limit and no verdict, it never changes the exit status and it does not
+take part in `--fail-on-error`. It is absent when no analysis ran. A poorly
+interleaved remux shows up as a large gap even when the PID's average bitrate
+is correct. For the bursty remux `sample_data/sample_188byte_packet_gaps.ts`
+(see [Sample data](../development/sample-data.md)), abridged:
+
+```json
+{
+  "multiplexing": {
+    "packet_gaps": {
+      "time_basis": "pcr_interpolated_file_position",
+      "pids": [
+        {
+          "pid": "0x0012",
+          "references": [],
+          "packet_count": 1,
+          "status": "insufficient_data",
+          "reason": "no_consecutive_packets"
+        },
+        {
+          "pid": "0x0101",
+          "references": [
+            {
+              "program_number": 1,
+              "role": "elementary_stream",
+              "stream_type": "0x03"
+            }
+          ],
+          "packet_count": 36,
+          "status": "info",
+          "max_gap_packets": 125,
+          "max_gap_start_offset_bytes": 73508,
+          "max_gap_end_offset_bytes": 97196,
+          "max_gap_ms": 590,
+          "max_gap_exact": false
+        },
+        {
+          "pid": "0x01ff",
+          "references": [
+            {
+              "program_number": 1,
+              "role": "pcr"
+            }
+          ],
+          "packet_count": 100,
+          "status": "info",
+          "max_gap_packets": 7,
+          "max_gap_start_offset_bytes": 16544,
+          "max_gap_end_offset_bytes": 18048,
+          "max_gap_ms": 40,
+          "max_gap_exact": true
+        }
+      ]
+    }
+  }
+}
+```
+
+- `pids` lists every PID observed in the range except `0x1fff`, in numeric
+  order. The packets are those of `pid_references`: every packet from the
+  first packet of the range (the packets read while the first PAT and PMT
+  were acquired included), without packets with `transport_error_indicator`
+  set, which still occupy their position. `packet_count` matches the
+  per-PID packet count of TSDuck's `tsanalyze` on a stream without transport
+  errors.
+- `references` lists every program and role under which a PAT or followed PMT
+  of the range referenced the PID (`pmt`, `pcr`, `elementary_stream` with its
+  `stream_type`, as in `pid_references.referenced`), ordered by
+  `program_number`, role and `stream_type`. It is empty for PSI/SI PIDs and
+  for PIDs that no layout referenced. With `--program` on a multi-program
+  stream, only the selected program's PMT is followed, so the other
+  programs' streams have no reference. A consumer that shows one program
+  selects the PIDs whose `references` name it.
+- `max_gap_packets` is the largest number of packets of other PIDs (null
+  packets and packets with a transport error included) between two
+  consecutive packets of the PID; the two packets themselves are not counted,
+  so packets at indices 10 and 15 have a gap of 4. It is exact, and it is
+  what chooses the largest gap. `max_gap_start_offset_bytes` and
+  `max_gap_end_offset_bytes` are the two packets. Of equal gaps the first is
+  reported, preferring the first one that starts after the first PCR of the
+  time basis (a gap before it can only get a clamped time).
+- The time before the first packet and after the last packet of a PID is not
+  a gap: absence and silence are `pid_references`' domain.
+- A PAT or PMT change that stops referencing a PID, or references it again
+  after an earlier change stopped, starts a new chain for the PID: the two
+  packets on either side of the change are not consecutive, so a stream that
+  is removed and later re-added gets no gap across its absence. Its
+  `packet_count` and the largest gap found so far are kept. A PID referenced
+  for the first time does not start a new chain.
+- `max_gap_ms` is the estimated time of that gap on `time_basis`
+  `pcr_interpolated_file_position`, the time model of `pid_references`: each
+  packet's position is interpolated between two PCRs of the reference
+  program. `max_gap_exact` is `false` when it is a lower bound: the gap lies
+  partly before the first or after the last PCR of the analysis, or crosses a
+  PCR timing-segment boundary (any PCR step other than `continuous` or
+  `wraparound`), whose PCR interval is not counted. A file has no
+  packet-arrival times, so this is an estimate even when exact, and on a
+  variable-bitrate stream a gap in packets and a gap in time can disagree.
+  Without any PCR of the reference program `max_gap_ms` and `max_gap_exact`
+  are absent and `reason` is `no_pcr_time_base`.
+
+| PID `status` | Meaning |
+| --- | --- |
+| `info` | A gap was measured (`reason` `no_pcr_time_base` when it has no time) |
+| `insufficient_data` | `reason` `no_consecutive_packets`: the PID had a single packet, or no two packets within one stretch of the layout; the gap fields are absent |
+
+The state is one record per PID with a fixed number of stamps, shared with
+`pid_references`; nothing is kept per packet, and the output has one entry per
+PID. See [Packet gaps](../cli/usage.md#packet-gaps-report-only) for the text
+summary.
 
 ## PCR timing results
 
@@ -1528,8 +1729,8 @@ Everything else, including the `series.pcr_jitter` points, is unchanged.
 Within 2.0, `transport_errors` and `scrambled_packets` were added to both
 documents, and `compliance.pcr_discontinuities` and the `kind` of each
 `pcr_jitter.estimate.discontinuities` entry to both, and `psi_health`,
-`pid_references`, `pes_headers` and `pts_repetition` to both documents
-(additive changes). Aligning
+`pid_references`, `pes_headers`, `pts_repetition` and `multiplexing` to
+both documents (additive changes). Aligning
 the PCR steps also changed some values within 2.0 for streams with these steps
 (none of the bundled samples except the new PCR-discontinuities sample):
 
@@ -1583,6 +1784,7 @@ Abridged output for the two-program sample:
   "pid_references": { "time_basis": "pcr_interpolated_file_position", "silence_limit_ms": 5000, "unreferenced_grace_ms": 500, "referenced": { "status": "ok", "pids": [ ... ] }, "unreferenced": { "status": "ok", "pids": [] } },
   "pes_headers": { "status": "ok", "checked_count": 106, "error_count": 0, "unchecked_count": 0, "errors": [], "pids": [ ... ] },
   "pts_repetition": { "limit_ms": 700, "status": "ok", "pts_count": 106, "interval_count": 94, "max_interval_ms": 414.2792962962963, ... },
+  "multiplexing": { "packet_gaps": { "time_basis": "pcr_interpolated_file_position", "pids": [ ... ] } },
   "programs": [
     {
       "program_number": 1,
@@ -1646,6 +1848,9 @@ Abridged output for the two-program sample:
 - `pes_headers` and `pts_repetition` are reported once and list the
   elementary streams of every analyzed program by `program_number` and PID
   ([PES headers and PTS repetition](#pes-headers-and-pts-repetition)).
+- `multiplexing` is reported once for the whole multiplex, from the first
+  packet of the range ([Multiplexing: packet gaps](#multiplexing-packet-gaps));
+  each PID's `references` name the programs that reference it.
 - Bitrate and PCR jitter are always collected in this mode. `series.pcr_jitter`
   is the `byte_position` estimate of each observation; see
   [PCR jitter](#pcr-jitter).
