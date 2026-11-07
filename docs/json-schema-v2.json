@@ -50,7 +50,7 @@
     },
     "transport_errors": {
       "$ref": "#/$defs/affectedPackets",
-      "description": "Packets with transport_error_indicator set, over every packet of the range. Present whenever the analysis ran (status complete)."
+      "description": "Packets with transport_error_indicator set, over every packet of the range. Present whenever the analysis ran (status complete). Only the fixed 4-byte TS header of such a packet is read, so a malformed adaptation field or a reserved adaptation_field_control does not stop the count; each pid is the one in the damaged header."
     },
     "scrambled_packets": {
       "$ref": "#/$defs/affectedPackets",

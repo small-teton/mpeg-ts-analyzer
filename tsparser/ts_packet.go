@@ -111,11 +111,19 @@ func (tp *TsPacket) Parse() error {
 	if tp.adaptationFieldControl, err = bb.ReadUint8(2); err != nil {
 		return err
 	}
-	if tp.adaptationFieldControl == 0 {
-		return fmt.Errorf("invalid adaptation_field_control: 0 (reserved)")
-	}
 	if tp.continuityCounter, err = bb.ReadUint8(4); err != nil {
 		return err
+	}
+	if tp.transportError() {
+		// The packet has an uncorrectable bit error somewhere after the sync
+		// byte, so nothing past the fixed header is validated or decoded
+		// (see transport_trust.go).
+		tp.parseUntrusted()
+		tp.dump()
+		return nil
+	}
+	if tp.adaptationFieldControl == 0 {
+		return fmt.Errorf("invalid adaptation_field_control: 0 (reserved)")
 	}
 
 	var afLength uint8
@@ -141,14 +149,52 @@ func (tp *TsPacket) Parse() error {
 		tp.payload = tp.buf[tsHeaderSize+afLength+1:]
 	}
 
+	tp.dump()
+	return nil
+}
+
+// parseUntrusted completes the parse of a packet with transport_error_indicator
+// set without trusting anything past its fixed 4-byte header. Its adaptation
+// field is not parsed, so it carries no PCR, discontinuity_indicator or other
+// flag. Its payload is located from the header with packet-bound checks only,
+// for the code that needs to know whether it has one: everything past the
+// header for adaptation_field_control 1, everything after the adaptation field
+// for 3 when adaptation_field_length stays inside the packet, and nothing
+// otherwise (2, the reserved value 0, or a length past the packet). It never
+// fails, so one damaged packet cannot stop the analysis of those after it.
+func (tp *TsPacket) parseUntrusted() {
+	tp.adaptationField.Initialize(tp.pos, tp.options)
+	tp.payload = tp.buf[0:0]
+	if tp.options.DumpAdaptationField && tp.HasAf() {
+		dumpUntrustedAdaptationField()
+	}
+	switch tp.adaptationFieldControl {
+	case 1:
+		tp.payload = tp.buf[tsHeaderSize:]
+	case 3:
+		if start := tsHeaderSize + 1 + int(tp.buf[tsHeaderSize]); start <= len(tp.buf) {
+			tp.payload = tp.buf[start:]
+		}
+	}
+}
+
+// dumpUntrustedAdaptationField prints, in place of the adaptation field of a
+// packet with transport_error_indicator set, that it was not parsed.
+func dumpUntrustedAdaptationField() {
+	fmt.Printf("\n===========================================\n")
+	fmt.Printf(" Adaptation Field")
+	fmt.Printf("\n===========================================\n")
+	fmt.Println("not parsed: transport_error_indicator is set")
+}
+
+// dump prints the header and payload dumps the options ask for.
+func (tp *TsPacket) dump() {
 	if tp.options.DumpHeader {
 		tp.DumpHeader()
 	}
 	if tp.options.DumpPayload {
 		tp.DumpPayload()
 	}
-
-	return nil
 }
 
 // Payload return this TsPacket payload data.

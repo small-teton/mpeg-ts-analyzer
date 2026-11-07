@@ -67,6 +67,7 @@ observations it needs through focused methods.
 | How errors are counted per PID, how each PID is labeled, the check's status | `analysis` (`ContinuityCheck`) |
 | The `continuity_counter` JSON object, the text summary, exit codes | `tsparser` report code and `cmd` |
 | Whether a packet with `transport_error_indicator` set or a scrambled payload may feed PSI, PES or PCR analysis, and whether its data was excluded | `tsparser` (`TsPacket.payloadUntrusted`, `transportTrustSummary.observe`), reported as `analysis.TransportError` / `analysis.Scrambled` |
+| How much of a packet with `transport_error_indicator` set is decoded: its fixed 4-byte header only, never its adaptation field, so that a damaged packet is counted instead of failing the parse | `tsparser` (`TsPacket.Parse`, `TsPacket.parseUntrusted`) |
 | How affected packets are counted per PID, labeled, and the `ok` / `affected` / `data_excluded` status | `analysis` (`TransportTrustCheck`) |
 | Whether a packet of the `PCR_PID` carries a trusted PCR, and whether `discontinuity_indicator` declares a new time base for it (on the PCR packet, or on an earlier packet of the PID without a PCR) | `tsparser` (`programAnalyzer.observe`), reported as `analysis.PCR` |
 | How each PCR relates to the previous one (`continuous`, `wraparound`, `declared`, `pcr_pid_change`, `backward`, `forward_jump`), the maximum PCR interval and the PCR discontinuity status | `analysis` (`PCRClock`, `PCRCheck`) |

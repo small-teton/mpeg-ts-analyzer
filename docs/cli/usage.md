@@ -74,7 +74,7 @@ Flags:
 | `--format` | `text` | Select human-readable text or aggregate JSON output. |
 | `--dump-ts-header` | off | Dump each TS packet header. |
 | `--dump-ts-payload` | off | Dump TS packet payload bytes. |
-| `--dump-adaptation-field` | off | Dump adaptation-field flags and values. |
+| `--dump-adaptation-field` | off | Dump adaptation-field flags and values. For a packet with `transport_error_indicator` set, the field is not parsed and the dump says `not parsed: transport_error_indicator is set`. |
 | `--dump-psi` | off | Dump PAT and PMT details. |
 | `--dump-pes-header` | off | Dump PES header details. |
 | `--dump-timestamp` | off | Dump PCR, PTS, and DTS observations. |
@@ -386,8 +386,9 @@ Other cases are reported separately:
   before.
 - **A packet with its sync byte but an unparseable header** (for example a
   reserved `adaptation_field_control`) is aligned, so it is not a loss of
-  synchronization. It still interrupts the analysis, which restarts at the
-  next PAT with a `PES parse error` warning, as described under
+  synchronization. With `transport_error_indicator` set it is counted and the
+  analysis continues; without it, it interrupts the analysis, as described
+  under
   [Transport errors and scrambled packets](#transport-errors-and-scrambled-packets-always-on).
 - **Trailing partial packet.** Fewer than one packet of bytes at the end of the
   input is an incomplete packet, not a loss: it is reported as a warning
@@ -449,7 +450,8 @@ What the analysis does with an affected packet:
 | PAT / PMT section | The packet is ignored and the section in progress on its PID is discarded, with a warning ([PSI](psi.md#multi-section-pat-and-pmt)) | The same, when the packet has a payload |
 | PES | The payload is not used. The PES packet in progress on the PID ends at the packet and is parsed from the packets before it; the PID resumes at its next unaffected `payload_unit_start_indicator`. No PES header, PTS/DTS, timestamp anomaly or PCR-PTS/DTS gap comes from the affected payload | The same, when the packet has a payload; a scrambled packet without payload changes nothing |
 | PCR | Not used: intervals, jitter, bitrate windows and PCR-PTS/DTS brackets use the surrounding PCRs | Used: the header and adaptation field of a scrambled packet are not scrambled |
-| Continuity counter, bitrate | Counted with the header as decoded | Counted |
+| Adaptation field | Not parsed: no PCR, `discontinuity_indicator` or other value of it is used, and a damaged one does not stop the analysis | Parsed as for any packet |
+| Continuity counter, bitrate | Counted with the header as decoded (its `continuity_counter` and `adaptation_field_control`); the packet's `discontinuity_indicator` is not used, and its PCR bytes are compared like any other byte when duplicates are detected | Counted |
 
 An affected packet is **excluded** when it is on a PID whose data the
 analysis reads at that point: the PAT, the PMT of an analyzed program, an
@@ -466,11 +468,31 @@ packet is itself invalid (ISO/IEC 13818-1 requires
 
 A PAT or PMT that arrives only in affected packets is never acquired: the run
 ends with `PAT not detected` or as incomplete, never as a complete result built
-from unusable tables. Neither check takes part in `--fail-on-error`. A packet
-whose header cannot be parsed at all (for example a reserved
-`adaptation_field_control`) still interrupts the analysis as any malformed
-packet does (it restarts at the next PAT), whether or not it has a transport
-error.
+from unusable tables. Neither check takes part in `--fail-on-error`.
+
+Since a transport error may be anywhere in the packet, nothing after the
+fixed 4-byte TS header of such a packet is checked or decoded. A packet with
+`transport_error_indicator` set whose `adaptation_field_control` is the
+reserved value 0, whose `adaptation_field_length` runs past the packet, or
+whose adaptation field is otherwise malformed is therefore counted like any
+other affected packet, and the analysis continues with the next packet. Where
+the analysis needs to know whether such a packet has a payload, the payload is
+everything after the header (`adaptation_field_control` 1), everything after
+the adaptation field when `adaptation_field_length` stays inside the packet
+(3), and nothing otherwise. `sample_data/sample_188byte_transport_errors_malformed.ts`
+damages every transport-error packet of the transport-errors sample this way
+and gives the same results.
+
+A packet **without** `transport_error_indicator` whose header or adaptation
+field cannot be parsed (a reserved `adaptation_field_control`, or an
+adaptation field whose lengths run past the packet) is not covered by this
+policy: nothing marks its data as unreliable, so the analyzer treats it as a
+parse error. With the summary output (text or JSON), the analysis of the
+program stops at that packet and restarts at the next PAT with a
+`PES parse error` warning; when no later analysis completes, the JSON status
+is `incomplete`. `--output analysis` reports `status: "failed"` with the error
+and exits with status 1. The packet list (`--output packets`) shows the packet
+with `valid: false`.
 
 ## PAT and PMT health (always on)
 

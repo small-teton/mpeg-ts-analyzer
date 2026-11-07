@@ -198,3 +198,34 @@ func TestContinuityCounterPlurals(t *testing.T) {
 		t.Errorf("pidWord(2) = %q", got)
 	}
 }
+
+// The adaptation field of a packet with transport_error_indicator set is not
+// parsed, so its discontinuity_indicator does not reset the counter, and its
+// PCR bytes are compared like any other byte.
+func TestContinuityTrackerTransportError(t *testing.T) {
+	packet := func(tei bool, cc byte, pcr byte) *TsPacket {
+		raw := bytes.Repeat([]byte{0xff}, 188)
+		copy(raw, []byte{0x47, 0x01, 0x00, 0x30 | cc, 7, 0x90, 0, 0, 0, pcr, 0x7e, 0})
+		if tei {
+			raw[1] |= 0x80
+		}
+		p := NewTsPacket()
+		p.Append(raw)
+		if err := p.Parse(); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	tracker := newContinuityTracker()
+	tracker.Check(packet(false, 0, 0))
+	if result := tracker.Check(packet(true, 5, 0)); result.Event == nil || result.Event.Expected != 1 || result.Event.Actual != 5 {
+		t.Errorf("discontinuity_indicator of a TEI packet was honored: %+v", result)
+	}
+	if result := tracker.Check(packet(true, 5, 1)); result.Duplicate || result.Event == nil {
+		t.Errorf("TEI packet with another PCR is a duplicate: %+v", result)
+	}
+	// Without TEI the same discontinuity_indicator is honored.
+	if result := tracker.Check(packet(false, 9, 0)); result.Event != nil {
+		t.Errorf("declared discontinuity: %+v", result)
+	}
+}
