@@ -2,7 +2,7 @@
 
 Status: the free measures below are implemented in
 `.github/workflows/gui-release.yml` (#100), and so is the signing for the
-in-app update (#150), whose GUI side is not implemented yet; code signing with a Developer ID or a
+in-app update and its verification in the GUI (#150); code signing with a Developer ID or a
 commercial certificate is not. The macOS app is only signed ad hoc. The CLI
 releases through GoReleaser and is not covered here.
 
@@ -33,8 +33,8 @@ releases through GoReleaser and is not covered here.
 
 ## Update signing
 
-Status: the release workflow signs the update packages and publishes the
-update manifest (#150); the GUI does not use them yet. The GUI's in-app update
+Status: implemented (#150): the release workflow signs the update packages
+and publishes the update manifest, and the GUI verifies them. The GUI's in-app update
 ([design](design.md#updates)) installs packages only when their signature
 verifies against a public key compiled into the GUI. The signature is a
 minisign signature made with `cargo packager signer`, the format
@@ -94,10 +94,12 @@ half; no secret is available and nothing is published.
 - It covers the package bytes. A package altered on its way from GitHub, or
   uploaded by someone without the private key, is rejected.
 - The manifest itself is not signed; its version and URLs are trusted because
-  they come from this repository's releases over HTTPS. Someone who can edit
-  the releases could point a newer version number at an older, genuinely
-  signed package (a downgrade to an earlier official build), but not at code
-  the release workflow did not sign.
+  they come from this repository's releases over HTTPS, and the GUI only
+  requests GitHub (see [Updates](design.md#updates)).
+- The signed trusted comment names the signed file, whose name contains the
+  version and platform, and the GUI requires it to be exactly the package it
+  expects. A genuinely signed package of another version or platform, offered
+  under a newer version number, is therefore rejected as well.
 - The GUI never offers a version lower than or equal to the running one.
 
 ## Packaging tools fetched at build time

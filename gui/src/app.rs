@@ -8,6 +8,7 @@ use crate::plot_data;
 use crate::range_bar::{self, AnalysisRange, Load};
 use crate::report::{AnalysisReport, ProgressEvent};
 use crate::settings::Settings;
+use crate::update::{InstallKind, Updates};
 use crate::views::packet_pages::PacketPages;
 use crate::views::{Screen, bitrate, overview, timeline::TimelineView};
 
@@ -76,6 +77,8 @@ pub struct App {
     settings: Settings,
     settings_open: bool,
     about_open: bool,
+    /// The in-app update: its check, window and pending install.
+    updates: Updates,
 }
 
 impl Default for App {
@@ -91,7 +94,12 @@ impl App {
             .storage
             .and_then(|storage| eframe::get_value(storage, crate::settings::STORAGE_KEY))
             .unwrap_or_default();
-        Self::with_launch(settings, Some(cc.egui_ctx.clone()), launch)
+        let mut app = Self::with_launch(settings, Some(cc.egui_ctx.clone()), launch);
+        // Only here, not in the constructors tests use: they stay offline.
+        if app.settings.check_updates_at_startup {
+            app.updates.check(&cc.egui_ctx, false);
+        }
+        app
     }
 
     fn with_settings(settings: Settings, ctx: Option<egui::Context>) -> Self {
@@ -141,6 +149,7 @@ impl App {
             settings,
             settings_open: false,
             about_open: false,
+            updates: Updates::new(InstallKind::detect()),
         }
     }
 }
@@ -514,6 +523,7 @@ impl App {
     }
 
     fn about_window(&mut self, ctx: &egui::Context) {
+        let mut check_updates = false;
         egui::Window::new("About")
             .open(&mut self.about_open)
             .collapsible(false)
@@ -524,7 +534,12 @@ impl App {
                 ui.label("MPEG-2 Transport Stream analyzer (ISO/IEC 13818-1)");
                 ui.hyperlink("https://github.com/small-teton/mpeg-ts-analyzer");
                 ui.weak("Apache License 2.0");
+                ui.add_space(6.0);
+                check_updates = ui.button("Check for Updates…").clicked();
             });
+        if check_updates {
+            self.updates.check(ctx, true);
+        }
     }
 }
 
@@ -535,6 +550,12 @@ impl eframe::App for App {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.show(ui);
+    }
+
+    /// Runs a downloaded Windows update installer; eframe has saved the
+    /// settings by now.
+    fn on_exit(&mut self) {
+        self.updates.on_exit();
     }
 }
 
@@ -549,6 +570,7 @@ impl App {
         }
 
         self.poll_cli_check();
+        self.updates.poll(ui.ctx());
         if self.pending_start && self.cli_check.is_none() {
             self.pending_start = false;
             if self.cli.is_ok() && self.file_problem.is_none() {
@@ -574,6 +596,9 @@ impl App {
                     Ok(cli) => ui.weak(format!("CLI {} · {}", cli.version, cli.path.display())),
                     Err(err) => ui.colored_label(ui.visuals().warn_fg_color, err),
                 };
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    self.updates.status_button(ui);
+                });
             });
         });
         egui::Panel::left("navigation")
@@ -663,6 +688,7 @@ impl App {
             self.begin_cli_check(Some(ctx.clone()));
         }
         self.about_window(&ctx);
+        self.updates.window(&ctx, self.running.is_some());
         self.confirm_start_dialog(&ctx);
         self.analysis_dialog(&ctx);
         self.error_dialog(&ctx);
