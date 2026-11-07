@@ -100,7 +100,7 @@ func dumpPcrDiscontinuities(r analysis.PCRDiscontinuityResult) {
 		fmt.Printf("%s: SKIPPED (%s)\n", pcrDiscontinuitiesName, pcrDiscontinuitiesSkippedWhy)
 		return
 	}
-	fmt.Printf("%s: %d undeclared in %d PCRs [%s, limit: 0 without discontinuity_indicator]\n", pcrDiscontinuitiesName, r.Undeclared, r.PCRs, status)
+	fmt.Printf("%s: %d undeclared in %d PCRs [%s]\n", pcrDiscontinuitiesName, r.Undeclared, r.PCRs, status)
 	for _, step := range r.Steps {
 		fmt.Printf("  - %-14s: %d, first at 0x%08x (PCR jumped %+.3fms)\n", step.Kind, step.Count, step.FirstOffset, step.FirstJumpMs)
 	}

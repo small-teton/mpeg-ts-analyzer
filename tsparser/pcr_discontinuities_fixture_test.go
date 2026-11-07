@@ -149,7 +149,7 @@ func TestPcrDiscontinuitiesText(t *testing.T) {
 	})
 	for _, want := range []string{
 		"Max PCR interval: 40.000000ms [OK, limit: <= 100.000000ms]\n" +
-			"PCR discontinuities: 2 undeclared in 127 PCRs [NG, limit: 0 without discontinuity_indicator]\n" +
+			"PCR discontinuities: 2 undeclared in 127 PCRs [NG]\n" +
 			"  - wraparound    : 1, first at 0x000024b8 (PCR jumped +40.000ms)\n" +
 			"  - declared      : 2, first at 0x00003ac0 (PCR jumped +5040.000ms)\n" +
 			"  - pcr_pid_change: 1, first at 0x00009458 (PCR jumped +40.000ms)\n" +

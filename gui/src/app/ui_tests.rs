@@ -1091,19 +1091,36 @@ fn findings_open_the_detail_page_with_their_actions() {
 
 #[test]
 fn findings_account_for_every_check_that_is_not_ok() {
-    // Every check of the all-findings sample reports a problem.
+    // Every check of the all-findings sample reports a problem, except PCR
+    // discontinuities: its PCR clock is continuous. The PCR-discontinuities
+    // sample has that finding.
     let harness = harness(app_with_report(all_findings_report()));
     harness.get_by_label("Findings (7)");
     assert!(harness.query_by_label("None.").is_none());
     for check in Check::ALL {
+        let links = usize::from(check != Check::PcrDiscontinuities);
         assert_eq!(
             harness
                 .query_all_by_role_and_label(Role::Link, check.title())
                 .count(),
-            1,
+            links,
             "{check:?}"
         );
     }
+    let harness = self::harness(app_with_report(
+        crate::report::parse_analysis(
+            include_bytes!("../../tests/fixtures/analysis_pcr_discontinuities_188.json"),
+            "2",
+        )
+        .unwrap(),
+    ));
+    harness.get_by_label("Findings (2)");
+    assert_eq!(
+        harness
+            .query_all_by_role_and_label(Role::Link, Check::PcrDiscontinuities.title())
+            .count(),
+        2
+    );
 
     // The two-program sample is VBR: PCR jitter is not assessable, which is
     // unavailable analysis with the CLI's reason, not a finding.
@@ -1240,6 +1257,24 @@ fn not_assessable_jitter_has_its_evidence_on_the_detail_page() {
         assert_eq!(selected.len(), 1);
         assert!(selected[0].starts_with("NOT ASSESSABLE: "));
     }
+}
+
+/// The PCR-discontinuities fixture is what the CLI writes for its sample.
+/// Runs only against a CLI named by MPEG_TS_ANALYZER_CLI (e.g. via `make gui-test`).
+#[test]
+fn pcr_discontinuities_fixture_matches_the_cli() {
+    let args = ["--format", "json", "--output", "analysis"];
+    let Some(json) = crate::cli::run_on_sample("sample_188byte_pcr_discontinuities.ts", &args)
+    else {
+        return;
+    };
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/analysis_pcr_discontinuities_188.json"
+    ))
+    .unwrap();
+    let mut output: serde_json::Value = serde_json::from_slice(&json).unwrap();
+    output["input"]["path"] = fixture["input"]["path"].clone();
+    assert_eq!(output, fixture, "regenerate the fixture with the CLI");
 }
 
 /// The fixture is what the CLI writes for the sample, so the Overview tests

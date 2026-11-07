@@ -43,7 +43,7 @@ func TestComplianceBoundaryIsOK(t *testing.T) {
 	for _, want := range []string{
 		"Compliance Check Results:",
 		"Max PCR interval: 100.000000ms [OK, limit: <= 100.000000ms]",
-		"PCR discontinuities: 0 undeclared in 2 PCRs [OK, limit: 0 without discontinuity_indicator]",
+		"PCR discontinuities: 0 undeclared in 2 PCRs [OK]",
 		"PCR-PTS/DTS max gap: 1000.000000ms [OK, limit: <= 1000.000000ms]",
 	} {
 		if !strings.Contains(out, want) {
@@ -66,14 +66,14 @@ func TestComplianceNG(t *testing.T) {
 	out := captureStdout(t, report.dump)
 	for _, want := range []string{
 		"Max PCR interval: 101.000000ms [NG, limit: <= 100.000000ms]",
-		"PCR discontinuities: 1 undeclared in 3 PCRs [NG, limit: 0 without discontinuity_indicator]",
+		"PCR discontinuities: 1 undeclared in 3 PCRs [NG]",
 		"  - backward      : 1, first at 0x00000178 (PCR jumped -601.000ms)",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("NG output missing %q:\n%s", want, out)
 		}
 	}
-	if strings.Count(out, "[NG,") != 3 {
+	if strings.Count(out, "[NG") != 3 {
 		t.Errorf("NG output =\n%s", out)
 	}
 }
@@ -108,7 +108,7 @@ func TestComplianceDeclaredDiscontinuitiesPass(t *testing.T) {
 	}
 	out := captureStdout(t, report.dump)
 	for _, want := range []string{
-		"PCR discontinuities: 0 undeclared in 4 PCRs [OK,",
+		"PCR discontinuities: 0 undeclared in 4 PCRs [OK]",
 		"  - declared      : 1, first at 0x00000178 (PCR jumped +7960.000ms)",
 	} {
 		if !strings.Contains(out, want) {
