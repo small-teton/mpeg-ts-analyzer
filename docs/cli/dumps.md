@@ -188,6 +188,13 @@ file), not a hardware TR 101 290 measurement, as noted in the output header.
 > so the byte rate between PCRs varies a lot — not a clean CBR mux. A compliant
 > CBR broadcast multiplex reports sub-microsecond jitter.
 
+For a deterministic counterpart, the intentionally invalid
+[diagnostic sample](../development/sample-data.md#diagnostic-sample-with-every-overview-finding)
+is delivered at a constant rate with one PCR stamped 100 µs late: it reports
+`Max jitter : +0.100000ms` and `NG`, and the same stream without that defect
+reports exactly zero. The GUI shows this verdict as the CLI reports it and
+labels it as a byte-position estimate.
+
 ## Dump bitrate
 
 `--dump-bitrate` summarizes how bandwidth is distributed across the analyzed
