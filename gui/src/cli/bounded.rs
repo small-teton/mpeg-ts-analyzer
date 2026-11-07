@@ -22,7 +22,8 @@ pub struct Limits {
     /// `--capabilities` JSON: a short protocol reply (about 500 bytes today).
     pub capabilities: u64,
     /// `--output packets` JSON: a fixed part plus a part per requested packet
-    /// (about 300 bytes each today; a page of 100 is about 26 KiB).
+    /// (about 300 bytes each today; a page of 100 is about 26 KiB). Settings
+    /// allows up to 10,000 packets per page, about 40 MiB at this rate.
     pub packets_base: u64,
     pub packets_per_packet: u64,
     /// `--output packet` JSON: one decoded packet (under 8 KiB today).

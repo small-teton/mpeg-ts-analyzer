@@ -217,6 +217,9 @@ fn opens_and_closes_settings_and_about() {
     harness.run();
     assert!(harness.state().settings_open);
     harness.get_by_role_and_label(Role::Window, "Settings");
+    // Language is not offered as a choice that would do nothing.
+    harness.get_by_label("Other languages are not available yet.");
+    assert!(harness.query_by_role(Role::ComboBox).is_none());
     harness
         .get_by_role_and_label(Role::Button, "Close window")
         .click();

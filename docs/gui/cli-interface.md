@@ -129,7 +129,7 @@ Analyze a smaller range, or check the CLI chosen in Settings.*
 | Output | Limit | Today's CLI writes |
 |---|---|---|
 | `--capabilities` | 64 KiB | about 500 bytes |
-| `--output packets` | 1 MiB + 4 KiB per requested packet (1.4 MiB for a page of 100) | about 300 bytes per packet |
+| `--output packets` | 1 MiB + 4 KiB per requested packet (1.4 MiB for the default page of 100, about 40 MiB for the largest of 10,000) | about 300 bytes per packet |
 | `--output packet` | 1 MiB | under 8 KiB |
 | `--output analysis` | 64 MiB + 4 bytes per byte of the range (320 MiB for the default 64 MiB) | 0.22–0.24 bytes per input byte on the samples |
 | stderr diagnostics | the latest 64 KiB of lines, each cut at 4 KiB | — |

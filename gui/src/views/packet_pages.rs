@@ -4,6 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::ffi::OsString;
+use std::ops::RangeInclusive;
 use std::path::PathBuf;
 
 use eframe::egui;
@@ -25,9 +26,44 @@ use crate::report::{
 };
 use crate::theme;
 
-pub const PAGE_SIZE: u64 = 100;
-/// Pages kept in memory besides the one shown.
-const CACHED_PAGES: usize = 4;
+/// How Packets reads a range: packets per page and how many pages stay in
+/// memory. Comes from Settings and is fixed for the analysis it was created
+/// with; a changed setting applies when the next analysis finishes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Paging {
+    page_size: u64,
+    cached_pages: usize,
+}
+
+impl Paging {
+    /// Packets per page that Settings offers.
+    pub const PAGE_SIZES: RangeInclusive<u64> = 10..=10_000;
+    /// Pages kept in memory, the one shown included, that Settings offers.
+    pub const CACHED_PAGES: RangeInclusive<u32> = 1..=50;
+
+    /// Values out of range (e.g. edited in the saved settings) are clamped.
+    pub fn new(packets_per_page: u64, cached_pages: u32) -> Self {
+        let (pages, cached) = (Self::PAGE_SIZES, Self::CACHED_PAGES);
+        Self {
+            page_size: packets_per_page.clamp(*pages.start(), *pages.end()),
+            cached_pages: cached_pages.clamp(*cached.start(), *cached.end()) as usize,
+        }
+    }
+
+    pub fn page_size(&self) -> u64 {
+        self.page_size
+    }
+
+    pub fn cached_pages(&self) -> usize {
+        self.cached_pages
+    }
+}
+
+impl Default for Paging {
+    fn default() -> Self {
+        Self::new(100, 5)
+    }
+}
 
 /// (title, width, description shown on hover)
 const COLUMNS: [(&str, f32, &str); 9] = [
@@ -73,30 +109,42 @@ pub struct Geometry {
     pub first: u64,
     pub packet_size: u64,
     pub count: u64,
+    pub page_size: u64,
 }
 
 impl Geometry {
     /// `first` is the first packet boundary at or after the range start;
     /// `end` is where the range ends (at most the file size).
-    pub fn new(first: u64, end: u64, packet_size: u64) -> Self {
+    pub fn new(first: u64, end: u64, packet_size: u64, paging: Paging) -> Self {
         Self {
             first,
             packet_size,
             count: end.saturating_sub(first) / packet_size,
+            page_size: paging.page_size(),
         }
     }
 
     pub fn pages(&self) -> u64 {
-        self.count.div_ceil(PAGE_SIZE).max(1)
+        self.count.div_ceil(self.page_size).max(1)
     }
 
     /// The `--offset` and `--count` that read a page.
     pub fn page_request(&self, page: u64) -> (u64, u64) {
-        let start = page * PAGE_SIZE;
+        let start = self.page_start(page);
         (
             self.first + start * self.packet_size,
-            PAGE_SIZE.min(self.count.saturating_sub(start)),
+            self.page_size.min(self.count.saturating_sub(start)),
         )
+    }
+
+    /// The 0-based index in the range of the page's first packet.
+    pub fn page_start(&self, page: u64) -> u64 {
+        page * self.page_size
+    }
+
+    /// The page that holds the packet with this 0-based index.
+    pub fn page_of(&self, index: u64) -> u64 {
+        index / self.page_size
     }
 
     /// The packet's 0-based index in the range, if the offset is one of its packets.
@@ -131,6 +179,7 @@ pub struct PacketPages {
     range_offset: u64,
     range_end: u64,
     packet_size: u64,
+    paging: Paging,
     geometry: Option<Geometry>,
     /// Reads the first page, which tells where the range's packets start.
     probe: Option<Fetch<PacketsPage>>,
@@ -148,13 +197,20 @@ pub struct PacketPages {
 }
 
 impl PacketPages {
-    pub fn new(input: PathBuf, report: &AnalysisReport, offset: u64, limit: u64) -> Self {
+    pub fn new(
+        input: PathBuf,
+        report: &AnalysisReport,
+        offset: u64,
+        limit: u64,
+        paging: Paging,
+    ) -> Self {
         let file_size = report.input.file_size_bytes;
         Self {
             input,
             range_offset: offset,
             range_end: (offset + limit).min(file_size),
             packet_size: u64::from(report.input.packet_size_bytes.unwrap_or(188)),
+            paging,
             geometry: None,
             probe: None,
             page: 0,
@@ -176,6 +232,7 @@ impl PacketPages {
             range_offset: 0,
             range_end: 0,
             packet_size: 188,
+            paging: Paging::default(),
             geometry: None,
             probe: None,
             page: 0,
@@ -228,9 +285,9 @@ impl PacketPages {
     fn accept_first_page(&mut self, mut page: PacketsPage) {
         // An empty range has no first packet.
         let first = page.first_offset_bytes.unwrap_or(self.range_end);
-        let geometry = Geometry::new(first, self.range_end, self.packet_size);
+        let geometry = Geometry::new(first, self.range_end, self.packet_size, self.paging);
         page.packets
-            .truncate(geometry.count.min(PAGE_SIZE) as usize);
+            .truncate(geometry.count.min(self.paging.page_size()) as usize);
         self.geometry = Some(geometry);
         self.pages.insert(0, Fetch::Ready(page));
         self.recent.push_back(0);
@@ -244,7 +301,7 @@ impl PacketPages {
         match self.geometry {
             Some(geometry) => {
                 if let Some(index) = geometry.index_of(offset) {
-                    self.page = index / PAGE_SIZE;
+                    self.page = geometry.page_of(index);
                     self.select(offset);
                 }
             }
@@ -290,8 +347,9 @@ impl PacketPages {
         let Some(geometry) = self.geometry else {
             match &mut self.probe {
                 None => {
-                    let args = self.page_args(self.range_offset, PAGE_SIZE);
-                    let reply = Reply::packets_page(PAGE_SIZE);
+                    let count = self.paging.page_size();
+                    let args = self.page_args(self.range_offset, count);
+                    let reply = Reply::packets_page(count);
                     self.probe = Some(start(cli, args, reply, repaint));
                 }
                 Some(probe) => {
@@ -337,13 +395,14 @@ impl PacketPages {
         }
     }
 
-    /// Keeps the current page and the most recently viewed ones. Dropping a
+    /// Keeps the current page and the most recently viewed ones, as many as
+    /// the paging allows in all. Dropping a
     /// page still loading cancels its CLI run without waiting for it, so only
     /// the last requested page keeps running when paging quickly.
     fn keep_recent_pages(&mut self) {
         self.recent.retain(|&p| p != self.page);
         self.recent.push_back(self.page);
-        while self.recent.len() > CACHED_PAGES + 1 {
+        while self.recent.len() > self.paging.cached_pages() {
             if let Some(old) = self.recent.pop_front() {
                 self.pages.remove(&old);
             }
@@ -410,7 +469,7 @@ impl PacketPages {
                 self.page = pages - 1;
             }
             let (_, count) = geometry.page_request(self.page);
-            let start = self.page * PAGE_SIZE;
+            let start = geometry.page_start(self.page);
             ui.weak(format!(
                 "packets {}–{} of {} in range · {}-byte packets",
                 start + 1,
@@ -951,7 +1010,7 @@ mod tests {
     #[test]
     fn pages_cover_every_packet_of_the_range_once() {
         // A range of 1,079 packets starting at a packet boundary 4 bytes in.
-        let geometry = Geometry::new(4, 4 + 1079 * 192 + 100, 192);
+        let geometry = Geometry::new(4, 4 + 1079 * 192 + 100, 192, Paging::default());
         assert_eq!(geometry.count, 1079);
         assert_eq!(geometry.pages(), 11);
         let mut next = geometry.first;
@@ -968,7 +1027,86 @@ mod tests {
         assert_eq!(geometry.index_of(5), None);
         assert_eq!(geometry.index_of(0), None);
         assert_eq!(geometry.index_of(4 + 192 * 1079), None);
-        assert_eq!(Geometry::new(0, 100, 188).pages(), 1);
+        assert_eq!(Geometry::new(0, 100, 188, Paging::default()).pages(), 1);
+    }
+
+    /// The same range with a non-default page size from Settings.
+    #[test]
+    fn page_geometry_follows_the_page_size() {
+        let geometry = Geometry::new(4, 4 + 1079 * 192 + 100, 192, Paging::new(250, 5));
+        assert_eq!(geometry.pages(), 5);
+        let mut next = geometry.first;
+        let mut seen = 0;
+        for page in 0..geometry.pages() {
+            let (offset, count) = geometry.page_request(page);
+            assert_eq!(offset, next);
+            assert_eq!(geometry.page_start(page), seen);
+            next += count * 192;
+            seen += count;
+        }
+        assert_eq!(seen, geometry.count);
+        assert_eq!(geometry.page_request(4), (4 + 1000 * 192, 79));
+        assert_eq!(geometry.page_of(249), 0);
+        assert_eq!(geometry.page_of(250), 1);
+        assert_eq!(geometry.page_of(1078), 4);
+        // Exactly one page's worth of packets is one page.
+        assert_eq!(
+            Geometry::new(0, 10 * 188, 188, Paging::new(10, 1)).pages(),
+            1
+        );
+        assert_eq!(
+            Geometry::new(0, 11 * 188, 188, Paging::new(10, 1)).pages(),
+            2
+        );
+    }
+
+    /// Settings limits are applied once, when the paging is made.
+    #[test]
+    fn paging_is_clamped_to_the_settings_ranges() {
+        assert_eq!(Paging::default(), Paging::new(100, 5));
+        let low = Paging::new(0, 0);
+        assert_eq!((low.page_size(), low.cached_pages()), (10, 1));
+        let high = Paging::new(u64::MAX, u32::MAX);
+        assert_eq!((high.page_size(), high.cached_pages()), (10_000, 50));
+        let set = Paging::new(37, 3);
+        assert_eq!((set.page_size(), set.cached_pages()), (37, 3));
+    }
+
+    /// With 2 cached pages, the shown page and the last one viewed stay.
+    #[test]
+    fn cache_keeps_as_many_pages_as_the_paging_allows() {
+        let mut pages = PacketPages {
+            paging: Paging::new(100, 2),
+            ..PacketPages::new_for_test(PathBuf::from("x"))
+        };
+        for page in [0, 1, 2, 1, 3] {
+            pages.page = page;
+            pages.pages.insert(page, Fetch::Failed(String::new()));
+            pages.keep_recent_pages();
+        }
+        assert_eq!(pages.recent, [1, 3]);
+        assert_eq!(pages.pages.keys().copied().collect::<Vec<_>>(), [1, 3]);
+
+        // One cached page keeps only the page shown.
+        pages.paging = Paging::new(100, 1);
+        pages.page = 4;
+        pages.pages.insert(4, Fetch::Failed(String::new()));
+        pages.keep_recent_pages();
+        assert_eq!(pages.recent, [4]);
+        assert_eq!(pages.pages.keys().copied().collect::<Vec<_>>(), [4]);
+    }
+
+    /// A packet chosen elsewhere (Timeline) opens on its page for the page size in use.
+    #[test]
+    fn go_to_uses_the_page_size() {
+        let mut pages = PacketPages {
+            paging: Paging::new(25, 5),
+            range_end: 188 * 100,
+            ..PacketPages::new_for_test(PathBuf::from("x"))
+        };
+        pages.geometry = Some(Geometry::new(0, 188 * 100, 188, pages.paging));
+        pages.go_to(188 * 60);
+        assert_eq!((pages.page, pages.selected), (2, Some(188 * 60)));
     }
 
     #[test]
@@ -1054,38 +1192,45 @@ mod tests {
                 range_end: size,
                 ..PacketPages::new_for_test(input.clone())
             };
-            let first = wait(
-                Request::start(
-                    &cli,
-                    pages.page_args(0, PAGE_SIZE),
-                    Reply::packets_page(PAGE_SIZE),
-                    || {},
-                )
-                .unwrap(),
-            )
-            .unwrap();
-            let geometry = Geometry::new(first.first_offset_bytes.unwrap(), size, packet_size);
-            assert_eq!(geometry.count, first.total_packets, "{name}");
-            let mut expected = geometry.first;
-            for page in 0..geometry.pages() {
-                let (offset, count) = geometry.page_request(page);
-                let result = wait(
+            // Every packet once, at the default and at a non-default page size.
+            let mut first = None;
+            for paging in [Paging::default(), Paging::new(37, 3)] {
+                let page = wait(
                     Request::start(
                         &cli,
-                        pages.page_args(offset, count),
-                        Reply::packets_page(count),
+                        pages.page_args(0, paging.page_size()),
+                        Reply::packets_page(paging.page_size()),
                         || {},
                     )
                     .unwrap(),
                 )
                 .unwrap();
-                assert_eq!(result.packets.len() as u64, count, "{name} page {page}");
-                for packet in &result.packets {
-                    assert_eq!(packet.offset_bytes, expected, "{name}");
-                    expected += packet_size;
+                let geometry =
+                    Geometry::new(page.first_offset_bytes.unwrap(), size, packet_size, paging);
+                assert_eq!(geometry.count, page.total_packets, "{name}");
+                let mut expected = geometry.first;
+                for page in 0..geometry.pages() {
+                    let (offset, count) = geometry.page_request(page);
+                    let result = wait(
+                        Request::start(
+                            &cli,
+                            pages.page_args(offset, count),
+                            Reply::packets_page(count),
+                            || {},
+                        )
+                        .unwrap(),
+                    )
+                    .unwrap();
+                    assert_eq!(result.packets.len() as u64, count, "{name} page {page}");
+                    for packet in &result.packets {
+                        assert_eq!(packet.offset_bytes, expected, "{name}");
+                        expected += packet_size;
+                    }
                 }
+                assert_eq!(expected, geometry.first + geometry.count * packet_size);
+                first.get_or_insert((page, geometry));
             }
-            assert_eq!(expected, geometry.first + geometry.count * packet_size);
+            let (first, geometry) = first.unwrap();
 
             // A video PES start: the decoded PID and spans match the page summary.
             let offset = first
@@ -1157,8 +1302,13 @@ mod tests {
                 ),
             );
             if output == "packets" {
-                let reply = Reply::packets_page(PAGE_SIZE);
-                let request = Request::start(&cli, pages.page_args(0, PAGE_SIZE), reply, || {});
+                let reply = Reply::packets_page(Paging::default().page_size());
+                let request = Request::start(
+                    &cli,
+                    pages.page_args(0, Paging::default().page_size()),
+                    reply,
+                    || {},
+                );
                 wait(request.unwrap()).expect("a page");
             } else {
                 let reply = Reply::packet_detail();
@@ -1214,8 +1364,8 @@ mod tests {
         let page = wait(
             Request::start(
                 &cli,
-                pages.page_args(0, PAGE_SIZE),
-                Reply::packets_page(PAGE_SIZE),
+                pages.page_args(0, Paging::default().page_size()),
+                Reply::packets_page(Paging::default().page_size()),
                 || {},
             )
             .unwrap(),
@@ -1245,19 +1395,23 @@ mod tests {
         std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
         let request = Request::spawn(
             cli::closes_output_and_hangs(&marker),
-            Reply::packets_page(PAGE_SIZE),
+            Reply::packets_page(Paging::default().page_size()),
             || {},
         )
         .unwrap();
         let child = request.child();
         cli::wait_for_closed_output(&marker);
-        let mut pages = PacketPages::new_for_test(PathBuf::from("x"));
+        // A non-default cache of 3 pages, full: the loading page 0 is the oldest.
+        let mut pages = PacketPages {
+            paging: Paging::new(100, 3),
+            ..PacketPages::new_for_test(PathBuf::from("x"))
+        };
         pages.pages.insert(0, Fetch::Loading(request));
-        for page in 1..=CACHED_PAGES as u64 {
+        for page in 1..3 {
             pages.pages.insert(page, Fetch::Failed(String::new()));
         }
-        pages.recent = (0..=CACHED_PAGES as u64).collect();
-        pages.page = CACHED_PAGES as u64 + 1;
+        pages.recent = (0..3).collect();
+        pages.page = 3;
         let pages = std::sync::Arc::new(std::sync::Mutex::new(pages));
         let paging = std::sync::Arc::clone(&pages);
         assert!(
@@ -1266,7 +1420,7 @@ mod tests {
         );
         let pages = pages.lock().unwrap();
         assert!(!pages.pages.contains_key(&0), "page 0 is still cached");
-        assert_eq!(pages.recent.len(), CACHED_PAGES + 1);
+        assert_eq!(pages.recent, [1, 2, 3]);
         assert!(
             cli::wait_until_exited(&child),
             "the evicted page's CLI kept running"
