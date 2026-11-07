@@ -7,7 +7,7 @@ use crate::icons;
 use crate::plot_data::Timeline;
 use crate::psi;
 use crate::range_bar;
-use crate::report::{AnalysisReport, Program, stream_type_name};
+use crate::report::{AffectedPackets, AnalysisReport, Program, stream_type_name};
 
 /// What Overview shows: the summary, or the full-page explanation of one
 /// check.
@@ -446,6 +446,37 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
                 reason: None,
             })
         }
+        Check::TransportErrors | Check::ScrambledPackets => {
+            let result = affected_packets(report, check)?;
+            let mut facts = vec![
+                ("Packets", result.packet_count.to_string()),
+                ("Excluded", result.excluded_packet_count.to_string()),
+                ("Applies to", "the whole multiplex".to_owned()),
+            ];
+            let pids: Vec<String> = result
+                .pids
+                .iter()
+                .map(|p| {
+                    format!(
+                        "{} ({}): {}, {} excluded",
+                        p.pid, p.label, p.packet_count, p.excluded_packet_count
+                    )
+                })
+                .collect();
+            if !pids.is_empty() {
+                facts.push(("Affected PIDs", pids.join(", ")));
+            }
+            if let Some(first) = result.first_offset_bytes {
+                facts.push(("First offset", format!("0x{first:08X}")));
+            }
+            Some(Row {
+                check,
+                status: result.status.clone(),
+                value: result.packet_count.to_string(),
+                facts,
+                reason: None,
+            })
+        }
         Check::PcrJitter => {
             let jitter = program.pcr_jitter.as_ref()?;
             let estimate = &jitter.estimate;
@@ -473,6 +504,14 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
                 reason: jitter.reason.clone(),
             })
         }
+    }
+}
+
+/// The CLI's result of a transport-error or scrambling check.
+fn affected_packets(report: &AnalysisReport, check: Check) -> Option<&AffectedPackets> {
+    match check {
+        Check::TransportErrors => report.transport_errors.as_ref(),
+        _ => report.scrambled_packets.as_ref(),
     }
 }
 
@@ -1001,6 +1040,23 @@ pub(crate) fn findings(
                     ));
                 }
             }
+            Check::TransportErrors | Check::ScrambledPackets => {
+                // One finding per PID, at its first affected packet.
+                for pid in affected_packets(report, check).map_or(&[][..], |r| &r.pids[..]) {
+                    let packets = match pid.packet_count {
+                        1 => "1 packet".to_owned(),
+                        count => format!("{count} packets"),
+                    };
+                    findings.push(finding(
+                        format!(
+                            "PID {} ({}): {packets}, {} excluded from analysis",
+                            pid.pid, pid.label, pid.excluded_packet_count
+                        ),
+                        Scope::Multiplex,
+                        Some(pid.first_offset_bytes),
+                    ));
+                }
+            }
             Check::PcrJitter => {
                 let jitter = program.pcr_jitter.as_ref();
                 let limit = match row.status.as_str() {
@@ -1092,6 +1148,18 @@ mod tests {
                     Scope::Multiplex,
                     Some(25 * 188)
                 ),
+                (
+                    "affected",
+                    "Transport errors",
+                    Scope::Multiplex,
+                    Some(7 * 188)
+                ),
+                (
+                    "affected",
+                    "Scrambled packets",
+                    Scope::Multiplex,
+                    Some(11 * 188)
+                ),
             ]
         );
         assert_eq!(findings[0].reason, "160.0 ms, limit 100 ms");
@@ -1109,6 +1177,12 @@ mod tests {
             findings[4].reason,
             "PID 0x0101: continuity_counter 6 (expected 5)"
         );
+        for finding in &findings[5..] {
+            assert_eq!(
+                finding.reason,
+                "PID 0x1fff (null): 1 packet, 0 excluded from analysis"
+            );
+        }
         // Each row is non-OK and has its finding.
         for row in rows(&report, &report.programs[0]) {
             assert!(is_finding(row.check, &row.status), "{:?}", row.check);
@@ -1146,6 +1220,8 @@ mod tests {
                 ("indeterminate", "PCR jitter estimate", Scope::Program(1)),
                 ("anomalies", "PTS/DTS anomalies", Scope::Program(1)),
                 ("errors", "Continuity counter", Scope::Multiplex),
+                ("affected", "Transport errors", Scope::Multiplex),
+                ("affected", "Scrambled packets", Scope::Multiplex),
                 ("warning", "Analyzer warning", Scope::Multiplex),
             ]
         );
@@ -1248,6 +1324,8 @@ mod tests {
                 Check::PcrPtsDtsGap,
                 Check::TimestampAnomalies,
                 Check::ContinuityCounter,
+                Check::TransportErrors,
+                Check::ScrambledPackets,
             ]
         );
         let labels: Vec<&str> = rows[0].facts.iter().map(|(label, _)| *label).collect();
@@ -1258,6 +1336,13 @@ mod tests {
         assert_eq!(rows[0].value, "—");
         let continuity: Vec<&str> = rows[3].facts.iter().map(|(label, _)| *label).collect();
         assert_eq!(continuity, ["Errors", "Applies to"]);
+        // A healthy transport check: no PID list and no first offset.
+        let tei: Vec<&str> = rows[4].facts.iter().map(|(label, _)| *label).collect();
+        assert_eq!(tei, ["Packets", "Excluded", "Applies to"]);
+        assert_eq!(
+            (rows[4].status.as_str(), rows[4].value.as_str()),
+            ("ok", "0")
+        );
     }
 
     #[test]

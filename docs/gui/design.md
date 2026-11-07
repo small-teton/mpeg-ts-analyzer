@@ -149,11 +149,13 @@ check (`CheckDetail`).
 - **Transport health table**: one non-collapsible table with the columns
   Check, Value, Status and Help, grouped by category. The order is fixed:
   Timing (Max PCR interval, PCR jitter estimate), PES / Timestamps
-  (PCR → PTS/DTS gap, PTS/DTS anomalies), Integrity (Continuity counter).
+  (PCR → PTS/DTS gap, PTS/DTS anomalies), Integrity (Continuity counter,
+  Transport errors, Scrambled packets).
   Structure and Multiplexing join as their checks land (#157). A check is
   listed when the CLI reported it. There is no scope column or badge: the
-  selected program is shown above, and exceptions (Continuity counter covers
-  the whole multiplex) are on the detail page. Status is the CLI's status
+  selected program is shown above, and exceptions (Continuity counter,
+  Transport errors and Scrambled packets cover the whole multiplex) are on the
+  detail page. Status is the CLI's status
   verbatim as a badge sized to its text (at least 48 points wide); a status
   the GUI does not describe is shown in the neutral color with a tooltip
   saying so. Help holds the focusable
@@ -168,7 +170,7 @@ check (`CheckDetail`).
 - **Check model**: `gui/src/views/check_help.rs` holds one entry per check —
   category, title, a one-line summary, what it measures, what it applies to,
   what the value means, every status with its condition, when it is skipped,
-  limitations and the Timeline or Bitrate link — and its order is the table
+  limitations and the Timeline, Bitrate or Packets link — and its order is the table
   order. `overview::row` turns the report into a check's value, status and
   current result (only fields the CLI provided). A new check is one
   `check_help` entry and one `row` arm. The texts state the CLI's thresholds
@@ -182,7 +184,7 @@ check (`CheckDetail`).
   table: status badge and condition per status; the current status is
   highlighted and its row marked selected), then What it measures, Applies
   to, What the value means, When it is skipped, Limitations and Details with
-  `Open Timeline` / `Open Bitrate`, each a heading over a wrapped paragraph. A
+  `Open Timeline` / `Open Bitrate` / `Open Packets`, each a heading over a wrapped paragraph. A
   finding with an offset has `Open packet`; one that Timeline marks as an
   event (a continuity error on a PID of the program) also has
   `Show on timeline`, which selects that event. Summary-only findings get no
@@ -203,8 +205,9 @@ check (`CheckDetail`).
 - **Findings** are one normalized list built from the report
   (`overview::findings`): a finding for each failed compliance check, each
   PTS/DTS anomaly group, each continuity event (one finding for the check if
-  the CLI reported errors without events), PCR jitter and each analyzer
-  warning. Any status other than `ok`, `skipped` and `not_assessable`,
+  the CLI reported errors without events), PCR jitter, each PID of
+  `transport_errors` and `scrambled_packets` (at its first offset) and each
+  analyzer warning. Any status other than `ok`, `skipped` and `not_assessable`,
   including one the GUI does not know, is a finding with the CLI's status as
   its badge, so an `NG` or `WARNING` row can never sit next to an empty list.
   Each finding names its scope (program or whole multiplex); its check link

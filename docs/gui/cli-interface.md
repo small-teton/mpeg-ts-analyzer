@@ -53,9 +53,10 @@ switching programs or screens never runs the CLI again.
     bracketed PCR → PTS/DTS gap, bitrate per 1-second window, PCR jitter
     samples, CC and timestamp events.
 - **Per program vs. per multiplex**: PCR, PTS/DTS, timestamp anomalies,
-  bitrate and PCR jitter are per program; continuity-counter results and
-  warnings are per range, as the CLI already checks continuity across the
-  multiplex. Bitrate and jitter are collected without the `--dump-*` flags.
+  bitrate and PCR jitter are per program; continuity-counter results,
+  transport errors and scrambled packets (`transport_errors`,
+  `scrambled_packets`) and warnings are per range, as the CLI checks them
+  across the multiplex. Bitrate and jitter are collected without the `--dump-*` flags.
 - **PSI layout**: each PAT/PMT section seen (offset, version), the interval each
   layout applies to, the PIDs that change, and every PID observed in the range.
   The GUI keeps this to label packets and to mark changes on the plots (#93,
