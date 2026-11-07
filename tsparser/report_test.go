@@ -3,28 +3,11 @@ package tsparser
 import (
 	"encoding/json"
 	"errors"
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/small-teton/mpeg-ts-analyzer/v2/options"
 )
-
-func TestJSONSchemaDocument(t *testing.T) {
-	for _, path := range []string{"../docs/json-schema-v2.json", "../docs/json-schema-analysis-v2.json", "../docs/json-schema-packets-v1.json"} {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var schema map[string]any
-		if err := json.Unmarshal(data, &schema); err != nil {
-			t.Fatalf("%s: invalid JSON Schema document: %v", path, err)
-		}
-		if schema["$schema"] != "https://json-schema.org/draft/2020-12/schema" {
-			t.Fatalf("%s: unexpected JSON Schema dialect: %v", path, schema["$schema"])
-		}
-	}
-}
 
 type failingWriter struct{}
 

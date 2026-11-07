@@ -129,6 +129,17 @@ packages only. The CLI entry point (`cmd`, `main.go`) is excluded from coverage
 targets. Each of the three packages must maintain 100% coverage through its own
 tests. [Architecture](architecture.md) describes what belongs in each package.
 
+The JSON outputs are validated against the checked-in schemas
+(`docs/json-schema-v2.json`, `docs/json-schema-analysis-v2.json` and
+`docs/json-schema-packets-v1.json`) by `tsparser/json_schema_test.go`: every
+output kind and lifecycle state is written through the CLI's own JSON output
+functions and checked with a JSON Schema Draft 2020-12 validator
+([`santhosh-tekuri/jsonschema`](https://github.com/santhosh-tekuri/jsonschema),
+Apache-2.0). The cross-file `$ref`s resolve to the local files under the
+published `$id`s (`site_url` in `mkdocs.yml` plus the file name), with no
+network access. Only tests import the validator, so it is not linked into the
+CLI. When an output gains a state or an optional field, add a case there.
+
 A pre-push hook (`make setup` to enable) runs the build, test, coverage, and
 README demo checks before every push. Push is rejected if coverage drops below
 100% or the committed GIF is stale.
