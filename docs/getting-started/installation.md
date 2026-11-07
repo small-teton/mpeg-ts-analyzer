@@ -52,9 +52,8 @@ GUI packages for macOS (Apple silicon), Linux (`.deb`, AppImage) and Windows
 published CLI release, named in the release title and in its manifest file.
 
 The macOS bundle has an ad-hoc signature that seals the app contents, but it is
-not signed with an Apple Developer ID or notarized. Windows packages are also
-not identity-signed. The operating system therefore warns before the first
-launch; this warning does not mean that Apple or Microsoft has verified the
+not signed with an Apple Developer ID or notarized. macOS therefore warns
+before the first launch; this warning does not mean that Apple has verified the
 publisher or checked this release for malware. See
 [Release security](../gui/release-security.md#identity-backed-code-signing-and-notarization-excluded-for-now)
 for the current signing model.
@@ -68,12 +67,7 @@ if project funding or user demand justifies it. See
 [Apple's membership details](https://developer.apple.com/programs/whats-included/)
 for the current fee.
 
-### Opening the GUI for the first time
-
-Before overriding an operating-system warning, download the package from this
-repository's release page and [verify the download](#verifying-a-download).
-
-#### macOS
+### Opening the macOS GUI for the first time
 
 1. Open the downloaded `.dmg`, drag `mpeg-ts-analyzer.app` to **Applications**,
    and open the copied app from Applications. Do not run it from the mounted
@@ -90,24 +84,6 @@ macOS saves the app as an exception, so later launches work normally. On a Mac
 managed by an organization, its security policy may prevent this override. See
 [Apple's official instructions](https://support.apple.com/guide/mac-help/mh40617/mac)
 for the current System Settings workflow.
-
-#### Windows
-
-SmartScreen may show **Windows protected your PC** because the installer and
-portable executable are not certificate-signed. After verifying the download,
-choose **More info → Run anyway** if you want to continue.
-
-### Verifying a download
-
-Release assets include checksums and GitHub build provenance. From the
-directory containing a downloaded asset and `SHA256SUMS`:
-
-```sh
-sha256sum -c SHA256SUMS --ignore-missing
-gh attestation verify <file> --repo small-teton/mpeg-ts-analyzer
-```
-
-The release also contains a CycloneDX SBOM for the GUI's Rust dependencies.
 
 ### Updating the GUI
 
