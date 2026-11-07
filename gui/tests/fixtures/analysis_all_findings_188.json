@@ -10,6 +10,15 @@
   "status": "complete",
   "analysis_start_offset_bytes": 752,
   "analysis_end_offset_bytes": 22560,
+  "sync": {
+    "status": "ok",
+    "required_sync_bytes": 5,
+    "max_resync_scan_bytes": 1048576,
+    "loss_count": 0,
+    "resync_count": 0,
+    "skipped_bytes": 0,
+    "trailing_partial_packet_bytes": 0
+  },
   "continuity_counter": {
     "status": "errors",
     "total_error_count": 1,
