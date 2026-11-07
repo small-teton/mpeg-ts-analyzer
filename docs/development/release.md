@@ -75,10 +75,14 @@ the GUI's commit.
    3. builds the packages on macOS, Linux and Windows, checks that the bundled
       CLI reports that version, installs or unpacks each package and checks
       that it finds that CLI;
-   4. only then creates the tag at the built commit, and publishes the packages
-      with `SHA256SUMS`, an SBOM, build provenance and
+   4. signs the update packages for the in-app update with the key of the
+      `gui-release` environment and verifies them against `gui/updater.pub`
+      (see [Update signing](../gui/release-security.md#update-signing));
+   5. only then creates the tag at the built commit, and publishes the packages
+      with `SHA256SUMS`, an SBOM, build provenance,
       `mpeg-ts-analyzer-gui_<version>_manifest.json`, which names the GUI and
-      CLI versions, tags and commits.
+      CLI versions, tags and commits, and the update packages with their
+      signatures and `mpeg-ts-analyzer-gui_<version>_update.json`.
 
 A tag `gui-vX.Y.Z` pushed by a user starts the same workflow; it must match
 `gui/Cargo.toml` and point at a commit on `master`. Reruns behave as for the
@@ -87,7 +91,36 @@ release exists (a draft is replaced), stop when the release is published, and
 fail when the tag points elsewhere. Tags are never moved or deleted.
 
 Pull requests that change the packaging, the versions or the release scripts
-run the same checks and build the packages without a tag or a release. When
+run the same checks and build the packages without a tag or a release; they
+sign the update packages with a key generated in the run, never with the
+release key. When
 the declared CLI release is not published yet but `VERSION` already names it,
 those pull requests bundle a CLI built from their commit instead, with a
 warning; a release always requires the published CLI.
+
+### Update signing key (one-time setup)
+
+The `sign-updates` job reads the key for the in-app update from the
+`gui-release` environment. Before the first release with update signing:
+
+1. Generate the key pair outside the repository and keep it private:
+
+   ```sh
+   mkdir -p ~/keys && chmod 700 ~/keys
+   cargo packager signer generate --path ~/keys/mpeg-ts-analyzer-gui-updater.key
+   ```
+
+   This writes the password-protected private key and `<file>.pub`. The
+   public key must equal `gui/updater.pub`; a new key pair also needs a pull
+   request that replaces that file (see
+   [Keys](../gui/release-security.md#keys) for rotation).
+2. In GitHub → Settings → Environments, create `gui-release`. Under
+   *Deployment branches and tags*, choose *Selected branches and tags* and add
+   the branch `master` and the tag pattern `gui-v*`.
+3. Add two environment secrets: `GUI_UPDATER_PRIVATE_KEY`, the content of the
+   private key file, and `GUI_UPDATER_PRIVATE_KEY_PASSWORD`, its password.
+4. Back up the private key file and the password offline. Without them, later
+   releases cannot be signed with the key that installed GUIs trust.
+
+A release run without these secrets fails in `sign-updates`, before anything is
+tagged or published.

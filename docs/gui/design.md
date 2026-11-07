@@ -323,7 +323,9 @@ Language, packets per page and cached pages are laid out but not applied yet.
 
 ## Updates
 
-Status: design only (#150); nothing below is implemented yet.
+Status: the release workflow already signs the update packages and publishes
+the update manifest ([update signing](release-security.md#update-signing)); the
+GUI side described below is not implemented yet (#150).
 
 The GUI can update itself from GitHub Releases. The main reason is macOS: the
 app is signed ad hoc, so a `.dmg` downloaded in a browser carries
