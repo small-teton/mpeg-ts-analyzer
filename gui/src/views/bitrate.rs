@@ -43,14 +43,14 @@ pub fn show_report(
             .show(ui, |plot| {
                 constrain_time_axis(plot, data.time_range);
                 plot.line(
-                    Line::new("Program (incl. PSI)", data.program_drawn.clone())
+                    Line::new("Program (incl. PSI)", data.program_drawn.as_slice())
                         .color(egui::Color32::LIGHT_GRAY)
                         .style(LineStyle::Dashed { length: 6.0 })
                         .allow_band(false),
                 );
                 for (index, pid) in data.pids.iter().enumerate() {
                     plot.line(
-                        Line::new(pid.label.clone(), pid.drawn.clone())
+                        Line::new(pid.label.clone(), pid.drawn.as_slice())
                             .color(series_color(index))
                             // Duplicate X values form the vertical edges of a
                             // step, not a min/max area to aggregate as a band.
@@ -79,7 +79,7 @@ pub fn show_report(
                     constrain_time_axis(plot, data.time_range);
                     plot.hline(HLine::new("expected", 0.0).color(egui::Color32::DARK_GRAY));
                     plot.line(
-                        Line::new("jitter", data.jitter_drawn.clone())
+                        Line::new("jitter", data.jitter_drawn.as_slice())
                             .color(theme::PCR_COLOR),
                     );
                 });
@@ -177,12 +177,12 @@ pub fn show_report(
 
 /// A plot over time like Timeline's: zoom, scroll and drag move the time axis
 /// only, and the Y axis stays at `y_range` (a reset returns to it).
-fn time_plot(
+fn time_plot<'a>(
     id: impl egui::AsIdSalt,
     height: f32,
     time_range: (f64, f64),
     y_range: (f64, f64),
-) -> Plot<'static> {
+) -> Plot<'a> {
     Plot::new(id)
         .height(height)
         .default_x_bounds(time_range.0, time_range.1)

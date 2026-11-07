@@ -834,6 +834,8 @@ fn navigation_tile(ui: &mut egui::Ui, screen: Screen, selected: bool) -> egui::R
     response
 }
 
+#[cfg(test)]
+mod plot_alloc_tests;
 #[cfg(all(test, feature = "screenshots"))]
 mod screenshots;
 #[cfg(test)]
