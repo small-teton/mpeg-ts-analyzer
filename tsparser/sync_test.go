@@ -383,6 +383,19 @@ func TestSyncNotAcquired(t *testing.T) {
 	if err == nil || errors.Is(err, errSyncNotAcquired) || report.Reason != "analysis_failed" {
 		t.Errorf("err = %v, report %s", err, toJSON(t, report))
 	}
+	// Also when the first read has no alignment (detection falls back to 188
+	// bytes) and a later one holds 192-byte packets.
+	var m2ts []byte
+	for _, p := range [][]byte{nullTestPacket(), nullTestPacket(), nullTestPacket(), nullTestPacket()} {
+		m2ts = append(append(m2ts, 0, 0, 0, 0), p...)
+	}
+	if err := os.WriteFile(path, append(bytes.Repeat([]byte{0x00}, 70000), m2ts...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	report, err = decodeJSONReport(t, func() error { return ParseTsFile(path, options.Options{Format: "json"}) })
+	if err == nil || errors.Is(err, errSyncNotAcquired) || report.Reason != "analysis_failed" {
+		t.Errorf("late M2TS alignment: err = %v, report %s", err, toJSON(t, report))
+	}
 }
 
 // failingReader returns data, then err.

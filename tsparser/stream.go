@@ -171,7 +171,9 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 			}
 		}
 
-		aligned = aligned || hasAlignment(buf[:size], packetSize)
+		// Either size counts: detection falls back to 188 bytes when the
+		// first read has no alignment, and a later one may hold M2TS packets.
+		aligned = aligned || hasAlignment(buf[:size], tsPayloadSize) || hasAlignment(buf[:size], tsPayloadSize+tpExtraHeaderSize)
 		patOffset, err := findPat(buf[:size], packetSize)
 		if err != nil {
 			continue
