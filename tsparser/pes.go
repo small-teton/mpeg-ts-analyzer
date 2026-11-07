@@ -179,8 +179,8 @@ func (p *Pes) Append(buf []byte) {
 //     PTS_DTS_flags is the forbidden '01'.
 //   - PESHeaderInconsistentLength: PES_header_data_length is smaller than the
 //     fields its flags announce (PTS 5 bytes, PTS+DTS 10, ESCR 6, ES_rate 3,
-//     DSM trick mode 1, additional_copy_info 1, previous_PES_CRC 2, at least
-//     1 for the extension), or a non-zero PES_packet_length is smaller than the
+//     DSM trick mode 1, additional_copy_info 1, previous_PES_CRC 2, and the
+//     PES_extension with the fields its own flags announce), or a non-zero PES_packet_length is smaller than the
 //     3 flag bytes plus PES_header_data_length. A PES_packet_length of 0
 //     ("unbounded") is accepted for every stream.
 //   - PESHeaderBadMarkerBits: a PTS or DTS field does not start with its
@@ -291,6 +291,12 @@ func (p *Pes) Parse() error {
 	if len(b) < 9+int(p.pesHeaderDataLength) {
 		return pesError(analysis.PESHeaderTruncated, "pes header truncated: %d of %d bytes", len(b), 9+int(p.pesHeaderDataLength))
 	}
+	if p.pesExtensionFlag == 1 {
+		extension := b[9+required-pesExtensionMin : 9+int(p.pesHeaderDataLength)]
+		if need := pesExtensionSize(extension); need > len(extension) {
+			return pesError(analysis.PESHeaderInconsistentLength, "pes PES_extension needs %d bytes, PES_header_data_length leaves %d", need, len(extension))
+		}
+	}
 
 	o := b[9:]
 	var ok bool
@@ -342,6 +348,38 @@ func (p *Pes) Parse() error {
 		p.previousPesPacketCrc = uint16(o[0])<<8 | uint16(o[1])
 	}
 	return nil
+}
+
+// pesExtensionSize returns the number of bytes the PES_extension starting at
+// b announces: its flag byte, 16 bytes of PES_private_data, the
+// length-prefixed pack_header, 2 bytes each of program_packet_sequence_counter
+// and P-STD buffer, and the length-prefixed PES_extension_2 data. A length
+// byte beyond b counts as needed, so the result exceeds len(b) whenever the
+// announced fields do not fit.
+func pesExtensionSize(b []byte) int {
+	flags, n := b[0], 1
+	if flags&0x80 != 0 { // PES_private_data_flag
+		n += 16
+	}
+	if flags&0x40 != 0 { // pack_header_field_flag
+		if n >= len(b) {
+			return n + 1
+		}
+		n += 1 + int(b[n])
+	}
+	if flags&0x20 != 0 { // program_packet_sequence_counter_flag
+		n += 2
+	}
+	if flags&0x10 != 0 { // P-STD_buffer_flag
+		n += 2
+	}
+	if flags&0x01 != 0 { // PES_extension_flag_2
+		if n >= len(b) {
+			return n + 1
+		}
+		n += 1 + int(b[n]&0x7F)
+	}
+	return n
 }
 
 // pesTimestamp decodes a 5-byte PTS or DTS field: a 4-bit prefix, then the

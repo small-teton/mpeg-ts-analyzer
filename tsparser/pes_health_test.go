@@ -47,6 +47,17 @@ func TestPesParseHeaderProblems(t *testing.T) {
 		{"PTS second marker", header(0, 0x80, 0x80, withByte(pts, 2, 0x04)...), analysis.PESHeaderBadMarkerBits},
 		{"PTS third marker", header(0, 0x80, 0x80, withByte(pts, 4, 0x20)...), analysis.PESHeaderBadMarkerBits},
 		{"PTS and DTS", header(0, 0x80, 0xC0, ptsDts...), analysis.PESHeaderOK},
+		{"extension without fields", header(0, 0x80, 0x81, append(pts, 0x00)...), analysis.PESHeaderOK},
+		{"extension private data missing", header(0, 0x80, 0x01, 0x80), analysis.PESHeaderInconsistentLength},
+		{"extension private data", header(0, 0x80, 0x01, append([]byte{0x80}, make([]byte, 16)...)...), analysis.PESHeaderOK},
+		{"extension pack header length missing", header(0, 0x80, 0x01, 0x40), analysis.PESHeaderInconsistentLength},
+		{"extension pack header too long", header(0, 0x80, 0x01, 0x40, 0x05, 0x00), analysis.PESHeaderInconsistentLength},
+		{"extension pack header", header(0, 0x80, 0x01, 0x40, 0x01, 0x00), analysis.PESHeaderOK},
+		{"extension sequence counter and P-STD missing", header(0, 0x80, 0x01, 0x30, 0x00, 0x00), analysis.PESHeaderInconsistentLength},
+		{"extension sequence counter and P-STD", header(0, 0x80, 0x01, 0x30, 0x00, 0x00, 0x00, 0x00), analysis.PESHeaderOK},
+		{"extension 2 length missing", header(0, 0x80, 0x01, 0x01), analysis.PESHeaderInconsistentLength},
+		{"extension 2 too long", header(0, 0x80, 0x01, 0x01, 0x82, 0x00), analysis.PESHeaderInconsistentLength},
+		{"extension 2", header(0, 0x80, 0x01, 0x01, 0x81, 0x00), analysis.PESHeaderOK},
 		{"PTS of PTS and DTS", header(0, 0x80, 0xC0, withByte(ptsDts, 0, 0x21)...), analysis.PESHeaderBadMarkerBits},
 		{"DTS prefix", header(0, 0x80, 0xC0, withByte(ptsDts, 5, 0x31)...), analysis.PESHeaderBadMarkerBits},
 		{"DTS marker", header(0, 0x80, 0xC0, withByte(ptsDts, 9, 0x20)...), analysis.PESHeaderBadMarkerBits},
@@ -181,4 +192,26 @@ func TestDumpPESHealth(t *testing.T) {
 	if !strings.HasSuffix(out, want) {
 		t.Errorf("skipped:\n%s", out)
 	}
+}
+
+// A continuity error ends the PES in progress: it is parsed from the packets
+// before the loss, the continuation after the loss is not appended, and no
+// PTS interval spans the loss.
+func TestContinuityErrorEndsPes(t *testing.T) {
+	a := newProgramAnalyzer(options.Options{}, 0, 1, 0x1000, 0x100, []ProgramInfo{{elementaryPid: 0x100, streamType: 0x02}}, false)
+	pes := NewPes()
+	pes.Initialize(0x100, 0, 0, 0, false)
+	pes.Append([]byte{0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x80, 0x05, 0x21, 0x00, 0x05, 0xBF, 0x21})
+	a.pesMap[0x100] = pes
+	a.breakPES(0x100, 376, analysis.BreakContinuityError)
+	if a.pesMap[0x100] != nil {
+		t.Fatal("the PES in progress was kept after the continuity error")
+	}
+	if h := a.pes.check.Result().Headers; h.Checked != 1 || h.Errors != 0 {
+		t.Errorf("headers = %+v, want the PES before the loss checked", h)
+	}
+	// A break on a PID without a PES in progress, or outside the program,
+	// only records the break.
+	a.breakPES(0x100, 564, analysis.BreakContinuityError)
+	a.breakPES(0x200, 564, analysis.BreakContinuityError)
 }

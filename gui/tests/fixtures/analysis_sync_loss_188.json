@@ -86,9 +86,9 @@
     "status": "ok",
     "pts_count": 96,
     "interval_count": 92,
-    "max_interval_ms": 40,
-    "max_interval_start_offset_bytes": 7144,
-    "max_interval_end_offset_bytes": 7896,
+    "max_interval_ms": 20,
+    "max_interval_start_offset_bytes": 752,
+    "max_interval_end_offset_bytes": 1128,
     "exceeded_count": 0,
     "pids": [
       {
@@ -99,9 +99,9 @@
         "status": "ok",
         "pts_count": 96,
         "interval_count": 92,
-        "max_interval_ms": 40,
-        "max_interval_start_offset_bytes": 7144,
-        "max_interval_end_offset_bytes": 7896,
+        "max_interval_ms": 20,
+        "max_interval_start_offset_bytes": 752,
+        "max_interval_end_offset_bytes": 1128,
         "exceeded_count": 0
       }
     ]
@@ -132,7 +132,7 @@
           "status": "ok",
           "value_ms": 100,
           "limit_ms": 1000,
-          "observations": 95
+          "observations": 93
         }
       },
       "timestamp_anomalies": {
@@ -907,8 +907,7 @@
             "pid": "0x0100",
             "offset_bytes": 7144,
             "elapsed_ms": 340,
-            "pts_ms": 10480,
-            "pcr_gap_ms": 100
+            "pts_ms": 10480
           },
           {
             "pid": "0x0100",
@@ -1047,8 +1046,7 @@
             "pid": "0x0100",
             "offset_bytes": 15041,
             "elapsed_ms": 760,
-            "pts_ms": 10900,
-            "pcr_gap_ms": 100
+            "pts_ms": 10900
           },
           {
             "pid": "0x0100",

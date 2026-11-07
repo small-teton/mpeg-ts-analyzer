@@ -363,11 +363,21 @@ func (a *programAnalyzer) attachPESCheck(check *analysis.PESCheck, program uint1
 
 // breakPES records that PES packets of pid may have been lost or not read at
 // pos, if pid is an elementary stream of the program.
+//
+// After a continuity error the PES in progress ends: it is parsed from the
+// packets before the loss, and the PID waits for its next
+// payload_unit_start_indicator, so no PES packet spans the loss.
 func (a *programAnalyzer) breakPES(pid uint16, pos int64, cause analysis.BreakCause) {
-	if _, stream := a.pesMap[pid]; stream {
-		a.anomaly.markUntimed(pid)
-		a.pes.observeBreak(analysis.PESBreak{Program: a.pes.program, PID: pid, Offset: pos, Cause: cause})
+	pes, stream := a.pesMap[pid]
+	if !stream {
+		return
 	}
+	if cause == analysis.BreakContinuityError && pes != nil {
+		a.completePes(pes, false)
+		a.pesMap[pid] = nil
+	}
+	a.anomaly.markUntimed(pid)
+	a.pes.observeBreak(analysis.PESBreak{Program: a.pes.program, PID: pid, Offset: pos, Cause: cause})
 }
 
 // observe processes one packet of the multiplex at offset pos.
