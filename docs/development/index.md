@@ -1,6 +1,9 @@
 # Development
 
 Run the commands in this guide from the repository root unless noted otherwise.
+[Directory structure](https://github.com/small-teton/mpeg-ts-analyzer/blob/master/DIRECTORY_STRUCTURE.md)
+maps what each directory and top-level file of the repository is for, and
+[Architecture](architecture.md) how the Go code is divided.
 
 ## Containerized development environment
 
@@ -391,6 +394,12 @@ and the JSON outputs in
 [`docs/reference/json-output.md`](../reference/json-output.md); the
 documentation-policy check enforces both. `OPTIONS.md`, `FUZZING.md` and
 `docs/DEVELOPMENT.md` remain only as pointers to the pages that replaced them.
+Outside `docs/`,
+[`DIRECTORY_STRUCTURE.md`](https://github.com/small-teton/mpeg-ts-analyzer/blob/master/DIRECTORY_STRUCTURE.md)
+maps the repository and
+[`tools/README.md`](https://github.com/small-teton/mpeg-ts-analyzer/blob/master/tools/README.md)
+lists the fixture generators; the samples they write are described in
+[Sample data](sample-data.md).
 
 ### Documentation site
 
