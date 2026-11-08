@@ -1,0 +1,44 @@
+# cargo-deny configuration of the License check workflow
+# (.github/workflows/license-check.yml). Only `cargo deny check licenses` runs.
+#
+# The allowed licenses must be exactly `accepted` in gui/about.toml, the
+# source of truth that also gates the GUI's third-party notices:
+# .github/scripts/license-allowlist.py check compares them. Add a license to
+# both files, after review.
+
+[graph]
+# The released GUI targets, as in gui/about.toml.
+targets = [
+  "aarch64-apple-darwin",
+  "x86_64-unknown-linux-gnu",
+  "x86_64-pc-windows-msvc",
+]
+exclude-dev = true
+
+[licenses]
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "0BSD",
+  "ISC",
+  "Zlib",
+  "BSL-1.0",
+  "Unicode-3.0",
+  "Unlicense",
+  "OFL-1.1",
+  "Ubuntu-font-1.0",
+]
+confidence-threshold = 0.8
+exceptions = [
+  # File-level copyleft; only option-ext (dirs, from cargo-packager-updater)
+  # uses it. Used unmodified, with its license text in the notices and its
+  # source on crates.io.
+  { crate = "option-ext", allow = ["MPL-2.0"] },
+]
+
+[licenses.private]
+# The GUI crate itself (publish = false) is Apache-2.0 like the repository.
+ignore = true
