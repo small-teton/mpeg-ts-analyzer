@@ -729,7 +729,7 @@ impl Updates {
         }
     }
 
-    /// The navigation rail's update button and About's "Check for Updates…":
+    /// The navigation rail's update button:
     /// shows the window, with a new manual check unless an update was found
     /// or is being installed.
     pub(crate) fn open(&mut self, ctx: &egui::Context) {

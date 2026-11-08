@@ -526,7 +526,6 @@ impl App {
     }
 
     fn about_window(&mut self, ctx: &egui::Context) {
-        let mut check_updates = false;
         egui::Window::new("About")
             .open(&mut self.about_open)
             .collapsible(false)
@@ -537,12 +536,7 @@ impl App {
                 ui.label("MPEG-2 Transport Stream analyzer (ISO/IEC 13818-1)");
                 ui.hyperlink("https://github.com/small-teton/mpeg-ts-analyzer");
                 ui.weak("Apache License 2.0");
-                ui.add_space(6.0);
-                check_updates = ui.button("Check for Updates…").clicked();
             });
-        if check_updates {
-            self.updates.open(ctx);
-        }
     }
 }
 

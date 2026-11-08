@@ -339,9 +339,18 @@ bit of the packet on the right, colored by what it is on the wire.
   prefix, marker bits, PAT/PMT fixed bits, reserved bits, stuffing bytes), the
   line shows ✓ or "✗ expected …", a mismatch is red in the grid, and the
   selected part names the rule.
-- The PES header or PSI section (PAT, PMT, …) is listed inside the Payload,
-  since it decodes the payload's bytes; a payload that is not decoded (a
-  continuation or a scrambled payload) is just its payload line.
+- The TS packet's payload is called "TS payload", so it is not confused with
+  the PES payload. The PES header or PSI section (PAT, PMT, …) is listed
+  inside it, since it decodes the payload's bytes, followed by what is left
+  of the TS payload: "PES payload" (the elementary-stream data) after a PES
+  header, "Stuffing" (all 0xFF) or "Rest of the TS payload" after a section,
+  and nothing when the section or header fills the payload. A later packet
+  of a PES packet is all "PES payload (continued)"; another payload that is
+  not decoded (a section's continuation or a scrambled payload) is just its
+  TS payload line.
+- Selecting a line marks every bit it covers: "TS payload" marks the whole
+  payload, the section or PES header inside it included, while a field of
+  the section marks just that field.
 - A PTS, DTS, PCR or OPCR is one line spanning its whole encoding, with its
   prefix, value runs, reserved and marker bits beneath it; a PAT program or
   PMT stream likewise lists its fields and reserved bits.

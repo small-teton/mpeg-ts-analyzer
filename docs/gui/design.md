@@ -403,9 +403,12 @@ the whole range is never held in memory.
   - "This packet": TS header, adaptation field (PCR and interval verdict),
     payload kind, PAT/PMT section fields and tables, PES header fields, and
     for a 204-byte packet the "Trailer (after the TS packet; not decoded)"
-    with its 16 bytes. The PES header or PSI section is a section inside
-    the Payload section, since it decodes the payload's bytes; the trailer
-    follows the payload at the top level. The trailer is not interpreted: it is often
+    with its 16 bytes. The TS packet's payload is labeled "TS payload" (the
+    CLI's layer and field stay `payload`) so it is not taken for the PES
+    payload. The PES header or PSI section is a section inside the TS payload
+    section, since it decodes the payload's bytes, followed by what is left
+    of the TS payload (see the field list of the detailed inspection below);
+    the trailer follows the payload at the top level. The trailer is not interpreted: it is often
     Reed-Solomon parity, but nothing checks that.
   - Byte inspector: the hex dump colored by layer, with the trailer of a
     204-byte packet in its own color after the 188 TS bytes. Clicking a field
@@ -445,9 +448,17 @@ the whole range is never held in memory.
       classified, and a legend of the role colors.
     - Left (resizable): "Fields", one section per layer in file order, the
       layer that decodes the payload (PES header or PSI section such as a
-      PAT or PMT) inside the Payload section after its payload line; a
-      payload nothing decodes (a continuation, scrambled) keeps that line
-      alone, and a 204-byte trailer follows the payload at the top level.
+      PAT or PMT) inside the "TS payload" section after its "TS payload"
+      line, and after that layer a line for what follows it in the TS
+      payload, derived by the GUI from where the layer ends (the CLI reports
+      no part for it): "PES payload" (the elementary-stream data) after a
+      PES header, "Stuffing" after a section when those bytes are all 0xFF,
+      otherwise "Rest of the TS payload"; nothing when the layer fills the
+      payload. A packet continuing a PES packet (unit kind `pes`, no PES
+      header) gets one "PES payload (continued)" line spanning the payload;
+      any other payload nothing decodes (a section's continuation,
+      scrambled) keeps its "TS payload" line alone. A 204-byte trailer
+      follows the payload at the top level.
       Selecting a part inside a collapsed section, in the grid, opens the
       sections holding it. Each
       line is a part of the layer's `bit_layout`: label, value (in the
@@ -460,7 +471,7 @@ the whole range is never held in memory.
       Several `reserved` parts are told apart by their `id`.
     - Right: the selected part's kind, packet bits and byte/bit coordinates,
       value, expected value and validity, the rule that fixes it, and where
-      it is (`Payload › PMT › stream 2`); then the bit grid: every bit of the packet,
+      it is (`TS payload › PMT › stream 2`); then the bit grid: every bit of the packet,
       4, 2 or 1 bytes a row depending on the width (4 bytes, a 32-bit word,
       is how the specification draws its syntax), each byte from bit 7 to bit
       0 with its hex value, column heads kept in view. Bits are colored by
@@ -469,7 +480,12 @@ the whole range is never held in memory.
       striped and outlined, and a fixed-bit mismatch red whatever its role.
       No lines are drawn between parts (inside a byte only, they read as
       byte structure); the selection is outlined instead.
-      Hovering a bit describes its part; clicking it selects the part.
+      The grid marks every bit the selected line refers to: its own bits,
+      or for a field or entry the bits of all its parts, so selecting
+      "TS payload" marks the whole payload, the section or PES header in it
+      included, while a field inside the section marks only that field.
+      Hovering a bit describes its innermost part (a section field rather
+      than the TS payload around it); clicking it selects that part.
     - Back restores the list as it was left: page, PID filter, selected row
       (the packet the page was opened for, even after Previous/Next) and
       scroll position.
@@ -707,7 +723,8 @@ names the GUI and its version).
   off, nothing is requested or shown.
 - **Manually**, from the update button in the navigation rail (an
   arrows-clockwise tile labeled "Updates" above Settings, named and
-  tooltipped "Check for Updates") or the "Check for Updates…" button in the About window. The result
+  tooltipped "Check for Updates"), its only entry point; the About window
+  has no update button. The result
   is shown in the update window: up to date, an update, or the error. A
   manual check ignores a skipped version.
 

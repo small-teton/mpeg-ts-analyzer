@@ -135,7 +135,7 @@ impl Part {
     fn from_layout(layer: &PacketLayer, part: &LayoutPart) -> Self {
         Part {
             id: part.id.clone(),
-            label: part.label.clone(),
+            label: part_label(&layer.name, &part.label).to_owned(),
             kind: Kind::parse(&part.kind),
             ranges: part.bit_ranges(),
             value: layout_value(part),
@@ -155,7 +155,7 @@ impl Part {
         let row_id = row.map_or(String::new(), |r| format!("row[{r}]."));
         Part {
             id: format!("{}.{row_id}{}@{}", layer.name, field.name, ranges[0].start),
-            label: field.name.clone(),
+            label: part_label(&layer.name, &field.name).to_owned(),
             kind: Kind::Value,
             ranges,
             value: field_text(field),
@@ -187,7 +187,7 @@ fn context(layer: &PacketLayer, row: Option<usize>, field: Option<&str>) -> Stri
         path.push(format!("{} {}", row_noun(&layer.name), row + 1));
     }
     if let Some(field) = field {
-        path.push(field.to_owned());
+        path.push(part_label(&layer.name, field).to_owned());
     }
     path.join(" › ")
 }
@@ -205,7 +205,7 @@ pub fn layer_title(name: &str) -> &str {
         "m2ts_header" => "M2TS header",
         "ts_header" => "TS header",
         "adaptation_field" => "Adaptation field",
-        "payload" => "Payload",
+        "payload" => "TS payload",
         "pes_header" => "PES header",
         "pat" => "PAT",
         "pmt" => "PMT",
@@ -213,6 +213,131 @@ pub fn layer_title(name: &str) -> &str {
         "trailer" => "Trailer",
         other => other,
     }
+}
+
+/// The label of a part or field as the GUI shows it: the TS packet's payload
+/// is "TS payload", so it is not taken for the PES payload. The CLI's names
+/// are unchanged.
+pub fn part_label<'a>(layer: &str, label: &'a str) -> &'a str {
+    match (layer, label) {
+        ("payload", "payload") => "TS payload",
+        _ => label,
+    }
+}
+
+/// What follows the decoded layer in the TS payload, derived from where the
+/// layers end (the CLI reports no part for it): the elementary-stream data
+/// after a PES header ("PES payload"), or the bytes after a PSI section
+/// ("Stuffing" when all 0xFF, otherwise "Rest of the TS payload"). The TS
+/// payload of a packet continuing a PES packet is all PES payload.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PayloadRest {
+    pub label: &'static str,
+    pub kind: Kind,
+    /// Packet bits, whole bytes.
+    pub bits: Range<usize>,
+}
+
+impl PayloadRest {
+    pub fn bytes(&self) -> Range<usize> {
+        self.bits.start / 8..self.bits.end.div_ceil(8)
+    }
+
+    pub fn value(&self) -> String {
+        format!("{} bytes", self.bytes().len())
+    }
+}
+
+/// The bits a layer spans: its layout, or its fields without one.
+fn layer_bits(layer: &PacketLayer) -> Option<Range<usize>> {
+    let ranges: Vec<Range<usize>> = if layer.bit_layout.is_empty() {
+        layer
+            .fields
+            .iter()
+            .chain(layer.rows.iter().flatten())
+            .flat_map(|f| {
+                let mut bits = f.bit_ranges();
+                if bits.is_empty() {
+                    bits.push(f.byte_offset * 8..(f.byte_offset + f.byte_length) * 8);
+                }
+                bits
+            })
+            .collect()
+    } else {
+        layer
+            .bit_layout
+            .iter()
+            .flat_map(|p| p.bit_ranges())
+            .collect()
+    };
+    let start = ranges.iter().map(|r| r.start).min()?;
+    let end = ranges.iter().map(|r| r.end).max()?;
+    Some(start..end)
+}
+
+/// The packet bit where a decoded layer ends. Without a layout, a PES
+/// header's fields may not reach its end (optional fields and stuffing
+/// that are not reported), so its end is where PES_header_data_length says.
+fn decoded_end(layer: &PacketLayer, raw: &[u8]) -> Option<usize> {
+    let fields_end = layer_bits(layer)?.end;
+    if layer.name != "pes_header" || !layer.bit_layout.is_empty() {
+        return Some(fields_end);
+    }
+    match layer
+        .fields
+        .iter()
+        .find(|f| f.name == "PES_header_data_length")
+    {
+        Some(length) => {
+            let at = length.byte_offset;
+            let data = usize::from(*raw.get(at)?);
+            Some(fields_end.max((at + 1 + data) * 8))
+        }
+        // A stream_id without the optional header: its fields end it.
+        None => Some(fields_end),
+    }
+}
+
+/// See [`PayloadRest`]; `unit` is the kind of the unit the packet belongs
+/// to (`pes`, `psi`, ...).
+pub fn payload_rest(packet: &DecodedPacket, unit: Option<&str>) -> Option<PayloadRest> {
+    let parents = layer_parents(packet.layers.iter().map(|l| l.name.as_str()));
+    let index = packet.layers.iter().position(|l| l.name == "payload")?;
+    let payload = layer_bits(&packet.layers[index])?;
+    let decoded: Vec<&PacketLayer> = packet
+        .layers
+        .iter()
+        .zip(&parents)
+        .filter(|(_, parent)| **parent == Some(index))
+        .map(|(layer, _)| layer)
+        .collect();
+    if decoded.is_empty() {
+        let all = PayloadRest {
+            label: "PES payload (continued)",
+            kind: Kind::Payload,
+            bits: payload,
+        };
+        return (unit == Some("pes") && !all.bits.is_empty()).then_some(all);
+    }
+    let raw = packet.raw();
+    let covered = decoded.iter().filter_map(|l| decoded_end(l, &raw)).max()?;
+    if covered >= payload.end {
+        return None;
+    }
+    let bits = covered..payload.end;
+    let (label, kind) = if decoded.iter().any(|l| l.name == "pes_header") {
+        ("PES payload", Kind::Payload)
+    } else {
+        let bytes = raw
+            .get(bits.start / 8..bits.end.div_ceil(8))
+            .unwrap_or_default();
+        if !bytes.is_empty() && bytes.iter().all(|&b| b == 0xFF) {
+            ("Stuffing", Kind::Stuffing)
+        } else {
+            ("Rest of the TS payload", Kind::Unknown)
+        }
+    };
+    Some(PayloadRest { label, kind, bits })
 }
 
 /// Parts in wire order with the field each belongs to.
@@ -237,6 +362,9 @@ pub struct LayerTree {
     /// The layer whose bytes this one decodes: the payload, for a PES header
     /// or a PSI section. The field list draws it beneath that layer.
     pub parent: Option<usize>,
+    /// Lines drawn after the layers beneath this one: what follows the
+    /// decoded layer in the TS payload (see [`PayloadRest`]).
+    pub tail: Vec<Node>,
 }
 
 /// The layers that decode another layer's bytes, by position: a layer after
@@ -274,15 +402,18 @@ pub enum Selection {
 pub struct Model {
     pub parts: Vec<Part>,
     pub layers: Vec<LayerTree>,
-    /// The part of each packet bit; PES headers and sections over the
-    /// payload they sit in.
+    /// The innermost part of each packet bit (PES headers, sections and what
+    /// follows them over the TS payload they sit in): the part a click on
+    /// the bit selects. Highlighting uses the selected parts' own ranges.
     pub owners: Vec<Option<usize>>,
     /// Whether the CLI reported the layout, rather than only field bits.
     pub complete: bool,
 }
 
 impl Model {
-    pub fn new(packet: &DecodedPacket, bits: usize) -> Self {
+    /// `unit` is the kind of the unit the packet belongs to, from the packet
+    /// detail; it tells a PES continuation from other payloads.
+    pub fn new(packet: &DecodedPacket, unit: Option<&str>, bits: usize) -> Self {
         let complete = packet.layers.iter().any(|l| !l.bit_layout.is_empty());
         let mut model = Model {
             parts: Vec::new(),
@@ -309,7 +440,25 @@ impl Model {
                 name: layer.name.clone(),
                 nodes,
                 parent,
+                tail: Vec::new(),
             });
+        }
+        if let Some(rest) = payload_rest(packet, unit)
+            && let Some(layer) = model.layers.iter().position(|l| l.name == "payload")
+        {
+            // Pushed last, so it owns its bits over the TS payload's part.
+            let index = model.push(Part {
+                id: format!("payload.rest@{}", rest.bits.start),
+                label: rest.label.to_owned(),
+                kind: rest.kind,
+                value: rest.value(),
+                ranges: vec![rest.bits],
+                expected: None,
+                valid: None,
+                rule: None,
+                context: layer_title("payload").to_owned(),
+            });
+            model.layers[layer].tail.push(Node::Part(index));
         }
         for (index, part) in model.parts.iter().enumerate() {
             for bit in part.ranges.iter().flat_map(|r| r.clone()) {
@@ -459,9 +608,32 @@ impl Model {
         }
     }
 
+    /// Which packet bits the selection refers to: the selected parts' own
+    /// ranges, so a TS payload lights up whole, the section inside it too.
+    pub fn selected_bits(&self, selection: Option<&Selection>) -> Vec<bool> {
+        let mut lit = vec![false; self.owners.len()];
+        for index in selection
+            .map(|s| self.selected_parts(s))
+            .unwrap_or_default()
+        {
+            for bit in self.parts[index].ranges.iter().flat_map(|r| r.clone()) {
+                if let Some(on) = lit.get_mut(bit) {
+                    *on = true;
+                }
+            }
+        }
+        lit
+    }
+
     /// The parts of a layer and of the layers beneath it.
     fn layer_parts(&self, index: usize) -> Vec<usize> {
-        let mut parts: Vec<usize> = self.layers[index].nodes.iter().flat_map(leaves).collect();
+        let layer = &self.layers[index];
+        let mut parts: Vec<usize> = layer
+            .nodes
+            .iter()
+            .chain(&layer.tail)
+            .flat_map(leaves)
+            .collect();
         for (child, layer) in self.layers.iter().enumerate() {
             if layer.parent == Some(index) {
                 parts.extend(self.layer_parts(child));
@@ -834,6 +1006,9 @@ fn layer_section(ui: &mut egui::Ui, model: &Model, index: usize, state: &mut Sta
                 layer_section(ui, model, child, state, reveal);
             }
         }
+        for node in &layer.tail {
+            node_line(ui, model, node, state);
+        }
     });
 }
 
@@ -1003,11 +1178,7 @@ pub fn bit_grid(ui: &mut egui::Ui, raw: &[u8], per_row: usize, model: &Model, st
             ),
         )
     });
-    let selected: Vec<usize> = state
-        .selection
-        .as_ref()
-        .map(|s| model.selected_parts(s))
-        .unwrap_or_default();
+    let lit = model.selected_bits(state.selection.as_ref());
     let byte_x = |column: usize| {
         rect.left() + OFFSET_WIDTH + column as f32 * (8.0 * CELL.x + BYTE_GAP + HEX_WIDTH)
     };
@@ -1052,7 +1223,7 @@ pub fn bit_grid(ui: &mut egui::Ui, raw: &[u8], per_row: usize, model: &Model, st
         for bit in 0..total {
             let cell = cell_rect(bit).shrink2(egui::vec2(0.5, 1.0));
             let owner = model.owners[bit];
-            let on = owner.is_some_and(|o| selected.contains(&o));
+            let on = lit[bit];
             let text_color = match owner {
                 Some(o) => {
                     let role = model.parts[o].role();
@@ -1078,16 +1249,12 @@ pub fn bit_grid(ui: &mut egui::Ui, raw: &[u8], per_row: usize, model: &Model, st
         let stroke = egui::Stroke::new(2.0, visuals.strong_text_color());
         let mut bit = 0;
         while bit < total {
-            let on = model.owners[bit].is_some_and(|o| selected.contains(&o));
-            if !on {
+            if !lit[bit] {
                 bit += 1;
                 continue;
             }
             let start = bit;
-            while bit + 1 < total
-                && model.owners[bit + 1].is_some_and(|o| selected.contains(&o))
-                && (bit + 1) % 8 != 0
-            {
+            while bit + 1 < total && lit[bit + 1] && (bit + 1) % 8 != 0 {
                 bit += 1;
             }
             let outline = cell_rect(start).union(cell_rect(bit));
@@ -1098,9 +1265,7 @@ pub fn bit_grid(ui: &mut egui::Ui, raw: &[u8], per_row: usize, model: &Model, st
 
     if state.scroll_to_selection {
         state.scroll_to_selection = false;
-        if let Some(first) =
-            (0..total).find(|&b| model.owners[b].is_some_and(|o| selected.contains(&o)))
-        {
+        if let Some(first) = (0..total).find(|&b| lit[b]) {
             // Only as far as needed to bring it into view.
             let cell = cell_rect(first);
             if !ui.clip_rect().contains_rect(cell) {
@@ -1291,7 +1456,7 @@ mod tests {
     fn classifies_every_bit_of_a_204_byte_packet() {
         let detail = video_204();
         let packet = detail.packet.unwrap();
-        let model = Model::new(&packet, packet.raw().len() * 8);
+        let model = Model::new(&packet, None, packet.raw().len() * 8);
         assert!(model.complete);
         assert_eq!(model.classified(), 204 * 8);
         // The trailer is not decoded; the AF stuffing and PCR reserved bits
@@ -1314,7 +1479,7 @@ mod tests {
     fn groups_the_parts_of_a_field_under_it() {
         let detail = video_204();
         let packet = detail.packet.unwrap();
-        let model = Model::new(&packet, 204 * 8);
+        let model = Model::new(&packet, None, 204 * 8);
         let pts = Selection::Group("pes_header/PTS".to_owned());
         let parts = model.selected_parts(&pts);
         let labels: Vec<&str> = parts
@@ -1356,7 +1521,7 @@ mod tests {
             "../../tests/fixtures/packet_detail_pmt_1001_188.json"
         ));
         let packet = detail.packet.unwrap();
-        let model = Model::new(&packet, 188 * 8);
+        let model = Model::new(&packet, None, 188 * 8);
         let pmt = model.layers.iter().find(|l| l.name == "pmt").unwrap();
         let entries: Vec<&str> = pmt
             .nodes
@@ -1382,7 +1547,10 @@ mod tests {
                 "ES_info_length"
             ]
         );
-        assert_eq!(model.parts[stream[1]].context, "Payload › PMT › stream 1");
+        assert_eq!(
+            model.parts[stream[1]].context,
+            "TS payload › PMT › stream 1"
+        );
     }
 
     /// A PES header or PSI section decodes the payload it follows; the
@@ -1413,7 +1581,7 @@ mod tests {
         assert_eq!(layer_parents(["ts_header", "pmt"]), [None, None]);
 
         let packet = video_204().packet.unwrap();
-        let model = Model::new(&packet, 204 * 8);
+        let model = Model::new(&packet, None, 204 * 8);
         let parents: Vec<_> = model.layers.iter().map(|l| l.parent).collect();
         assert_eq!(parents, [None, None, None, Some(2), None]);
         // The payload's parts include those of the PES header beneath it.
@@ -1423,7 +1591,7 @@ mod tests {
         let prefix = model.owners[1264].unwrap();
         assert_eq!(
             model.parts[prefix].context,
-            "Payload › PES header › packet_start_code_prefix"
+            "TS payload › PES header › packet_start_code_prefix"
         );
         let pid = model.owners[11].unwrap();
         assert_eq!(model.parts[pid].context, "TS header › PID");
@@ -1436,17 +1604,223 @@ mod tests {
         ));
         let packet = detail.packet.unwrap();
         assert!(packet.layers.iter().all(|l| l.bit_layout.is_empty()));
-        let model = Model::new(&packet, 188 * 8);
+        let model = Model::new(&packet, None, 188 * 8);
         assert!(!model.complete);
         // Field bits only: the PID keeps its 13 bits, and the 3 reserved
         // bits before program_map_PID are only part of the payload.
         let pid = model.parts.iter().position(|p| p.label == "PID").unwrap();
         assert_eq!(model.parts[pid].ranges, [11..24]);
-        assert_eq!(model.parts[model.owners[120].unwrap()].label, "payload");
+        assert_eq!(model.parts[model.owners[120].unwrap()].label, "TS payload");
         assert_eq!(
             model.parts[model.owners[123].unwrap()].label,
             "program_map_PID"
         );
+    }
+
+    fn fixture(name: &str) -> serde_json::Value {
+        let path = format!(
+            "{}/tests/fixtures/packet_detail_{name}.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+    }
+
+    fn packet_of(document: serde_json::Value) -> DecodedPacket {
+        serde_json::from_value::<PacketDetail>(document)
+            .unwrap()
+            .packet
+            .unwrap()
+    }
+
+    fn rest(name: &str, unit: Option<&str>) -> Option<PayloadRest> {
+        payload_rest(&packet_of(fixture(name)), unit)
+    }
+
+    /// What follows the decoded layer in the TS payload, by where the layer
+    /// ends: ES data after a PES header, stuffing or other bytes after a
+    /// section, all of a PES continuation, and nothing when nothing is left.
+    #[test]
+    fn names_the_rest_of_the_ts_payload() {
+        let stuffing = |bits| PayloadRest {
+            label: "Stuffing",
+            kind: Kind::Stuffing,
+            bits,
+        };
+        let pes = |label, bits| PayloadRest {
+            label,
+            kind: Kind::Payload,
+            bits,
+        };
+        // After the PMT (ends at bit 248) and, without a layout, after the
+        // PAT's CRC_32 (byte 25): all 0xFF.
+        assert_eq!(rest("pmt_1001_188", Some("psi")), Some(stuffing(248..1504)));
+        assert_eq!(rest("pat_188", Some("psi")), Some(stuffing(200..1504)));
+        // After a PES header, up to the payload's end (before a trailer).
+        let after = rest("pes_pcr_192", Some("pes")).unwrap();
+        assert_eq!(after, pes("PES payload", 280..1536));
+        assert_eq!(
+            (after.bytes(), after.value()),
+            (35..192, "157 bytes".to_owned())
+        );
+        assert_eq!(
+            rest("video_204", None),
+            Some(pes("PES payload", 1376..1504))
+        );
+
+        // Without a layout, a PES header ends where PES_header_data_length
+        // says, even past its last reported field: here the DTS is not
+        // reported, and the header (10 bytes of data from byte 25) still
+        // ends at byte 35.
+        let mut document = fixture("pes_pcr_192");
+        let layers = document["packet"]["layers"].as_array_mut().unwrap();
+        for layer in layers.iter_mut() {
+            layer["bit_layout"] = serde_json::json!([]);
+        }
+        let pes_header = &mut layers[4]["fields"];
+        pes_header.as_array_mut().unwrap().pop();
+        assert_eq!(
+            payload_rest(&packet_of(document.clone()), Some("pes")),
+            Some(pes("PES payload", 280..1536))
+        );
+        // Without PES_header_data_length, the header ends after its last
+        // field (here the 2-bit PTS_DTS_flags).
+        let fields = document["packet"]["layers"][4]["fields"]
+            .as_array_mut()
+            .unwrap();
+        fields.retain(|f| f["name"] != "PES_header_data_length" && f["name"] != "PTS");
+        assert_eq!(
+            payload_rest(&packet_of(document), Some("pes")),
+            Some(pes("PES payload", 186..1536))
+        );
+
+        // Bytes after a section that are not stuffing.
+        let mut document = fixture("pmt_1001_188");
+        let mut raw = hex(&document);
+        raw[100] = 0x42;
+        document["packet"]["bytes"] = raw_hex(&raw);
+        assert_eq!(
+            payload_rest(&packet_of(document), Some("psi")),
+            Some(PayloadRest {
+                label: "Rest of the TS payload",
+                kind: Kind::Unknown,
+                bits: 248..1504,
+            })
+        );
+
+        // A payload nothing decodes: all PES payload when it continues a PES
+        // packet, otherwise (a section's continuation) nothing.
+        let mut document = fixture("pes_pcr_192");
+        document["packet"]["layers"]
+            .as_array_mut()
+            .unwrap()
+            .truncate(4);
+        let packet = packet_of(document);
+        assert_eq!(
+            payload_rest(&packet, Some("pes")),
+            Some(pes("PES payload (continued)", 128..1536))
+        );
+        assert_eq!(payload_rest(&packet, Some("psi")), None);
+        assert_eq!(payload_rest(&packet, None), None);
+
+        // A section that fills the payload leaves nothing.
+        let mut document = fixture("pmt_1001_188");
+        let payload = &mut document["packet"]["layers"][1];
+        payload["fields"][0]["byte_length"] = 27.into();
+        payload["bit_layout"][0]["bits"][0]["bit_length"] = 216.into();
+        assert_eq!(payload_rest(&packet_of(document), Some("psi")), None);
+        // No payload at all.
+        let mut document = fixture("pmt_1001_188");
+        document["packet"]["layers"]
+            .as_array_mut()
+            .unwrap()
+            .truncate(1);
+        assert_eq!(payload_rest(&packet_of(document), Some("psi")), None);
+    }
+
+    fn hex(document: &serde_json::Value) -> Vec<u8> {
+        let text = document["packet"]["bytes"].as_str().unwrap();
+        (0..text.len() / 2)
+            .map(|i| u8::from_str_radix(&text[2 * i..2 * i + 2], 16).unwrap())
+            .collect()
+    }
+
+    fn raw_hex(raw: &[u8]) -> serde_json::Value {
+        raw.iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
+            .into()
+    }
+
+    /// The rest is a line after the decoded layer, inside the TS payload,
+    /// and owns its bits, so a click in it selects it.
+    #[test]
+    fn the_rest_is_a_line_of_the_ts_payload() {
+        let packet = packet_of(fixture("pes_pcr_192"));
+        let model = Model::new(&packet, Some("pes"), 192 * 8);
+        let payload = model
+            .layers
+            .iter()
+            .position(|l| l.name == "payload")
+            .unwrap();
+        let [Node::Part(rest)] = model.layers[payload].tail[..] else {
+            panic!("{:?}", model.layers[payload].tail);
+        };
+        let part = &model.parts[rest];
+        assert_eq!(part.label, "PES payload");
+        assert_eq!(part.context, "TS payload");
+        assert_eq!(part_line(part).1, "157 bytes");
+        assert_eq!(part.role(), Role::Payload);
+        assert_eq!(model.owners[600], Some(rest));
+        assert!(model.layer_parts(payload).contains(&rest));
+        assert_eq!(model.classified(), 192 * 8);
+        // Nothing left: no line.
+        let mut document = fixture("pmt_1001_188");
+        let layer = &mut document["packet"]["layers"][1];
+        layer["fields"][0]["byte_length"] = 27.into();
+        layer["bit_layout"][0]["bits"][0]["bit_length"] = 216.into();
+        let model = Model::new(&packet_of(document), Some("psi"), 188 * 8);
+        assert!(model.layers.iter().all(|l| l.tail.is_empty()));
+    }
+
+    /// A selection lights the bits it refers to, not only the bits it is
+    /// the innermost part of: the TS payload lights up whole, the section in
+    /// it included, while a section field lights only itself.
+    #[test]
+    fn highlights_what_the_selection_refers_to() {
+        let packet = packet_of(fixture("pmt_1001_188"));
+        let model = Model::new(&packet, Some("psi"), 188 * 8);
+        let lit_bits = |selection: Option<&Selection>| -> Vec<usize> {
+            let lit = model.selected_bits(selection);
+            (0..lit.len()).filter(|&b| lit[b]).collect()
+        };
+        let id = |label: &str| {
+            let part = model.parts.iter().find(|p| p.label == label).unwrap();
+            Selection::Part(part.id.clone())
+        };
+        assert_eq!(
+            lit_bits(Some(&id("TS payload"))),
+            (32..1504).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            lit_bits(Some(&id("table_id"))),
+            (40..48).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            lit_bits(Some(&id("Stuffing"))),
+            (248..1504).collect::<Vec<_>>()
+        );
+        // A table entry: the union of its parts.
+        let entry = lit_bits(Some(&Selection::Group("pmt/0".to_owned())));
+        let parts: usize = model
+            .selected_parts(&Selection::Group("pmt/0".to_owned()))
+            .iter()
+            .map(|&i| model.parts[i].ranges.iter().map(Range::len).sum::<usize>())
+            .sum();
+        assert_eq!(entry.len(), parts);
+        assert!(lit_bits(None).is_empty());
+        // A click inside the section still selects the innermost part.
+        assert_eq!(model.parts[model.owners[44].unwrap()].label, "table_id");
+        assert_eq!(model.parts[model.owners[300].unwrap()].label, "Stuffing");
     }
 
     #[test]
