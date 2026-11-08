@@ -33,6 +33,18 @@ program layout, so such a range gets no Overview, health checks or findings;
 the previous result stays shown. See
 [When the analysis cannot start](../cli/usage.md#when-the-analysis-cannot-start).
 
+## The star reminder
+
+After three successful analyses, a row above the status bar asks whether
+mpeg-ts-analyzer is useful to you and offers **Star on GitHub**. It appears
+on every screen without covering it, and gently pulses until you choose:
+**Star on GitHub** opens the project page in your browser, **Don't ask again**
+hides it for good, and the close button hides it until five more analyses.
+The GUI does not sign in to GitHub or check whether you already starred the
+project. See [Star reminder](design.md#star-reminder).
+
+[![Packets with the star reminder above the status bar](../images/gui-star-reminder.png)](../images/gui-star-reminder.png)
+
 ## Read the Overview verdicts
 
 Overview shows a **Transport health** table for the selected program. Each

@@ -21,6 +21,8 @@ pub const CARET_DOWN: &str = "\u{e136}";
 pub const CARET_LEFT: &str = "\u{e138}";
 pub const CARET_RIGHT: &str = "\u{e13a}";
 pub const PLAY: &str = "\u{e3d0}";
+pub const STAR: &str = "\u{e46a}";
+pub const X: &str = "\u{e4f6}";
 
 pub fn font(size: f32) -> FontId {
     FontId::new(size, FontFamily::Name(FAMILY.into()))
