@@ -85,4 +85,5 @@ nav:
       - README demo: demo/README.md
       - GUI design: gui/design.md
       - GUI CLI interface: gui/cli-interface.md
+      - GUI memory profile: gui/memory-profile.md
       - GUI release security: gui/release-security.md

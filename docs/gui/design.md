@@ -63,6 +63,13 @@ Work is tracked in #101 (milestone GUI v0.1).
   drop state of an older analysis; it is replaced as a whole when the next
   analysis is accepted, kept when one fails or is cancelled, and dropped when
   another file is opened.
+- A session does not keep the CLI's raw per-program series next to the plot
+  data made from them: when it is created, each program's series are taken
+  out of the report and consumed into its Timeline and Bitrate data, one
+  program at a time. The report keeps what Overview, the program selectors and
+  Packets read; the plot data keeps full series only where a plot picks a
+  sample, and reduced drawing series elsewhere. What is kept, the profiling
+  procedure and the measurements are in [GUI memory profile](memory-profile.md).
 - The GUI packages bundle a published CLI release, named in
   `gui/BUNDLED_CLI_VERSION`. A GUI change that needs new CLI output is released
   after the CLI release that provides it.
@@ -684,6 +691,7 @@ GUI; the signed trusted comment must name exactly that file. Only then does
 | No lead-in, no pre-scan | The range start is the only place PSI is missing; simpler for both GUI and CLI | Reading ahead of the range; analyzing before Start |
 | Byte-based range, no time input | Maps directly to `--offset`/`--limit`; time needs a bitrate estimate | Time-based range |
 | Packets paged on demand | Per-packet data for a large range does not fit comfortably in memory | Holding all packets of the range |
+| Plots derived for every program when an analysis is accepted, from the raw series, which are then dropped (#154) | The raw series take more memory than the plot data; derivation takes about 14 ms for a 1.1 GB range ([memory profile](memory-profile.md)) | Keeping the raw series in the report; deriving each program's plots lazily, which keeps its raw series until it is shown |
 | Program selection inside Overview/Timeline/Bitrate | Those results are per program; Packets is per packet | Global program selector in the top bar |
 | Lines per PID, not per role | Shows what is actually in the stream; PID changes need no special handling | Merging PIDs by role (video, audio 1) |
 | Packets: one flat list | The PES view had no clear use; unit info is in the detail pane | Separate PES/section list; lanes connecting packets of a unit |
