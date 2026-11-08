@@ -1,6 +1,6 @@
 [package]
 name = "mpeg-ts-analyzer-gui"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2024"
 rust-version = "1.99"
 description = "Desktop GUI for mpeg-ts-analyzer"
