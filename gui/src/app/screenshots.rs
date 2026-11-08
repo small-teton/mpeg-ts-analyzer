@@ -1,9 +1,9 @@
 //! The README screenshots, rendered from fixtures with egui_kittest's wgpu
 //! renderer: `docs/images/gui-tabs.png` (Overview, Timeline, Bitrate and
-//! Packets in a 2×2 grid), `docs/images/gui-inspectors.png` (the Byte and
-//! Bit inspectors with the 13-bit PID selected) and
-//! `docs/images/gui-wire-layout.png` (the detailed inspection of a PMT
-//! packet with reserved bits of a stream entry selected).
+//! Packets in a 2×2 grid), `docs/images/gui-byte-inspector.png` and
+//! `docs/images/gui-bit-inspector.png` (the Byte and Bit inspectors with the
+//! 13-bit PID selected) and `docs/images/gui-wire-layout.png` (the detailed
+//! inspection of a PMT packet with its PID selected).
 //!
 //! `make check-gui-screenshots` renders them and compares them with the
 //! committed images; `make gui-screenshots` (`UPDATE_SNAPSHOTS=1`) writes them.
@@ -20,7 +20,7 @@ use super::App;
 use super::ui_tests::{analyzed_app, packets_page, pmt_packet_detail};
 use crate::views::Screen;
 use crate::views::packet_pages::PacketPages;
-use crate::views::packet_pages::show_inspectors_for_test;
+use crate::views::packet_pages::{Inspector, show_inspector_for_test};
 use crate::views::wire_layout::Selection;
 
 /// Logical size of each tab. After cropping each tab's margin, the grid is
@@ -28,8 +28,9 @@ use crate::views::wire_layout::Selection;
 const TAB_SIZE: egui::Vec2 = egui::vec2(1280.0, 800.0);
 /// Space between and around the tabs of the grid.
 const GUTTER: u32 = 20;
-/// Logical size of the inspector close-up, rendered at two pixels per point.
-const INSPECTOR_SIZE: egui::Vec2 = egui::vec2(540.0, 460.0);
+/// Logical size of each inspector close-up, rendered at two pixels per point.
+const BYTE_INSPECTOR_SIZE: egui::Vec2 = egui::vec2(540.0, 330.0);
+const BIT_INSPECTOR_SIZE: egui::Vec2 = egui::vec2(540.0, 150.0);
 
 fn render_tab(screen: Screen) -> RgbaImage {
     let mut app = analyzed_app();
@@ -81,10 +82,10 @@ fn tabs_grid() -> RgbaImage {
     grid
 }
 
-fn inspectors() -> RgbaImage {
+fn inspector(inspector: Inspector, size: egui::Vec2) -> RgbaImage {
     let detail = pmt_packet_detail();
     let mut harness = Harness::builder()
-        .with_size(INSPECTOR_SIZE)
+        .with_size(size)
         .with_pixels_per_point(2.0)
         .with_theme(egui::Theme::Dark)
         .with_context_setup(crate::theme::apply_with_bundled_fonts)
@@ -92,7 +93,7 @@ fn inspectors() -> RgbaImage {
         .build_ui(|ui| {
             egui::CentralPanel::default().show(ui, |ui| {
                 crate::theme::compact(ui);
-                show_inspectors_for_test(ui, &detail, "PID");
+                show_inspector_for_test(ui, &detail, "PID", inspector);
             });
         });
     harness.run();
@@ -100,15 +101,12 @@ fn inspectors() -> RgbaImage {
 }
 
 /// Packets showing the detailed inspection of program 2's PMT packet at
-/// offset 564, with the reserved bits before the second stream's
-/// elementary_PID selected.
+/// offset 564, with its 13-bit PID (across bytes 1 and 2) selected.
 pub(super) fn wire_layout_app() -> App {
     let mut app = analyzed_app();
     app.screen = Screen::Packets;
     let mut pages = PacketPages::loaded_for_test(packets_page(), 564, pmt_packet_detail());
-    pages.inspect_for_test(Some(Selection::Part(
-        "pmt.stream[1].elementary_pid.reserved@184".to_owned(),
-    )));
+    pages.inspect_for_test(Some(Selection::Part("ts_header.pid@11".to_owned())));
     app.session_mut().packet_pages = pages;
     app
 }
@@ -163,7 +161,14 @@ fn check(image: &RgbaImage, name: &str) -> Result<(), String> {
 fn readme_screenshots_are_current() {
     let errors: Vec<String> = [
         (tabs_grid(), "gui-tabs"),
-        (inspectors(), "gui-inspectors"),
+        (
+            inspector(Inspector::Byte, BYTE_INSPECTOR_SIZE),
+            "gui-byte-inspector",
+        ),
+        (
+            inspector(Inspector::Bit, BIT_INSPECTOR_SIZE),
+            "gui-bit-inspector",
+        ),
         (wire_layout(TAB_SIZE), "gui-wire-layout"),
     ]
     .iter()

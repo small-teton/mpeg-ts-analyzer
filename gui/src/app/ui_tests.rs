@@ -316,6 +316,15 @@ fn rail_update_button_checks_and_announces_an_update() {
     };
     assert!(top("Check for Updates") < top("Settings"));
     assert!(top("Settings") < top("About"));
+    // As large as the navigation tabs above them.
+    let height = |node: Node<'_>| bounds(&node).height();
+    let tab = height(harness.get_by_role_and_label(Role::Tab, "Overview"));
+    for label in ["Check for Updates", "Settings", "About"] {
+        assert_eq!(
+            height(harness.get_by_role_and_label(Role::Button, label)),
+            tab
+        );
+    }
     assert!(
         harness
             .query_by_label_contains("Update available")
@@ -1655,15 +1664,15 @@ fn detailed_inspection_is_a_full_page_and_back_restores_the_list() {
         harness.run();
         let scrolled = pages_mut(&mut harness).list_offset_for_test(None);
         assert!(scrolled.y > 0.0);
-        harness
-            .get_by_role_and_label(Role::Button, "Detailed inspection")
-            .click();
+        detailed_inspection_buttons(&harness)[0].click();
         harness.run();
         assert_eq!(pages_mut(&mut harness).inspected_for_test(), Some(564));
         // A page of its own: neither the list nor the compact pane is shown.
         assert!(harness.query_by_label("This packet").is_none());
         assert!(harness.query_by_label("Page 1 / 1").is_none());
         harness.get_by_label("Packet #4 of 40");
+        harness.get_by_label("Packet type: PMT");
+        harness.get_by_label_contains("· PID 4097 (0x1001) ·");
         harness.get_by_label("Bit grid: 1504 of 1504 bits classified");
 
         // A reserved run is selectable although several parts are labeled
@@ -1688,6 +1697,88 @@ fn detailed_inspection_is_a_full_page_and_back_restores_the_list() {
         assert_eq!(pages.list_offset_for_test(None), scrolled);
         harness.get_by_label("Page 1 / 1");
     }
+}
+
+/// The "Detailed inspection" buttons of the packet detail pane, top first.
+fn detailed_inspection_buttons<'a>(harness: &'a Harness<'_, App>) -> Vec<Node<'a>> {
+    let mut buttons: Vec<Node<'a>> = harness
+        .query_all_by_role_and_label(Role::Button, "Detailed inspection")
+        .collect();
+    buttons.sort_by(|a, b| bounds(a).min.y.total_cmp(&bounds(b).min.y));
+    buttons
+}
+
+/// The pane offers "Detailed inspection" above the decoded fields and again
+/// at its very end, after the Bit inspector; either opens the page.
+#[test]
+fn detailed_inspection_is_offered_again_after_the_bit_inspector() {
+    let mut harness = packets_screen(WIDE);
+    let buttons = detailed_inspection_buttons(&harness);
+    assert_eq!(buttons.len(), 2);
+    let top = |node: &Node<'_>| bounds(node).min.y;
+    assert!(top(&buttons[0]) < top(&harness.get_by_label("This packet")));
+    assert!(top(&buttons[1]) > top(&harness.get_by_label("Bit inspector")));
+    let last = detailed_inspection_buttons(&harness).pop().unwrap();
+    last.scroll_to_me();
+    harness.run();
+    detailed_inspection_buttons(&harness).pop().unwrap().click();
+    harness.run();
+    assert_eq!(pages_mut(&mut harness).inspected_for_test(), Some(564));
+    harness.get_by_label("Packet #4 of 40");
+}
+
+/// The Packets field list shows numbers decimal first with the hexadecimal
+/// padded to the field's width; flags, bit patterns and checksums stay as written.
+#[test]
+fn packet_fields_are_decimal_with_hex() {
+    let harness = packets_screen(WIDE);
+    harness.get_by_label("4097 (0x1001)");
+    harness.get_by_label("2 (0x02)");
+    harness.get_by_label("23 (0x017)");
+    harness.get_by_label("0x1058355a");
+    assert!(harness.query_by_label("0x1001").is_none());
+}
+
+/// ← and → step through the packets like Previous and Next, within the range.
+#[test]
+fn arrow_keys_step_through_the_packets() {
+    let mut harness = packets_screen(WIDE);
+    detailed_inspection_buttons(&harness)[0].click();
+    harness.run();
+    harness.key_press(egui::Key::ArrowRight);
+    harness.run_steps(10);
+    assert_eq!(pages_mut(&mut harness).inspected_for_test(), Some(752));
+    harness.key_press(egui::Key::ArrowLeft);
+    harness.key_press(egui::Key::ArrowLeft);
+    harness.run_steps(10);
+    assert_eq!(pages_mut(&mut harness).inspected_for_test(), Some(376));
+
+    // Not past the first packet of the range.
+    let mut app = analyzed_app();
+    app.screen = Screen::Packets;
+    let mut pages = PacketPages::loaded_for_test(packets_page(), 0, pat_packet_detail());
+    pages.inspect_for_test(None);
+    app.session_mut().packet_pages = pages;
+    let mut harness = self::harness(app);
+    harness.key_press(egui::Key::ArrowLeft);
+    harness.run_steps(4);
+    assert_eq!(pages_mut(&mut harness).inspected_for_test(), Some(0));
+}
+
+/// The header names what the packet is with a large badge.
+#[test]
+fn the_header_names_the_kind_of_packet() {
+    let inspect = |offset: u64, detail: PacketDetail| {
+        let mut app = analyzed_app();
+        app.screen = Screen::Packets;
+        let mut pages = PacketPages::loaded_for_test(packets_page(), offset, detail);
+        pages.inspect_for_test(None);
+        app.session_mut().packet_pages = pages;
+        harness(app)
+    };
+    inspect(188, pat_packet_detail()).get_by_label("Packet type: PAT");
+    inspect(564, pmt_packet_detail()).get_by_label("Packet type: PMT");
+    inspect(30528, pes_pcr_192_detail()).get_by_label_contains("Packet type: PES · ");
 }
 
 fn button_containing<'a>(harness: &'a Harness<'_, App>, text: &'a str) -> Node<'a> {
@@ -1737,7 +1828,10 @@ fn timestamps_and_clock_references_have_their_parts_beneath_them() {
         harness(app)
     };
     let mut harness = inspect(None);
-    click_line(&mut harness, "PTS  144000 (1.600000 s)  · bits 200–239");
+    click_line(
+        &mut harness,
+        "PTS  144000 (0x000023280, 1.600000 s)  · bits 200–239",
+    );
     harness.get_by_label("packet bits 200–239 (40 bits) · byte 25, bit 7 – byte 29, bit 0");
     harness.get_by_label("7");
     assert!(
@@ -1802,6 +1896,6 @@ fn detailed_inspection_falls_back_to_field_bits() {
     app.session_mut().packet_pages = pages;
     let mut harness = harness(app);
     harness.get_by_label_contains("does not report the wire layout");
-    click_line(&mut harness, "PID  0x0000");
+    click_line(&mut harness, "PID  0 (0x0000)");
     harness.get_by_label_contains("packet bits 11–23 (13 bits)");
 }
