@@ -698,7 +698,12 @@ impl PacketPages {
         };
         let packet = detail.as_ref().ok().and_then(|d| d.packet.as_ref());
         let raw = packet.map(DecodedPacket::raw).unwrap_or_default();
-        let model = packet.map(|p| Model::new(p, raw.len() * 8));
+        let unit = detail
+            .as_ref()
+            .ok()
+            .and_then(|d| d.unit.as_ref())
+            .map(|u| u.kind.as_str());
+        let model = packet.map(|p| Model::new(p, unit, raw.len() * 8));
         let pid = packet.and_then(|p| {
             p.layers
                 .iter()
@@ -898,6 +903,7 @@ impl PacketPages {
         });
         // A PES header or PSI section is drawn inside the payload it decodes.
         let parents = wire_layout::layer_parents(packet.layers.iter().map(|l| l.name.as_str()));
+        let rest = wire_layout::payload_rest(packet, detail.unit.as_ref().map(|u| u.kind.as_str()));
         for (index, layer) in packet.layers.iter().enumerate() {
             if parents[index].is_none() {
                 let decoded: Vec<&PacketLayer> = packet
@@ -907,7 +913,8 @@ impl PacketPages {
                     .filter(|(_, parent)| **parent == Some(index))
                     .map(|(layer, _)| layer)
                     .collect();
-                layer_fields(ui, layer, &decoded, &mut highlight);
+                let rest = rest.as_ref().filter(|_| layer.name == "payload");
+                layer_fields(ui, layer, &decoded, rest, &mut highlight);
             }
         }
         for warning in &detail.warnings {
@@ -1231,7 +1238,7 @@ fn layer_title(layer: &PacketLayer) -> String {
         "m2ts_header" => "M2TS header",
         "ts_header" => "TS header",
         "adaptation_field" => "Adaptation field",
-        "payload" => "Payload",
+        "payload" => "TS payload",
         "pes_header" => "PES header",
         "pat" => "PAT",
         "pmt" => "PMT",
@@ -1254,12 +1261,16 @@ fn layer_fields(
     ui: &mut egui::Ui,
     layer: &PacketLayer,
     decoded: &[&PacketLayer],
+    rest: Option<&wire_layout::PayloadRest>,
     highlight: &mut Option<FieldSelection>,
 ) {
     let fields: Vec<Field> = layer
         .fields
         .iter()
-        .map(|f| Field::new(f.name.clone(), field_text(f), span(f)).with_bits(f.bit_ranges()))
+        .map(|f| {
+            let key = wire_layout::part_label(&layer.name, &f.name);
+            Field::new(key, field_text(f), span(f)).with_bits(f.bit_ranges())
+        })
         .collect();
     let color = layer_color(byte_layer(&layer.name));
     field_tree(
@@ -1270,7 +1281,13 @@ fn layer_fields(
         highlight,
         |ui, highlight| {
             for inner in decoded {
-                layer_fields(ui, inner, &[], highlight);
+                layer_fields(ui, inner, &[], None, highlight);
+            }
+            // What follows the decoded layer: PES payload, stuffing, ...
+            if let Some(rest) = rest {
+                let field = Field::new(rest.label, rest.value(), rest.bytes())
+                    .with_bits(vec![rest.bits.clone()]);
+                key_values(ui, "payload_rest", &[field], highlight);
             }
         },
     );
@@ -1943,7 +1960,7 @@ mod tests {
             // binary values of fixed and reserved runs are the raw bits.
             for packet in [&pat, &decode(packet_size * 12)] {
                 let raw = packet.raw();
-                let model = Model::new(packet, raw.len() * 8);
+                let model = Model::new(packet, None, raw.len() * 8);
                 assert!(model.complete, "{name}");
                 assert_eq!(model.classified(), raw.len() * 8, "{name}");
                 for part in packet.layers.iter().flat_map(|l| &l.bit_layout) {
