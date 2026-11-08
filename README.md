@@ -16,44 +16,6 @@ specification.
 
 ![mpeg-ts-analyzer terminal demo](docs/demo.gif)
 
-## What it checks
-
-- **Max PCR interval**: no greater than 100 ms (ISO/IEC 13818-1, 2.7.2).
-- **PCR discontinuities**: a PCR that jumps backward, or more than 1000 ms
-  forward, without `discontinuity_indicator` (ISO/IEC 13818-1, 2.4.3.5);
-  declared discontinuities, `PCR_PID` changes and wraparounds are listed.
-- **PCR → PTS/DTS gap** (decode delay): no greater than 1000 ms.
-- **PTS/DTS anomalies**: timestamps going backward, wraparound, large forward
-  jumps, or DTS later than PTS.
-- **Continuity counters** of every PID, and the **PAT/PMT layout** of the range,
-  including tables split into sections and version changes.
-- **TS synchronization**: packets without their sync byte, with byte offsets,
-  and bounded realignment so that later results are still reported.
-- **Transport errors and scrambled packets** per PID: affected packets are
-  counted; the PSI/PES payload of both is kept out of the analysis, and so is
-  the PCR of a packet marked with `transport_error_indicator`, while a
-  scrambled packet's PCR (in its clear adaptation field) is still used. Only
-  the 4-byte header of a marked packet is read, so one with a malformed
-  adaptation field is counted instead of stopping the analysis.
-- **PAT/PMT health**: whether the PAT and the PMT of every announced program
-  were found, repeat at least every 500 ms (the ETSI TR 101 290 1.3.a/1.5.a
-  value, timed by PCR), and arrive with valid CRC, syntax and table_id.
-- **PID references**: PMT, PCR and elementary-stream PIDs that the PAT/PMT
-  reference but that are absent or silent for more than 5 s, and PIDs that
-  carry packets without being referenced (after a 0.5 s grace period).
-- **PES headers** of every elementary stream (truncated, bad start code,
-  flags, lengths or PTS/DTS marker bits), and **PTS repetition**: a PTS at
-  least every 700 ms on video and audio streams (ISO/IEC 13818-1, 2.7.4).
-- **Packet gaps** (report only): for every PID, the longest run of other
-  packets between two of its packets, in packets and estimated milliseconds,
-  to spot poorly interleaved (bursty) multiplexes. No verdict is attached.
-- **Mux lead** (report only, no verdict): how far ahead of its DTS/PTS each
-  elementary stream is multiplexed (minimum, maximum and spread per PID, with
-  offsets), and the largest audio/video lead difference of each program.
-
-Results are text for people, or JSON with a published schema for CI and other
-programs. See [CLI usage][docs-cli-usage].
-
 ## Desktop GUI
 
 The desktop GUI runs the CLI and shows one analysis in four linked views:
@@ -105,6 +67,44 @@ draws its syntax, so you can read a real packet against the specification:
   open source, for macOS, Linux and Windows.
 
 See the [GUI guide][docs-gui].
+
+## What it checks
+
+- **Max PCR interval**: no greater than 100 ms (ISO/IEC 13818-1, 2.7.2).
+- **PCR discontinuities**: a PCR that jumps backward, or more than 1000 ms
+  forward, without `discontinuity_indicator` (ISO/IEC 13818-1, 2.4.3.5);
+  declared discontinuities, `PCR_PID` changes and wraparounds are listed.
+- **PCR → PTS/DTS gap** (decode delay): no greater than 1000 ms.
+- **PTS/DTS anomalies**: timestamps going backward, wraparound, large forward
+  jumps, or DTS later than PTS.
+- **Continuity counters** of every PID, and the **PAT/PMT layout** of the range,
+  including tables split into sections and version changes.
+- **TS synchronization**: packets without their sync byte, with byte offsets,
+  and bounded realignment so that later results are still reported.
+- **Transport errors and scrambled packets** per PID: affected packets are
+  counted; the PSI/PES payload of both is kept out of the analysis, and so is
+  the PCR of a packet marked with `transport_error_indicator`, while a
+  scrambled packet's PCR (in its clear adaptation field) is still used. Only
+  the 4-byte header of a marked packet is read, so one with a malformed
+  adaptation field is counted instead of stopping the analysis.
+- **PAT/PMT health**: whether the PAT and the PMT of every announced program
+  were found, repeat at least every 500 ms (the ETSI TR 101 290 1.3.a/1.5.a
+  value, timed by PCR), and arrive with valid CRC, syntax and table_id.
+- **PID references**: PMT, PCR and elementary-stream PIDs that the PAT/PMT
+  reference but that are absent or silent for more than 5 s, and PIDs that
+  carry packets without being referenced (after a 0.5 s grace period).
+- **PES headers** of every elementary stream (truncated, bad start code,
+  flags, lengths or PTS/DTS marker bits), and **PTS repetition**: a PTS at
+  least every 700 ms on video and audio streams (ISO/IEC 13818-1, 2.7.4).
+- **Packet gaps** (report only): for every PID, the longest run of other
+  packets between two of its packets, in packets and estimated milliseconds,
+  to spot poorly interleaved (bursty) multiplexes. No verdict is attached.
+- **Mux lead** (report only, no verdict): how far ahead of its DTS/PTS each
+  elementary stream is multiplexed (minimum, maximum and spread per PID, with
+  offsets), and the largest audio/video lead difference of each program.
+
+Results are text for people, or JSON with a published schema for CI and other
+programs. See [CLI usage][docs-cli-usage].
 
 ## Install
 
