@@ -735,15 +735,20 @@ impl PacketPages {
             wire_layout::legend(ui);
             ui.add_space(2.0);
         });
-        // ← and → step through the packets as Previous and Next do, unless a
-        // text field has the keyboard.
+        // ← and → step through the packets as Previous and Next do, ↑ and ↓
+        // through the lines of the field list, unless a text field has the
+        // keyboard.
         if action.is_none() && !ui.ctx().egui_wants_keyboard_input() {
-            let (left, right) = ui.input(|i| {
-                (
-                    i.modifiers.is_none() && i.key_pressed(egui::Key::ArrowLeft),
-                    i.modifiers.is_none() && i.key_pressed(egui::Key::ArrowRight),
-                )
-            });
+            let pressed = |key| ui.input(|i| i.modifiers.is_none() && i.key_pressed(key));
+            let (left, right) = (
+                pressed(egui::Key::ArrowLeft),
+                pressed(egui::Key::ArrowRight),
+            );
+            if pressed(egui::Key::ArrowUp) {
+                inspect.state.step(-1);
+            } else if pressed(egui::Key::ArrowDown) {
+                inspect.state.step(1);
+            }
             let to = if left {
                 header.previous
             } else if right {

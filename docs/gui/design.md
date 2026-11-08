@@ -415,7 +415,9 @@ the whole range is never held in memory.
       [kind] › Detailed inspection`, and Previous / Next (every packet of the
       analyzed range in file order, whatever the PID filter shows; disabled at
       the ends of the range; ← / → do the same unless a text field has the
-      keyboard). The kind badge (`presentation::packet::packet_kind`: `PAT`,
+      keyboard or a modifier is held; ↑ / ↓ likewise move the selection
+      through the field list's lines as drawn, skipping collapsed ones, and
+      scroll the list and grid to it). The kind badge (`presentation::packet::packet_kind`: `PAT`,
       `PMT`, a PSI/SI table name from table_id, `PES · <stream>` with the
       stream type the PMT announces or else the stream_id class,
       `PES payload · …` and `… · continued` for later packets of a unit,

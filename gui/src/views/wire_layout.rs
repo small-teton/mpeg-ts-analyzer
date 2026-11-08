@@ -549,6 +549,11 @@ fn grid_width(bytes: usize) -> f32 {
 pub struct State {
     pub selection: Option<Selection>,
     scroll_to_selection: bool,
+    /// The selectable lines of the field list as last drawn, top to bottom:
+    /// the lines of collapsed groups and layers are not in it.
+    lines: Vec<Selection>,
+    /// Scroll the field list to the selected line on the next frame.
+    scroll_list: bool,
 }
 
 impl State {
@@ -557,13 +562,30 @@ impl State {
     pub fn with(selection: Option<Selection>) -> Self {
         State {
             selection,
-            scroll_to_selection: false,
+            ..State::default()
         }
     }
 
     pub fn select(&mut self, selection: Option<Selection>) {
         self.scroll_to_selection = selection.is_some();
         self.selection = selection;
+    }
+
+    /// Moves the selection `delta` lines up (negative) or down the field list
+    /// as drawn, stopping at its ends; nothing happens without a selection.
+    /// The list and the grid scroll to the new line.
+    pub fn step(&mut self, delta: isize) {
+        let Some(current) = &self.selection else {
+            return;
+        };
+        let Some(at) = self.lines.iter().position(|l| l == current) else {
+            return;
+        };
+        let to = at.saturating_add_signed(delta).min(self.lines.len() - 1);
+        if to != at {
+            self.select(Some(self.lines[to].clone()));
+            self.scroll_list = true;
+        }
     }
 }
 
@@ -716,10 +738,11 @@ fn facts(ui: &mut egui::Ui, id: &str, rows: &[(String, String)]) {
 /// The field list: one collapsible section per layer, in file order. Lines
 /// are dense (small button padding and spacing) so a long table fits.
 pub fn field_list(ui: &mut egui::Ui, model: &Model, state: &mut State) {
+    state.lines.clear();
     let spacing = ui.spacing_mut();
     spacing.button_padding = egui::vec2(8.0, 3.0);
     spacing.interact_size.y = 19.0;
-    spacing.item_spacing.y = 2.5;
+    spacing.item_spacing.y = 3.0;
     for (index, layer) in model.layers.iter().enumerate() {
         let color = layer_color(byte_layer(&layer.name));
         egui::CollapsingHeader::new(
@@ -763,6 +786,14 @@ pub fn part_line(part: &Part) -> String {
     )
 }
 
+/// Brings the selected line into view after ↑/↓ moved the selection to it.
+fn scroll_if_stepped(state: &mut State, on: bool, response: &egui::Response) {
+    if on && state.scroll_list {
+        state.scroll_list = false;
+        response.scroll_to_me(None);
+    }
+}
+
 fn node_line(ui: &mut egui::Ui, model: &Model, node: &Node, state: &mut State) {
     match node {
         Node::Part(index) => {
@@ -774,6 +805,8 @@ fn node_line(ui: &mut egui::Ui, model: &Model, node: &Node, state: &mut State) {
                 let response = ui
                     .selectable_label(on, part_line(part))
                     .on_hover_ui(|ui| facts(ui, &format!("hover_{}", part.id), &describe(part)));
+                scroll_if_stepped(state, on, &response);
+                state.lines.push(selection.clone());
                 if response.clicked() {
                     state.select(if on { None } else { Some(selection) });
                 }
@@ -836,7 +869,10 @@ fn node_line(ui: &mut egui::Ui, model: &Model, node: &Node, state: &mut State) {
                     if bad { " ✗" } else { "" },
                     bits_text(&merge(ranges))
                 );
-                if ui.selectable_label(on, text).clicked() {
+                let response = ui.selectable_label(on, text);
+                scroll_if_stepped(state, on, &response);
+                state.lines.push(selection.clone());
+                if response.clicked() {
                     state.select(if on { None } else { Some(selection.clone()) });
                 }
             });

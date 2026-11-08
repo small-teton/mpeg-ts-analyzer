@@ -1773,6 +1773,40 @@ fn arrow_keys_step_through_the_packets() {
     assert_eq!(pages_mut(&mut harness).inspected_for_test(), Some(0));
 }
 
+/// ↑ and ↓ move the selection through the lines of the field list as drawn,
+/// updating the facts above the grid; they stop at the ends of the list.
+#[test]
+fn up_and_down_step_through_the_field_list() {
+    let mut app = analyzed_app();
+    app.screen = Screen::Packets;
+    let mut pages = PacketPages::loaded_for_test(packets_page(), 564, pmt_packet_detail());
+    pages.inspect_for_test(Some(crate::views::wire_layout::Selection::Part(
+        "ts_header.pid@11".to_owned(),
+    )));
+    app.session_mut().packet_pages = pages;
+    let mut harness = harness(app);
+    harness.get_by_label_contains("packet bits 11–23 (13 bits)");
+    harness.key_press(egui::Key::ArrowDown);
+    harness.run();
+    harness.get_by_label_contains("packet bits 24–25 (2 bits)");
+    harness.key_press(egui::Key::ArrowUp);
+    harness.key_press(egui::Key::ArrowUp);
+    harness.run();
+    harness.get_by_label_contains("packet bit 10 (1 bit)");
+    // Not past the first line; the packet stays the same.
+    for _ in 0..6 {
+        harness.key_press(egui::Key::ArrowUp);
+    }
+    harness.run();
+    harness.get_by_label_contains("packet bits 0–7 (8 bits)");
+    assert_eq!(pages_mut(&mut harness).inspected_for_test(), Some(564));
+
+    // The lines are 25 points apart.
+    let top = |prefix: &str| bounds(&layout_line(&harness, prefix)).min.y;
+    let pitch = top("transport_error_indicator") - top("sync_byte");
+    assert!((pitch - 25.0).abs() < 0.5, "row pitch {pitch}");
+}
+
 /// The header names what the packet is with a badge.
 #[test]
 fn the_header_names_the_kind_of_packet() {

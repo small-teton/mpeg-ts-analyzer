@@ -331,6 +331,9 @@ bit of the packet on the right, colored by what it is on the wire.
   prefix, value runs, reserved and marker bits beneath it; a PAT program or
   PMT stream likewise lists its fields and reserved bits.
 - Hover a bit for its part, position and value; click it to select the part.
+- With a line selected, ↑ / ↓ move the selection to the previous or next line
+  of the field list as shown (the lines inside a collapsed field or entry are
+  skipped), updating the grid and the facts and scrolling the list to it.
 - Previous / Next, or the ← / → keys, step through the packets of the
   analyzed range; **Back to Packets** returns to the list with its page,
   filter, selected row and scroll position.
