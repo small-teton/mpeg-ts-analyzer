@@ -13,6 +13,7 @@ use egui_kittest::kittest::{NodeT, Queryable};
 use egui_kittest::{Harness, Node};
 
 use super::App;
+use super::state::{AnalysisSession, CliState};
 use crate::cli::Cli;
 use crate::range_bar::AnalysisRange;
 use crate::report::{AnalysisReport, PacketDetail, PacketsPage};
@@ -39,7 +40,7 @@ fn sample() -> PathBuf {
 
 fn app(cli: Result<Cli, String>) -> App {
     App {
-        cli,
+        cli: cli.into(),
         ..App::without_cli_check(Settings::default())
     }
 }
@@ -80,14 +81,13 @@ pub(super) fn app_with_report(report: AnalysisReport) -> App {
         offset: 0,
         limit: app.file_size,
     };
-    app.analyzed = Some((0, app.file_size));
-    app.analysis = Some(Box::new(report));
-    app.packet_pages = Some(PacketPages::loaded_for_test(
-        packets_page(),
-        188,
-        pat_packet_detail(),
+    app.generations = 1;
+    app.session = Some(AnalysisSession::with_pages(
+        Box::new(report),
+        (0, app.file_size),
+        PacketPages::loaded_for_test(packets_page(), 188, pat_packet_detail()),
+        app.generations,
     ));
-    app.analysis_generation = 1;
     app
 }
 
@@ -192,7 +192,15 @@ fn start_is_enabled_only_for_a_new_range_with_a_working_cli() {
         });
     }
 
-    harness.state_mut().analyzed = Some((0, harness.state().range.limit));
+    let analyzed = (0, harness.state().range.limit);
+    let session = analyzed_app()
+        .session
+        .take()
+        .map(|session| AnalysisSession {
+            range: analyzed,
+            ..session
+        });
+    harness.state_mut().session = session;
     harness.run();
     assert!(
         start_button(&harness).accesskit_node().is_disabled(),
@@ -251,7 +259,7 @@ fn app_finding(version: Option<&str>, settings: Settings, checks: &Arc<AtomicUsi
     let version = version.map(str::to_owned);
     let checks = Arc::clone(checks);
     let mut app = App {
-        cli: Ok(checked_cli()),
+        cli: CliState::Ready(checked_cli()),
         ..App::without_cli_check(settings)
     };
     let kind = InstallKind::MacApp(PathBuf::from("/Applications/mpeg-ts-analyzer.app"));
@@ -530,7 +538,7 @@ fn packet_detail_shows_the_trailer_of_a_204_byte_packet() {
     .unwrap();
     let mut app = analyzed_app();
     app.screen = Screen::Packets;
-    app.packet_pages = Some(PacketPages::loaded_for_test(page, 2448, detail));
+    app.session_mut().packet_pages = PacketPages::loaded_for_test(page, 2448, detail);
     let mut harness = harness(app);
     harness.get_by_label("Packet #13");
     harness.get_by_label("Trailer (after the TS packet; not decoded)");
@@ -598,7 +606,7 @@ pub(super) fn pmt_packet_detail() -> PacketDetail {
 fn detail_pane_left(offset: u64, detail: PacketDetail) -> f64 {
     let mut app = analyzed_app();
     app.screen = Screen::Packets;
-    app.packet_pages = Some(PacketPages::loaded_for_test(packets_page(), offset, detail));
+    app.session_mut().packet_pages = PacketPages::loaded_for_test(packets_page(), offset, detail);
     let harness = harness(app);
     harness
         .get_by_label("This packet")
@@ -852,9 +860,16 @@ fn table_columns_are_compact_and_check_names_wrap() {
 fn detail_page_opens_and_closes_with_the_keyboard() {
     for size in [WIDE, NARROW] {
         let mut harness = harness_sized(app_with_report(all_findings_report()), size);
-        let report = harness.state().analysis.as_deref().map(std::ptr::from_ref);
-        let plots = harness.state().plots.as_ref().map(|p| p.timelines.as_ptr());
-        let generation = harness.state().analysis_generation;
+        let session = |harness: &Harness<'_, App>| {
+            harness.state().session.as_ref().map(|s| {
+                (
+                    std::ptr::from_ref(&*s.report),
+                    s.plots.timelines.as_ptr(),
+                    s.generation,
+                )
+            })
+        };
+        let before = session(&harness);
 
         open_detail(&mut harness, Check::PcrJitter, true);
         assert!(harness.query_by_role(Role::Window).is_none());
@@ -879,11 +894,9 @@ fn detail_page_opens_and_closes_with_the_keyboard() {
         harness.run();
         assert_eq!(harness.state().overview.page(), OverviewPage::Summary);
         assert!(info_button(&harness, Check::PcrJitter).is_focused());
-        let state = harness.state();
-        assert_eq!(state.screen, Screen::Overview);
-        assert_eq!(state.analysis_generation, generation);
-        assert_eq!(state.analysis.as_deref().map(std::ptr::from_ref), report);
-        assert_eq!(state.plots.as_ref().map(|p| p.timelines.as_ptr()), plots);
+        assert_eq!(harness.state().screen, Screen::Overview);
+        assert!(before.is_some());
+        assert_eq!(session(&harness), before);
     }
 }
 
@@ -948,7 +961,7 @@ fn back_restores_the_program_and_scroll_position() {
 
     // A new analysis shows its summary from the top.
     open_detail(&mut harness, Check::ContinuityCounter, false);
-    harness.state_mut().analysis_generation += 1;
+    harness.state_mut().session_mut().generation += 1;
     harness.run();
     assert_eq!(harness.state().overview.page(), OverviewPage::Summary);
 }
@@ -964,8 +977,8 @@ fn every_check_has_a_detail_page() {
             open_detail(&mut harness, check, false);
             let help = check.help();
             let row = crate::views::overview::row(
-                harness.state().analysis.as_ref().unwrap(),
-                &harness.state().analysis.as_ref().unwrap().programs[0],
+                &harness.state().session.as_ref().unwrap().report,
+                &harness.state().session.as_ref().unwrap().report.programs[0],
                 check,
             )
             .unwrap();
@@ -1060,7 +1073,7 @@ fn findings_open_the_detail_page_with_their_actions() {
     let mut app = app_with_report(all_findings_report());
     // A CLI that cannot page packets: Packets shows its empty state instead
     // of running a CLI.
-    app.cli = Ok(Cli {
+    app.cli = CliState::Ready(Cli {
         packet_outputs: false,
         ..checked_cli()
     });
@@ -1106,9 +1119,10 @@ fn findings_open_the_detail_page_with_their_actions() {
     assert_eq!(
         harness
             .state()
-            .packet_pages
+            .session
             .as_ref()
             .unwrap()
+            .packet_pages
             .selected_for_test(),
         Some(4700)
     );
@@ -1607,16 +1621,13 @@ pub(super) fn pes_pcr_192_detail() -> PacketDetail {
 fn packets_screen(size: egui::Vec2) -> Harness<'static, App> {
     let mut app = analyzed_app();
     app.screen = Screen::Packets;
-    app.packet_pages = Some(PacketPages::loaded_for_test(
-        packets_page(),
-        564,
-        pmt_packet_detail(),
-    ));
+    app.session_mut().packet_pages =
+        PacketPages::loaded_for_test(packets_page(), 564, pmt_packet_detail());
     harness_sized(app, size)
 }
 
 fn pages_mut<'a>(harness: &'a mut Harness<'_, App>) -> &'a mut PacketPages {
-    harness.state_mut().packet_pages.as_mut().unwrap()
+    &mut harness.state_mut().session_mut().packet_pages
 }
 
 /// A line of the wire-layout field list, by the start of its text.
@@ -1696,7 +1707,7 @@ fn previous_and_next_stay_within_the_range() {
     app.screen = Screen::Packets;
     let mut pages = PacketPages::loaded_for_test(packets_page(), 0, pat_packet_detail());
     pages.inspect_for_test(None);
-    app.packet_pages = Some(pages);
+    app.session_mut().packet_pages = pages;
     let mut harness = harness(app);
     harness.get_by_label("Packet #1 of 40");
     assert!(
@@ -1722,7 +1733,7 @@ fn timestamps_and_clock_references_have_their_parts_beneath_them() {
         app.screen = Screen::Packets;
         let mut pages = PacketPages::loaded_for_test(packets_page(), 30528, pes_pcr_192_detail());
         pages.inspect_for_test(selection);
-        app.packet_pages = Some(pages);
+        app.session_mut().packet_pages = pages;
         harness(app)
     };
     let mut harness = inspect(None);
@@ -1774,7 +1785,7 @@ fn a_fixed_bit_mismatch_is_flagged() {
     pages.inspect_for_test(Some(crate::views::wire_layout::Selection::Part(
         "pmt.pcr_pid.reserved@104".to_owned(),
     )));
-    app.packet_pages = Some(pages);
+    app.session_mut().packet_pages = pages;
     let harness = harness(app);
     harness.get_by_label("111 · mismatch");
     layout_line(&harness, "reserved  011 ✗ expected 111");
@@ -1788,7 +1799,7 @@ fn detailed_inspection_falls_back_to_field_bits() {
     app.screen = Screen::Packets;
     let mut pages = PacketPages::loaded_for_test(packets_page(), 188, pat_packet_detail());
     pages.inspect_for_test(None);
-    app.packet_pages = Some(pages);
+    app.session_mut().packet_pages = pages;
     let mut harness = harness(app);
     harness.get_by_label_contains("does not report the wire layout");
     click_line(&mut harness, "PID  0x0000");

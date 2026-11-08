@@ -53,6 +53,15 @@ Work is tracked in #101 (milestone GUI v0.1).
   verdict) and the scope of a finding. A status the GUI does not know keeps
   its text and a neutral badge, never a warning color. A test pins every
   documented check status of the schemas to its own variant.
+- The app's lifecycle state (`gui/src/app/state.rs`) is kept apart from the
+  egui composition in `app.rs`. `CliState` is the CLI being checked, usable,
+  or why it is not; `AnalysisState` is no analysis, a command-line range
+  waiting for the CLI check, or a running analysis. A completed analysis is
+  one `AnalysisSession` that owns the report, the plot series derived from
+  it, the packet paging, the analyzed range and the generation views use to
+  drop state of an older analysis; it is replaced as a whole when the next
+  analysis is accepted, kept when one fails or is cancelled, and dropped when
+  another file is opened.
 - The GUI packages bundle a published CLI release, named in
   `gui/BUNDLED_CLI_VERSION`. A GUI change that needs new CLI output is released
   after the CLI release that provides it.

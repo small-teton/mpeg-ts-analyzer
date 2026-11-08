@@ -4,14 +4,17 @@ use eframe::egui;
 
 use crate::cli::{self, AnalysisJob, JobUpdate};
 use crate::icons;
-use crate::plot_data;
 use crate::range_bar::{self, AnalysisRange, Load};
-use crate::report::{AnalysisReport, ProgressEvent};
 use crate::settings::Settings;
 use crate::update::{InstallKind, Updates};
 use crate::views::overview::{self, OverviewAction};
-use crate::views::packet_pages::PacketPages;
 use crate::views::{Screen, bitrate, timeline::TimelineView};
+
+mod state;
+
+#[cfg(test)]
+use state::CHECKING_CLI;
+use state::{AnalysisSession, AnalysisState, CliState, Running};
 
 /// Range selected when a file is opened: small enough to analyze quickly.
 const INITIAL_LIMIT: u64 = 64 * 1024 * 1024;
@@ -25,49 +28,24 @@ pub(crate) struct LaunchRequest {
     pub limit: Option<u64>,
 }
 
-/// An analysis in progress.
-struct Running {
-    job: AnalysisJob,
-    offset: u64,
-    limit: u64,
-    started: std::time::Instant,
-    progress: Option<ProgressEvent>,
-}
-
-/// Plot series of every program of the analysis, derived once per analysis.
-struct Plots {
-    timelines: Vec<plot_data::Timeline>,
-    bitrates: Vec<plot_data::Bitrate>,
-}
-
 pub struct App {
-    /// The CLI if it passed the capabilities check, or why it did not.
-    cli: Result<cli::Cli, String>,
+    /// The CLI: being checked, usable, or why it is not.
+    cli: CliState,
     /// Where the CLI was looked up, and through which setting.
     cli_location: (cli::Source, PathBuf),
-    /// The capabilities check in progress; it runs off the UI thread because
-    /// any program can be chosen as the CLI.
-    cli_check: Option<std::sync::mpsc::Receiver<Result<cli::Cli, String>>>,
-    /// Start the command-line range as soon as the asynchronous CLI check passes.
-    pending_start: bool,
     input: Option<PathBuf>,
     file_size: u64,
     /// Why the opened file cannot be analyzed, if it cannot.
     file_problem: Option<String>,
     range: AnalysisRange,
-    /// The range of the last started analysis.
-    analyzed: Option<(u64, u64)>,
     /// Start was pressed for a range large enough to ask first.
     confirm_start: bool,
-    running: Option<Running>,
-    /// Result of the last completed analysis; the screens show an empty state until then.
-    analysis: Option<Box<AnalysisReport>>,
-    /// Plot series of `analysis`, derived once rather than every frame.
-    plots: Option<Plots>,
-    /// Packets of the analyzed range, read from the CLI page by page.
-    packet_pages: Option<PacketPages>,
-    /// Counts accepted analyses, so views can drop state of an older one.
-    analysis_generation: u64,
+    /// An analysis waiting for the CLI or running.
+    analysis: AnalysisState,
+    /// The last completed analysis; the screens show an empty state until then.
+    session: Option<AnalysisSession>,
+    /// Counts accepted analyses, so each session has its own generation.
+    generations: u64,
     /// Message for the error dialog.
     error: Option<String>,
     screen: Screen,
@@ -130,10 +108,8 @@ impl App {
     fn without_cli_check(settings: Settings) -> Self {
         let cli_location = cli::locate(&settings.cli_path);
         Self {
-            cli: Err(CHECKING_CLI.to_owned()),
+            cli: CliState::NotChecked,
             cli_location,
-            cli_check: None,
-            pending_start: false,
             input: None,
             file_size: 0,
             file_problem: None,
@@ -141,13 +117,10 @@ impl App {
                 offset: 0,
                 limit: INITIAL_LIMIT,
             },
-            analyzed: None,
             confirm_start: false,
-            running: None,
-            analysis: None,
-            plots: None,
-            packet_pages: None,
-            analysis_generation: 0,
+            analysis: AnalysisState::Idle,
+            session: None,
+            generations: 0,
             error: None,
             screen: Screen::Overview,
             program: 0,
@@ -161,8 +134,6 @@ impl App {
     }
 }
 
-const CHECKING_CLI: &str = "Checking the CLI…";
-
 impl App {
     /// Looks the CLI up and checks its capabilities on a thread; Start stays
     /// disabled until the result is in.
@@ -172,7 +143,6 @@ impl App {
     }
 
     fn check_cli_at(&mut self, path: PathBuf, ctx: Option<egui::Context>) {
-        self.cli = Err(CHECKING_CLI.to_owned());
         let (sender, receiver) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let _ = sender.send(cli::check(&path));
@@ -180,24 +150,13 @@ impl App {
                 ctx.request_repaint();
             }
         });
-        self.cli_check = Some(receiver);
-    }
-
-    /// Takes in the result of the capabilities check once it has finished.
-    fn poll_cli_check(&mut self) {
-        if let Some(receiver) = &self.cli_check
-            && let Ok(result) = receiver.try_recv()
-        {
-            self.cli = result;
-            self.cli_check = None;
-        }
+        self.cli = CliState::Checking(receiver);
     }
 
     /// Replaces the input. An analysis still running for the previous file is
     /// stopped, so its result cannot be shown for the new one.
     fn open(&mut self, path: PathBuf) {
-        self.running = None;
-        self.pending_start = false;
+        self.analysis = AnalysisState::Idle;
         self.confirm_start = false;
         (self.file_size, self.file_problem) = match std::fs::metadata(&path) {
             Ok(meta) if AnalysisRange::is_analyzable(meta.len()) => (meta.len(), None),
@@ -211,10 +170,7 @@ impl App {
             offset: 0,
             limit: INITIAL_LIMIT,
         };
-        self.analyzed = None;
-        self.analysis = None;
-        self.plots = None;
-        self.packet_pages = None;
+        self.session = None;
         self.input = Some(path);
     }
 
@@ -232,7 +188,9 @@ impl App {
             limit: requested,
         };
         self.range.clamp(self.file_size);
-        self.pending_start = self.file_problem.is_none();
+        if self.file_problem.is_none() {
+            self.analysis = AnalysisState::AwaitingCli;
+        }
     }
 
     fn pick_file(&mut self) {
@@ -253,7 +211,7 @@ impl App {
     }
 
     fn start(&mut self, ctx: &egui::Context) {
-        let (Ok(cli), Some(input)) = (&self.cli, &self.input) else {
+        let (Some(cli), Some(input)) = (self.cli.ready(), &self.input) else {
             return;
         };
         let repaint = {
@@ -262,78 +220,76 @@ impl App {
         };
         match AnalysisJob::start(cli, input, self.range.offset, self.range.limit, repaint) {
             Ok(job) => {
-                self.running = Some(Running {
+                self.analysis = AnalysisState::Running(Box::new(Running {
                     job,
-                    offset: self.range.offset,
-                    limit: self.range.limit,
+                    input: input.clone(),
+                    range: (self.range.offset, self.range.limit),
                     started: std::time::Instant::now(),
                     progress: None,
-                });
+                }));
             }
             Err(err) => self.error = Some(err),
         }
     }
 
-    /// Derives the plot series of every program once an analysis arrives.
-    fn update_plots(&mut self) {
-        let Some(report) = &self.analysis else {
-            self.plots = None;
-            return;
-        };
-        if self.plots.is_none() {
-            self.plots = Some(Plots {
-                timelines: report
-                    .programs
-                    .iter()
-                    .map(|program| plot_data::timeline(report, program))
-                    .collect(),
-                bitrates: report
-                    .programs
-                    .iter()
-                    .map(|program| plot_data::bitrate(report, program))
-                    .collect(),
-            });
+    /// Starts the command-line range once the CLI check has finished; a CLI
+    /// that failed the check starts nothing.
+    fn start_awaited(&mut self, ctx: &egui::Context) {
+        if matches!(self.analysis, AnalysisState::AwaitingCli) && !self.cli.is_checking() {
+            self.analysis = AnalysisState::Idle;
+            if self.file_problem.is_none() {
+                self.start(ctx);
+            }
         }
+    }
+
+    /// Stops the running analysis. The previous result, if any, stays as it
+    /// was.
+    fn cancel_analysis(&mut self) {
+        if let AnalysisState::Running(running) = &self.analysis {
+            running.job.cancel();
+        }
+        self.analysis = AnalysisState::Idle;
     }
 
     /// Takes in the analysis result once the CLI has finished.
     fn poll_analysis(&mut self) {
-        let Some(running) = &mut self.running else {
+        let AnalysisState::Running(running) = &mut self.analysis else {
             return;
         };
         match running.job.poll() {
             JobUpdate::Running(progress) => running.progress = progress.or(running.progress.take()),
             JobUpdate::Finished(Ok(report)) if report.status == "failed" => {
                 self.error = Some(crate::report::failure_message(&report));
-                self.running = None;
+                self.analysis = AnalysisState::Idle;
             }
             JobUpdate::Finished(Ok(report)) => {
-                self.analyzed = Some((running.offset, running.limit));
                 self.program = self.program.min(report.programs.len().saturating_sub(1));
+                self.generations += 1;
                 // Packets takes the paging in Settings now and keeps it for this analysis.
                 let paging = self.settings.paging();
-                self.packet_pages = self.input.clone().map(|input| {
-                    PacketPages::new(input, &report, running.offset, running.limit, paging)
-                });
-                self.analysis = Some(report);
-                self.plots = None;
-                self.analysis_generation += 1;
-                self.running = None;
+                self.session = Some(AnalysisSession::new(
+                    report,
+                    running,
+                    paging,
+                    self.generations,
+                ));
+                self.analysis = AnalysisState::Idle;
             }
             JobUpdate::Finished(Err(err)) => {
                 self.error = Some(err);
-                self.running = None;
+                self.analysis = AnalysisState::Idle;
             }
         }
     }
 
     /// Progress dialog over a grayed-out window while the range is analyzed.
     fn analysis_dialog(&mut self, ctx: &egui::Context) {
-        let Some(running) = &self.running else {
+        let Some(running) = self.analysis.running() else {
             return;
         };
         let elapsed = running.started.elapsed();
-        let (offset, limit) = (running.offset, running.limit);
+        let (offset, limit) = running.range;
         let progress = running
             .progress
             .as_ref()
@@ -382,9 +338,7 @@ impl App {
             });
         });
         if cancel {
-            running.job.cancel();
-            // The previous result, if any, stays as it was.
-            self.running = None;
+            self.cancel_analysis();
         }
         // Keeps the elapsed time moving between progress events.
         ctx.request_repaint_after(std::time::Duration::from_millis(250));
@@ -447,9 +401,10 @@ impl App {
             let bar_width = (ui.available_width() - controls_width).max(160.0);
             self.range.bar(ui, bar_width, self.file_size, load);
             self.range.fields(ui, self.file_size);
-            let changed = self.analyzed != Some((self.range.offset, self.range.limit));
-            let why_not = match (&self.cli, &self.file_problem) {
-                (Err(err), _) => Some(err.as_str()),
+            let changed = self.session.as_ref().map(|s| s.range)
+                != Some((self.range.offset, self.range.limit));
+            let why_not = match (self.cli.status(), &self.file_problem) {
+                (Err(err), _) => Some(err),
                 (Ok(_), Some(problem)) => Some(problem.as_str()),
                 (Ok(_), None) if !changed => Some("This range is already analyzed"),
                 (Ok(_), None) => None,
@@ -553,6 +508,14 @@ impl App {
     }
 }
 
+#[cfg(test)]
+impl App {
+    /// The completed analysis, for tests that change what it holds.
+    fn session_mut(&mut self) -> &mut AnalysisSession {
+        self.session.as_mut().expect("an analysis")
+    }
+}
+
 impl eframe::App for App {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, crate::settings::STORAGE_KEY, &self.settings);
@@ -579,31 +542,25 @@ impl App {
             self.open(path);
         }
 
-        self.poll_cli_check();
+        self.cli.poll();
         self.updates
             .poll(ui.ctx(), self.settings.skipped_update_version.as_deref());
-        if self.pending_start && self.cli_check.is_none() {
-            self.pending_start = false;
-            if self.cli.is_ok() && self.file_problem.is_none() {
-                self.start(ui.ctx());
-            }
-        }
+        self.start_awaited(ui.ctx());
         self.poll_analysis();
-        self.update_plots();
         egui::Panel::top("top_bar").show(ui, |ui| self.top_bar(ui));
         egui::Panel::bottom("status").show(ui, |ui| {
             ui.horizontal(|ui| {
-                match (&self.analysis, self.analyzed) {
-                    (Some(report), Some((offset, limit))) => ui.weak(format!(
+                match &self.session {
+                    Some(session) => ui.weak(format!(
                         "Analyzed {} – {} · {}-byte packets",
-                        range_bar::bytes(offset),
-                        range_bar::bytes(offset + limit),
-                        report.input.packet_size_bytes.unwrap_or(188)
+                        range_bar::bytes(session.range.0),
+                        range_bar::bytes(session.range.0 + session.range.1),
+                        session.report.input.packet_size_bytes.unwrap_or(188)
                     )),
-                    _ => ui.weak("Not analyzed yet"),
+                    None => ui.weak("Not analyzed yet"),
                 };
                 ui.separator();
-                match &self.cli {
+                match self.cli.status() {
                     Ok(cli) => ui.weak(format!("CLI {} · {}", cli.version, cli.path.display())),
                     Err(err) => ui.colored_label(ui.visuals().warn_fg_color, err),
                 };
@@ -615,73 +572,75 @@ impl App {
             .show(ui, |ui| self.navigation(ui));
         egui::CentralPanel::default().show(ui, |ui| {
             let mut open_packet = None;
-            let navigate = match (&self.analysis, &self.plots) {
-                (Some(report), Some(plots)) => match self.screen {
-                    Screen::Overview => match overview::show_report(
-                        ui,
-                        report,
-                        &mut self.program,
-                        &mut self.overview,
-                        &plots.timelines,
-                        self.analysis_generation,
-                    ) {
-                        Some(OverviewAction::Open(screen)) => Some(screen),
-                        Some(OverviewAction::OpenPacket(offset)) => {
-                            open_packet = Some(offset);
-                            Some(Screen::Packets)
-                        }
-                        Some(OverviewAction::ShowOnTimeline(offset)) => {
-                            let shown = plots.timelines.get(self.program).is_some_and(|data| {
-                                self.timeline.show_event(
-                                    self.analysis_generation,
-                                    self.program,
-                                    data,
-                                    offset,
-                                )
-                            });
-                            shown.then_some(Screen::Timeline)
-                        }
-                        None => None,
-                    },
-                    Screen::Timeline => self.timeline.show_report(
-                        ui,
-                        report,
-                        &plots.timelines,
-                        self.analysis_generation,
-                        &mut self.program,
-                    ),
-                    Screen::Bitrate => {
-                        bitrate::show_report(
+            let navigate = match &mut self.session {
+                Some(session) => {
+                    let (report, plots, generation) =
+                        (&session.report, &session.plots, session.generation);
+                    match self.screen {
+                        Screen::Overview => match overview::show_report(
                             ui,
                             report,
-                            &plots.bitrates,
-                            self.analysis_generation,
                             &mut self.program,
-                        );
-                        None
-                    }
-                    Screen::Packets => {
-                        match (&self.cli, &mut self.packet_pages) {
-                            (Ok(cli), Some(pages)) if cli.packet_outputs => pages.show(ui, cli),
-                            (Ok(_), Some(_)) => empty_state(
+                            &mut self.overview,
+                            &plots.timelines,
+                            generation,
+                        ) {
+                            Some(OverviewAction::Open(screen)) => Some(screen),
+                            Some(OverviewAction::OpenPacket(offset)) => {
+                                open_packet = Some(offset);
+                                Some(Screen::Packets)
+                            }
+                            Some(OverviewAction::ShowOnTimeline(offset)) => {
+                                let shown =
+                                    plots.timelines.get(self.program).is_some_and(|data| {
+                                        self.timeline.show_event(
+                                            generation,
+                                            self.program,
+                                            data,
+                                            offset,
+                                        )
+                                    });
+                                shown.then_some(Screen::Timeline)
+                            }
+                            None => None,
+                        },
+                        Screen::Timeline => self.timeline.show_report(
+                            ui,
+                            report,
+                            &plots.timelines,
+                            generation,
+                            &mut self.program,
+                        ),
+                        Screen::Bitrate => {
+                            bitrate::show_report(
                                 ui,
-                                "Packets are not available",
-                                "This CLI cannot page packets (--output packets). Choose a newer CLI in Settings.",
-                            ),
-                            (Err(err), _) => empty_state(ui, "Packets are not available", err),
-                            (Ok(_), None) => empty_state(
-                                ui,
-                                "Packets are not available",
-                                "Packet paging was not set up for this analysis. Press Start again.",
-                            ),
+                                report,
+                                &plots.bitrates,
+                                generation,
+                                &mut self.program,
+                            );
+                            None
                         }
-                        None
+                        Screen::Packets => {
+                            match self.cli.status() {
+                                Ok(cli) if cli.packet_outputs => {
+                                    session.packet_pages.show(ui, cli)
+                                }
+                                Ok(_) => empty_state(
+                                    ui,
+                                    "Packets are not available",
+                                    "This CLI cannot page packets (--output packets). Choose a newer CLI in Settings.",
+                                ),
+                                Err(err) => empty_state(ui, "Packets are not available", err),
+                            }
+                            None
+                        }
                     }
-                },
-                _ => {
+                }
+                None => {
                     // Say what actually blocks Start: the CLI, the file, or nothing.
-                    let hint = match (&self.cli, &self.input, &self.file_problem) {
-                        (Err(err), _, _) => err.as_str(),
+                    let hint = match (self.cli.status(), &self.input, &self.file_problem) {
+                        (Err(err), _, _) => err,
                         (Ok(_), None, _) => "Open a file, choose the scan range and press Start.",
                         (Ok(_), Some(_), Some(_)) => "This file cannot be analyzed. Open another MPEG-TS file.",
                         (Ok(_), Some(_), None) => "Choose the scan range and press Start.",
@@ -693,11 +652,11 @@ impl App {
             if let Some(screen) = navigate {
                 self.screen = screen;
             }
-            if let (Some(offset), Some(pages)) = (
+            if let (Some(offset), Some(session)) = (
                 open_packet.or(self.timeline.take_open_request()),
-                &mut self.packet_pages,
+                &mut self.session,
             ) {
-                pages.go_to(offset);
+                session.packet_pages.go_to(offset);
             }
         });
 
@@ -705,7 +664,7 @@ impl App {
         let status = crate::settings::CliStatus {
             source: self.cli_location.0,
             path: &self.cli_location.1,
-            check: &self.cli,
+            check: self.cli.status(),
         };
         if self
             .settings
@@ -716,7 +675,7 @@ impl App {
         self.about_window(&ctx);
         self.updates.window(
             &ctx,
-            self.running.is_some(),
+            self.analysis.is_running(),
             &mut self.settings.skipped_update_version,
         );
         self.confirm_start_dialog(&ctx);
@@ -848,44 +807,156 @@ mod tests {
         let job = AnalysisJob::start(&cli, &dir.join("a.ts"), 0, 1000, || {}).expect("start");
         let child = job.child();
         let mut app = App {
-            cli: Ok(cli),
+            cli: CliState::Ready(cli),
             ..App::default()
         };
         app.input = Some(dir.join("a.ts"));
-        app.running = Some(Running {
+        app.analysis = AnalysisState::Running(Box::new(Running {
             job,
-            offset: 0,
-            limit: 1000,
+            input: dir.join("a.ts"),
+            range: (0, 1000),
             started: std::time::Instant::now(),
             progress: None,
-        });
+        }));
         app.open(dir.join("b.ts"));
-        assert!(app.running.is_none() && app.analysis.is_none() && app.analyzed.is_none());
+        assert!(matches!(app.analysis, AnalysisState::Idle) && app.session.is_none());
         assert!(
             cli::wait_until_exited(&child),
             "the old analysis kept running"
         );
         app.poll_analysis();
-        assert!(app.analysis.is_none());
+        assert!(app.session.is_none());
     }
 
     #[test]
     fn checks_the_cli_off_the_ui_thread() {
         let mut app = App::default();
         app.check_cli_at(PathBuf::from("/no/such/mpeg-ts-analyzer"), None);
-        assert_eq!(
-            app.cli.as_ref().err().map(String::as_str),
-            Some(CHECKING_CLI)
-        );
+        assert!(app.cli.is_checking());
+        assert_eq!(app.cli.status().err(), Some(CHECKING_CLI));
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-        while app.cli_check.is_some() && std::time::Instant::now() < deadline {
+        while app.cli.is_checking() && std::time::Instant::now() < deadline {
             std::thread::sleep(std::time::Duration::from_millis(10));
-            app.poll_cli_check();
+            app.cli.poll();
         }
-        let Err(err) = &app.cli else {
+        let CliState::Unusable(err) = &app.cli else {
             panic!("a missing CLI was accepted")
         };
         assert!(err.contains("Cannot run"), "{err}");
+    }
+
+    /// Polls until the running analysis has finished, or ten seconds pass.
+    fn finish(app: &mut App) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while app.analysis.is_running() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            app.poll_analysis();
+        }
+        assert!(!app.analysis.is_running(), "the analysis did not finish");
+    }
+
+    /// A fake CLI that prints the two-program analysis fixture.
+    fn fixture_cli(dir: &std::path::Path) -> cli::Cli {
+        let document = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/analysis_two_programs_188.json");
+        cli::fake_cli(dir, &format!("cat '{}'", document.display()))
+    }
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("mtsa-gui-test-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// Each accepted analysis replaces the session as a whole, with its own
+    /// range and a new generation; a failed or cancelled one keeps it.
+    #[test]
+    fn analyses_replace_the_session_and_failures_keep_it() {
+        let dir = temp_dir("session");
+        let ctx = egui::Context::default();
+        let mut app = App {
+            cli: CliState::Ready(fixture_cli(&dir)),
+            ..App::default()
+        };
+        app.input = Some(dir.join("a.ts"));
+        app.range = AnalysisRange {
+            offset: 0,
+            limit: 1000,
+        };
+        app.start(&ctx);
+        assert!(app.analysis.is_running() && app.session.is_none());
+        finish(&mut app);
+        let session = app.session.as_ref().expect("a session");
+        assert_eq!((session.range, session.generation), ((0, 1000), 1));
+        assert_eq!(session.plots.timelines.len(), session.report.programs.len());
+        assert_eq!(session.plots.bitrates.len(), session.report.programs.len());
+
+        app.range = AnalysisRange {
+            offset: 188,
+            limit: 2000,
+        };
+        app.start(&ctx);
+        finish(&mut app);
+        let session = app.session.as_ref().expect("a session");
+        assert_eq!((session.range, session.generation), ((188, 2000), 2));
+
+        // A CLI that fails: an error, and the last analysis stays.
+        app.cli = CliState::Ready(cli::fake_cli(&dir, "echo broken >&2\nexit 1"));
+        app.start(&ctx);
+        finish(&mut app);
+        assert!(app.error.take().is_some_and(|e| e.contains("broken")));
+        assert_eq!(app.session.as_ref().map(|s| s.generation), Some(2));
+
+        // Cancel: the CLI is stopped, and the last analysis stays.
+        app.cli = CliState::Ready(cli::fake_cli(&dir, "exec sleep 30"));
+        app.start(&ctx);
+        let AnalysisState::Running(running) = &app.analysis else {
+            panic!("not running")
+        };
+        let child = running.job.child();
+        app.cancel_analysis();
+        assert!(matches!(app.analysis, AnalysisState::Idle));
+        assert!(cli::wait_until_exited(&child), "the analysis kept running");
+        assert_eq!(app.session.as_ref().map(|s| s.generation), Some(2));
+        assert!(app.error.is_none());
+    }
+
+    /// A command-line range starts once the CLI check has passed, and not at
+    /// all when it failed.
+    #[test]
+    fn automatic_launch_starts_after_the_cli_check() {
+        let sample = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts");
+        let dir = temp_dir("launch");
+        let ctx = egui::Context::default();
+        for passes in [false, true] {
+            let mut app = App::without_cli_check(Settings::default());
+            app.apply_launch(LaunchRequest {
+                input: sample.clone(),
+                offset: 0,
+                limit: None,
+            });
+            let (sender, receiver) = std::sync::mpsc::channel();
+            app.cli = CliState::Checking(receiver);
+            app.start_awaited(&ctx);
+            assert!(matches!(app.analysis, AnalysisState::AwaitingCli));
+            sender
+                .send(if passes {
+                    Ok(fixture_cli(&dir))
+                } else {
+                    Err("Cannot run the CLI".to_owned())
+                })
+                .unwrap();
+            app.cli.poll();
+            app.start_awaited(&ctx);
+            assert_eq!(app.analysis.is_running(), passes);
+            if passes {
+                finish(&mut app);
+                assert!(app.session.is_some());
+            } else {
+                assert!(matches!(app.analysis, AnalysisState::Idle));
+            }
+        }
     }
 
     #[test]
@@ -901,6 +972,6 @@ mod tests {
         });
         assert_eq!(app.range.offset, 188);
         assert_eq!(app.range.limit, size - 188);
-        assert!(app.pending_start && app.running.is_none());
+        assert!(matches!(app.analysis, AnalysisState::AwaitingCli));
     }
 }
