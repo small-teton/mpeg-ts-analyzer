@@ -15,7 +15,6 @@ pub const FOLDER_OPEN: &str = "\u{e256}";
 pub const INFO: &str = "\u{e2ce}";
 pub const ARROW_SQUARE_OUT: &str = "\u{e5de}";
 pub const ARROWS_CLOCKWISE: &str = "\u{e094}";
-pub const MAGNIFYING_GLASS_PLUS: &str = "\u{e310}";
 pub const ARROW_COUNTER_CLOCKWISE: &str = "\u{e038}";
 pub const ARROW_LEFT: &str = "\u{e058}";
 pub const CARET_DOWN: &str = "\u{e136}";

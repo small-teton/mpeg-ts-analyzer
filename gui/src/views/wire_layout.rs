@@ -713,8 +713,13 @@ fn facts(ui: &mut egui::Ui, id: &str, rows: &[(String, String)]) {
         });
 }
 
-/// The field list: one collapsible section per layer, in file order.
+/// The field list: one collapsible section per layer, in file order. Lines
+/// are dense (small button padding and spacing) so a long table fits.
 pub fn field_list(ui: &mut egui::Ui, model: &Model, state: &mut State) {
+    let spacing = ui.spacing_mut();
+    spacing.button_padding = egui::vec2(6.0, 1.0);
+    spacing.interact_size.y = 18.0;
+    spacing.item_spacing.y = 2.0;
     for (index, layer) in model.layers.iter().enumerate() {
         let color = layer_color(byte_layer(&layer.name));
         egui::CollapsingHeader::new(
@@ -1059,8 +1064,8 @@ pub struct Header {
     pub next: Option<u64>,
 }
 
-/// The page header: back to the list, Previous/Next, and the packet's title
-/// with a large badge saying what it is, over where the packet is.
+/// The page header: back to the list, where the packet is with a badge
+/// saying what it is, and Previous/Next.
 pub fn header(ui: &mut egui::Ui, header: &Header) -> Option<Action> {
     let mut action = None;
     ui.horizontal(|ui| {
@@ -1069,7 +1074,13 @@ pub fn header(ui: &mut egui::Ui, header: &Header) -> Option<Action> {
         if back.clicked() {
             action = Some(Action::Back);
         }
-        ui.weak("Packets › Detailed inspection");
+        ui.weak("Packets ›");
+        let title = ui.strong(&header.title);
+        title.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Heading, true, &header.title));
+        if let Some(kind) = &header.kind {
+            kind_badge(ui, kind);
+        }
+        ui.weak("› Detailed inspection");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui
                 .add_enabled(
@@ -1093,37 +1104,22 @@ pub fn header(ui: &mut egui::Ui, header: &Header) -> Option<Action> {
             }
         });
     });
-    ui.add_space(4.0);
-    ui.horizontal(|ui| {
-        let title = ui.label(
-            egui::RichText::new(&header.title)
-                .heading()
-                .color(ui.visuals().strong_text_color()),
-        );
-        title.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Heading, true, &header.title));
-        if let Some(kind) = &header.kind {
-            ui.add_space(6.0);
-            kind_badge(ui, kind);
-        }
-    });
     ui.weak(&header.context);
     action
 }
 
-/// The large badge of the packet kind, colored like the kind's PIDs elsewhere
-/// (PSI, video, audio, PCR) and gray for packets without a payload of their own.
+/// The badge of the packet kind: white semibold text a little larger than a
+/// status badge, on a fill by kind (PSI, video, audio, PCR, other).
 fn kind_badge(ui: &mut egui::Ui, kind: &str) {
-    let fill = kind_color(kind);
     let response = egui::Frame::new()
-        .fill(fill)
-        .corner_radius(6)
-        .inner_margin(egui::vec2(12.0, 3.0))
+        .fill(kind_color(kind))
+        .corner_radius(crate::theme::BADGE_RADIUS)
+        .inner_margin(crate::theme::BADGE_MARGIN)
         .show(ui, |ui| {
             ui.label(
-                egui::RichText::new(kind)
-                    .size(20.0)
-                    .strong()
-                    .color(egui::Color32::from_rgb(0x10, 0x10, 0x12)),
+                crate::theme::badge_text(kind)
+                    .size(16.0)
+                    .color(egui::Color32::WHITE),
             )
         })
         .inner;
@@ -1133,19 +1129,19 @@ fn kind_badge(ui: &mut egui::Ui, kind: &str) {
 }
 
 fn kind_color(kind: &str) -> egui::Color32 {
-    use crate::theme::{AUDIO_COLOR, PCR_COLOR, PSI_COLOR, VIDEO_COLOR};
+    use crate::theme::{KIND_AUDIO, KIND_OTHER, KIND_PCR, KIND_PES, KIND_PSI, KIND_VIDEO};
     if kind.contains("audio") {
-        AUDIO_COLOR
+        KIND_AUDIO
     } else if kind.contains("video") {
-        VIDEO_COLOR
+        KIND_VIDEO
     } else if kind == "PCR only" || kind == "PCR" {
-        PCR_COLOR
+        KIND_PCR
     } else if kind.starts_with("PES") {
-        egui::Color32::from_rgb(0x9f, 0xc4, 0xe8)
+        KIND_PES
     } else if matches!(kind, "Null" | "Adaptation field only" | "TS packet") {
-        egui::Color32::from_rgb(0xa8, 0xac, 0xb2)
+        KIND_OTHER
     } else {
-        PSI_COLOR
+        KIND_PSI
     }
 }
 

@@ -1765,7 +1765,7 @@ fn arrow_keys_step_through_the_packets() {
     assert_eq!(pages_mut(&mut harness).inspected_for_test(), Some(0));
 }
 
-/// The header names what the packet is with a large badge.
+/// The header names what the packet is with a badge.
 #[test]
 fn the_header_names_the_kind_of_packet() {
     let inspect = |offset: u64, detail: PacketDetail| {

@@ -314,7 +314,7 @@ bit of the packet on the right, colored by what it is on the wire.
 
 [![Detailed inspection of a PMT packet with its 13-bit PID selected](../images/gui-wire-layout.png)](../images/gui-wire-layout.png)
 
-- A large badge beside "Packet #n of N" says what the packet is: `PAT`,
+- A badge right after "Packet #n of N" in the header says what the packet is: `PAT`,
   `PMT`, another PSI/SI table (`SDT`, `EIT`, …, or `… · continued` for a
   section that started in an earlier packet), `PES · H.264 video` (the stream
   type the PMT announces, else the stream_id's class), `PES payload · …` for a

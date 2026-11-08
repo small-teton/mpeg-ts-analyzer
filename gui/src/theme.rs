@@ -111,6 +111,21 @@ pub fn badge_text(text: &str) -> egui::RichText {
         .family(FontFamily::Name(HEADING_FAMILY.into()))
 }
 
+/// Space around the text of a button.
+pub const BUTTON_PADDING: egui::Vec2 = egui::vec2(10.0, 5.0);
+/// Height of buttons and other controls (compact areas use less).
+pub const BUTTON_HEIGHT: f32 = 26.0;
+
+/// Fills of the packet-kind badge of the detailed inspection page, all with
+/// white text at least 5:1 and the same in light and dark: PSI/SI tables,
+/// video, audio, PCR, other PES, and packets without a payload of their own.
+pub const KIND_PSI: Color32 = Color32::from_rgb(0x7b, 0x3f, 0xb0);
+pub const KIND_VIDEO: Color32 = Color32::from_rgb(0x1f, 0x63, 0xb5);
+pub const KIND_AUDIO: Color32 = Color32::from_rgb(0x2e, 0x7d, 0x32);
+pub const KIND_PCR: Color32 = Color32::from_rgb(0x9a, 0x53, 0x00);
+pub const KIND_PES: Color32 = Color32::from_rgb(0x3d, 0x6a, 0x93);
+pub const KIND_OTHER: Color32 = Color32::from_rgb(0x59, 0x63, 0x6e);
+
 /// Fill of the buttons that start an analysis, with white text.
 pub const START_COLOR: Color32 = Color32::from_rgb(0x2e, 0x8b, 0x4f);
 
@@ -128,8 +143,25 @@ pub fn apply_with_bundled_fonts(ctx: &egui::Context) {
     apply_style(ctx);
 }
 
+/// Body text of non-interactive widgets in the dark theme: egui's gray 140
+/// (5.1:1 on the panel) is raised so weak text can stay below it and still
+/// read comfortably.
+pub const DARK_TEXT: Color32 = Color32::from_gray(190);
+/// Weak (secondary) text: hints, context lines, legends, the status bar.
+/// At least 4.5:1 on the panel (gray 27 dark: 5.8:1; gray 248 light: 4.8:1),
+/// instead of egui's 60 % of the text color (about 2.7:1 and 2.9:1).
+pub const DARK_WEAK_TEXT: Color32 = Color32::from_gray(150);
+pub const LIGHT_WEAK_TEXT: Color32 = Color32::from_gray(110);
+
 fn apply_style(ctx: &egui::Context) {
     ctx.all_styles_mut(|style| {
+        let visuals = &mut style.visuals;
+        if visuals.dark_mode {
+            visuals.widgets.noninteractive.fg_stroke.color = DARK_TEXT;
+            visuals.weak_text_color = Some(DARK_WEAK_TEXT);
+        } else {
+            visuals.weak_text_color = Some(LIGHT_WEAK_TEXT);
+        }
         style.text_styles = [
             (TextStyle::Small, FontId::proportional(12.0)),
             (TextStyle::Body, FontId::proportional(15.0)),
@@ -143,8 +175,8 @@ fn apply_style(ctx: &egui::Context) {
         .into();
         let spacing = &mut style.spacing;
         spacing.item_spacing = egui::vec2(10.0, 7.0);
-        spacing.button_padding = egui::vec2(10.0, 5.0);
-        spacing.interact_size.y = 26.0;
+        spacing.button_padding = BUTTON_PADDING;
+        spacing.interact_size.y = BUTTON_HEIGHT;
         spacing.icon_width = 18.0;
         spacing.icon_width_inner = 10.0;
         spacing.menu_margin = egui::Margin::same(8);

@@ -403,23 +403,29 @@ the whole range is never held in memory.
     there are. The selection is the field, not its bytes, so fields that share a
     byte (`version_number`, `current_next_indicator`) are selected one at a
     time.
-  - **Detailed inspection** (#190): a button under the packet heading, and a
-    second one at the very end of the pane after the Bit inspector, opens a
-    full-width page for that packet inside Packets, in place of the list and
-    the pane, not a dialog. The pane above stays the fast summary with its
-    compact preview.
-    - Header: Back to Packets, the breadcrumb `Packets › Detailed
-      inspection`, Previous / Next (every packet of the analyzed range in
-      file order, whatever the PID filter shows; disabled at the ends of the
-      range; ← / → do the same unless a text field has the keyboard), then
-      the heading `Packet #n of N` with a large badge of the packet kind
-      (`presentation::packet::packet_kind`: `PAT`, `PMT`, a PSI/SI table
-      name from table_id, `PES · <stream>` with the stream type the PMT
-      announces or else the stream_id class, `PES payload · …` and
-      `… · continued` for later packets of a unit, `PCR only`, `Adaptation
-      field only`, `Null`), colored like PSI, video, audio and PCR elsewhere.
-      Below: the offset, PID, what the PID carries, the packet size and how
-      many of its bits are classified, and a legend of the role colors.
+  - **Detailed inspection** (#190): a text-only button under the packet
+    heading, and a second one at the very end of the pane after the Bit
+    inspector (separated by a rule), opens a full-width page for that packet
+    inside Packets, in place of the list and the pane, not a dialog. Both use
+    the regular button padding and height (`theme::BUTTON_PADDING`,
+    `theme::BUTTON_HEIGHT`) rather than the pane's compact height, with space
+    above and below. The pane above stays the fast summary with its compact
+    preview.
+    - Header: Back to Packets, the breadcrumb `Packets › Packet #n of N
+      [kind] › Detailed inspection`, and Previous / Next (every packet of the
+      analyzed range in file order, whatever the PID filter shows; disabled at
+      the ends of the range; ← / → do the same unless a text field has the
+      keyboard). The kind badge (`presentation::packet::packet_kind`: `PAT`,
+      `PMT`, a PSI/SI table name from table_id, `PES · <stream>` with the
+      stream type the PMT announces or else the stream_id class,
+      `PES payload · …` and `… · continued` for later packets of a unit,
+      `PCR only`, `Adaptation field only`, `Null`) follows the status-badge
+      style with 16 px text: white semibold text on a fill by kind, the same
+      in light and dark and at least 5:1 against white (`theme::KIND_*`: PSI
+      `#7B3FB0`, video `#1F63B5`, audio `#2E7D32`, PCR `#9A5300`, other PES
+      `#3D6A93`, no payload of its own `#59636E`). Below: the offset, PID,
+      what the PID carries, the packet size and how many of its bits are
+      classified, and a legend of the role colors.
     - Left (resizable): "Fields", one section per layer in file order. Each
       line is a part of the layer's `bit_layout`: label, value, packet bits,
       and ✓ or "✗ expected …" where the specification fixes the bits. The
@@ -508,6 +514,12 @@ range in a saved file are clamped when they are used.
 - Phosphor is registered as its own font family `icons` and always selected
   explicitly (`icons::text`, `icons::font`). As a fallback font its Private Use
   Area codepoints collide with glyphs in other fonts.
+- Text colors: weak (secondary) text is a fixed gray, at least 4.5:1 on the
+  panel: `#969696` on the dark panel (5.8:1), `#6E6E6E` on the light one
+  (4.8:1), instead of egui's 60 % of the text color (under 3:1). So that it
+  stays secondary, dark-theme body text is raised from egui's `#8C8C8C` to
+  `#BEBEBE` (9.3:1); light body text keeps egui's `#505050`
+  (`theme::DARK_TEXT`, `DARK_WEAK_TEXT`, `LIGHT_WEAK_TEXT`).
 - Packet field values (Packets pane, Detailed inspection) are decimal first
   with the hexadecimal in parentheses, padded to the field's width
   (`4097 (0x1001)`, `23 (0x017)`), formatted by the GUI

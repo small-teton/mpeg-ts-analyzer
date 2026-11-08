@@ -889,7 +889,8 @@ impl PacketPages {
         ui.separator();
         inspectors(ui, packet, highlight.as_ref());
         // Again after the Bit inspector, where wanting more detail begins.
-        ui.add_space(8.0);
+        ui.add_space(6.0);
+        ui.separator();
         inspect |= detailed_inspection_button(ui);
         self.highlight = highlight.map(|selection| (offset, selection));
 
@@ -902,17 +903,23 @@ impl PacketPages {
 }
 
 /// Opens the detailed inspection page; shown above the decoded fields and
-/// again below the Bit inspector.
+/// again below the Bit inspector. Text only, at the app's regular button size
+/// (the pane around it is compact), with room above and below.
 fn detailed_inspection_button(ui: &mut egui::Ui) -> bool {
-    let button = ui.button((
-        icons::text(icons::MAGNIFYING_GLASS_PLUS),
-        "Detailed inspection",
-    ));
-    button
-        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Detailed inspection"));
-    button
-        .on_hover_text("Open the complete wire layout of this packet on a full-width page")
-        .clicked()
+    ui.add_space(6.0);
+    let clicked = ui
+        .scope(|ui| {
+            ui.spacing_mut().button_padding = theme::BUTTON_PADDING;
+            ui.spacing_mut().interact_size.y = theme::BUTTON_HEIGHT;
+            ui.button(
+                egui::RichText::new("Detailed inspection").text_style(egui::TextStyle::Button),
+            )
+            .on_hover_text("Open the complete wire layout of this packet on a full-width page")
+            .clicked()
+        })
+        .inner;
+    ui.add_space(6.0);
+    clicked
 }
 
 /// The Byte and Bit inspectors of a decoded packet, with the selected field's
