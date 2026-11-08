@@ -163,16 +163,22 @@ impl Field {
     }
 }
 
+/// A collapsible section of fields; `inner` draws what follows them inside
+/// it, such as the layer that decodes a payload.
 pub(super) fn field_tree(
     ui: &mut egui::Ui,
     title: &str,
     color: egui::Color32,
     fields: &[Field],
     highlight: &mut Option<FieldSelection>,
+    inner: impl FnOnce(&mut egui::Ui, &mut Option<FieldSelection>),
 ) {
     egui::CollapsingHeader::new(crate::theme::emphasis(title).color(color))
         .default_open(true)
-        .show(ui, |ui| key_values(ui, title, fields, highlight));
+        .show(ui, |ui| {
+            key_values(ui, title, fields, highlight);
+            inner(ui, highlight);
+        });
 }
 
 /// Cells of one clickable field or table row; clicking toggles the highlight of its bytes.

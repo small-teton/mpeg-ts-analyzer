@@ -896,8 +896,19 @@ impl PacketPages {
             ui.label(crate::theme::emphasis("This packet"));
             ui.weak("· click a field to inspect its bytes and bits");
         });
-        for layer in &packet.layers {
-            layer_fields(ui, layer, &mut highlight);
+        // A PES header or PSI section is drawn inside the payload it decodes.
+        let parents = wire_layout::layer_parents(packet.layers.iter().map(|l| l.name.as_str()));
+        for (index, layer) in packet.layers.iter().enumerate() {
+            if parents[index].is_none() {
+                let decoded: Vec<&PacketLayer> = packet
+                    .layers
+                    .iter()
+                    .zip(&parents)
+                    .filter(|(_, parent)| **parent == Some(index))
+                    .map(|(layer, _)| layer)
+                    .collect();
+                layer_fields(ui, layer, &decoded, &mut highlight);
+            }
         }
         for warning in &detail.warnings {
             ui.colored_label(ui.visuals().warn_fg_color, &warning.message);
@@ -1237,14 +1248,32 @@ fn layer_title(layer: &PacketLayer) -> String {
     }
 }
 
-fn layer_fields(ui: &mut egui::Ui, layer: &PacketLayer, highlight: &mut Option<FieldSelection>) {
+/// A layer's fields and table, with the layers that decode its bytes inside
+/// its section.
+fn layer_fields(
+    ui: &mut egui::Ui,
+    layer: &PacketLayer,
+    decoded: &[&PacketLayer],
+    highlight: &mut Option<FieldSelection>,
+) {
     let fields: Vec<Field> = layer
         .fields
         .iter()
         .map(|f| Field::new(f.name.clone(), field_text(f), span(f)).with_bits(f.bit_ranges()))
         .collect();
     let color = layer_color(byte_layer(&layer.name));
-    field_tree(ui, &layer_title(layer), color, &fields, highlight);
+    field_tree(
+        ui,
+        &layer_title(layer),
+        color,
+        &fields,
+        highlight,
+        |ui, highlight| {
+            for inner in decoded {
+                layer_fields(ui, inner, &[], highlight);
+            }
+        },
+    );
     if let Some(first) = layer.rows.first() {
         let titles: Vec<&str> = first.iter().map(|f| f.name.as_str()).collect();
         let rows: Vec<(Vec<String>, FieldSelection)> = layer

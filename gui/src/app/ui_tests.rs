@@ -1807,6 +1807,141 @@ fn up_and_down_step_through_the_field_list() {
     assert!((pitch - 25.0).abs() < 0.5, "row pitch {pitch}");
 }
 
+/// The Detailed inspection page of `detail`, with `selection` on its list.
+fn inspected(
+    offset: u64,
+    detail: PacketDetail,
+    selection: Option<crate::views::wire_layout::Selection>,
+) -> Harness<'static, App> {
+    let mut app = analyzed_app();
+    app.screen = Screen::Packets;
+    let mut pages = PacketPages::loaded_for_test(packets_page(), offset, detail);
+    pages.inspect_for_test(selection);
+    app.session_mut().packet_pages = pages;
+    harness(app)
+}
+
+/// A section header of the field list (a layer), by its title.
+fn section<'a>(harness: &'a Harness<'_, App>, title: &'a str) -> Node<'a> {
+    harness.get_by(move |node| node.label().as_deref() == Some(title) && node.role() != Role::Label)
+}
+
+/// The layer that decodes the payload (a PSI section, a PES header) is a
+/// section inside the payload's, after the payload line; the framing layers
+/// and a 204-byte trailer stay at the top level, and a payload that nothing
+/// decodes keeps its line alone.
+#[test]
+fn decoded_layers_are_inside_the_payload() {
+    let left = |harness: &Harness<'_, App>, title: &str| bounds(&section(harness, title)).min.x;
+    let top = |harness: &Harness<'_, App>, title: &str| bounds(&section(harness, title)).min.y;
+
+    let harness = inspected(564, pmt_packet_detail(), None);
+    assert!(left(&harness, "PMT") > left(&harness, "Payload") + 4.0);
+    assert_eq!(left(&harness, "TS header"), left(&harness, "Payload"));
+    let payload_line = bounds(&layout_line(&harness, "payload  184 bytes")).min.y;
+    assert!(top(&harness, "Payload") < payload_line && payload_line < top(&harness, "PMT"));
+
+    // A PES header likewise; the adaptation field stays a sibling.
+    let harness = inspected(30528, pes_pcr_192_detail(), None);
+    assert!(left(&harness, "PES header") > left(&harness, "Payload") + 4.0);
+    assert_eq!(
+        left(&harness, "Adaptation field"),
+        left(&harness, "Payload")
+    );
+
+    // A 204-byte trailer follows the payload (and its PES header) at the top.
+    let detail: PacketDetail = serde_json::from_str(include_str!(
+        "../../tests/fixtures/packet_detail_video_204.json"
+    ))
+    .unwrap();
+    let harness = inspected(2448, detail, None);
+    assert_eq!(left(&harness, "Trailer"), left(&harness, "Payload"));
+    assert!(left(&harness, "PES header") > left(&harness, "Payload") + 4.0);
+
+    // A payload nothing decodes (a continuation, scrambled): its line alone.
+    let mut document: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/packet_detail_pmt_1001_188.json"
+    ))
+    .unwrap();
+    document["packet"]["layers"]
+        .as_array_mut()
+        .unwrap()
+        .truncate(2);
+    let harness = inspected(564, serde_json::from_value(document).unwrap(), None);
+    section(&harness, "Payload");
+    layout_line(&harness, "payload  184 bytes");
+    assert!(harness.query_by_label("PMT").is_none());
+
+    // The Packets pane nests the PMT in the payload's section too.
+    let harness = packets_screen(WIDE);
+    assert!(left(&harness, "PMT") > left(&harness, "Payload") + 4.0);
+    assert_eq!(left(&harness, "TS header"), left(&harness, "Payload"));
+    assert!(top(&harness, "Payload") < top(&harness, "PMT"));
+}
+
+/// The facts of a part in a decoded layer say it is in the payload, and
+/// ↑ / ↓ walk from the payload line into the PMT beneath it.
+#[test]
+fn up_and_down_step_into_the_decoded_layer() {
+    let mut harness = inspected(
+        564,
+        pmt_packet_detail(),
+        Some(crate::views::wire_layout::Selection::Part(
+            "ts_header.continuity_counter@28".to_owned(),
+        )),
+    );
+    harness.get_by_label_contains("packet bits 28–31 (4 bits)");
+    harness.key_press(egui::Key::ArrowDown);
+    harness.run();
+    harness.get_by_label_contains("packet bits 32–1503 (1472 bits)");
+    harness.key_press(egui::Key::ArrowDown);
+    harness.run();
+    // pointer_field, the first line of the PMT inside the payload.
+    harness.get_by_label_contains("packet bits 32–39 (8 bits)");
+    harness.get_by_label("Payload › PMT › pointer_field");
+    harness.key_press(egui::Key::ArrowUp);
+    harness.run();
+    harness.get_by_label_contains("packet bits 32–1503 (1472 bits)");
+}
+
+/// Selecting a part of the PMT in the bit grid while the payload's section
+/// is collapsed opens it, so the selected line is shown.
+#[test]
+fn selecting_a_decoded_part_opens_the_payload() {
+    let mut harness = inspected(564, pmt_packet_detail(), None);
+    section(&harness, "Payload").click();
+    harness.run();
+    assert!(harness.query_by_label("PMT").is_none());
+    assert!(harness.query_by_label_contains("table_id  ").is_none());
+
+    // table_id: packet bits 40–47, byte 5.
+    let grid = bounds(&harness.get_by_label("Bit grid: 1504 of 1504 bits classified"));
+    let per_row = ((grid.width() - 40.0) / 150.0).round() as usize;
+    let (row, column) = (5 / per_row, 5 % per_row);
+    let at = egui::pos2(
+        grid.left() + 40.0 + column as f32 * 150.0 + 7.0,
+        grid.top() + row as f32 * 20.0 + 10.0,
+    );
+    harness.hover_at(at);
+    for pressed in [true, false] {
+        harness.event(egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        });
+    }
+    harness.run();
+    harness.get_by_label("Payload › PMT › table_id");
+    section(&harness, "PMT");
+    assert!(is_selected(&layout_line(&harness, "table_id  ")));
+    // Collapsing it again works while the part stays selected.
+    section(&harness, "Payload").click();
+    harness.run();
+    assert!(harness.query_by_label("PMT").is_none());
+    harness.get_by_label("Payload › PMT › table_id");
+}
+
 /// The header names what the packet is with a badge.
 #[test]
 fn the_header_names_the_kind_of_packet() {

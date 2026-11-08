@@ -403,7 +403,9 @@ the whole range is never held in memory.
   - "This packet": TS header, adaptation field (PCR and interval verdict),
     payload kind, PAT/PMT section fields and tables, PES header fields, and
     for a 204-byte packet the "Trailer (after the TS packet; not decoded)"
-    with its 16 bytes. The trailer is not interpreted: it is often
+    with its 16 bytes. The PES header or PSI section is a section inside
+    the Payload section, since it decodes the payload's bytes; the trailer
+    follows the payload at the top level. The trailer is not interpreted: it is often
     Reed-Solomon parity, but nothing checks that.
   - Byte inspector: the hex dump colored by layer, with the trailer of a
     204-byte packet in its own color after the 188 TS bytes. Clicking a field
@@ -441,7 +443,13 @@ the whole range is never held in memory.
       `#3D6A93`, no payload of its own `#59636E`). Below: the offset, PID,
       what the PID carries, the packet size and how many of its bits are
       classified, and a legend of the role colors.
-    - Left (resizable): "Fields", one section per layer in file order. Each
+    - Left (resizable): "Fields", one section per layer in file order, the
+      layer that decodes the payload (PES header or PSI section such as a
+      PAT or PMT) inside the Payload section after its payload line; a
+      payload nothing decodes (a continuation, scrambled) keeps that line
+      alone, and a 204-byte trailer follows the payload at the top level.
+      Selecting a part inside a collapsed section, in the grid, opens the
+      sections holding it. Each
       line is a part of the layer's `bit_layout`: label, value (in the
       monospace data face, as everywhere else), packet bits,
       and ✓ or "✗ expected …" where the specification fixes the bits. The
@@ -452,7 +460,7 @@ the whole range is never held in memory.
       Several `reserved` parts are told apart by their `id`.
     - Right: the selected part's kind, packet bits and byte/bit coordinates,
       value, expected value and validity, the rule that fixes it, and where
-      it is (`PMT › stream 2`); then the bit grid: every bit of the packet,
+      it is (`Payload › PMT › stream 2`); then the bit grid: every bit of the packet,
       4, 2 or 1 bytes a row depending on the width (4 bytes, a 32-bit word,
       is how the specification draws its syntax), each byte from bit 7 to bit
       0 with its hex value, column heads kept in view. Bits are colored by
