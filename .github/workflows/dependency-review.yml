@@ -8,6 +8,12 @@ name: Dependency review
 on:
   pull_request:
 
+# A newer push to the pull request cancels the run it supersedes; the newer
+# run reports the same check on the new head commit.
+concurrency:
+  group: dependency-review-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
