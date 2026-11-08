@@ -11,8 +11,12 @@ ARG TSDUCK_SHA256_ARM64=f529beac3a5b7962d3d1c9be083e013212de03e4eba55d6d5288c641
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
+# Retry transient download failures: apt (Acquire::Retries) for the Debian
+# mirrors, and curl for the TSDuck package. --retry-all-errors makes curl retry
+# HTTP errors such as a 504 from the GitHub release CDN, not only connection
+# failures; the checksum below still verifies whatever was downloaded.
+RUN apt-get -o Acquire::Retries=5 update \
+    && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
         ca-certificates \
         curl \
         ffmpeg \
@@ -24,10 +28,12 @@ RUN apt-get update \
         *) echo "Unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
     && curl --fail --location --show-error \
+        --retry 5 --retry-all-errors --retry-delay 5 \
+        --connect-timeout 30 --max-time 600 \
         --output /tmp/tsduck.deb \
         "https://github.com/tsduck/tsduck/releases/download/v${TSDUCK_VERSION}/tsduck_${TSDUCK_VERSION}.debian13_${TARGETARCH}.deb" \
     && echo "${tsduck_sha256}  /tmp/tsduck.deb" | sha256sum --check - \
-    && apt-get install -y --no-install-recommends /tmp/tsduck.deb \
+    && apt-get -o Acquire::Retries=5 install -y --no-install-recommends /tmp/tsduck.deb \
     && rm -f /tmp/tsduck.deb \
     && rm -rf /var/lib/apt/lists/* \
     && git config --system --add safe.directory /workspace \
