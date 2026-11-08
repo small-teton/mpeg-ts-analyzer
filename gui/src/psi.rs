@@ -454,8 +454,8 @@ pub(crate) mod tests {
     use crate::report::{PacketsPage, parse_analysis};
 
     pub(crate) const VERSION_CHANGE: [&str; 2] = [
-        "sample_188byte_psi_version_change_mpeg2_320x240_25fps_mp2.ts",
-        "sample_192byte_psi_version_change_mpeg2_320x240_25fps_mp2.ts",
+        "diagnostics/sample_188byte_psi_version_change_mpeg2_320x240_25fps_mp2.ts",
+        "diagnostics/sample_192byte_psi_version_change_mpeg2_320x240_25fps_mp2.ts",
     ];
 
     pub(crate) fn analyze(sample: &str) -> Option<AnalysisReport> {

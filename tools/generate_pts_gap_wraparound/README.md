@@ -9,12 +9,12 @@ multiplexed 150 ms after its PTS): use it to test the PCR-PTS/DTS gap check,
 an example of a compliant stream.
 
 ```sh
-go run ./tools/generate_pts_gap_wraparound -output sample_data/sample_188byte_pts_gap_wraparound.ts
-go run ./tools/generate_pts_gap_wraparound -m2ts -output sample_data/sample_192byte_pts_gap_wraparound.ts
-go run ./tools/generate_pts_gap_wraparound -trailer -output sample_data/sample_204byte_pts_gap_wraparound.ts
-tsp -I file sample_data/sample_188byte_pts_gap_wraparound.ts -P pcrextract --pcr --pts --dts --csv -O drop
-tsp -I file --format m2ts sample_data/sample_192byte_pts_gap_wraparound.ts -P pcrextract --pcr --pts --dts --csv -O drop
-tsp -I file --format rs204 sample_data/sample_204byte_pts_gap_wraparound.ts -P pcrextract --pcr --pts --dts --csv -O drop
+go run ./tools/generate_pts_gap_wraparound -output sample_data/diagnostics/sample_188byte_pts_gap_wraparound.ts
+go run ./tools/generate_pts_gap_wraparound -m2ts -output sample_data/diagnostics/sample_192byte_pts_gap_wraparound.ts
+go run ./tools/generate_pts_gap_wraparound -trailer -output sample_data/diagnostics/sample_204byte_pts_gap_wraparound.ts
+tsp -I file sample_data/diagnostics/sample_188byte_pts_gap_wraparound.ts -P pcrextract --pcr --pts --dts --csv -O drop
+tsp -I file --format m2ts sample_data/diagnostics/sample_192byte_pts_gap_wraparound.ts -P pcrextract --pcr --pts --dts --csv -O drop
+tsp -I file --format rs204 sample_data/diagnostics/sample_204byte_pts_gap_wraparound.ts -P pcrextract --pcr --pts --dts --csv -O drop
 ```
 
 200 packets of one 20 ms slot each (75.2 kbit/s, 4 s): program 1 (PMT PID

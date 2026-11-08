@@ -187,7 +187,7 @@ make gui-run GUI_ARGS='sample_data/sample_188byte_video_mpeg2_320x240_25fps_audi
 whole file (`--limit 0`); set `SAMPLE` to open another file:
 
 ```bash
-make gui-run-sample SAMPLE=sample_data/sample_204byte_all_findings.ts
+make gui-run-sample SAMPLE=sample_data/diagnostics/sample_204byte_all_findings.ts
 ```
 
 `make gui-package` builds the CLI from this tree into `gui/target/bundled-cli/`

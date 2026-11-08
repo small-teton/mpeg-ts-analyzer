@@ -6,13 +6,13 @@ and cross-check them with TSDuck. Every scenario except `healthy` is
 compliant stream.
 
 ```sh
-go run ./tools/generate_psi_health -output sample_data/sample_188byte_psi_health.ts
-go run ./tools/generate_psi_health -m2ts -output sample_data/sample_192byte_psi_health.ts
+go run ./tools/generate_psi_health -output sample_data/diagnostics/sample_188byte_psi_health.ts
+go run ./tools/generate_psi_health -m2ts -output sample_data/diagnostics/sample_192byte_psi_health.ts
 go run ./tools/generate_psi_health -scenario pat-late -output /tmp/pat-late.ts
-tsanalyze --table-analysis sample_data/sample_188byte_psi_health.ts
-tsanalyze --table-analysis --format m2ts sample_data/sample_192byte_psi_health.ts
-tstables --pid 0x1010 --log sample_data/sample_188byte_psi_health.ts
-tsp -I file sample_data/sample_188byte_psi_health.ts -P tables --invalid-sections --all-sections -O drop
+tsanalyze --table-analysis sample_data/diagnostics/sample_188byte_psi_health.ts
+tsanalyze --table-analysis --format m2ts sample_data/diagnostics/sample_192byte_psi_health.ts
+tstables --pid 0x1010 --log sample_data/diagnostics/sample_188byte_psi_health.ts
+tsp -I file sample_data/diagnostics/sample_188byte_psi_health.ts -P tables --invalid-sections --all-sections -O drop
 ```
 
 150 packets of one 20 ms slot each (75.2 kbit/s, 3 s). Program 1 (PMT PID

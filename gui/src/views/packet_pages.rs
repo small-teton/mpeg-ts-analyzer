@@ -1496,7 +1496,7 @@ mod tests {
                 "sample_192byte_two_programs_mpeg2_160x120_25fps_mp2.ts",
                 192,
             ),
-            ("sample_204byte_all_findings.ts", 204),
+            ("diagnostics/sample_204byte_all_findings.ts", 204),
         ] {
             let input = samples.join(name);
             let size = std::fs::metadata(&input).unwrap().len();
@@ -1821,7 +1821,7 @@ mod tests {
                 "sample_192byte_two_programs_mpeg2_160x120_25fps_mp2.ts",
                 192,
             ),
-            ("sample_204byte_all_findings.ts", 204),
+            ("diagnostics/sample_204byte_all_findings.ts", 204),
         ] {
             let pages = PacketPages {
                 packet_size,

@@ -258,7 +258,7 @@ func (c schemaCase) emit(t *testing.T, w io.Writer) error {
 	return parseTsFileJSONTo(path, opts, w)
 }
 
-const psiVersionChange188Path = "../sample_data/sample_188byte_psi_version_change_mpeg2_320x240_25fps_mp2.ts"
+const psiVersionChange188Path = "../sample_data/diagnostics/sample_188byte_psi_version_change_mpeg2_320x240_25fps_mp2.ts"
 
 func summarySchemaCases() []schemaCase {
 	return []schemaCase{

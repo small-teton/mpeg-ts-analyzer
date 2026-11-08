@@ -229,7 +229,7 @@ PCR-based result uses the same classification:
   one computation, so they give the same lead for the same PES packet.
 
 For example, the intentionally invalid
-`sample_data/sample_188byte_pcr_discontinuities.ts` passes through every kind:
+`sample_data/diagnostics/sample_188byte_pcr_discontinuities.ts` passes through every kind:
 
 ```text
 Max PCR interval: 40.000000ms [OK, limit: <= 100.000000ms]
@@ -427,7 +427,7 @@ PAT not detected: no complete PAT after scanning 12 aligned 188-byte packets (22
 and a range whose only PAT packet has `transport_error_indicator` set:
 
 ```
-$ ./mpeg-ts-analyzer --offset 7332 --limit 1880 sample_data/sample_188byte_transport_errors.ts
+$ ./mpeg-ts-analyzer --offset 7332 --limit 1880 sample_data/diagnostics/sample_188byte_transport_errors.ts
 ...
 PAT not detected: no complete PAT after scanning 10 aligned 188-byte packets (1880 bytes) in the range from 0x00001ca4 to 0x000023fc; 1 packet on PID 0x0000, 1 starting a section; problems (sections or packets): 1 with transport_error_indicator or a scrambled payload. The PAT may be damaged or cut off by the range; a wider --offset/--limit range may include one; program analysis needs a PAT and stops here
 ```
@@ -590,7 +590,7 @@ TS Sync Summary: recovered
   Skipped bytes : 1376 (largest 1000 at 0x000058dc)
 ```
 
-That is `sample_data/sample_188byte_sync_loss.ts`: a corrupted sync byte (one
+That is `sample_data/diagnostics/sample_188byte_sync_loss.ts`: a corrupted sync byte (one
 packet skipped), one inserted byte, one deleted byte (the rest of the next
 packet skipped) and a 1000-byte block of garbage with four false sync bytes.
 All offsets are absolute positions in the input, also after a recovery. A
@@ -646,7 +646,7 @@ Transport Scrambling: no scrambled packets
 
 When packets are affected, each check prints its totals, the offset of the
 first affected packet and a status, then one line per PID in numeric order
-(output of `sample_data/sample_188byte_transport_errors.ts`, see
+(output of `sample_data/diagnostics/sample_188byte_transport_errors.ts`, see
 [Sample data](../development/sample-data.md)):
 
 ```
@@ -713,7 +713,7 @@ other affected packet, and the analysis continues with the next packet. Where
 the analysis needs to know whether such a packet has a payload, the payload is
 everything after the header (`adaptation_field_control` 1), everything after
 the adaptation field when `adaptation_field_length` stays inside the packet
-(3), and nothing otherwise. `sample_data/sample_188byte_transport_errors_malformed.ts`
+(3), and nothing otherwise. `sample_data/diagnostics/sample_188byte_transport_errors_malformed.ts`
 damages every transport-error packet of the transport-errors sample this way
 and gives the same results.
 
@@ -743,7 +743,7 @@ PAT/PMT health: OK (repetition limit 500 ms, ETSI TR 101 290 1.3.a/1.5.a; time b
   PMT program 1 PID 0x1000 : 43 tables, 40 intervals, max 148.444 ms ending at 0x00020444 [OK]
 ```
 
-The sample `sample_data/sample_188byte_psi_health.ts` (see
+The sample `sample_data/diagnostics/sample_188byte_psi_health.ts` (see
 [Sample data](../development/sample-data.md)) has no PAT for 1.2 s, a PMT
 section on the PAT PID, a PMT with an invalid CRC_32 and a two-section PMT
 whose second section is never sent:
@@ -849,7 +849,7 @@ Unreferenced PIDs: none [OK]
 ```
 
 When something is wrong, the PIDs concerned follow (output of
-`sample_data/sample_188byte_pid_references.ts`, see
+`sample_data/diagnostics/sample_188byte_pid_references.ts`, see
 [Sample data](../development/sample-data.md)):
 
 ```
@@ -969,7 +969,7 @@ PTS Repetition (limit 700ms): max interval 66.666667ms over 214 intervals [OK]
 ```
 
 When a check finds a problem, it prints its totals and a status, then one
-line per affected PID (output of `sample_data/sample_188byte_pes_health.ts`,
+line per affected PID (output of `sample_data/diagnostics/sample_188byte_pes_health.ts`,
 see [Sample data](../development/sample-data.md)):
 
 ```
@@ -1049,7 +1049,7 @@ interleaved remux that sends a stream in large blocks can starve it for a
 long stretch even when its average bitrate is right. There is no limit and no
 verdict, the exit status never changes and `--fail-on` and
 `--fail-on-error` ignore it.
-Output of the bursty remux `sample_data/sample_188byte_packet_gaps.ts` (see
+Output of the bursty remux `sample_data/diagnostics/sample_188byte_packet_gaps.ts` (see
 [Sample data](../development/sample-data.md)):
 
 ```
@@ -1121,7 +1121,7 @@ It is a **report, not a check**: no limit applies, it never prints a verdict,
 never becomes a finding and never changes the exit status, also with
 `--fail-on` or `--fail-on-error`. A negative lead (a PES packet multiplexed after its
 DTS/PTS) is printed as an observation, not as an error. With a large audio
-preload (output of `sample_data/sample_188byte_mux_lead.ts`, see
+preload (output of `sample_data/diagnostics/sample_188byte_mux_lead.ts`, see
 [Sample data](../development/sample-data.md)):
 
 ```

@@ -5,12 +5,12 @@ report-only per-PID maximum packet gaps, then cross-check it. It is a test
 fixture, not an example of good multiplexing.
 
 ```sh
-go run ./tools/generate_packet_gaps -output sample_data/sample_188byte_packet_gaps.ts
-go run ./tools/generate_packet_gaps -m2ts -output sample_data/sample_192byte_packet_gaps.ts
-go run ./tools/generate_packet_gaps -trailer -output sample_data/sample_204byte_packet_gaps.ts
-./mpeg-ts-analyzer sample_data/sample_188byte_packet_gaps.ts
-tsanalyze --json sample_data/sample_188byte_packet_gaps.ts
-tsanalyze --format m2ts --json sample_data/sample_192byte_packet_gaps.ts
+go run ./tools/generate_packet_gaps -output sample_data/diagnostics/sample_188byte_packet_gaps.ts
+go run ./tools/generate_packet_gaps -m2ts -output sample_data/diagnostics/sample_192byte_packet_gaps.ts
+go run ./tools/generate_packet_gaps -trailer -output sample_data/diagnostics/sample_204byte_packet_gaps.ts
+./mpeg-ts-analyzer sample_data/diagnostics/sample_188byte_packet_gaps.ts
+tsanalyze --json sample_data/diagnostics/sample_188byte_packet_gaps.ts
+tsanalyze --format m2ts --json sample_data/diagnostics/sample_192byte_packet_gaps.ts
 ```
 
 100 frames of 40 ms, each of eight 5 ms packet slots (800 packets,

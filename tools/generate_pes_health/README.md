@@ -6,12 +6,12 @@ PTS repetition interval, then check it with TSDuck and ffprobe. The stream is
 checks.
 
 ```sh
-go run ./tools/generate_pes_health -output sample_data/sample_188byte_pes_health.ts
-go run ./tools/generate_pes_health -m2ts -output sample_data/sample_192byte_pes_health.ts
-tsp -I file sample_data/sample_188byte_pes_health.ts -P pes --trace-packets -O drop
-tsp -I file sample_data/sample_188byte_pes_health.ts -P pcrextract --pcr --pts --dts --csv -O drop
-tsp -I file sample_data/sample_188byte_pes_health.ts -P continuity -O drop
-ffprobe -show_streams sample_data/sample_188byte_pes_health.ts
+go run ./tools/generate_pes_health -output sample_data/diagnostics/sample_188byte_pes_health.ts
+go run ./tools/generate_pes_health -m2ts -output sample_data/diagnostics/sample_192byte_pes_health.ts
+tsp -I file sample_data/diagnostics/sample_188byte_pes_health.ts -P pes --trace-packets -O drop
+tsp -I file sample_data/diagnostics/sample_188byte_pes_health.ts -P pcrextract --pcr --pts --dts --csv -O drop
+tsp -I file sample_data/diagnostics/sample_188byte_pes_health.ts -P continuity -O drop
+ffprobe -show_streams sample_data/diagnostics/sample_188byte_pes_health.ts
 ```
 
 200 packets of one 20 ms slot each (75.2 kbit/s, 4 s): program 1 (PMT PID

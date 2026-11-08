@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "output": "packet",
   "input": {
-    "path": "sample_data/sample_204byte_all_findings.ts",
+    "path": "sample_data/diagnostics/sample_204byte_all_findings.ts",
     "file_size_bytes": 24480,
     "packet_size_bytes": 204,
     "offset_bytes": 2448

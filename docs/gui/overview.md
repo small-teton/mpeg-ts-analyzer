@@ -144,7 +144,7 @@ kind with its count, first offset and how far the PCR jumped. Max PCR interval
 measures only the intervals within a segment, so a clean interval and an
 undeclared jump show as two separate rows rather than one `OK`. The
 intentionally invalid PCR-discontinuities sample
-(`sample_data/sample_188byte_pcr_discontinuities.ts`) shows every kind.
+(`sample_data/diagnostics/sample_188byte_pcr_discontinuities.ts`) shows every kind.
 
 TS synchronization covers every packet from the start of the analysis. When a
 packet does not start with the sync byte, the CLI skips ahead to the next
@@ -154,7 +154,7 @@ usually also show as continuity errors. `LOST` means no new alignment was
 found within 1 MiB or before the end of the range, so the analysis stopped
 early. Packets pages through the range at the alignment of its start, so
 packets after a realignment can appear there as invalid. The sample
-`sample_data/sample_188byte_sync_loss.ts` shows a `RECOVERED` result.
+`sample_data/diagnostics/sample_188byte_sync_loss.ts` shows a `RECOVERED` result.
 
 Referenced and Unreferenced PIDs compare the PIDs the PAT and PMTs reference
 with the PIDs that carry packets, for every program of the multiplex. A video,
@@ -164,7 +164,7 @@ data, only have their presence reported. A PID that carries packets without
 a reference for more than 0.5 s is `UNREFERENCED`; packets read before the
 first PAT and PMT, and a stream added or removed by a PMT change within that
 time, do not count. Times are estimated from byte positions between PCRs. The
-sample `sample_data/sample_188byte_pid_references.ts` shows each status.
+sample `sample_data/diagnostics/sample_188byte_pid_references.ts` shows each status.
 
 **Packet gaps** reports, for each PID of the selected program, the longest run
 of other packets between two of its packets, in packets (exact) and in
@@ -174,7 +174,7 @@ remux that sends audio in large blocks shows a long gap even when its average
 bitrate is right. It is a report only: there is no limit, its `INFO` status is
 neutral, it never adds a finding and never changes the CLI's exit status. A
 stream removed by a PMT change and added back later has no gap across its
-absence. The bursty sample `sample_data/sample_188byte_packet_gaps.ts` shows
+absence. The bursty sample `sample_data/diagnostics/sample_188byte_packet_gaps.ts` shows
 it.
 
 **Mux lead** reports, for each elementary stream of the selected program, how
@@ -185,7 +185,7 @@ video and audio the largest difference between an audio lead and the video
 lead. It is a report only: its `INFO` status is neutral, a negative lead is an
 observation, it never adds a finding and never changes the CLI's exit status;
 the PCR → PTS/DTS gap judges the largest lead. The audio-preload sample
-`sample_data/sample_188byte_mux_lead.ts` shows it.
+`sample_data/diagnostics/sample_188byte_mux_lead.ts` shows it.
 
 **Findings** lists everything that needs attention, and its count includes
 every check that is not `OK`: each failed check, each kind of undeclared PCR
@@ -213,11 +213,11 @@ To see every verdict at once, open the intentionally invalid
 [diagnostic sample](../development/sample-data.md#diagnostic-sample-with-every-overview-finding):
 
 ```sh
-make gui-run GUI_ARGS='sample_data/sample_188byte_all_findings.ts'
+make gui-run GUI_ARGS='sample_data/diagnostics/sample_188byte_all_findings.ts'
 ```
 
 Its PCR clock is continuous, so PCR discontinuities stays `OK` there; open
-`sample_data/sample_188byte_pcr_discontinuities.ts` for that check.
+`sample_data/diagnostics/sample_188byte_pcr_discontinuities.ts` for that check.
 
 ## Open a file from the command line
 

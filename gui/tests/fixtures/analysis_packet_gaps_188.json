@@ -2,7 +2,7 @@
   "schema_version": "2.0",
   "output": "analysis",
   "input": {
-    "path": "sample_data/sample_188byte_packet_gaps.ts",
+    "path": "sample_data/diagnostics/sample_188byte_packet_gaps.ts",
     "file_size_bytes": 150400,
     "packet_size_bytes": 188,
     "offset_bytes": 0

@@ -16,8 +16,8 @@ var psiVersionChangeFixtures = []struct {
 	path string
 	m2ts bool
 }{
-	{"../sample_data/sample_188byte_psi_version_change_mpeg2_320x240_25fps_mp2.ts", false},
-	{"../sample_data/sample_192byte_psi_version_change_mpeg2_320x240_25fps_mp2.ts", true},
+	{"../sample_data/diagnostics/sample_188byte_psi_version_change_mpeg2_320x240_25fps_mp2.ts", false},
+	{"../sample_data/diagnostics/sample_192byte_psi_version_change_mpeg2_320x240_25fps_mp2.ts", true},
 }
 
 func TestPsiVersionChangeFixtures(t *testing.T) {

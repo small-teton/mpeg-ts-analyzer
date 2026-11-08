@@ -20,8 +20,8 @@ var pesHealthFixtures = []struct {
 	packetSize int64
 	m2ts       bool
 }{
-	{"../sample_data/sample_188byte_pes_health.ts", 188, false},
-	{"../sample_data/sample_192byte_pes_health.ts", 192, true},
+	{"../sample_data/diagnostics/sample_188byte_pes_health.ts", 188, false},
+	{"../sample_data/diagnostics/sample_192byte_pes_health.ts", 192, true},
 }
 
 func generatePESHealth(t *testing.T, args ...string) string {
