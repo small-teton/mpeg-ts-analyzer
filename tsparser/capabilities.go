@@ -15,6 +15,8 @@ type Capabilities struct {
 	CLIVersion          string             `json:"cli_version"`
 	Outputs             []CapabilityOutput `json:"outputs"`
 	ProgressFormats     []string           `json:"progress_formats"`
+	// FailOnCategories are the categories --fail-on accepts besides "any".
+	FailOnCategories []string `json:"fail_on_categories"`
 }
 
 // CapabilityOutput is one machine-readable output and its schema version.
@@ -38,6 +40,7 @@ func WriteCapabilities(w io.Writer, cliVersion string) error {
 			{Name: "packets", Format: "json", SchemaVersion: packetsSchemaVersion},
 			{Name: "packet", Format: "json", SchemaVersion: packetsSchemaVersion},
 		},
-		ProgressFormats: []string{"json"},
+		ProgressFormats:  []string{"json"},
+		FailOnCategories: FailureCategories(),
 	})
 }

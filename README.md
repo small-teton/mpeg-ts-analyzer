@@ -90,6 +90,7 @@ see [Installation][docs-installation].
 ```bash
 mpeg-ts-analyzer input.ts                  # timing compliance verdicts
 mpeg-ts-analyzer input.ts --format json    # the same, as one JSON document
+mpeg-ts-analyzer input.ts --fail-on any    # CI: exit 2 on any transport-health finding
 ```
 
 ```text

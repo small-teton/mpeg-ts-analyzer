@@ -75,7 +75,8 @@ Flags:
       --dump-timestamp          Dump PCR/PTS/DTS timestamps.
       --dump-ts-header          Dump TS packet header.
       --dump-ts-payload         Dump TS packet payload binary.
-      --fail-on-error           Exit with code 2 when a timing compliance check reports NG.
+      --fail-on category        Exit with code 2 when a selected category reports a finding; comma-separated or repeated: any, timing, timestamp, pes_headers, pts_repetition, continuity, transport_errors, scrambled_packets, sync, psi_health, referenced_pids, unreferenced_pids.
+      --fail-on-error           Exit with code 2 when a timing compliance check reports NG (same as --fail-on timing).
       --format string           Output format: text or json. (default "text")
   -h, --help                    help for mpeg-ts-analyzer
       --limit int               Stop reading after this many bytes (0 = no limit).
@@ -103,7 +104,8 @@ Flags:
 | `--dump-timestamp` | off | Dump PCR, PTS, and DTS observations. |
 | `--dump-pcr-jitter` | off | Add the PCR jitter analysis. |
 | `--dump-bitrate` | off | Add the per-PID bitrate summary. |
-| `--fail-on-error` | off | Exit 2 when a timing compliance check is `NG`. |
+| `--fail-on` | none | Exit 2 when a selected category reports a finding; see [CI failure policies](#ci-failure-policies---fail-on). |
+| `--fail-on-error` | off | Exit 2 when a timing compliance check is `NG`; the same as `--fail-on timing`. |
 | `--list-programs` | off | List programs and stop before PES analysis. |
 | `--program` | automatic | Select one program by `program_number`. |
 | `--offset` | `0` | Start reading at a byte offset. Negative values are rejected. |
@@ -248,7 +250,9 @@ with code 2 if any evaluated check (max PCR interval, PCR discontinuities or
 PCR-to-PTS/DTS gap) is `NG`. Healthy and insufficient-data
 runs exit 0; usage, input, and parsing errors use exit 1. The PCR jitter
 estimate of `--dump-pcr-jitter` does not take part, whatever its status
-(see [Dump PCR jitter](dumps.md#dump-pcr-jitter)).
+(see [Dump PCR jitter](dumps.md#dump-pcr-jitter)). It is the `timing`
+category of [`--fail-on`](#ci-failure-policies---fail-on), which can select
+the other transport-health checks as well.
 
 ```sh
 mpeg-ts-analyzer input.ts --fail-on-error
@@ -263,6 +267,9 @@ make `--fail-on-error` fail. Exit codes are:
 - `1`: usage, input, or parsing error
 - `2`: parsing completed but `--fail-on-error` found one or more `NG` checks
 
+The complete contract, with every `--fail-on` category, is under
+[Exit codes](#exit-codes).
+
 Example default result:
 
 ```text
@@ -272,6 +279,122 @@ Max PCR interval: 80.000000ms [OK, limit: <= 100.000000ms]
 PCR discontinuities: 0 undeclared in 60 PCRs [OK]
 PCR-PTS/DTS max gap: 726.666667ms [OK, limit: <= 1000.000000ms]
 ```
+
+## CI failure policies (`--fail-on`)
+
+By default the exit status does not depend on any verdict: a stream with
+findings exits 0 as long as it could be analyzed. `--fail-on` selects which
+completed-analysis findings make the command exit 2, so a CI job can fail on
+the checks its policy cares about without parsing the output:
+
+```sh
+mpeg-ts-analyzer input.ts --fail-on timing                       # the same as --fail-on-error
+mpeg-ts-analyzer input.ts --fail-on timing,continuity,timestamp
+mpeg-ts-analyzer input.ts --fail-on psi_health --fail-on sync    # repeated values add up
+mpeg-ts-analyzer input.ts --fail-on any                          # every category below
+```
+
+Each value is a comma-separated list of category names, without spaces; the
+flag may be repeated, and the policy is the union of every value. Names are
+lowercase and matched exactly. A name given twice, or a category also covered
+by `any`, adds nothing. An empty name (`--fail-on ""`, `--fail-on timing,`)
+or an unknown one (`--fail-on Timing`, `--fail-on pcr_jitter`) is a usage
+error: the command exits 1 before reading the input and names the accepted
+categories. `--fail-on-error` selects `timing`, so combining it with
+`--fail-on` gives the union, for example `--fail-on-error --fail-on continuity`
+is `--fail-on timing,continuity`. `mpeg-ts-analyzer --capabilities` lists the
+categories a build accepts (`fail_on_categories`).
+
+Each category is one check (or, for `timing`, the three timing compliance
+checks) and fails on the statuses that are findings, exactly as the text and
+JSON output report them:
+
+| Category | Check (JSON) | Fails on | Never fails on |
+| --- | --- | --- | --- |
+| `timing` | Max PCR interval, PCR discontinuities, PCR-PTS/DTS max gap (`compliance`) | `NG` (`ng`) | `OK`, `SKIPPED` |
+| `timestamp` | [Timestamp anomaly report](#timestamp-anomaly-report-always-on) (`timestamp_anomalies`) | any anomaly (`anomalies`), a PTS/DTS wraparound included | no anomaly (`ok`) |
+| `pes_headers` | [PES headers](#pes-headers-and-pts-repetition-always-on) (`pes_headers`) | `ERRORS` (`errors`) | `OK`, `INSUFFICIENT DATA` |
+| `pts_repetition` | [PTS repetition](#pes-headers-and-pts-repetition-always-on) (`pts_repetition`) | `NG` (`ng`) | `OK`, `INSUFFICIENT DATA`, `SKIPPED` |
+| `continuity` | [Continuity counter](#continuity-counter-summary-always-on) (`continuity_counter`) | errors (`errors`) | no errors (`ok`) |
+| `transport_errors` | [Transport errors](#transport-errors-and-scrambled-packets-always-on) (`transport_errors`) | `AFFECTED`, `DATA EXCLUDED` | none affected (`ok`) |
+| `scrambled_packets` | [Scrambled packets](#transport-errors-and-scrambled-packets-always-on) (`scrambled_packets`) | `AFFECTED`, `DATA EXCLUDED` | none scrambled (`ok`) |
+| `sync` | [TS synchronization](#ts-synchronization-always-on) (`sync`) | `recovered`, `lost` | `ok` |
+| `psi_health` | [PAT and PMT health](#pat-and-pmt-health-always-on) (`psi_health`) | `NG` (`ng`) | `OK`, `INSUFFICIENT DATA` |
+| `referenced_pids` | [Referenced PIDs](#pid-references-always-on) (`pid_references.referenced`) | `ABSENT`, `SILENT` | `OK`, `INSUFFICIENT DATA` |
+| `unreferenced_pids` | [Unreferenced PIDs](#pid-references-always-on) (`pid_references.unreferenced`) | `UNREFERENCED` | `OK`, `INSUFFICIENT DATA`, `SKIPPED` |
+
+`any` selects every category of this table and nothing else. What never
+fails, whatever `--fail-on` selects:
+
+- a skipped, `INSUFFICIENT DATA` or not-checked result: it means the check
+  could not be evaluated on this range, not that it found a problem;
+- the report-only [packet gaps](#packet-gaps-report-only) and
+  [mux lead](#mux-lead-always-on-report-only) and the `--dump-bitrate`
+  summary, which have no verdict;
+- the PCR jitter estimate of `--dump-pcr-jitter`, whatever its status
+  (`warning`, `ng`, `not_assessable`): it is an estimate from byte positions,
+  not a measurement (see [Dump PCR jitter](dumps.md#dump-pcr-jitter));
+- warnings, such as an ignored partial packet at the end of the input or a
+  PSI section problem reported while the tables were acquired;
+- listing programs: a multi-program stream without `--program`, or
+  `--list-programs`, analyzes no program, so it exits 0.
+
+A loss of synchronization that the analysis cannot recover ends it early with
+the JSON status `incomplete`, which exits 0 by default; `--fail-on sync` makes
+it exit 2. Scrambled packets are normal in a stream under conditional access,
+so `any` fails such a stream; list the categories explicitly to leave
+`scrambled_packets` out. The `timestamp` category fails on every reported
+anomaly, including a 33-bit wraparound, which a stream longer than about
+26.5 hours always has.
+
+The policy judges the analyzed program of the summary output (text or
+`--format json`) after the whole report has been written: all output stays
+available, and the failed checks follow on stderr, for example
+`compliance check failed: Continuity counter`. With `--format json` the report
+gains a `failure_policy` object with the selected and the failed categories;
+see [Machine-readable output](../reference/json-output.md#failure-policy).
+`--output analysis` covers every program and reports `--fail-on` (like
+`--fail-on-error`) as `incompatible_options`; `--output packets` and
+`--output packet` analyze no program and reject `--fail-on` as a usage error.
+`--fail-on-error` keeps its earlier behavior there: it is accepted and has no
+effect.
+
+A CI step that fails on the integrity and structure of the transport stream,
+keeps the JSON report as an artifact and treats a usage or input error
+differently from a finding:
+
+```sh
+set +e
+mpeg-ts-analyzer input.ts --format json \
+  --fail-on timing,continuity,sync,transport_errors,psi_health,referenced_pids \
+  > report.json
+status=$?
+set -e
+case $status in
+  0) echo "transport stream healthy for this policy" ;;
+  2) echo "findings: $(jq -c .failure_policy.failed_categories report.json)"; exit 1 ;;
+  *) echo "the analysis could not run"; exit "$status" ;;
+esac
+```
+
+In GitHub Actions, for example:
+
+```yaml
+- name: Check the transport stream
+  run: mpeg-ts-analyzer output.ts --fail-on any
+```
+
+### Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | The command completed: an analysis (complete or `incomplete`) in which no category selected with `--fail-on` or `--fail-on-error` reported a finding, a program listing, `--capabilities`, `--help` or `--version`. Without a policy every completed analysis exits 0, whatever its verdicts. |
+| `1` | A usage error (an unknown flag or `--fail-on` category, an invalid value or combination), an input error (the file cannot be opened or read) or a failed analysis (no TS synchronization, no PAT, an unknown `--program`); with `--format json` the report has `status: "failed"`. |
+| `2` | The analysis completed, and at least one selected category reported a finding. The report is complete; stderr names the failed checks. |
+
+JSON automation that also needs to reject a range the analysis could not
+finish should check `status == "complete"`, since `incomplete` exits 0 unless
+`--fail-on sync` applies to its cause.
 
 ## When the analysis cannot start
 
@@ -417,7 +540,8 @@ undeclared mismatch, tracking resumes from the received counter so one fault
 produces one event instead of cascading warnings.
 
 The summary count is the number of discontinuity events, not an estimate of the
-number of missing transport packets. Known PAT, PMT, PCR, video, and audio PIDs
+number of missing transport packets. Errors do not change the default exit
+status; `--fail-on continuity` makes them exit 2. Known PAT, PMT, PCR, video, and audio PIDs
 receive labels; any other included PID is labeled `unknown`.
 
 ## TS synchronization (always on)
@@ -501,7 +625,8 @@ Other cases are reported separately:
   (`ignored N trailing bytes`) and in the JSON `sync` object, and does not
   change the status.
 
-`--fail-on-error` and the exit status do not depend on this check.
+`--fail-on-error` and the default exit status do not depend on this check;
+`--fail-on sync` makes a `recovered` or `lost` result exit 2.
 
 ## Transport errors and scrambled packets (always on)
 
@@ -576,7 +701,8 @@ packet is itself invalid (ISO/IEC 13818-1 requires
 A PAT or PMT that arrives only in affected packets is never acquired: the run
 ends with `PAT not detected` (JSON `reason: "pat_not_acquired"`, with the
 unusable packets counted in `acquisition.pat`) or as incomplete, never as a complete result built
-from unusable tables. Neither check takes part in `--fail-on-error`.
+from unusable tables. Neither check takes part in `--fail-on-error`;
+`--fail-on transport_errors` and `--fail-on scrambled_packets` select them.
 
 Since a transport error may be anywhere in the packet, nothing after the
 fixed 4-byte TS header of such a packet is checked or decoded. A packet with
@@ -706,7 +832,8 @@ interval from its first PCR, as an open interval.
 
 The check keeps one fixed-size record per table and one section reader per
 PMT PID, so its memory is bounded by the programs of the PAT, not by the
-length of the input. It does not take part in `--fail-on-error`. In JSON it is
+length of the input. It does not take part in `--fail-on-error`;
+`--fail-on psi_health` makes an `NG` result exit 2. In JSON it is
 `psi_health` ([Machine-readable output](../reference/json-output.md#pat-and-pmt-health)).
 
 ## PID references (always on)
@@ -824,8 +951,9 @@ Both parts share these rules:
   unreferenced. A scrambled packet counts, because its header is clear.
 - Packet counts cover the whole range and match the per-PID packet counts of
   TSDuck's `tsanalyze`, which also leaves packets with a transport error out.
-- The check never changes the exit status and does not take part in
-  `--fail-on-error`. The state it keeps is bounded by the number of PIDs and
+- The check does not change the default exit status and does not take part in
+  `--fail-on-error`; `--fail-on referenced_pids` (`ABSENT`, `SILENT`) and
+  `--fail-on unreferenced_pids` (`UNREFERENCED`) select it. The state it keeps is bounded by the number of PIDs and
   programs; no per-packet history is kept. The JSON result is `pid_references`
   ([JSON output](../reference/json-output.md#pid-references)).
 
@@ -907,7 +1035,8 @@ streams are skipped.
 The timestamp anomaly report does not report a forward jump across PES packets
 without a timestamp (or a malformed header, untrusted payload or a continuity
 error); PTS repetition and the other checks report that cause. Neither check
-takes part in `--fail-on-error`. See
+takes part in `--fail-on-error`; `--fail-on pes_headers` and
+`--fail-on pts_repetition` select them. See
 [JSON output](../reference/json-output.md#pes-headers-and-pts-repetition) for
 the complete rules.
 
@@ -918,7 +1047,8 @@ PID of the range except the null PID, the longest stretch of other packets betwe
 packets of the PID. It is a report-only multiplexing diagnostic: a poorly
 interleaved remux that sends a stream in large blocks can starve it for a
 long stretch even when its average bitrate is right. There is no limit and no
-verdict, the exit status never changes and `--fail-on-error` ignores it.
+verdict, the exit status never changes and `--fail-on` and
+`--fail-on-error` ignore it.
 Output of the bursty remux `sample_data/sample_188byte_packet_gaps.ts` (see
 [Sample data](../development/sample-data.md)):
 
@@ -989,7 +1119,7 @@ Mux Lead (report only: DTS, or PTS without DTS, minus PCR-interpolated arrival)
 
 It is a **report, not a check**: no limit applies, it never prints a verdict,
 never becomes a finding and never changes the exit status, also with
-`--fail-on-error`. A negative lead (a PES packet multiplexed after its
+`--fail-on` or `--fail-on-error`. A negative lead (a PES packet multiplexed after its
 DTS/PTS) is printed as an observation, not as an error. With a large audio
 preload (output of `sample_data/sample_188byte_mux_lead.ts`, see
 [Sample data](../development/sample-data.md)):
@@ -1055,6 +1185,8 @@ Reading the output:
 - Only valid PES headers are checked. A forward jump is not reported across
   PES packets without a timestamp, a malformed or incomplete header, untrusted
   payload or a continuity error.
+- The report does not change the default exit status; `--fail-on timestamp`
+  makes any reported anomaly, a wraparound included, exit 2.
 
 ## Large files
 

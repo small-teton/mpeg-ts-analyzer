@@ -309,6 +309,16 @@ func summarySchemaCases() []schemaCase {
 				"/timestamp_anomalies/status": "anomalies", "/continuity_counter/status": "errors",
 				"/pcr_jitter/status": "ng", "/pcr_jitter/reason": absent{}, "/pcr_jitter/delivery/assessment": "constant",
 				"/pcr_jitter/delivery/max_deviation_percent": 0, "/pcr_jitter/estimate/min_jitter_ns": -50_000,
+				"/failure_policy/status": "failed", "/failure_policy/categories": []any{"timing"},
+				"/failure_policy/failed_categories": []any{"timing"},
+			},
+		},
+		{
+			name: "complete with a passed --fail-on any policy", schema: summarySchemaFile, path: fixedPath(sample188Path),
+			opts: options.Options{FailOn: []string{"any"}},
+			want: map[string]any{
+				"/status": "complete", "/failure_policy/status": "passed", "/failure_policy/categories/10": "unreferenced_pids",
+				"/failure_policy/failed_categories": []any{},
 			},
 		},
 		{

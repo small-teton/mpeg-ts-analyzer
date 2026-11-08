@@ -103,6 +103,74 @@ impl Check {
             .find(|(known, _)| *known == status)
             .map(|(_, meaning)| *meaning)
     }
+
+    /// How the check takes part in the CLI's `--fail-on` failure policy.
+    pub fn exit_policy(self) -> ExitPolicy {
+        let category = |name, failing| ExitPolicy::Category { name, failing };
+        match self {
+            Check::MaxPcrInterval | Check::PcrDiscontinuities | Check::PcrPtsDtsGap => {
+                category("timing", &["ng"])
+            }
+            Check::TimestampAnomalies => category("timestamp", &["anomalies"]),
+            Check::PesHeaders => category("pes_headers", &["errors"]),
+            Check::PtsRepetition => category("pts_repetition", &["ng"]),
+            Check::ContinuityCounter => category("continuity", &["errors"]),
+            Check::TransportErrors => category("transport_errors", &["affected", "data_excluded"]),
+            Check::ScrambledPackets => {
+                category("scrambled_packets", &["affected", "data_excluded"])
+            }
+            Check::Synchronization => category("sync", &["recovered", "lost"]),
+            Check::PatHealth | Check::PmtHealth => category("psi_health", &["ng"]),
+            Check::ReferencedPids => category("referenced_pids", &["absent", "silent"]),
+            Check::UnreferencedPids => category("unreferenced_pids", &["unreferenced"]),
+            Check::PcrJitter => ExitPolicy::Never(
+                "The PCR jitter estimate is not a --fail-on category: whatever its status, it never changes the CLI's exit status, because it is an estimate from byte positions rather than a measurement.",
+            ),
+            Check::PacketGaps | Check::MuxLead => ExitPolicy::Never(
+                "A report without a verdict: it never changes the CLI's exit status, whatever --fail-on selects.",
+            ),
+        }
+    }
+
+    /// The explanation of [`Check::exit_policy`] for the check's page.
+    pub fn exit_status(self) -> String {
+        match self.exit_policy() {
+            ExitPolicy::Never(text) => text.to_owned(),
+            ExitPolicy::Category { name, failing } => {
+                let others: Vec<&str> = self
+                    .help()
+                    .statuses
+                    .iter()
+                    .map(|(status, _)| *status)
+                    .filter(|status| !failing.contains(status))
+                    .collect();
+                let alias = if name == "timing" {
+                    " or --fail-on-error"
+                } else {
+                    ""
+                };
+                format!(
+                    "With --fail-on {name} or --fail-on any{alias}, the CLI exits with status 2 when this check reports {}; {} never change the exit status. Without such an option the exit status does not depend on this check. The GUI does not use the exit status; it shows the CLI's verdicts.",
+                    failing.join(" or "),
+                    others.join(", "),
+                )
+            }
+        }
+    }
+}
+
+/// How a check takes part in the CLI's `--fail-on` failure policy
+/// (docs/cli/usage.md, CI failure policies). The GUI only explains it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExitPolicy {
+    /// A `--fail-on` category; `failing` are the statuses that exit 2 when
+    /// it is selected.
+    Category {
+        name: &'static str,
+        failing: &'static [&'static str],
+    },
+    /// Never changes the exit status, for the given reason.
+    Never(&'static str),
 }
 
 /// What a check measures and how to read its result.
@@ -617,6 +685,69 @@ mod tests {
         for (index, check) in Check::ALL.iter().enumerate() {
             assert!(!Check::ALL[..index].contains(check), "{check:?} twice");
         }
+    }
+
+    /// Every verdict-bearing check names the CLI's `--fail-on` category
+    /// (tsparser/failure_policy.go) and only statuses it can report; the
+    /// estimate and the report-only rows never change the exit status, and
+    /// neither do skipped or insufficient data.
+    #[test]
+    fn exit_policies_follow_the_cli_categories() {
+        const CLI_CATEGORIES: [&str; 11] = [
+            "timing",
+            "timestamp",
+            "pes_headers",
+            "pts_repetition",
+            "continuity",
+            "transport_errors",
+            "scrambled_packets",
+            "sync",
+            "psi_health",
+            "referenced_pids",
+            "unreferenced_pids",
+        ];
+        let mut named = Vec::new();
+        for check in Check::ALL {
+            let text = check.exit_status();
+            match check.exit_policy() {
+                ExitPolicy::Category { name, failing } => {
+                    assert!(CLI_CATEGORIES.contains(&name), "{check:?}: {name}");
+                    if !named.contains(&name) {
+                        named.push(name);
+                    }
+                    assert!(!failing.is_empty(), "{check:?}");
+                    for status in failing {
+                        assert!(
+                            check.verdict_meaning(status).is_some(),
+                            "{check:?}: {status}"
+                        );
+                        assert!(
+                            !["ok", "skipped", "insufficient_data", "info"].contains(status),
+                            "{check:?}: {status}"
+                        );
+                    }
+                    assert!(text.contains(&format!("--fail-on {name}")), "{text}");
+                    assert!(text.contains("--fail-on any"), "{text}");
+                    assert_eq!(text.contains("--fail-on-error"), name == "timing", "{text}");
+                    for status in ["skipped", "insufficient_data"] {
+                        if check.verdict_meaning(status).is_some() {
+                            assert!(text.contains(status), "{check:?}: {text}");
+                        }
+                    }
+                }
+                ExitPolicy::Never(_) => {
+                    assert!(
+                        matches!(check, Check::PcrJitter | Check::PacketGaps | Check::MuxLead),
+                        "{check:?}"
+                    );
+                    assert!(
+                        text.contains("never changes the CLI's exit status"),
+                        "{text}"
+                    );
+                }
+            }
+        }
+        assert_eq!(named, CLI_CATEGORIES, "every category, in the CLI's order");
     }
 
     /// The table order: Timing, PES / Timestamps, Integrity, Structure,
