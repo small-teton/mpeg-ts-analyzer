@@ -789,6 +789,10 @@ fn navigation_tile(ui: &mut egui::Ui, screen: Screen, selected: bool) -> egui::R
 }
 
 #[cfg(test)]
+mod heap;
+#[cfg(test)]
+mod memory_profile;
+#[cfg(test)]
 mod plot_alloc_tests;
 #[cfg(all(test, feature = "screenshots"))]
 mod screenshots;

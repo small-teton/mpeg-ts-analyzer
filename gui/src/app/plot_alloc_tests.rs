@@ -2,18 +2,17 @@
 //! series must be drawn from the derived plot data without copying every
 //! point vector on each frame.
 //!
-//! Allocations are counted per thread by a counting global allocator, so
-//! tests running in parallel do not disturb each other: the egui_kittest
-//! harness builds frames on the calling thread.
+//! Allocations are counted per thread by the counting global allocator
+//! ([`super::heap`]), so tests running in parallel do not disturb each other:
+//! the egui_kittest harness builds frames on the calling thread.
 
-use std::alloc::{GlobalAlloc, Layout, System};
-use std::cell::Cell;
 use std::time::Instant;
 
 use eframe::egui;
 use egui_kittest::Harness;
 
 use super::App;
+use super::heap::{WATCHED, counted, watching};
 use super::ui_tests::app_with_report;
 use crate::plot_data;
 use crate::report::{
@@ -21,86 +20,6 @@ use crate::report::{
     PesPoint, TimestampEvent,
 };
 use crate::views::Screen;
-
-/// Forwards to the system allocator and counts what the current thread asks for.
-struct Counting;
-
-/// How many allocation sizes [`watching`] can watch at once.
-const WATCHED: usize = 32;
-
-thread_local! {
-    static ALLOCATIONS: Cell<u64> = const { Cell::new(0) };
-    static ALLOCATED_BYTES: Cell<u64> = const { Cell::new(0) };
-    /// Sizes of a copy of a drawn series; 0 is unused.
-    static WATCHED_SIZES: Cell<[usize; WATCHED]> = const { Cell::new([0; WATCHED]) };
-    static WATCHED_HITS: Cell<u64> = const { Cell::new(0) };
-}
-
-fn record(bytes: usize) {
-    // `try_with`: the thread-locals are gone while a thread shuts down.
-    let _ = ALLOCATIONS.try_with(|count| count.set(count.get() + 1));
-    let _ = ALLOCATED_BYTES.try_with(|total| total.set(total.get() + bytes as u64));
-    if bytes > 0
-        && WATCHED_SIZES
-            .try_with(|sizes| sizes.get().contains(&bytes))
-            .unwrap_or(false)
-    {
-        let _ = WATCHED_HITS.try_with(|hits| hits.set(hits.get() + 1));
-    }
-}
-
-// SAFETY: every call is forwarded unchanged to `System`, which upholds the
-// `GlobalAlloc` contract; counting touches only const-initialized
-// thread-locals, which never allocate.
-unsafe impl GlobalAlloc for Counting {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        record(layout.size());
-        // SAFETY: the caller's guarantees for `layout` are passed on.
-        unsafe { System.alloc(layout) }
-    }
-
-    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        record(layout.size());
-        // SAFETY: as for `alloc`.
-        unsafe { System.alloc_zeroed(layout) }
-    }
-
-    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        record(new_size);
-        // SAFETY: `ptr` was allocated by this allocator, that is by `System`.
-        unsafe { System.realloc(ptr, layout, new_size) }
-    }
-
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        // SAFETY: `ptr` was allocated by this allocator, that is by `System`.
-        unsafe { System.dealloc(ptr, layout) }
-    }
-}
-
-#[global_allocator]
-static ALLOCATOR: Counting = Counting;
-
-/// Allocations and bytes requested by this thread while `f` runs.
-fn counted(f: impl FnOnce()) -> (u64, u64) {
-    let before = (ALLOCATIONS.get(), ALLOCATED_BYTES.get());
-    f();
-    (
-        ALLOCATIONS.get() - before.0,
-        ALLOCATED_BYTES.get() - before.1,
-    )
-}
-
-/// How many allocations of exactly one of `sizes` bytes this thread makes
-/// while `f` runs.
-fn watching(sizes: &[usize], f: impl FnOnce()) -> u64 {
-    let mut watched = [0; WATCHED];
-    watched[..sizes.len()].copy_from_slice(sizes);
-    WATCHED_SIZES.set(watched);
-    let before = WATCHED_HITS.get();
-    f();
-    WATCHED_SIZES.set([0; WATCHED]);
-    WATCHED_HITS.get() - before
-}
 
 /// PCRs (and jitter samples) per program: 40 ms apart, 20 minutes.
 const PCRS: usize = 30_000;
