@@ -39,6 +39,7 @@ type AnalysisReport struct {
 	PCRJitter             *ReportPCRJitter          `json:"pcr_jitter,omitempty"`
 	Bitrate               *ReportBitrate            `json:"bitrate,omitempty"`
 	PSITransitions        []ReportPSITransition     `json:"psi_transitions,omitempty"`
+	FailurePolicy         *ReportFailurePolicy      `json:"failure_policy,omitempty"`
 	Warnings              []ReportWarning           `json:"warnings"`
 
 	// analysis is set for --output analysis, which writes a RangeAnalysisReport

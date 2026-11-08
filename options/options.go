@@ -12,6 +12,7 @@ type Options struct {
 	DumpPcrJitter       bool
 	DumpBitrate         bool
 	FailOnError         bool
+	FailOn              []string
 	ListPrograms        bool
 	Program             int
 	Offset              int64

@@ -233,7 +233,9 @@ check (`CheckDetail`).
   result (label and value, wrapping), the check's findings, Verdicts (the only
   table: status badge and condition per status; the current status is
   highlighted and its row marked selected), then What it measures, Applies
-  to, What the value means, When it is skipped, Limitations and Details with
+  to, What the value means, When it is skipped, Limitations, CI exit status
+  (the check's `--fail-on` category and the statuses that exit 2 with it,
+  or why it never changes the exit status; `Check::exit_policy`) and Details with
   `Open Timeline` / `Open Bitrate` / `Open Packets`, each a heading over a wrapped paragraph. A
   finding with an offset has `Open packet`; one that Timeline marks as an
   event (a continuity error on a PID of the program) also has

@@ -96,6 +96,10 @@
         "$ref": "#/$defs/psiTransition"
       }
     },
+    "failure_policy": {
+      "$ref": "#/$defs/failurePolicy",
+      "description": "The selected --fail-on / --fail-on-error policy and its result. Absent when no policy is selected and when no program was analyzed (programs_listed, failed)."
+    },
     "warnings": {
       "type": "array",
       "items": {
@@ -2042,6 +2046,39 @@
         },
         "pmt_pid": {
           "$ref": "#/$defs/pid"
+        }
+      }
+    },
+    "failureCategory": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "A --fail-on category. Current values, in their fixed order: timing, timestamp, pes_headers, pts_repetition, continuity, transport_errors, scrambled_packets, sync, psi_health, referenced_pids, unreferenced_pids."
+    },
+    "failurePolicy": {
+      "type": "object",
+      "required": [
+        "status",
+        "categories",
+        "failed_categories"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "Current values: passed, failed (at least one selected category reported a finding; the command exits 2)."
+        },
+        "categories": {
+          "type": "array",
+          "description": "The selected categories, with any expanded, in their fixed order.",
+          "items": {
+            "$ref": "#/$defs/failureCategory"
+          }
+        },
+        "failed_categories": {
+          "type": "array",
+          "description": "The selected categories that reported a finding, in their fixed order.",
+          "items": {
+            "$ref": "#/$defs/failureCategory"
+          }
         }
       }
     },

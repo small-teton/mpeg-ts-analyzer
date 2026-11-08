@@ -99,6 +99,12 @@ and opened with Enter or Space. The page shows:
   it, with the current one highlighted;
 - what the check measures, what it applies to, what the value means, when it
   is skipped and its limitations;
+- **CI exit status**: the CLI's `--fail-on` category of the check and which of
+  its statuses make the command exit 2 when that category is selected
+  (skipped and insufficient data never do), or, for the PCR jitter estimate,
+  packet gaps and mux lead, that they never change the exit status. The GUI
+  itself does not use the exit status (see
+  [CI failure policies](../cli/usage.md#ci-failure-policies---fail-on));
 - a button that opens Timeline, Bitrate or Packets with the details.
 
 **Back to Overview** (or the Overview tile) returns to the table at the same

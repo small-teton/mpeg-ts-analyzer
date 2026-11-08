@@ -204,7 +204,8 @@ func TestWriteCapabilities(t *testing.T) {
 			{Name: "packets", Format: "json", SchemaVersion: "1.0"},
 			{Name: "packet", Format: "json", SchemaVersion: "1.0"},
 		}) ||
-		len(got.ProgressFormats) != 1 || got.ProgressFormats[0] != "json" {
+		len(got.ProgressFormats) != 1 || got.ProgressFormats[0] != "json" ||
+		!reflect.DeepEqual(got.FailOnCategories, FailureCategories()) {
 		t.Errorf("capabilities = %+v", got)
 	}
 }

@@ -25,6 +25,9 @@ issues. This document records the requirements those issues have to meet.
   [design.md](design.md#overview)).
 - **Exit codes and `status` / `reason` values** follow the existing contract in
   [CLI usage](../cli/usage.md) and [Machine-readable output](../reference/json-output.md).
+  The GUI never passes `--fail-on` or `--fail-on-error` (the range analysis
+  rejects both), so exit code 2 does not occur; the check pages only explain
+  which CLI failure category each verdict belongs to.
   A failed range analysis is a document with `status: "failed"`; the GUI shows
   its `error`, prefixed with an action for the reasons that mean the range
   could not start program analysis (`insufficient_data_for_sync`,

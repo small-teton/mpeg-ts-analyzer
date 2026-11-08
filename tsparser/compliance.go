@@ -148,11 +148,15 @@ func (r complianceReport) failures() []string {
 	return failures
 }
 
-// ComplianceError indicates that parsing completed but one or more enabled
-// compliance checks failed. The CLI maps this error to exit code 2 so it stays
-// distinguishable from usage, input, and parsing errors (exit code 1).
+// ComplianceError indicates that parsing completed but one or more checks
+// selected by the failure policy (--fail-on, or --fail-on-error for the timing
+// checks) reported a finding. The CLI maps this error to exit code 2 so it
+// stays distinguishable from usage, input, and parsing errors (exit code 1).
+// Checks names each failed check and Categories each failed --fail-on
+// category, in the fixed category order.
 type ComplianceError struct {
-	Checks []string
+	Checks     []string
+	Categories []string
 }
 
 func (e *ComplianceError) Error() string {

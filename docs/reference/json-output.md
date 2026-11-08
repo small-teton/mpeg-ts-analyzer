@@ -565,6 +565,8 @@ Status and top-level reason values are:
 | `multiplexing.mux_lead.programs[].reason` (and `audio[]`) | `no_comparable_leads` |
 | `multiplexing.mux_lead.pids[].av_class` | `video`, `audio`, `other` |
 | `timestamp_anomalies.status` | `ok`, `anomalies` |
+| `failure_policy.status` | `passed`, `failed` |
+| `failure_policy.categories[]`, `failure_policy.failed_categories[]` | `timing`, `timestamp`, `pes_headers`, `pts_repetition`, `continuity`, `transport_errors`, `scrambled_packets`, `sync`, `psi_health`, `referenced_pids`, `unreferenced_pids` |
 
 Top-level and per-program `reason` values, and the `reason` values of
 `pes_headers`, `pts_repetition` and `multiplexing`, are stable codes intended for machine
@@ -610,6 +612,9 @@ whole file is the TS rate × `packet_size_bytes` / 188; for the public TSDuck
 corpus file `test-170.ts` (204-byte ISDB-Tb), the PCR jitter
 `delivery.average_rate_bps` is 29,958,294 b/s, TSDuck's `tsanalyze` `bitrate`,
 and × 204/188 gives its `bitrate-204`, 32,507,936 b/s.
+
+`failure_policy` is present when `--fail-on` or `--fail-on-error` selected a
+CI failure policy and a program was analyzed; see [Failure policy](#failure-policy).
 
 `programs[].service` is the program's service from the DVB SDT, when the
 stream carries one; see [Service names (SDT)](../cli/psi.md#service-names-sdt).
@@ -763,7 +768,9 @@ malformed, and the analysis continues after it. Because the error may also
 have changed the header, `pid` is the PID as read from the damaged packet,
 not necessarily the stream it belonged to. See
 [Transport errors and scrambled packets](../cli/usage.md#transport-errors-and-scrambled-packets-always-on)
-for the complete policy. Neither object takes part in `--fail-on-error`.
+for the complete policy. Neither object takes part in `--fail-on-error`;
+the `--fail-on` categories `transport_errors` and `scrambled_packets` fail on
+`affected` and `data_excluded`.
 
 ## PID references
 
@@ -1025,7 +1032,9 @@ while the first PAT and PMTs were acquired (a capture that starts in the
 middle of a stream) are never unreferenced, and a PAT or PMT change applies
 from the packet after the one that completed it, with the grace period around
 it. See [PID references](../cli/usage.md#pid-references-always-on) for the
-complete policy. `pid_references` does not take part in `--fail-on-error`.
+complete policy. `pid_references` does not take part in `--fail-on-error`;
+the `--fail-on` categories `referenced_pids` (`absent`, `silent`) and
+`unreferenced_pids` (`unreferenced`) select its two parts.
 
 ## Multiplexing: packet gaps
 
@@ -1034,7 +1043,7 @@ Every complete analysis (summary and `--output analysis`) has
 the largest gap between two consecutive packets of the PID. It is a
 **report-only** diagnostic of how the multiplex interleaves its PIDs: it has
 no limit and no verdict, it never changes the exit status and it does not
-take part in `--fail-on-error`. It is absent when no analysis ran. A poorly
+take part in `--fail-on` or `--fail-on-error`. It is absent when no analysis ran. A poorly
 interleaved remux shows up as a large gap even when the PID's average bitrate
 is correct. For the bursty remux `sample_data/sample_188byte_packet_gaps.ts`
 (see [Sample data](../development/sample-data.md)), abridged:
@@ -1312,7 +1321,8 @@ first packet of the range. It is absent when no analysis ran. For
   `no_complete_interval`) or `skipped` (`reason` `no_pcr_time_base`).
 
 The size of `psi_health` is bounded by the number of programs announced in the
-range. It does not take part in `--fail-on-error`.
+range. It does not take part in `--fail-on-error`; the `--fail-on` category
+`psi_health` fails on `ng`.
 
 ## PES headers and PTS repetition
 
@@ -1616,7 +1626,9 @@ PTS_error; both are profile-neutral.
 The PTS/DTS anomaly check does not report a forward jump across PES packets
 without a timestamp, a malformed or incomplete header, untrusted payload or a
 continuity error, since `pts_repetition`, `pes_headers` or the other checks
-already report that cause. Neither object takes part in `--fail-on-error`.
+already report that cause. Neither object takes part in `--fail-on-error`;
+the `--fail-on` categories `pes_headers` (`errors`) and `pts_repetition`
+(`ng`) select them.
 
 ## Multiplexing: mux lead
 
@@ -1624,7 +1636,7 @@ Every complete analysis (summary and `--output analysis`) has
 `multiplexing.mux_lead`; `multiplexing` is absent when no analysis ran. It is a
 **report without a verdict**: no limit applies, its `status` is `info` or
 `insufficient_data`, it never counts as a finding and it never changes the
-exit status (`--fail-on-error` included).
+exit status (`--fail-on` and `--fail-on-error` included).
 
 The mux lead of a PES packet is how far ahead of its decode time it was
 multiplexed: its DTS (its PTS when it has no DTS) minus its arrival time, the
@@ -1789,7 +1801,7 @@ delivery. The object has three parts:
   starting a new segment) and takes precedence over `not_assessable`.
 
 PCR jitter is not part of `--fail-on-error`, which covers only the
-`compliance` checks.
+`compliance` checks, and it is not a `--fail-on` category, whatever its status.
 
 The deterministic diagnostic stream `sample_data/sample_188byte_all_findings.ts`
 (2.4 s at a constant 75.2 kbit/s, one PCR 100 µs late) gives:
@@ -2064,7 +2076,8 @@ documents, and `compliance.pcr_discontinuities` and the `kind` of each
 `pid_references`, `pes_headers`, `pts_repetition` and `multiplexing`
 (`packet_gaps`, then `mux_lead`) to both documents (additive changes). The
 failure reasons `insufficient_data_for_sync`, `pat_not_observed` and
-`pat_not_acquired` and the `acquisition` object were added within 2.0 as well:
+`pat_not_acquired` and the `acquisition` object were added within 2.0 as well,
+and so was the summary report's `failure_policy` object (with `--fail-on`):
 a range too short to show an alignment, previously `sync_not_acquired`, and an
 aligned range without a usable PAT, previously `analysis_failed`, now use them. Aligning
 the PCR steps also changed some values within 2.0 for streams with these steps
@@ -2087,6 +2100,51 @@ With `--fail-on-error` an undeclared forward jump still exits 2 (now through
 now exits 2 as well.
 `--capabilities` reports the schema version of each output, so a caller can
 tell the two apart before running an analysis.
+
+## Failure policy
+
+With `--fail-on` or `--fail-on-error` (see
+[CI failure policies](../cli/usage.md#ci-failure-policies---fail-on)), the
+summary report of an analyzed program has a top-level `failure_policy` object
+that records the policy and its result, so a consumer can see why the command
+exited 2 without re-deriving it:
+
+```sh
+$ ./mpeg-ts-analyzer sample_data/sample_188byte_all_findings.ts --format json --fail-on continuity,sync --fail-on-error
+```
+
+```json
+  "failure_policy": {
+    "status": "failed",
+    "categories": [
+      "timing",
+      "continuity",
+      "sync"
+    ],
+    "failed_categories": [
+      "timing",
+      "continuity"
+    ]
+  },
+```
+
+| Field | Meaning |
+| --- | --- |
+| `status` | `failed` when at least one selected category reported a finding, so the command exits 2; `passed` otherwise |
+| `categories` | The selected categories, with `any` expanded and `--fail-on-error` as `timing`, in their fixed order: `timing`, `timestamp`, `pes_headers`, `pts_repetition`, `continuity`, `transport_errors`, `scrambled_packets`, `sync`, `psi_health`, `referenced_pids`, `unreferenced_pids` |
+| `failed_categories` | The selected categories that reported a finding, in the same order; empty when `status` is `passed` |
+
+A category fails on exactly the statuses listed in the
+[category table](../cli/usage.md#ci-failure-policies---fail-on), read from
+the same objects of this report: for example `continuity` fails when
+`continuity_counter.status` is `errors`. `skipped` and `insufficient_data`
+never fail, and the report-only `multiplexing` results, `bitrate` and
+`pcr_jitter` belong to no category. The object is absent without a policy,
+and when no program was analyzed (`status: "programs_listed"` or `"failed"`).
+It is also present with `status: "incomplete"`, for which `--fail-on sync`
+fails a `lost` synchronization. `--output analysis` does not accept a policy.
+Like every category name, a new category may be added within schema 2.0;
+`any` then covers it.
 
 ## Range analysis output (`--output analysis`)
 
@@ -2210,7 +2268,8 @@ Abridged output for the two-program sample:
 - Output size grows with the range (one point per PCR, PES and jitter sample),
   so choose `--offset`/`--limit` accordingly.
 - `--output analysis` requires `--format json` and cannot be combined with
-  `--program`, `--list-programs`, `--fail-on-error` or packet-level dump flags.
+  `--program`, `--list-programs`, `--fail-on-error`, `--fail-on` or packet-level
+  dump flags.
 - PAT and PMT version changes of the analyzed programs are followed and listed
   in a top-level `psi_transitions` array (see
   [PAT and PMT version changes](../cli/psi.md#pat-and-pmt-version-changes)). A program
@@ -2716,12 +2775,27 @@ $ mpeg-ts-analyzer --capabilities
   ],
   "progress_formats": [
     "json"
+  ],
+  "fail_on_categories": [
+    "timing",
+    "timestamp",
+    "pes_headers",
+    "pts_repetition",
+    "continuity",
+    "transport_errors",
+    "scrambled_packets",
+    "sync",
+    "psi_health",
+    "referenced_pids",
+    "unreferenced_pids"
   ]
 }
 ```
 
 `outputs` lists each output with its schema version; `summary` is the `--format
 json` report, `analysis` the range analysis, and `packets` / `packet` the
-packet documents described above. New outputs and fields may be added; existing
+packet documents described above. `fail_on_categories` lists the categories
+`--fail-on` accepts besides `any`, in their fixed order (see
+[Failure policy](#failure-policy)). New outputs and fields may be added; existing
 entries keep their meaning. Passing an input file or any other option together
 with `--capabilities` is an error.

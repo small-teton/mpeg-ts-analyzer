@@ -152,6 +152,7 @@ fn page(ui: &mut egui::Ui, context: &Context<'_>, check: Check) -> Option<Overvi
     ] {
         prose(ui, heading, text);
     }
+    prose(ui, "CI exit status", &check.exit_status());
     if let Some((screen, text)) = help.navigation {
         prose(ui, "Details", text);
         let name = format!("Open {}", screen.title());

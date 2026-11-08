@@ -35,6 +35,12 @@ func ValidateOptions(options options.Options) error {
 	default:
 		return fmt.Errorf("unsupported output %q (expected summary, analysis, packets or packet)", options.Output)
 	}
+	if _, err := parseFailurePolicy(options.FailOn, false); err != nil {
+		return err
+	}
+	if len(options.FailOn) > 0 && (options.Output == "packets" || options.Output == "packet") {
+		return fmt.Errorf("--fail-on judges an analysis and cannot be combined with --output %s", options.Output)
+	}
 	return nil
 }
 
@@ -77,8 +83,8 @@ func parseTsFileJSONTo(filename string, options options.Options, output io.Write
 	if options.DumpHeader || options.DumpPayload || options.DumpAdaptationField || options.DumpPsi || options.DumpPesHeader || options.DumpTimestamp {
 		parseErr = errors.New("--format json cannot be combined with packet-level dump flags")
 		reason = "incompatible_options"
-	} else if report.analysis != nil && (options.Program != 0 || options.ListPrograms || options.FailOnError) {
-		parseErr = errors.New("--output analysis covers every program and cannot be combined with --program, --list-programs or --fail-on-error")
+	} else if report.analysis != nil && (options.Program != 0 || options.ListPrograms || options.FailOnError || len(options.FailOn) > 0) {
+		parseErr = errors.New("--output analysis covers every program and cannot be combined with --program, --list-programs, --fail-on-error or --fail-on")
 		reason = "incompatible_options"
 	} else {
 		file, err := os.Open(filename)
@@ -321,6 +327,7 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 				report.Bitrate = reportBitrate(analysis.bitrate)
 			}
 			report.PSITransitions = reportPsiTransitions(analysis.transitions)
+			report.FailurePolicy = reportFailurePolicy(analysis)
 			reportPsiDiagnostics(report, analysis.psiWarnings)
 			if analysis.truncatedBytes > 0 {
 				report.Warnings = append(report.Warnings, ReportWarning{analysis.truncatedPos, truncatedPacketMessage(analysis.truncatedBytes)})
