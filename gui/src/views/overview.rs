@@ -2,9 +2,11 @@ use eframe::egui;
 
 use super::check_detail;
 use super::check_help::Check;
-use super::{Screen, badge, program_selector_labels, status_verdict};
+use super::{Screen, badge, program_selector_labels};
 use crate::icons;
 use crate::plot_data::Timeline;
+use crate::presentation::CheckStatus;
+pub(crate) use crate::presentation::Scope;
 use crate::psi;
 use crate::range_bar;
 use crate::report::{
@@ -351,8 +353,8 @@ fn mbps(bps: f64) -> String {
 /// One row of the Transport health table: a check as the CLI reported it.
 pub(crate) struct Row {
     pub check: Check,
-    /// The CLI's status, verbatim.
-    pub status: String,
+    /// The CLI's status, normalized; an unknown one is kept verbatim.
+    pub status: CheckStatus,
     /// The value column; `—` when the CLI gave no value.
     pub value: String,
     /// The current result: only the fields the CLI provided, as label and value.
@@ -395,7 +397,7 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
             facts.extend(result.reason.clone().map(|r| ("Reason", r)));
             Some(Row {
                 check,
-                status: result.status.clone(),
+                status: CheckStatus::parse(&result.status),
                 value: value.unwrap_or_else(|| "—".to_owned()),
                 facts,
                 reason: result.reason.clone(),
@@ -422,14 +424,14 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
                 ));
             }
             facts.extend(result.reason.clone().map(|r| ("Reason", r)));
-            let value = if result.status == "skipped" {
+            let value = if CheckStatus::parse(&result.status) == CheckStatus::Skipped {
                 "—".to_owned()
             } else {
                 result.undeclared_count.to_string()
             };
             Some(Row {
                 check,
-                status: result.status.clone(),
+                status: CheckStatus::parse(&result.status),
                 value,
                 facts,
                 reason: result.reason.clone(),
@@ -446,7 +448,7 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
             }
             Some(Row {
                 check,
-                status: anomalies.status.clone(),
+                status: CheckStatus::parse(&anomalies.status),
                 value: count.to_string(),
                 facts,
                 reason: None,
@@ -477,7 +479,7 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
             }
             Some(Row {
                 check,
-                status: continuity.status.clone(),
+                status: CheckStatus::parse(&continuity.status),
                 value: continuity.total_error_count.to_string(),
                 facts,
                 reason: None,
@@ -508,7 +510,7 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
             }
             Some(Row {
                 check,
-                status: result.status.clone(),
+                status: CheckStatus::parse(&result.status),
                 value: result.packet_count.to_string(),
                 facts,
                 reason: None,
@@ -543,7 +545,7 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
             facts.extend(counts.reason.clone().map(|r| ("Reason", r)));
             Some(Row {
                 check,
-                status: counts.status.clone(),
+                status: CheckStatus::parse(&counts.status),
                 value: counts.error_count.to_string(),
                 facts,
                 reason: counts.reason.clone(),
@@ -572,7 +574,7 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
             let pids: Vec<String> = repetition
                 .pids
                 .iter()
-                .filter(|p| p.counts.status == "ng")
+                .filter(|p| CheckStatus::parse(&p.counts.status) == CheckStatus::Ng)
                 .map(|p| p.stream.describe())
                 .collect();
             if !pids.is_empty() {
@@ -581,7 +583,7 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
             facts.extend(counts.reason.clone().map(|r| ("Reason", r)));
             Some(Row {
                 check,
-                status: counts.status.clone(),
+                status: CheckStatus::parse(&counts.status),
                 value: value.unwrap_or_else(|| "—".to_owned()),
                 facts,
                 reason: counts.reason.clone(),
@@ -617,14 +619,14 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
                 "Applies to",
                 format!("the elementary streams of program {number}"),
             ));
-            let reason = (status == "insufficient_data").then(|| {
+            let reason = (status == CheckStatus::InsufficientData).then(|| {
                 pids.iter()
                     .find_map(|p| p.reason.clone())
                     .unwrap_or_else(|| format!("program {number} has no elementary stream"))
             });
             Some(Row {
                 check,
-                status: status.to_owned(),
+                status,
                 value: av
                     .and_then(|av| av.difference.max_av_lead_difference_ms)
                     .map_or_else(|| "—".to_owned(), |ms| format!("{ms:.1} ms")),
@@ -687,7 +689,7 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
             facts.extend(reason.clone().map(|r| ("Reason", r)));
             Some(Row {
                 check,
-                status: table.status.clone(),
+                status: CheckStatus::parse(&table.status),
                 value,
                 facts,
                 reason,
@@ -736,7 +738,7 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
             facts.extend(sync.reason.clone().map(|r| ("Reason", r)));
             Some(Row {
                 check,
-                status: sync.status.clone(),
+                status: CheckStatus::parse(&sync.status),
                 value: sync.loss_count.to_string(),
                 facts,
                 reason: sync.reason.clone(),
@@ -745,17 +747,21 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
         Check::ReferencedPids => {
             let references = report.pid_references.as_ref()?;
             let referenced = &references.referenced;
-            let not_ok = referenced.pids.iter().filter(|p| p.status != "ok").count();
+            let not_ok = referenced
+                .pids
+                .iter()
+                .filter(|p| CheckStatus::parse(&p.status) != CheckStatus::Ok)
+                .count();
             let mut facts = vec![("References", referenced.pids.len().to_string())];
             for (status, label) in [
-                ("absent", "Absent"),
-                ("silent", "Silent"),
-                ("insufficient_data", "Insufficient data"),
+                (CheckStatus::Absent, "Absent"),
+                (CheckStatus::Silent, "Silent"),
+                (CheckStatus::InsufficientData, "Insufficient data"),
             ] {
                 let pids: Vec<String> = referenced
                     .pids
                     .iter()
-                    .filter(|p| p.status == status)
+                    .filter(|p| CheckStatus::parse(&p.status) == status)
                     .map(reference_text)
                     .collect();
                 if !pids.is_empty() {
@@ -770,7 +776,7 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
             facts.push(("Applies to", "the whole multiplex".to_owned()));
             Some(Row {
                 check,
-                status: referenced.status.clone(),
+                status: CheckStatus::parse(&referenced.status),
                 value: format!("{not_ok} of {}", referenced.pids.len()),
                 facts,
                 reason: undetermined_references(report),
@@ -781,13 +787,13 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
             let unreferenced = &references.unreferenced;
             let mut facts = Vec::new();
             for (status, label) in [
-                ("unreferenced", "Unreferenced PIDs"),
-                ("insufficient_data", "Not judged"),
+                (CheckStatus::Unreferenced, "Unreferenced PIDs"),
+                (CheckStatus::InsufficientData, "Not judged"),
             ] {
                 let pids: Vec<String> = unreferenced
                     .pids
                     .iter()
-                    .filter(|p| p.status == status)
+                    .filter(|p| CheckStatus::parse(&p.status) == status)
                     .map(|p| {
                         format!(
                             "{}: {}, {:.1} ms",
@@ -809,7 +815,7 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
             facts.extend(unreferenced.reason.clone().map(|r| ("Reason", r)));
             Some(Row {
                 check,
-                status: unreferenced.status.clone(),
+                status: CheckStatus::parse(&unreferenced.status),
                 value: unreferenced.pids.len().to_string(),
                 facts,
                 reason: undetermined_unreferenced(report),
@@ -825,11 +831,11 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
             facts.push(("Verdict", "none: report only".to_owned()));
             facts.push(("Applies to", format!("the PIDs of program {number}")));
             let status = packet_gaps_status(&pids);
-            let reason = (status == "insufficient_data")
+            let reason = (status == CheckStatus::InsufficientData)
                 .then(|| format!("no PID of program {number} has two consecutive packets"));
             Some(Row {
                 check,
-                status: status.to_owned(),
+                status,
                 value: worst.map_or_else(|| "—".to_owned(), gap_amount),
                 facts,
                 reason,
@@ -856,7 +862,7 @@ pub(crate) fn row(report: &AnalysisReport, program: &Program, check: Check) -> O
             facts.extend(jitter.reason.clone().map(|r| ("Reason", r)));
             Some(Row {
                 check,
-                status: jitter.status.clone(),
+                status: CheckStatus::parse(&jitter.status),
                 value: value.unwrap_or_else(|| "—".to_owned()),
                 facts,
                 reason: jitter.reason.clone(),
@@ -887,12 +893,25 @@ pub(crate) fn program_packet_gaps<'a>(
 /// The status of the packet-gap row: a PID status this GUI does not know (shown
 /// as the CLI reported it), else `info` when a gap was measured, else
 /// `insufficient_data`.
-fn packet_gaps_status<'a>(pids: &[&'a PacketGapPid]) -> &'a str {
-    pids.iter()
-        .map(|p| p.status.as_str())
-        .find(|s| !matches!(*s, "info" | "insufficient_data"))
-        .or_else(|| pids.iter().any(|p| p.status == "info").then_some("info"))
-        .unwrap_or("insufficient_data")
+fn packet_gaps_status(pids: &[&PacketGapPid]) -> CheckStatus {
+    report_only_status(pids.iter().map(|p| CheckStatus::parse(&p.status)))
+}
+
+/// The status of a report-only row from the statuses of its PIDs: the first
+/// one this GUI does not expect there, else `info` when any PID was measured,
+/// else `insufficient_data`.
+fn report_only_status(statuses: impl Iterator<Item = CheckStatus>) -> CheckStatus {
+    let statuses: Vec<CheckStatus> = statuses.collect();
+    statuses
+        .iter()
+        .find(|s| !matches!(s, CheckStatus::Info | CheckStatus::InsufficientData))
+        .cloned()
+        .or_else(|| {
+            statuses
+                .contains(&CheckStatus::Info)
+                .then_some(CheckStatus::Info)
+        })
+        .unwrap_or(CheckStatus::InsufficientData)
 }
 
 /// The elementary stream of `program` with the largest gap in packets; the
@@ -957,7 +976,7 @@ fn gap_text(p: &PacketGapPid, program: u16) -> String {
                 text += &format!(", from 0x{start:08X} to 0x{end:08X}");
             }
         }
-        None => text += &format!(": {}", p.status.replace('_', " ")),
+        None => text += &format!(": {}", CheckStatus::parse(&p.status).words()),
     }
     text
 }
@@ -1044,12 +1063,8 @@ pub(crate) fn program_av_lead<'a>(
 /// The status of the mux-lead row: a PID status this GUI does not know (shown
 /// as the CLI reported it), else `info` when a lead was measured, else
 /// `insufficient_data`.
-fn mux_lead_status<'a>(pids: &[&'a MuxLeadPid]) -> &'a str {
-    pids.iter()
-        .map(|p| p.status.as_str())
-        .find(|s| !matches!(*s, "info" | "insufficient_data"))
-        .or_else(|| pids.iter().any(|p| p.status == "info").then_some("info"))
-        .unwrap_or("insufficient_data")
+fn mux_lead_status(pids: &[&MuxLeadPid]) -> CheckStatus {
+    report_only_status(pids.iter().map(|p| CheckStatus::parse(&p.status)))
 }
 
 /// A lead in milliseconds, with one decimal.
@@ -1115,7 +1130,7 @@ fn undetermined_references(report: &AnalysisReport) -> Option<String> {
         .referenced
         .pids
         .iter()
-        .filter(|p| p.status == "insufficient_data")
+        .filter(|p| CheckStatus::parse(&p.status) == CheckStatus::InsufficientData)
         .map(reference_text)
         .collect();
     (!pids.is_empty()).then(|| pids.join("; "))
@@ -1130,7 +1145,7 @@ fn undetermined_unreferenced(report: &AnalysisReport) -> Option<String> {
         unreferenced
             .pids
             .iter()
-            .filter(|p| p.status == "insufficient_data")
+            .filter(|p| CheckStatus::parse(&p.status) == CheckStatus::InsufficientData)
             .map(unreferenced_text),
     );
     (!parts.is_empty()).then(|| parts.join("; "))
@@ -1154,12 +1169,12 @@ fn reference_text(p: &ReferencedPid) -> String {
         (_, Some(stream_type)) => format!("stream_type {stream_type}"),
         (role, None) => role.to_owned(),
     };
-    let detail = match (p.status.as_str(), p.max_silence_ms, &p.reason) {
-        ("ok", _, _) => "ok".to_owned(),
-        ("absent", Some(ms), _) => format!("no packet for {ms:.1} ms"),
-        ("silent", Some(ms), _) => format!("{ms:.1} ms without a packet"),
+    let detail = match (CheckStatus::parse(&p.status), p.max_silence_ms, &p.reason) {
+        (CheckStatus::Ok, _, _) => "ok".to_owned(),
+        (CheckStatus::Absent, Some(ms), _) => format!("no packet for {ms:.1} ms"),
+        (CheckStatus::Silent, Some(ms), _) => format!("{ms:.1} ms without a packet"),
         (_, _, Some(reason)) => reason.replace('_', " "),
-        (status, _, None) => status.replace('_', " "),
+        (status, _, None) => status.words(),
     };
     format!("program {} {} ({role}): {detail}", p.program_number, p.pid)
 }
@@ -1214,9 +1229,8 @@ pub(crate) fn text_width(ui: &egui::Ui, text: egui::RichText) -> f32 {
 }
 
 /// Width of a status badge.
-pub(crate) fn badge_width(ui: &egui::Ui, status: &str) -> f32 {
-    (text_width(ui, crate::theme::badge_text(&status_label(status)))
-        + 2.0 * crate::theme::BADGE_MARGIN.x)
+pub(crate) fn badge_width(ui: &egui::Ui, status: &CheckStatus) -> f32 {
+    (text_width(ui, crate::theme::badge_text(&status.label())) + 2.0 * crate::theme::BADGE_MARGIN.x)
         .max(crate::theme::BADGE_MIN_WIDTH)
 }
 
@@ -1308,7 +1322,7 @@ fn health_table(ui: &mut egui::Ui, rows: &[Row], state: &mut OverviewState) {
                     "{}: {}, {}",
                     row.check.title(),
                     row.value,
-                    status_label(&row.status)
+                    row.status.label()
                 );
                 table_row(ui, &columns, None, Some(&label), |ui, cell| match cell {
                     Cell::Check => {
@@ -1525,21 +1539,17 @@ fn help_link(ui: &mut egui::Ui, text: &str, check: Check, state: &mut OverviewSt
     }
 }
 
-/// A status as a badge text: upper case, with spaces for underscores.
-pub(crate) fn status_label(status: &str) -> String {
-    status.to_uppercase().replace('_', " ")
-}
-
-/// The CLI's status of `check` as a badge, verbatim. A status this GUI does
-/// not describe for that check says so in its tooltip. Analyzer warnings
-/// (`check` is `None`) carry the GUI's own `warning`.
+/// The CLI's status of `check` as a badge, verbatim, colored by its
+/// severity for the check. A status this GUI does not describe for that check says so in
+/// its tooltip. Analyzer warnings (`check` is `None`) carry the GUI's own
+/// `warning`.
 pub(crate) fn status_badge(
     ui: &mut egui::Ui,
-    status: &str,
+    status: &CheckStatus,
     check: Option<Check>,
 ) -> egui::Response {
-    let response = badge(ui, &status_label(status), status_verdict(status));
-    if check.is_none_or(|check| is_known_status(check, status)) {
+    let response = badge(ui, &status.label(), status.severity_for(check));
+    if check.is_none_or(|check| status.is_known_for(check)) {
         response
     } else {
         response.on_hover_text(format!(
@@ -1548,35 +1558,11 @@ pub(crate) fn status_badge(
     }
 }
 
-/// Whether this GUI describes `status` for `check`. A status another check
-/// knows (such as `warning`) is still unknown for a check without it.
-pub(crate) fn is_known_status(check: Check, status: &str) -> bool {
-    check.verdict_meaning(status).is_some()
-}
-
-/// Where a finding applies.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum Scope {
-    /// The selected program, by program_number.
-    Program(u16),
-    /// Every PID of the range.
-    Multiplex,
-}
-
-impl Scope {
-    pub fn text(self) -> String {
-        match self {
-            Scope::Program(number) => format!("program {number}"),
-            Scope::Multiplex => "whole multiplex".to_owned(),
-        }
-    }
-}
-
 /// One user-visible problem of the analysis.
 #[derive(Debug, PartialEq)]
 pub(crate) struct Finding {
     /// The CLI's status, shown as it is; `warning` for an analyzer warning.
-    pub status: String,
+    pub status: CheckStatus,
     /// The check it belongs to; analyzer warnings belong to none.
     pub check: Option<Check>,
     pub label: String,
@@ -1585,37 +1571,11 @@ pub(crate) struct Finding {
     pub offset: Option<u64>,
 }
 
-/// Whether a check status means its analysis is unavailable rather than a
-/// result: `skipped`, a PCR jitter estimate the CLI did not grade
-/// (`not_assessable`, because delivery is not constant), a PAT/PMT whose
-/// repetition the range does not show, or PES checks and PID references the
-/// CLI could not judge (`insufficient_data`).
-/// Only a status this check describes counts: an unknown `not_assessable` on
-/// another check stays a finding, shown as the CLI reported it.
-pub(crate) fn is_unavailable(check: Check, status: &str) -> bool {
-    matches!(status, "skipped" | "not_assessable" | "insufficient_data")
-        && is_known_status(check, status)
-}
-
-/// Whether a check status is a report without a verdict: the `info` of a
-/// report-only check (Packet gaps, Mux lead), which is neither a finding
-/// nor unavailable analysis.
-pub(crate) fn is_report_only(check: Check, status: &str) -> bool {
-    status == "info" && is_known_status(check, status)
-}
-
-/// Whether a check status is a finding. Unavailable analysis and a report
-/// without a verdict are not findings; any other status than `ok`, including
-/// one this GUI does not know, is shown as the CLI reported it.
-pub(crate) fn is_finding(check: Check, status: &str) -> bool {
-    status != "ok" && !is_unavailable(check, status) && !is_report_only(check, status)
-}
-
 /// A check whose analysis is unavailable, with the CLI's status and reason.
 #[derive(Debug, PartialEq)]
 pub(crate) struct Unavailable {
     pub check: Check,
-    pub status: String,
+    pub status: CheckStatus,
     pub reason: String,
 }
 
@@ -1631,15 +1591,17 @@ pub(crate) fn findings(
     let mut unavailable = Vec::new();
     let in_program = Scope::Program(program.program_number);
     for row in rows(report, program) {
-        if is_unavailable(row.check, &row.status) {
+        if row.status.is_unavailable_for(row.check) {
             let reason = match (row.check, program.pcr_jitter.as_ref()) {
                 // The status reason, then the delivery assessment behind it.
-                (Check::PcrJitter, Some(jitter)) if row.status == "not_assessable" => format!(
-                    "{}. Delivery {}: {}",
-                    jitter.reason.as_deref().unwrap_or("not assessable"),
-                    jitter.delivery.assessment,
-                    jitter.delivery.reason
-                ),
+                (Check::PcrJitter, Some(jitter)) if row.status == CheckStatus::NotAssessable => {
+                    format!(
+                        "{}. Delivery {}: {}",
+                        jitter.reason.as_deref().unwrap_or("not assessable"),
+                        jitter.delivery.assessment,
+                        jitter.delivery.reason
+                    )
+                }
                 _ => row.reason.unwrap_or_default(),
             };
             unavailable.push(Unavailable {
@@ -1649,7 +1611,7 @@ pub(crate) fn findings(
             });
             continue;
         }
-        if !is_finding(row.check, &row.status) {
+        if !row.status.is_finding_for(row.check) {
             continue;
         }
         // A PID reference result with findings can still contain PIDs the CLI
@@ -1659,7 +1621,7 @@ pub(crate) fn findings(
         {
             unavailable.push(Unavailable {
                 check: row.check,
-                status: "insufficient_data".to_owned(),
+                status: CheckStatus::InsufficientData,
                 reason: reason.clone(),
             });
         }
@@ -1799,7 +1761,10 @@ pub(crate) fn findings(
                     .pts_repetition
                     .as_ref()
                     .map_or(&[][..], |r| &r.pids[..]);
-                for pid in pids.iter().filter(|p| p.counts.status == "ng") {
+                for pid in pids
+                    .iter()
+                    .filter(|p| CheckStatus::parse(&p.counts.status) == CheckStatus::Ng)
+                {
                     let counts = &pid.counts;
                     let exceeded = match counts.exceeded_count {
                         1 => "1 interval".to_owned(),
@@ -1823,7 +1788,7 @@ pub(crate) fn findings(
                 for pid in program_mux_leads(report, program)
                     .unwrap_or_default()
                     .into_iter()
-                    .filter(|p| p.status == row.status)
+                    .filter(|p| CheckStatus::parse(&p.status) == row.status)
                 {
                     findings.push(finding(
                         format!(
@@ -1895,9 +1860,12 @@ pub(crate) fn findings(
                     .pid_references
                     .as_ref()
                     .map_or(&[][..], |r| &r.referenced.pids[..]);
-                for pid in pids.iter().filter(|p| is_finding(check, &p.status)) {
+                for pid in pids
+                    .iter()
+                    .filter(|p| CheckStatus::parse(&p.status).is_finding_for(check))
+                {
                     findings.push(Finding {
-                        status: pid.status.clone(),
+                        status: CheckStatus::parse(&pid.status),
                         ..finding(
                             reference_text(pid),
                             Scope::Multiplex,
@@ -1918,7 +1886,7 @@ pub(crate) fn findings(
                     .as_ref()
                     .map_or(&[][..], |r| &r.unreferenced.pids[..])
                     .iter()
-                    .filter(|p| is_finding(check, &p.status))
+                    .filter(|p| CheckStatus::parse(&p.status).is_finding_for(check))
                     .collect();
                 if pids.is_empty() {
                     findings.push(finding(
@@ -1929,7 +1897,7 @@ pub(crate) fn findings(
                 }
                 for pid in pids {
                     findings.push(Finding {
-                        status: pid.status.clone(),
+                        status: CheckStatus::parse(&pid.status),
                         ..finding(
                             unreferenced_text(pid),
                             Scope::Multiplex,
@@ -1945,7 +1913,7 @@ pub(crate) fn findings(
                 for pid in program_packet_gaps(report, program)
                     .unwrap_or_default()
                     .into_iter()
-                    .filter(|p| p.status == row.status)
+                    .filter(|p| CheckStatus::parse(&p.status) == row.status)
                 {
                     findings.push(finding(
                         gap_text(pid, number),
@@ -1956,9 +1924,9 @@ pub(crate) fn findings(
             }
             Check::PcrJitter => {
                 let jitter = program.pcr_jitter.as_ref();
-                let limit = match row.status.as_str() {
-                    "ng" => " beyond ±25 µs",
-                    "warning" => " beyond ±500 ns",
+                let limit = match row.status {
+                    CheckStatus::Ng => " beyond ±25 µs",
+                    CheckStatus::Warning => " beyond ±500 ns",
                     _ => "",
                 };
                 let reason = jitter.map_or(String::new(), |j| {
@@ -1980,7 +1948,7 @@ pub(crate) fn findings(
     }
     for warning in &report.warnings {
         findings.push(Finding {
-            status: "warning".to_owned(),
+            status: CheckStatus::Warning,
             check: None,
             label: "Analyzer warning".to_owned(),
             reason: warning.message.clone(),
@@ -2111,7 +2079,7 @@ mod tests {
                 row.check,
                 Check::Synchronization | Check::ReferencedPids | Check::UnreferencedPids
             ) {
-                assert_eq!(row.status, "ok");
+                assert_eq!(row.status.as_str(), "ok");
                 continue;
             }
             if row.check == Check::PcrDiscontinuities {
@@ -2120,13 +2088,13 @@ mod tests {
             }
             // A report without a verdict is never a finding.
             if matches!(row.check, Check::PacketGaps | Check::MuxLead) {
-                assert_eq!(row.status, "info");
-                assert!(!is_finding(row.check, &row.status));
-                assert!(!is_unavailable(row.check, &row.status));
+                assert_eq!(row.status.as_str(), "info");
+                assert!(!row.status.is_finding_for(row.check));
+                assert!(!row.status.is_unavailable_for(row.check));
                 assert!(findings.iter().all(|f| f.check != Some(row.check)));
                 continue;
             }
-            assert!(is_finding(row.check, &row.status), "{:?}", row.check);
+            assert!(row.status.is_finding_for(row.check), "{:?}", row.check);
             assert!(findings.iter().any(|f| f.check == Some(row.check)));
         }
     }
@@ -2213,7 +2181,7 @@ mod tests {
         let (_, unavailable) = findings(&report, program);
         assert!(unavailable.contains(&Unavailable {
             check: Check::MuxLead,
-            status: "insufficient_data".to_owned(),
+            status: "insufficient_data".into(),
             reason: "no_pcr_timing".to_owned()
         }));
 
@@ -2224,7 +2192,7 @@ mod tests {
         let program = &report.programs[0];
         assert_eq!(
             self::row(&report, program, Check::MuxLead).unwrap().status,
-            "ng"
+            CheckStatus::Ng
         );
         let (all, _) = findings(&report, program);
         let leads: Vec<_> = all
@@ -2333,7 +2301,7 @@ mod tests {
         assert!(
             unavailable
                 .iter()
-                .any(|u| u.check == Check::PatHealth && u.status == "insufficient_data")
+                .any(|u| u.check == Check::PatHealth && u.status == CheckStatus::InsufficientData)
         );
         let pmt = findings
             .iter()
@@ -2496,32 +2464,32 @@ mod tests {
             [
                 Unavailable {
                     check: Check::PcrPtsDtsGap,
-                    status: "skipped".to_owned(),
+                    status: "skipped".into(),
                     reason: "need a parsed PTS/DTS bracketed by PCR observations".to_owned()
                 },
                 Unavailable {
                     check: Check::PtsRepetition,
-                    status: "insufficient_data".to_owned(),
+                    status: "insufficient_data".into(),
                     reason: "single_pts".to_owned()
                 }
             ]
         );
-        assert!(is_unavailable(Check::PesHeaders, "insufficient_data"));
-        assert!(!is_unavailable(Check::MaxPcrInterval, "insufficient_data"));
-        assert!(!is_known_status(Check::PcrJitter, "indeterminate"));
-        assert!(is_known_status(Check::PcrJitter, "not_assessable"));
+        assert!(CheckStatus::parse("insufficient_data").is_unavailable_for(Check::PesHeaders));
+        assert!(!CheckStatus::parse("insufficient_data").is_unavailable_for(Check::MaxPcrInterval));
+        assert!(!CheckStatus::parse("indeterminate").is_known_for(Check::PcrJitter));
+        assert!(CheckStatus::parse("not_assessable").is_known_for(Check::PcrJitter));
         // Known for PCR jitter, but not a status Max PCR interval describes.
-        assert!(is_known_status(Check::PcrJitter, "warning"));
-        assert!(!is_known_status(Check::MaxPcrInterval, "warning"));
-        assert!(!is_known_status(Check::MaxPcrInterval, "not_assessable"));
+        assert!(CheckStatus::parse("warning").is_known_for(Check::PcrJitter));
+        assert!(!CheckStatus::parse("warning").is_known_for(Check::MaxPcrInterval));
+        assert!(!CheckStatus::parse("not_assessable").is_known_for(Check::MaxPcrInterval));
         // Unavailable only where the check describes the status; elsewhere
         // an unknown status stays a finding.
-        assert!(is_unavailable(Check::PcrJitter, "not_assessable"));
-        assert!(is_unavailable(Check::MaxPcrInterval, "skipped"));
-        assert!(!is_unavailable(Check::MaxPcrInterval, "not_assessable"));
-        assert!(is_finding(Check::MaxPcrInterval, "not_assessable"));
-        assert!(!is_unavailable(Check::ContinuityCounter, "skipped"));
-        assert!(is_finding(Check::ContinuityCounter, "skipped"));
+        assert!(CheckStatus::parse("not_assessable").is_unavailable_for(Check::PcrJitter));
+        assert!(CheckStatus::parse("skipped").is_unavailable_for(Check::MaxPcrInterval));
+        assert!(!CheckStatus::parse("not_assessable").is_unavailable_for(Check::MaxPcrInterval));
+        assert!(CheckStatus::parse("not_assessable").is_finding_for(Check::MaxPcrInterval));
+        assert!(!CheckStatus::parse("skipped").is_unavailable_for(Check::ContinuityCounter));
+        assert!(CheckStatus::parse("skipped").is_finding_for(Check::ContinuityCounter));
     }
 
     /// A PCR jitter estimate the CLI did not grade is unavailable analysis
@@ -2536,7 +2504,7 @@ mod tests {
         assert!(findings.iter().all(|f| f.check != Some(Check::PcrJitter)));
         assert_eq!(unavailable.len(), 1);
         assert_eq!(unavailable[0].check, Check::PcrJitter);
-        assert_eq!(unavailable[0].status, "not_assessable");
+        assert_eq!(unavailable[0].status, CheckStatus::NotAssessable);
         assert!(
             unavailable[0].reason.starts_with(
                 "delivery rate is variable, so the byte-position estimate does not measure PCR accuracy. Delivery variable: the estimated jitter reaches 55.082ms"
@@ -2546,7 +2514,7 @@ mod tests {
         );
         let row = row(&report, program, Check::PcrJitter).unwrap();
         assert_eq!(row.value, "55.08 ms");
-        assert_eq!(status_label(&row.status), "NOT ASSESSABLE");
+        assert_eq!(row.status.label(), "NOT ASSESSABLE");
         let fact = |name: &str| {
             row.facts
                 .iter()
@@ -2631,7 +2599,7 @@ mod tests {
             ]
         );
         assert!(matches!(
-            status_verdict("info"),
+            CheckStatus::parse("info").severity(),
             crate::theme::Verdict::Neutral
         ));
         // A healthy PAT: no problem, reason or first problem.
@@ -2734,7 +2702,7 @@ mod tests {
             ]
         );
         assert!(matches!(
-            status_verdict("info"),
+            CheckStatus::parse("info").severity(),
             crate::theme::Verdict::Neutral
         ));
     }
@@ -2810,7 +2778,7 @@ mod tests {
         let (_, unavailable) = findings(&report, program);
         assert!(unavailable.contains(&Unavailable {
             check: Check::PacketGaps,
-            status: "insufficient_data".to_owned(),
+            status: "insufficient_data".into(),
             reason: "no PID of program 1 has two consecutive packets".to_owned()
         }));
 
@@ -2823,7 +2791,7 @@ mod tests {
             self::row(&report, program, Check::PacketGaps)
                 .unwrap()
                 .status,
-            "ng"
+            CheckStatus::Ng
         );
         let (all, _) = findings(&report, program);
         let gaps: Vec<_> = all
@@ -2889,15 +2857,15 @@ mod tests {
             ]
         );
         assert!(matches!(
-            status_verdict("absent"),
+            CheckStatus::parse("absent").severity(),
             crate::theme::Verdict::Ng
         ));
         assert!(matches!(
-            status_verdict("silent"),
+            CheckStatus::parse("silent").severity(),
             crate::theme::Verdict::Warn
         ));
         assert!(matches!(
-            status_verdict("unreferenced"),
+            CheckStatus::parse("unreferenced").severity(),
             crate::theme::Verdict::Warn
         ));
 
@@ -2908,13 +2876,13 @@ mod tests {
             [
                 Unavailable {
                     check: Check::ReferencedPids,
-                    status: "insufficient_data".to_owned(),
+                    status: "insufficient_data".into(),
                     reason: "program 1 0x0102 (stream_type 0x06): intermittent stream type"
                         .to_owned()
                 },
                 Unavailable {
                     check: Check::UnreferencedPids,
-                    status: "insufficient_data".to_owned(),
+                    status: "insufficient_data".into(),
                     reason: "PID 0x0500: 2 packets without a reference for 350.0 ms".to_owned()
                 },
             ]
@@ -2977,12 +2945,12 @@ mod tests {
             [
                 Unavailable {
                     check: Check::ReferencedPids,
-                    status: "insufficient_data".to_owned(),
+                    status: "insufficient_data".into(),
                     reason: "program 1 0x1000 (PMT): insufficient data; program 1 0x0102 (stream_type 0x06): intermittent stream type".to_owned()
                 },
                 Unavailable {
                     check: Check::UnreferencedPids,
-                    status: "insufficient_data".to_owned(),
+                    status: "insufficient_data".into(),
                     reason: "no_pcr_time_base".to_owned()
                 },
             ]
@@ -2995,7 +2963,7 @@ mod tests {
         let (_, unavailable) = findings(&report, &report.programs[0]);
         assert!(unavailable.contains(&Unavailable {
             check: Check::UnreferencedPids,
-            status: "skipped".to_owned(),
+            status: "skipped".into(),
             reason: "program_layouts_unknown".to_owned()
         }));
         let reference = |role: &str, stream_type: Option<&str>| ReferencedPid {
@@ -3003,7 +2971,7 @@ mod tests {
             role: role.to_owned(),
             pid: "0x0200".to_owned(),
             stream_type: stream_type.map(str::to_owned),
-            status: "ok".to_owned(),
+            status: "ok".into(),
             reason: None,
             max_silence_ms: None,
             max_silence_start_offset_bytes: None,
@@ -3053,7 +3021,7 @@ mod tests {
             ]
         );
         assert!(matches!(
-            status_verdict("recovered"),
+            CheckStatus::parse("recovered").severity(),
             crate::theme::Verdict::Warn
         ));
         // The skipped bytes also make delivery variable, so the PCR jitter
@@ -3090,7 +3058,10 @@ mod tests {
             row.facts
                 .contains(&("Analysis stopped at", "0x00009494".to_owned()))
         );
-        assert!(matches!(status_verdict("lost"), crate::theme::Verdict::Ng));
+        assert!(matches!(
+            CheckStatus::parse("lost").severity(),
+            crate::theme::Verdict::Ng
+        ));
         let (all, _) = findings(&report, &report.programs[0]);
         let lost = all
             .iter()

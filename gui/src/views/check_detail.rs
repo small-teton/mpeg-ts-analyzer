@@ -7,10 +7,11 @@ use eframe::egui;
 use super::check_help::Check;
 use super::overview::{
     self, CELL_PADDING, Finding, Focus, OverviewAction, OverviewState, accessible_scope,
-    badge_width, is_finding, is_known_status, status_badge, status_label, table_cell, text_width,
+    badge_width, status_badge, table_cell, text_width,
 };
 use crate::icons;
 use crate::plot_data::Timeline;
+use crate::presentation::CheckStatus;
 use crate::report::{AnalysisReport, AvLeadProgram, MuxLeadPid, PacketGapPid, Program};
 
 /// What the page shows its check for.
@@ -64,7 +65,7 @@ fn page(ui: &mut egui::Ui, context: &Context<'_>, check: Check) -> Option<Overvi
         title.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Heading, true, help.title));
         if let Some(row) = &row {
             let status = status_badge(ui, &row.status, Some(check));
-            let name = format!("Status: {}", status_label(&row.status));
+            let name = format!("Status: {}", row.status.label());
             status.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &name));
         }
     });
@@ -75,9 +76,9 @@ fn page(ui: &mut egui::Ui, context: &Context<'_>, check: Check) -> Option<Overvi
     match &row {
         Some(row) => {
             facts(ui, &row.facts);
-            if !is_known_status(check, &row.status) {
+            if !row.status.is_known_for(check) {
                 ui.add_space(4.0);
-                let note = if is_finding(check, &row.status) {
+                let note = if row.status.is_finding_for(check) {
                     "It is shown as reported and listed as a finding."
                 } else {
                     "It is shown as reported."
@@ -140,7 +141,7 @@ fn page(ui: &mut egui::Ui, context: &Context<'_>, check: Check) -> Option<Overvi
     }
 
     section_heading(ui, "Verdicts");
-    verdict_table(ui, help.statuses, row.as_ref().map(|r| r.status.as_str()));
+    verdict_table(ui, check, row.as_ref().map(|r| &r.status));
     ui.add_space(12.0);
 
     for (heading, text) in [
@@ -265,7 +266,7 @@ fn packet_gap_table(
                         ui.monospace(pid.packet_count.to_string());
                         match pid.max_gap_packets {
                             Some(gap) => ui.monospace(gap.to_string()),
-                            None => ui.weak(pid.status.replace('_', " ")),
+                            None => ui.weak(CheckStatus::parse(&pid.status).words()),
                         };
                         ui.monospace(overview::gap_ms(pid).unwrap_or_else(|| "—".to_owned()));
                         for offset in [pid.max_gap_start_offset_bytes, pid.max_gap_end_offset_bytes]
@@ -427,7 +428,13 @@ fn icon_button(ui: &mut egui::Ui, glyph: &str, text: &str, name: &str) -> egui::
 /// Every status of the check with its condition. The current status is
 /// highlighted and marked selected for assistive technology; its meaning is
 /// the same as in any other row.
-fn verdict_table(ui: &mut egui::Ui, statuses: &[(&str, &str)], current: Option<&str>) {
+fn verdict_table(ui: &mut egui::Ui, check: Check, current: Option<&CheckStatus>) {
+    let statuses: Vec<(CheckStatus, &str)> = check
+        .help()
+        .statuses
+        .iter()
+        .map(|(status, meaning)| (CheckStatus::parse(status), *meaning))
+        .collect();
     let width = ui.available_width();
     let stroke = crate::theme::table_border(ui.visuals());
     let divider = crate::theme::table_divider(ui.visuals());
@@ -474,8 +481,8 @@ fn verdict_table(ui: &mut egui::Ui, statuses: &[(&str, &str)], current: Option<&
                     ui.painter()
                         .hline(rect.0.x_range(), rect.0.center().y, divider);
                 }
-                let selected = current == Some(*status);
-                let label = format!("{}: {meaning}", status_label(status));
+                let selected = current == Some(status);
+                let label = format!("{}: {meaning}", status.label());
                 verdict_row(
                     ui,
                     [status_width, condition_width],
@@ -483,7 +490,7 @@ fn verdict_table(ui: &mut egui::Ui, statuses: &[(&str, &str)], current: Option<&
                     |ui, column| {
                         if column == 0 {
                             // The check's own statuses: always described.
-                            status_badge(ui, status, None);
+                            super::badge(ui, &status.label(), status.severity_for(Some(check)));
                         } else {
                             ui.add(egui::Label::new(*meaning).wrap());
                         }

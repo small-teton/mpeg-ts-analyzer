@@ -33,7 +33,7 @@ jobs:
 
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.13"
+          python-version: "3.15"
 
       - name: Install the site toolchain
         run: python -m pip install --require-hashes --no-deps -r .github/docs-site/requirements.txt

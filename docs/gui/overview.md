@@ -68,6 +68,17 @@ tooltip saying so. In a narrow window the check names wrap and the Value,
 Status and Help columns keep their width, so every verdict stays visible
 without scrolling sideways.
 
+The badge color shows how serious the verdict is:
+
+- Green: `OK`.
+- Red: `NG`, `ERRORS`, `LOST`, `ABSENT`, and `DATA EXCLUDED` of Transport
+  errors (damaged packets removed data the analysis needed).
+- Yellow: `WARNING`, `ANOMALIES`, `RECOVERED`, `SILENT`, `UNREFERENCED`,
+  `AFFECTED`, and `DATA EXCLUDED` of Scrambled packets (scrambling is not an
+  error in itself).
+- Gray: `INFO`, `SKIPPED`, `NOT ASSESSABLE`, `INSUFFICIENT DATA`, and any
+  status this GUI does not know, which is never colored as a problem.
+
 The **ⓘ** button in the Help column opens the check's page inside Overview;
 Overview stays selected in the left rail. The button can be reached with Tab
 and opened with Enter or Space. The page shows:

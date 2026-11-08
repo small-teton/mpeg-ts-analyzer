@@ -94,16 +94,6 @@ pub fn program_selector_labels(ui: &mut egui::Ui, labels: &[String], selected: &
     *selected != before
 }
 
-/// Badge colors for a status string from the CLI.
-pub fn status_verdict(status: &str) -> Verdict {
-    match status {
-        "ok" | "complete" => Verdict::Ok,
-        "ng" | "errors" | "failed" | "lost" | "absent" => Verdict::Ng,
-        "warning" | "warn" | "anomalies" | "recovered" | "silent" | "unreferenced" => Verdict::Warn,
-        _ => Verdict::Neutral,
-    }
-}
-
 /// Keeps a time plot inside the analyzed interval while preserving its zoom.
 ///
 /// egui_plot does not currently expose pan limits. Bounds set here are applied

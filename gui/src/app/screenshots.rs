@@ -37,7 +37,7 @@ fn render_tab(screen: Screen) -> RgbaImage {
     // Packets shows program 2's PMT packet with its PID selected.
     let mut pages = PacketPages::loaded_for_test(packets_page(), 564, pmt_packet_detail());
     pages.select_field_for_test("PID");
-    app.packet_pages = Some(pages);
+    app.session_mut().packet_pages = pages;
     let mut harness = Harness::builder()
         .with_size(TAB_SIZE)
         .with_pixels_per_point(1.0)
@@ -109,7 +109,7 @@ pub(super) fn wire_layout_app() -> App {
     pages.inspect_for_test(Some(Selection::Part(
         "pmt.stream[1].elementary_pid.reserved@184".to_owned(),
     )));
-    app.packet_pages = Some(pages);
+    app.session_mut().packet_pages = pages;
     app
 }
 

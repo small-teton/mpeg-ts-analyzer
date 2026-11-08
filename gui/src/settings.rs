@@ -44,7 +44,7 @@ impl Default for Settings {
 pub struct CliStatus<'a> {
     pub source: Source,
     pub path: &'a std::path::Path,
-    pub check: &'a Result<Cli, String>,
+    pub check: Result<&'a Cli, &'a str>,
 }
 
 impl Settings {
