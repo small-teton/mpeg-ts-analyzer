@@ -112,6 +112,35 @@ pub fn parse_analysis(json: &[u8], major: &str) -> Result<AnalysisReport, String
     read_analysis(json, major).map_err(|err| unsupported_analysis(json, major).unwrap_or(err))
 }
 
+/// What to do about a failed analysis whose `reason` says that the selected
+/// range could not start program analysis. The CLI's `error` carries the
+/// evidence; this adds the action available in the GUI.
+fn failure_hint(reason: &str) -> Option<&'static str> {
+    match reason {
+        "insufficient_data_for_sync" => Some(
+            "The selected range is too short to find the packet alignment. Select a longer range.",
+        ),
+        "pat_not_observed" | "pat_not_acquired" => Some(
+            "Program analysis needs a complete PAT. Select a range that includes one, for example a wider range or one from the start of the file.",
+        ),
+        _ => None,
+    }
+}
+
+/// The message shown for a failed analysis: the action for a range that
+/// could not start program analysis, then the CLI's error (or reason).
+pub fn failure_message(report: &AnalysisReport) -> String {
+    let detail = report
+        .error
+        .clone()
+        .or_else(|| report.reason.clone())
+        .unwrap_or_else(|| "The analysis failed.".to_owned());
+    match report.reason.as_deref().and_then(failure_hint) {
+        Some(hint) => format!("{hint}\n\n{detail}"),
+        None => detail,
+    }
+}
+
 /// One progress event from `--progress json` on stderr.
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct ProgressEvent {
@@ -1365,6 +1394,38 @@ mod tests {
                 .unwrap_or_else(|| panic!("{name} was accepted"));
             assert!(err.contains(expected), "{name}: {err}");
         }
+    }
+
+    #[test]
+    fn explains_a_range_without_a_pat() {
+        let report: AnalysisReport = serde_json::from_str(include_str!(
+            "../tests/fixtures/analysis_pat_not_observed_188.json"
+        ))
+        .expect("fixture parses");
+        assert_eq!(report.reason.as_deref(), Some("pat_not_observed"));
+        let message = failure_message(&report);
+        assert!(
+            message.starts_with("Program analysis needs a complete PAT."),
+            "{message}"
+        );
+        assert!(
+            message.ends_with(report.error.as_deref().unwrap()),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn failure_messages() {
+        let mut report: AnalysisReport =
+            serde_json::from_str(include_str!("../tests/fixtures/analysis_failed.json"))
+                .expect("fixture parses");
+        assert_eq!(failure_message(&report), report.error.clone().unwrap());
+        report.reason = Some("insufficient_data_for_sync".to_owned());
+        assert!(failure_message(&report).starts_with("The selected range is too short"));
+        report.error = None;
+        assert!(failure_message(&report).ends_with("\n\ninsufficient_data_for_sync"));
+        report.reason = None;
+        assert_eq!(failure_message(&report), "The analysis failed.");
     }
 
     #[test]

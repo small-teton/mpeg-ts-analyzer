@@ -22,6 +22,7 @@ type AnalysisReport struct {
 	Status                string                    `json:"status"`
 	Reason                string                    `json:"reason,omitempty"`
 	Error                 string                    `json:"error,omitempty"`
+	Acquisition           *ReportAcquisition        `json:"acquisition,omitempty"`
 	Programs              []ReportProgram           `json:"programs"`
 	SelectedProgramNumber *uint16                   `json:"selected_program_number,omitempty"`
 	Sync                  *ReportSync               `json:"sync,omitempty"`

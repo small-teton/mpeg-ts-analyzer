@@ -65,6 +65,8 @@ observations it needs through focused methods.
 | Whether a packet is synchronized, which PID it belongs to, where its payload starts | `tsparser` |
 | Where synchronization was lost, how far to search and which alignment to accept | `tsparser` (`packetReader`), reported as `analysis.SyncLoss`, `analysis.Resync` and `analysis.SyncUnrecovered` |
 | How losses, skipped bytes and the first and worst offsets are aggregated, the sync status | `analysis` (`SyncCheck`) |
+| When initial acquisition failed, which layouts the detector found in the range, how many packets were aligned, and what PID 0 carried (with the `psi_health` section classification) | `tsparser` (`alignmentScan`, `observeAcquisition`), reported as `analysis.AcquisitionEvidence` |
+| Which prerequisite failed (`sync_not_acquired`, `insufficient_data_for_sync`, `pat_not_observed`, `pat_not_acquired`) and each layout's `found` / `not_found` / `insufficient_data` status | `analysis` (`ClassifyAcquisition`) |
 | Whether a packet is an exact duplicate that must not be appended to PES data twice, and how counters resynchronize after an error | `tsparser` (`continuityTracker`) |
 | Whether a continuity counter error occurred | `tsparser`, reported as `analysis.ContinuityError` |
 | How errors are counted per PID, how each PID is labeled, the check's status | `analysis` (`ContinuityCheck`) |
@@ -137,11 +139,18 @@ timestamp checks can consume the same observation. The report-only mux lead
 ([#177](https://github.com/small-teton/mpeg-ts-analyzer/issues/177)) does: it
 adds a fixed-size aggregate to each elementary PID of `PESCheck` and keeps,
 per program, only the video and audio PIDs of the PMT in force
-(`PESCheck.MuxLead()`), so no second PES or time model exists. Its lead is the
-value `Pes.BracketedTimestampDelay` gives the PCR-PTS/DTS gap check in
-`tsparser` for the same PES packet (`arrivalAt` and `Pes.referencePcrMs`
-interpolate between the same PCRs); the gap check keeps its verdict and the
-mux lead only reports the per-PID distribution.
+(`PESCheck.MuxLead()`), so no second PES or time model exists. The lead of a
+PES packet is defined once, by `analysis.PES.Lead` (27 MHz ticks) and
+`PES.LeadMs` (the same lead from the untruncated arrival time) in
+`internal/analysis/pes_lead.go`
+([#193](https://github.com/small-teton/mpeg-ts-analyzer/issues/193)): the
+timestamp minus the PES packet's time on the PCR timeline (`arrivalAt`, which
+interpolates across a `wraparound` step and not across a segment boundary),
+read modulo the 2^33 period as the signed shortest difference. The mux lead
+aggregates `Lead`; the PCR-PTS/DTS gap check, `--dump-timestamp` and the time
+series in `tsparser` take `LeadMs` from the same `prevAnchor`/`nextAnchor`
+bracket of each `Pes` (`Pes.BracketedTimestampDelay`). The gap check keeps its
+verdict and the mux lead only reports the per-PID distribution.
 
 Other aggregate evaluators (PCR jitter, PCR-PTS/DTS gap, timestamp anomalies,
 bitrate) are still in `tsparser`. They move to `analysis` when a change to them

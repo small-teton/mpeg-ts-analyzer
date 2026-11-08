@@ -531,7 +531,10 @@ Status and top-level reason values are:
 | Field | Values |
 | --- | --- |
 | top-level `status` | `complete`, `programs_listed`, `incomplete`, `failed` |
-| top-level `reason` | `program_selection_required`, `program_listing_requested`, `end_of_input_before_complete_analysis`, `sync_lost`, `incompatible_options`, `input_open_failed`, `sync_not_acquired`, `analysis_failed` |
+| top-level `reason` | `program_selection_required`, `program_listing_requested`, `end_of_input_before_complete_analysis`, `sync_lost`, `incompatible_options`, `input_open_failed`, `sync_not_acquired`, `insufficient_data_for_sync`, `pat_not_observed`, `pat_not_acquired`, `analysis_failed` |
+| `acquisition.alignment.status` | `acquired`, `not_acquired`, `insufficient_data` |
+| `acquisition.alignment.layouts[].status` | `found`, `not_found`, `insufficient_data` |
+| `acquisition.pat.status` | `not_observed`, `not_acquired` |
 | `programs[].status` | `complete`, `incomplete` |
 | incomplete program `reason` | `pmt_parse_failed` |
 | `sync.status` | `ok`, `recovered`, `lost` |
@@ -583,9 +586,14 @@ the input; a range that ends mid-packet inside the file reports nothing.
 [TS synchronization](#ts-synchronization). `status: "incomplete"` with
 `reason: "sync_lost"` means the analysis stopped at a loss of synchronization
 that could not be recovered; the results cover the input up to there.
-`reason: "sync_not_acquired"` (with `status: "failed"`) means the input has no
-188-byte, 192-byte or 204-byte packet alignment at all, while `analysis_failed`
-covers other failures, such as aligned packets without a PAT.
+`reason: "sync_not_acquired"` (with `status: "failed"`) means the range has no
+188-byte, 192-byte or 204-byte packet alignment at all although it was long
+enough to show one, `insufficient_data_for_sync` that it was too short to show
+at least one layout, and `pat_not_observed` / `pat_not_acquired` that packets
+are aligned but no usable PAT was found. These four come with an `acquisition`
+object; see [Initial acquisition failures](#initial-acquisition-failures).
+`analysis_failed` covers the remaining failures, such as a read error or a
+`--program` the PAT does not list.
 
 `input.packet_size_bytes` is the physical packet size: 188 (TS), 192 (M2TS: a
 4-byte `TP_extra_header`, then the TS packet) or 204 (the TS packet, then a
@@ -1152,7 +1160,7 @@ the first starts a new timing segment. All results use the same steps:
 | `compliance.pcr_discontinuities` | Count of each step kind other than `continuous`, with the first PCR packet's `first_offset_bytes` and `first_jump_ms` (the value difference; for a wraparound the interval across the wrap). `ng` when `undeclared_count` (`backward` + `forward_jump`) is above 0 (ISO/IEC 13818-1, 2.4.3.5; ETSI TR 101 290 2.3b). `jump_limit_ms` (1000) separates a late PCR from a `forward_jump`. | Selected program, following `PCR_PID` changes | Every PCR after the first is classified; `pcr_count` counts all PCRs. | `skipped` with fewer than two PCRs |
 | `pcr_jitter` | Byte-position estimate in ns, and the delivery assessment ([PCR jitter](#pcr-jitter)); not a TR 101 290 2.4 measurement | Selected program | Interpolated only between three PCRs of one segment; delivery windows do not span a boundary; `estimate.discontinuities` lists each boundary with its `kind`, `jump_ms` and the segments it separates | `skipped` with fewer than 3 PCRs, no segment of 3 PCRs, or more than 30 % of the PCRs starting a segment |
 | `bitrate` | Bytes over PCR time of the comparable steps, per PID, in bit/s; `segment_count` counts timing segments | Selected program's PIDs; null packets separately | Bytes before the first PCR and across a boundary are dropped and the clock does not advance across it | `skipped` without two PCRs in one segment |
-| `compliance.max_pcr_pts_dts_gap` | DTS (or PTS) minus the PCR interpolated by byte position between the PCRs before and after the PES packet, in ms. Limit 1000 ms, inclusive. | Every elementary stream of the selected program | A PES packet is compared only when both PCRs belong to the same segment and the second is larger: no gap across a boundary or a wraparound, and none after the last PCR | `skipped` with no bracketed PTS/DTS |
+| `compliance.max_pcr_pts_dts_gap` | DTS (or PTS) minus the PCR interpolated by byte position between the PCRs before and after the PES packet, in ms, read modulo the 2^33 period as the signed difference nearest to zero (the lead of [Multiplexing: mux lead](#multiplexing-mux-lead)). Limit 1000 ms, inclusive. | Every elementary stream of the selected program | A PES packet is compared only when both PCRs belong to the same segment: no gap across a boundary, and none after the last PCR. A `wraparound` step stays in the segment, so a bracket across it is interpolated | `skipped` with no bracketed PTS/DTS |
 | `series.pcr` (`--output analysis`) | Each PCR with `pcr_ms`, `elapsed_ms` and `interval_ms` | Each program | `interval_ms` only on comparable steps; `discontinuity: true` on the first PCR of each new segment, where `elapsed_ms` does not advance | Empty without PCRs |
 
 Results are aggregates bounded by the number of step kinds; only the existing
@@ -1719,11 +1727,14 @@ or AC-3 carried as private data 0x06, which only a descriptor identifies).
   when any audio PID was compared.
 
 Relationship to the other timestamp checks: the lead is the computation of
-the PCR-PTS/DTS gap (`compliance.max_pcr_pts_dts_gap`) on the same PES packets
-with the same PCR bracket and interpolation. The gap check keeps the largest
-lead of the program (without the modulo reading, and skipping a bracket that
-spans a PCR wraparound) and judges it against 1000 ms; the mux lead reports the
-distribution per PID without judging it. One PES packet therefore produces at
+the PCR-PTS/DTS gap (`compliance.max_pcr_pts_dts_gap`, and `pcr_gap_ms` of the
+`--output analysis` PES series) on the same PES packets with the same PCR
+bracket, interpolation and modulo reading. The gap check keeps the largest
+lead of the program and judges it against 1000 ms; the mux lead reports the
+distribution per PID without judging it. The gap check measures a PES packet
+when it ends, so a PES packet that ends before the PCR after its start (a
+short audio PES packet, for example) is a mux lead sample but not a gap
+observation. One PES packet therefore produces at
 most one verdict (the gap check), and `timestamp_anomalies`, which compares
 consecutive PTS/DTS values rather than leads, is independent of both.
 
@@ -1913,6 +1924,119 @@ M2TS, the first byte of the `TP_extra_header`). Offsets of later results
 search, its bounds and the cases it does not cover are described in
 [TS synchronization](../cli/usage.md#ts-synchronization-always-on).
 
+## Initial acquisition failures
+
+Program analysis needs a packet alignment and then a complete PAT. When the
+range provides neither, the document has `status: "failed"`, one of the
+reasons below, and an `acquisition` object with the evidence; it is absent from
+every other document. Nothing that depends on the PAT/PMT (`programs`, `sync`,
+`psi_health` and the other checks) is reported, and the exit status is 1, as for
+any failure. `input.packet_size_bytes` is absent when no alignment was found,
+since detection only falls back to 188 bytes; otherwise it is
+`acquisition.alignment.packet_size_bytes`.
+
+| `reason` | `acquisition.alignment.status` | `acquisition.pat` |
+| --- | --- | --- |
+| `insufficient_data_for_sync` | `insufficient_data`: `scanned_bytes` is below `required_bytes` of at least one layout, and no layout was found | absent |
+| `sync_not_acquired` | `not_acquired`: the range was long enough for every layout and none was found | absent |
+| `pat_not_observed` | `acquired` | `status: "not_observed"`: no aligned packet on PID 0 |
+| `pat_not_acquired` | `acquired` | `status: "not_acquired"`: packets on PID 0, but no usable PAT |
+
+Example: the range `--offset 7332 --limit 1880` of
+`sample_data/sample_188byte_transport_errors.ts`, whose only PAT packet has
+`transport_error_indicator` set (`--format json`, complete document):
+
+```json
+{
+  "schema_version": "2.0",
+  "input": {
+    "path": "sample_data/sample_188byte_transport_errors.ts",
+    "packet_size_bytes": 188,
+    "offset_bytes": 7332,
+    "limit_bytes": 1880
+  },
+  "status": "failed",
+  "reason": "pat_not_acquired",
+  "error": "PAT not detected: no complete PAT after scanning 10 aligned 188-byte packets (1880 bytes) in the range from 0x00001ca4 to 0x000023fc; 1 packet on PID 0x0000, 1 starting a section; problems (sections or packets): 1 with transport_error_indicator or a scrambled payload. The PAT may be damaged or cut off by the range; a wider --offset/--limit range may include one; program analysis needs a PAT and stops here",
+  "acquisition": {
+    "range_start_offset_bytes": 7332,
+    "range_end_offset_bytes": 9212,
+    "scanned_bytes": 1880,
+    "alignment": {
+      "status": "acquired",
+      "packet_size_bytes": 188,
+      "first_aligned_offset_bytes": 7332,
+      "aligned_packet_count": 10,
+      "layouts": [
+        {
+          "packet_size_bytes": 188,
+          "required_sync_bytes": 3,
+          "required_bytes": 377,
+          "status": "found"
+        },
+        {
+          "packet_size_bytes": 192,
+          "required_sync_bytes": 3,
+          "required_bytes": 389,
+          "status": "not_found"
+        },
+        {
+          "packet_size_bytes": 204,
+          "required_sync_bytes": 5,
+          "required_bytes": 817,
+          "status": "not_found"
+        }
+      ]
+    },
+    "pat": {
+      "status": "not_acquired",
+      "packet_count": 1,
+      "section_start_count": 1,
+      "first_packet_offset_bytes": 7332,
+      "complete_table_count": 0,
+      "crc_error_count": 0,
+      "malformed_section_count": 0,
+      "incomplete_count": 0,
+      "wrong_table_id_count": 0,
+      "unusable_packet_count": 1
+    }
+  },
+  "programs": [],
+  "warnings": [
+    {
+      "offset_bytes": 7332,
+      "message": "PAT: transport_error_indicator set; packet ignored and any partial section discarded"
+    },
+    {
+      "offset_bytes": 9212,
+      "message": "PAT: no valid section found; retrying PAT discovery"
+    }
+  ]
+}
+```
+
+With `--limit 300` (from offset 0) the same kind of document has
+`reason: "insufficient_data_for_sync"`, no `input.packet_size_bytes`, an
+`acquisition` with `scanned_bytes: 300`, `alignment.status:
+"insufficient_data"`, `aligned_packet_count: 0`, every layout
+`insufficient_data`, and no `pat`.
+
+| Field | Meaning |
+| --- | --- |
+| `range_start_offset_bytes`, `range_end_offset_bytes` | The scanned range, `[start, end)`: `--offset` to `--offset` + `--limit`, clipped to the input. |
+| `scanned_bytes` | `range_end_offset_bytes` − `range_start_offset_bytes`. |
+| `alignment.layouts[]` | Every supported layout (188, 192, 204): the consecutive sync bytes one packet apart the detector requires (`required_sync_bytes`), the shortest range that can hold them (`required_bytes`) and whether the scan found it (`found`, `not_found`, or `insufficient_data` when `scanned_bytes` < `required_bytes`). |
+| `alignment.packet_size_bytes`, `alignment.first_aligned_offset_bytes` | The packet size of the alignment found and the first aligned packet; absent unless `status` is `acquired` (the offset also when no packet was aligned at that size). The size is the one the detector prefers in the first read that holds an alignment. When that is not the first read of the range, PAT discovery had kept the 188-byte fallback and could not use the later packets; `error` says so. |
+| `alignment.aligned_packet_count` | Packets of the detected size that start with the sync byte, from the first alignment the detector accepts; after a packet without the sync byte, a new alignment needs five sync bytes, as in [TS synchronization](#ts-synchronization). 0 unless `status` is `acquired`. |
+| `pat.packet_count`, `pat.section_start_count`, `pat.first_packet_offset_bytes` | Aligned packets on PID 0, those with `payload_unit_start_indicator` set, and the first one (absent without any). |
+| `pat.crc_error_count` … `pat.unusable_packet_count` | PAT problems, counted as in [`psi_health`](#pat-and-pmt-health). |
+| `pat.complete_table_count` | Complete PATs the range holds that PAT discovery could not start from (it needs the PAT packet followed by two aligned packets); normally 0. |
+
+The object has a fixed size whatever the input. The counts come from one more
+pass over the range that runs only after a failure. `error` repeats the
+evidence and words the likely explanations as possibilities; match `reason`
+and the `acquisition` fields, not the text.
+
 ## Changes in schema 2.0
 
 Schema 2.0 (summary and `--output analysis`) changes `pcr_jitter`; the
@@ -1938,9 +2062,15 @@ Within 2.0, `transport_errors` and `scrambled_packets` were added to both
 documents, and `compliance.pcr_discontinuities` and the `kind` of each
 `pcr_jitter.estimate.discontinuities` entry to both, and `psi_health`,
 `pid_references`, `pes_headers`, `pts_repetition` and `multiplexing`
-(`packet_gaps`, then `mux_lead`) to both documents (additive changes). Aligning
+(`packet_gaps`, then `mux_lead`) to both documents (additive changes). The
+failure reasons `insufficient_data_for_sync`, `pat_not_observed` and
+`pat_not_acquired` and the `acquisition` object were added within 2.0 as well:
+a range too short to show an alignment, previously `sync_not_acquired`, and an
+aligned range without a usable PAT, previously `analysis_failed`, now use them. Aligning
 the PCR steps also changed some values within 2.0 for streams with these steps
-(none of the bundled samples except the new PCR-discontinuities sample):
+(none of the bundled samples except the new PCR-discontinuities sample), and
+making the PCR-PTS/DTS gap wraparound-aware changed it for streams that cross
+a wraparound (of the bundled samples, only the mux lead sample):
 
 | Stream with | Before | Now |
 | --- | --- | --- |
@@ -1949,6 +2079,8 @@ the PCR steps also changed some values within 2.0 for streams with these steps
 | Two equal consecutive PCRs | A segment boundary for jitter, bitrate and series | A 0 ms interval |
 | `discontinuity_indicator` on a packet of the `PCR_PID` without a PCR | Ignored | The next PCR is `declared` |
 | A PES packet whose PCR bracket spans a declared or undeclared discontinuity | Interpolated across the two time bases | No PCR-PTS/DTS gap |
+| A PES packet whose PTS/DTS has wrapped and whose PCR has not, or the reverse | A PCR-PTS/DTS gap (`compliance.max_pcr_pts_dts_gap`, `series` `pcr_gap_ms`) off by about ±26.5 hours (2^33 at 90 kHz); a PCR that wrapped first could fail the check | The signed difference nearest to zero, the same lead as `mux_lead` |
+| A PES packet whose PCR bracket spans a PCR wraparound | No PCR-PTS/DTS gap (not an observation) | Interpolated across the wrap |
 
 With `--fail-on-error` an undeclared forward jump still exits 2 (now through
 `PCR discontinuities`); an undeclared backward step, which previously passed,

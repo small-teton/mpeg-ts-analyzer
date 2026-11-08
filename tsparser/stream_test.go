@@ -716,7 +716,7 @@ func TestParseTsFile_DumpPesHeaderOption(t *testing.T) {
 }
 
 func TestParseTsFile_MultiplePcrAndPes(t *testing.T) {
-	// Tests the nextPcr update path in BufferPes (pes.nextPcr == 0 && lastPcr > pes.prevPcr)
+	// Tests the PCR bracket of PES packets across several PCRs.
 	f, err := os.CreateTemp("", "multipcr*.ts")
 	if err != nil {
 		t.Fatal(err)

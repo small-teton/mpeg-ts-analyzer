@@ -11,11 +11,13 @@ import (
 // multiplexed: its DTS (its PTS when it has no DTS) minus its time on the
 // program's PCR timeline, the PCR value at the first byte of the packet that
 // starts it, interpolated by byte position between the PCRs before and after
-// it (PES.Arrival, see ClockTime). It is the computation of the PCR-PTS/DTS gap
-// check (tsparser Pes.BracketedTimestampDelay), applied to the same PES
-// packets with the same PCR bracket and interpolation; the gap check keeps
-// only its largest value per program and judges it against 1000 ms, while this
-// report aggregates the lead per elementary PID and pairs audio with video.
+// it (PES.Arrival, see ClockTime), computed by PES.Lead (pes_lead.go). The
+// PCR-PTS/DTS gap check and --dump-timestamp in tsparser take the lead of a
+// PES packet from PES.LeadMs, the same lead without truncating the arrival to
+// whole ticks, with the same PCR bracket and interpolation; the gap check
+// keeps only its largest value per program and judges it against 1000 ms,
+// while this report aggregates the lead per elementary PID and pairs audio
+// with video.
 // It is a report only: it has no limit and no verdict, a negative lead (a PES
 // packet multiplexed after its decode time) is counted as an observation, and
 // nothing here becomes a finding or changes the exit status.
@@ -28,11 +30,9 @@ import (
 //     timeline, because it does not lie between two PCRs of one segment (before
 //     the first or after the last PCR, across a PCR discontinuity, or a program
 //     without PCR). It is counted, and not measured.
-//   - Wraparound: the PTS/DTS (33 bits at 90 kHz) and the PCR (modulo
-//     2^33*300 at 27 MHz) wrap independently, so the lead is taken modulo the
-//     PCR period and read as the signed value nearest to zero: a lead is
-//     correct across either wraparound as long as its magnitude is below half
-//     the period (about 13 hours).
+//   - Wraparound: the PTS/DTS and the PCR wrap independently; PES.Lead reads
+//     the lead modulo the period as the signed value nearest to zero (see
+//     LeadTicks).
 //   - A/V difference: for each program with a video and an audio stream
 //     (classified by stream_type, see AVClass), the most recent lead of each
 //     audio PID is compared with the most recent lead of the program's video
@@ -123,16 +123,6 @@ type avLayout struct {
 	audio    []uint16
 }
 
-// leadTicks returns the lead of a 90 kHz timestamp over a 27 MHz PCR time,
-// both modulo their periods, as the signed value nearest to zero.
-func leadTicks(stamp, arrival uint64) int64 {
-	d := (stamp*300%PCRWrapTicks + PCRWrapTicks - arrival%PCRWrapTicks) % PCRWrapTicks
-	if d >= PCRWrapTicks/2 {
-		return int64(d) - int64(PCRWrapTicks)
-	}
-	return int64(d)
-}
-
 // observeAVLayout records the video and audio PIDs of a program's layout in
 // force.
 func (c *PESCheck) observeAVLayout(program uint16, layout ProgramLayout) {
@@ -156,17 +146,16 @@ func (c *PESCheck) observeLead(key pesKey, st *pesStream, o PES) {
 		return
 	}
 	l := &st.lead
-	if !o.Arrival.Valid {
+	ticks, ok := o.Lead()
+	if !ok {
 		l.unbracketed++
 		l.hasLast = false
 		return
 	}
-	stamp := o.PTS
 	if o.HasDTS {
-		stamp = o.DTS
 		l.dts++
 	}
-	s := leadSample{ticks: leadTicks(stamp, o.Arrival.Ticks), offset: o.Offset, segment: o.Arrival.Segment}
+	s := leadSample{ticks: ticks, offset: o.Offset, segment: o.Arrival.Segment}
 	if l.samples == 0 || s.ticks < l.min.ticks {
 		l.min = s
 	}

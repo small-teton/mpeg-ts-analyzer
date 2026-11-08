@@ -20,10 +20,11 @@ ffmpeg -f lavfi -i "color=c=red:s=320x240:d=2,format=yuv420p" \
 
 ## 204-byte packets
 
-Four samples have a 204-byte twin, `sample_data/sample_204byte_*.ts`: the
+Five samples have a 204-byte twin, `sample_data/sample_204byte_*.ts`: the
 [all-findings sample](#diagnostic-sample-with-every-overview-finding), the
 [sync-loss sample](#diagnostic-sample-with-ts-synchronization-loss), the
-[packet-gap sample](#packet-gap-sample) and the [mux lead sample](#mux-lead-sample). Their generators' `-trailer` flag
+[packet-gap sample](#packet-gap-sample), the [mux lead sample](#mux-lead-sample)
+and the [PCR-to-PTS/DTS gap wraparound sample](#pcr-to-ptsdts-gap-wraparound-sample). Their generators' `-trailer` flag
 follows every 188-byte TS packet with a 16-byte trailer, the layout of 204-byte
 broadcast streams whose trailer is commonly `RS(204,188)` parity. The trailer
 is deterministic filler (bytes 0x80–0xBF, never a sync byte), not real parity;
@@ -253,3 +254,25 @@ go run ./tools/generate_mux_lead -trailer -output sample_data/sample_204byte_mux
 
 The layout, the expected results and the TSDuck cross-check are described in
 [`tools/generate_mux_lead`](https://github.com/small-teton/mpeg-ts-analyzer/tree/master/tools/generate_mux_lead).
+
+## PCR-to-PTS/DTS gap wraparound sample
+
+`sample_data/sample_188byte_pts_gap_wraparound.ts`, its 192-byte M2TS twin
+`sample_data/sample_192byte_pts_gap_wraparound.ts` and its 204-byte twin
+`sample_data/sample_204byte_pts_gap_wraparound.ts` (37, 38 and 40 KiB) cross the
+33-bit wraparounds in both orders: a video DTS (lead 700 ms) and an audio PTS
+(lead 30 ms) that wrap before the PCR, and an AAC PTS (lead −150 ms) that wraps
+after it, with PES packets whose bracketing PCRs span the PCR wrap. Every
+PCR-to-PTS/DTS gap stays its stream's lead, and the gap check is `ok` at
+700 ms; before the gap was made wraparound-aware it failed at about
++95443568 ms.
+
+```bash
+go run ./tools/generate_pts_gap_wraparound -output sample_data/sample_188byte_pts_gap_wraparound.ts
+go run ./tools/generate_pts_gap_wraparound -m2ts -output sample_data/sample_192byte_pts_gap_wraparound.ts
+go run ./tools/generate_pts_gap_wraparound -trailer -output sample_data/sample_204byte_pts_gap_wraparound.ts
+./mpeg-ts-analyzer sample_data/sample_188byte_pts_gap_wraparound.ts --dump-timestamp
+```
+
+The layout, the expected results and the TSDuck cross-check are described in
+[`tools/generate_pts_gap_wraparound`](https://github.com/small-teton/mpeg-ts-analyzer/tree/master/tools/generate_pts_gap_wraparound).

@@ -93,8 +93,14 @@ func parseTsFileJSONTo(filename string, options options.Options, output io.Write
 			reader, finish := withProgress(newBufferedReadSeeker(file), file, options)
 			parseErr = parseTsReaderReport(reader, options, report)
 			finish()
-			if errors.Is(parseErr, errSyncNotAcquired) {
-				reason = syncNotAcquiredReason
+			var acquisitionErr *acquisitionError
+			if errors.As(parseErr, &acquisitionErr) {
+				reason = acquisitionErr.reason
+				report.Acquisition = acquisitionErr.report
+				// The size of the alignment found, which may be found only
+				// after the first read; none without alignment, rather than
+				// the 188-byte fallback.
+				report.Input.PacketSizeBytes = acquisitionErr.report.Alignment.PacketSizeBytes
 			}
 		}
 	}
@@ -124,11 +130,11 @@ func parseTsReader(reader io.ReadSeeker, options options.Options) error {
 }
 
 func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *AnalysisReport) error {
-	const bufSize = 65536
+	const bufSize = scanReadBytes
 	var fileOffset int64
 	patDetected := false
-	// aligned is set once a read contains a packet alignment.
-	aligned := false
+	// scan records which packet alignments the reads contain.
+	var scan alignmentScan
 	buf := make([]byte, bufSize)
 	packetSize := 0
 
@@ -166,15 +172,17 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 			packetSize = detectPacketSize(buf[:size])
 			if report != nil {
 				report.Input.PacketSizeBytes = packetSize
-			} else {
+			} else if hasAlignment(buf[:size], packetSize) || hasTrailerAlignment(buf[:size]) {
 				fmt.Printf("Packet size: %d bytes\n", packetSize)
+			} else {
+				fmt.Printf("Packet size: %d bytes (assumed: no packet alignment in the first read)\n", packetSize)
 			}
 		}
 
 		// Any size counts: detection falls back to 188 bytes when the first
 		// read has no alignment, and a later one may hold M2TS or 204-byte
 		// packets.
-		aligned = aligned || hasAlignment(buf[:size], tsPayloadSize) || hasAlignment(buf[:size], m2tsPacketSize) || hasTrailerAlignment(buf[:size])
+		scan.observe(buf[:size])
 		patOffset, err := findPat(buf[:size], packetSize)
 		if err != nil {
 			continue
@@ -342,12 +350,10 @@ func parseTsReaderReport(reader io.ReadSeeker, options options.Options, report *
 		return nil
 	}
 	// Reaching EOF is fine once a PAT was seen (the tool degrades gracefully on
-	// later errors); but a stream with no PAT at all is not a transport stream.
+	// later errors); without a PAT, program analysis cannot start, and the
+	// failure explains which prerequisite was missing.
 	if !patDetected {
-		if !aligned {
-			return errSyncNotAcquired
-		}
-		return errors.New("no valid transport stream found (PAT not detected)")
+		return acquisitionFailure(reader, options, &scan, packetSize, endOffset)
 	}
 	if report != nil {
 		report.Status = "incomplete"

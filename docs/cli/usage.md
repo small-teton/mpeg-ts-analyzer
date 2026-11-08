@@ -6,7 +6,7 @@ The command-line analyzer parses TS packets and checks whether the stream confor
 
 - **Max PCR interval** should be no greater than 100 ms (ISO/IEC 13818-1, Section 2.7.2); intervals are measured only between comparable PCRs, and a PCR wraparound is a normal interval (see [Timing compliance verdicts](#timing-compliance-verdicts-and---fail-on-error))
 - **PCR discontinuities** must be declared with `discontinuity_indicator` (ISO/IEC 13818-1, Section 2.4.3.5); a PCR that jumps backward, or more than 1000 ms forward, without it is reported (ETSI TR 101 290 PCR_discontinuity_indicator_error)
-- **PCR-PTS/DTS max gap** (decode delay) should be no greater than 1000 ms; DTS is used when both timestamps are present, otherwise PTS is used
+- **PCR-PTS/DTS max gap** (decode delay) should be no greater than 1000 ms; DTS is used when both timestamps are present, otherwise PTS is used. The gap is read modulo the 2^33 period of the PTS/DTS and the PCR as the signed shortest difference, so it stays correct whichever of the two wraps around first (see [PCR steps](#pcr-steps))
 - **PTS/DTS anomalies** — timestamps going backward, 33-bit wraparound, large forward jumps (splicing/ad insertion), or DTS later than PTS — are detected and reported (always on; silent when the stream is healthy)
 - **PTS repetition**: on each video and audio stream, PES packets carrying a PTS should be no more than 700 ms apart (ISO/IEC 13818-1, Section 2.7.4; ETSI TR 101 290 PTS_error), measured on the PCR timeline (see [PES headers and PTS repetition](#pes-headers-and-pts-repetition-always-on))
 
@@ -215,8 +215,16 @@ PCR-based result uses the same classification:
 - A new timing segment also restarts the PCR jitter estimate, freezes the
   bitrate clock and the elapsed time of `--output analysis` series, and ends
   the PCR bracket of the PES packets in progress, so no PCR-to-PTS/DTS gap is
-  measured across it. A `wraparound` keeps all of them running, but a PES
-  packet whose PCRs straddle the wrap gets no gap.
+  measured across it. A `wraparound` keeps all of them running: a PES packet
+  whose PCRs straddle the wrap gets its gap interpolated across it.
+- The PTS/DTS and the PCR wrap around after the same 2^33 / 90 kHz (about
+  26.5 hours) but at different points of the stream, since one leads the
+  other. The PCR-to-PTS/DTS gap is therefore read modulo that period as the
+  signed difference nearest to zero: a PTS/DTS that has wrapped before the PCR
+  (a positive lead) and a PCR that has wrapped before the PTS/DTS (a small or
+  negative lead) give the same gap as without a wrap. The gap check,
+  `--dump-timestamp` and the [mux lead](#mux-lead-always-on-report-only) use
+  one computation, so they give the same lead for the same PES packet.
 
 For example, the intentionally invalid
 `sample_data/sample_188byte_pcr_discontinuities.ts` passes through every kind:
@@ -264,6 +272,70 @@ Max PCR interval: 80.000000ms [OK, limit: <= 100.000000ms]
 PCR discontinuities: 0 undeclared in 60 PCRs [OK]
 PCR-PTS/DTS max gap: 726.666667ms [OK, limit: <= 1000.000000ms]
 ```
+
+## When the analysis cannot start
+
+Program-level analysis needs two things from the selected range (the whole
+input, or `--offset`/`--limit`): a packet alignment, and then a complete PAT,
+which gives the programs, their PMT PIDs and, through the PMTs, the PCR PIDs
+and elementary streams. Without them the analysis stops with exit status 1. It
+never guesses a program layout and reports no PAT/PMT-dependent result, so a
+failure is never shown as a partial or healthy analysis. The error names the
+missing prerequisite and the evidence gathered while scanning the range:
+
+| Error starts with | JSON `reason` | Meaning |
+| --- | --- | --- |
+| `no TS synchronization found: the range ... holds only N bytes` | `insufficient_data_for_sync` | The range is too short to establish at least one supported packet alignment: 188-byte packets need 377 bytes (three sync bytes one packet apart), 192-byte M2TS 389 bytes, 204-byte packets 817 bytes (five sync bytes). The layouts that could be checked and were not found are named. |
+| `no TS synchronization found: no 188-byte, 192-byte or 204-byte packet alignment` | `sync_not_acquired` | The range was long enough for every layout and contains none. The data may not be MPEG-2 TS packets of a supported size, or may be damaged; no file type is guessed. |
+| `PAT not detected: ... no packet is on PID 0x0000` | `pat_not_observed` | Packets are aligned, but none is on PID 0. |
+| `PAT not detected: ... N packets on PID 0x0000` | `pat_not_acquired` | Packets on PID 0 were seen, but no usable PAT could be assembled from them. |
+
+For example, a range of twelve packets of the bundled sample that contains no
+PAT:
+
+```
+$ ./mpeg-ts-analyzer --offset 1128 --limit 2256 sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
+Input file:  sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
+Packet size: 188 bytes
+...
+PAT not detected: no complete PAT after scanning 12 aligned 188-byte packets (2256 bytes) in the range from 0x00000468 to 0x00000d38; no packet is on PID 0x0000. The range may be a partial capture or a PSI/PES fragment, or may end before the next PAT repetition; a wider --offset/--limit range may include one; program analysis needs a PAT and stops here
+```
+
+and a range whose only PAT packet has `transport_error_indicator` set:
+
+```
+$ ./mpeg-ts-analyzer --offset 7332 --limit 1880 sample_data/sample_188byte_transport_errors.ts
+...
+PAT not detected: no complete PAT after scanning 10 aligned 188-byte packets (1880 bytes) in the range from 0x00001ca4 to 0x000023fc; 1 packet on PID 0x0000, 1 starting a section; problems (sections or packets): 1 with transport_error_indicator or a scrambled payload. The PAT may be damaged or cut off by the range; a wider --offset/--limit range may include one; program analysis needs a PAT and stops here
+```
+
+The ranges are absolute offsets; the end is exclusive. Counted facts (aligned
+packets, packets on PID 0 and those starting a section, and the PAT problems,
+counted as in [PAT and PMT health](#pat-and-pmt-health-always-on): a packet
+with a transport error or scrambled payload, an invalid CRC_32, a malformed
+section, a `table_id` other than 0x00, or an incomplete section) are stated as
+such; why the PAT is missing is worded as a possibility. "Aligned packets"
+counts the packets of the detected size that start with the sync byte, from
+the first alignment the detector accepts; after a packet without it, a new
+alignment needs five sync bytes, as in
+[TS synchronization](#ts-synchronization-always-on). With `--offset` or
+`--limit`, the error suggests a wider range, since the selected one may omit
+the PSI. The extra pass that gathers this evidence runs only after a failure,
+reads the range once more and keeps a fixed amount of state.
+
+When the first read of the input has no packet alignment, the `Packet size`
+line says that 188 bytes was only assumed:
+`Packet size: 188 bytes (assumed: no packet alignment in the first read)`.
+PAT discovery keeps that size. If a later read holds packets of another size,
+the evidence is gathered at that size, and the error ends by saying that PAT
+discovery assumed 188-byte packets and could not use them.
+
+A short fragment, or a range without a PAT, can still be inspected packet by
+packet: `--format json --output packets` (with `--packet-size 188`, `192` or
+`204` when the size cannot be detected) lists the packets without PAT/PMT
+context; see [Packet pages](../reference/json-output.md#packet-pages---output-packets).
+That inspection does not supply the program layout, so it is not a program
+analysis.
 
 ## Multi-program transport streams
 
@@ -411,7 +483,9 @@ Other cases are reported separately:
 - **No alignment at all.** When the input has no three consecutive sync bytes
   one packet apart, there is no transport stream to analyze. The analysis
   fails with `no TS synchronization found` (JSON `reason:
-  "sync_not_acquired"`), distinct from aligned packets without a PAT.
+  "sync_not_acquired"`, or `insufficient_data_for_sync` when the range is too
+  short to show an alignment), distinct from aligned packets without a PAT;
+  see [When the analysis cannot start](#when-the-analysis-cannot-start).
 - **Before the analysis starts.** The check covers the analyzed packets, from
   the end of the first complete PAT and PMT on. A packet without a sync byte
   while those tables are collected restarts the PAT search, with a warning, as
@@ -500,7 +574,8 @@ packet is itself invalid (ISO/IEC 13818-1 requires
 `transport_scrambling_control` `00` there).
 
 A PAT or PMT that arrives only in affected packets is never acquired: the run
-ends with `PAT not detected` or as incomplete, never as a complete result built
+ends with `PAT not detected` (JSON `reason: "pat_not_acquired"`, with the
+unusable packets counted in `acquisition.pat`) or as incomplete, never as a complete result built
 from unusable tables. Neither check takes part in `--fail-on-error`.
 
 Since a transport error may be anywhere in the packet, nothing after the
@@ -938,8 +1013,12 @@ Mux Lead (report only: DTS, or PTS without DTS, minus PCR-interpolated arrival)
   not measured. The PTS/DTS and PCR wraparounds are handled: the lead is the
   signed difference nearest to zero modulo the PCR period.
 - The PCR-PTS/DTS gap verdict above is the largest of the same leads in the
-  program, judged against 1000 ms; the mux lead only reports how the leads are
-  distributed per PID. One PES packet is never two findings.
+  program, judged against 1000 ms, and `--dump-timestamp` prints the same lead
+  of each PES packet; the mux lead only reports how the leads are distributed
+  per PID. One PES packet is never two findings. The gap check measures a PES
+  packet when it ends, so a PES packet that ends before the next PCR arrives
+  (a short audio PES packet, for example) is a mux lead sample but not a gap
+  observation.
 - Video is stream_type 0x01, 0x02, 0x1B or 0x24; audio is 0x03, 0x04, 0x0F,
   0x11, 0x81 or 0x87. Each audio stream is compared with the program's
   lowest-numbered video PID, whenever either gets a new lead and both leads

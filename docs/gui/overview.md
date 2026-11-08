@@ -24,6 +24,15 @@ Packages for macOS, Linux and Windows are described in
 - **Packets** pages through the packets of the range and decodes the selected
   one, with the PES or section it belongs to.
 
+When the selected range cannot be analyzed, for example because it is too
+short to find the packet alignment or contains no complete PAT, the GUI shows
+an **Analysis failed** dialog with what to do (select a longer range, or one
+that includes a PAT) and the CLI's explanation: the range, how many packets
+were aligned and what was found on PID 0. The analysis needs the PAT for the
+program layout, so such a range gets no Overview, health checks or findings;
+the previous result stays shown. See
+[When the analysis cannot start](../cli/usage.md#when-the-analysis-cannot-start).
+
 ## Read the Overview verdicts
 
 Overview shows a **Transport health** table for the selected program. Each

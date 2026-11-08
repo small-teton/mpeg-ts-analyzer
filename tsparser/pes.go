@@ -29,15 +29,8 @@ type Pes struct {
 	buf []byte
 	// received counts every payload byte appended to this PES packet,
 	// including the bytes beyond maxPesHeaderSize that are not retained.
-	received   int64
-	pos        int64
-	prevPcr    uint64
-	nextPcr    uint64
-	prevPcrPos int64
-	nextPcrPos int64
-	// PCR values wrap to zero, so presence is tracked separately.
-	hasPrevPcr bool
-	hasNextPcr bool
+	received int64
+	pos      int64
 	// prevAnchor and nextAnchor are the PCRs before and after the start of
 	// the PES packet, which place it on the program's PCR timeline.
 	prevAnchor pcrAnchor
@@ -92,20 +85,15 @@ func NewPes() *Pes {
 	return pes
 }
 
-// Initialize Set Params for PES
-func (p *Pes) Initialize(pid uint16, pos int64, prevPcr uint64, prevPcrPos int64, hasPrevPcr bool) {
+// initialize starts a PES packet of pid at the packet at offset pos, after
+// the PCR prev (invalid when no PCR is known).
+func (p *Pes) initialize(pid uint16, pos int64, prev pcrAnchor) {
 	p.pid = pid
 	p.continuityCounter = 0
 	p.buf = p.buf[0:0]
 	p.received = 0
 	p.pos = pos
-	p.prevPcr = prevPcr
-	p.nextPcr = 0
-	p.prevPcrPos = prevPcrPos
-	p.nextPcrPos = 0
-	p.hasPrevPcr = hasPrevPcr
-	p.hasNextPcr = false
-	p.prevAnchor = pcrAnchor{}
+	p.prevAnchor = prev
 	p.nextAnchor = pcrAnchor{}
 
 	p.packetStartCodePrefix = 0
@@ -403,68 +391,68 @@ func (p *Pes) DumpTimestamp() float64 {
 	return 0
 }
 
-// TimestampDelay returns the PCR-to-PTS/DTS delay in milliseconds when the PES
-// has a timestamp and a preceding PCR reference. DTS is used when both are
-// present because it represents the decode timeline.
-func (p *Pes) TimestampDelay() (float64, bool) {
-	var stamp uint64
-	switch p.ptsDtsFlags {
-	case 2:
-		stamp = p.pts
-	case 3:
-		stamp = p.dts
-	default:
-		return 0, false
+// PCR-to-PTS/DTS delay of a PES packet: its lead, analysis.PES.LeadMs, which
+// the mux lead report computes for the same PES packet (analysis.PES.Lead,
+// the same lead from the arrival truncated to whole ticks). The PES packet is
+// placed on the program's PCR timeline by arrivalAt between prevAnchor and
+// nextAnchor, so a bracket across a PCR wraparound is interpolated, a bracket
+// across a PCR discontinuity or a PCR_PID change is not measured, and the
+// lead is read modulo the 2^33 period of the PTS/DTS and the PCR as the
+// signed shortest difference.
+
+// timing returns the PES packet's timestamps and its time on the PCR
+// timeline as a PES observation.
+func (p *Pes) timing(arrival analysis.ClockTime) analysis.PES {
+	return analysis.PES{
+		HasPTS: p.ptsDtsFlags >= 2, HasDTS: p.ptsDtsFlags == 3, PTS: p.pts, DTS: p.dts,
+		Arrival: arrival,
 	}
-	refPcr, ok := p.referencePcrMs()
-	if !ok {
-		return 0, false
-	}
-	return float64(stamp)/90 - refPcr, true
 }
 
-// BracketedTimestampDelay returns a delay only when PCR observations on both
-// sides of the PES position are available. Compliance evaluation uses this
-// stricter form because treating the previous PCR value as if it occurred at a
-// later PES position overstates the delay near the end of a stream.
-func (p *Pes) BracketedTimestampDelay() (float64, bool) {
-	if !p.hasPrevPcr || !p.hasNextPcr || p.nextPcr <= p.prevPcr || p.nextPcrPos <= p.prevPcrPos {
+// hasPcrReference reports whether a PCR before the PES packet is known and
+// the first PCR after its start, if one has arrived, continues the same
+// timing segment.
+func (p *Pes) hasPcrReference() bool {
+	return p.prevAnchor.valid && (!p.nextAnchor.valid || p.nextAnchor.segment == p.prevAnchor.segment)
+}
+
+// TimestampDelay returns the PCR-to-PTS/DTS delay in milliseconds when the PES
+// has a timestamp and a preceding PCR reference. DTS is used when both are
+// present because it represents the decode timeline. It is the
+// BracketedTimestampDelay when the PCR after the start of the PES packet has
+// arrived; before that (e.g. the final PES before EOF) the delay is taken
+// against the previous PCR alone, since interpolating towards an unknown PCR
+// would give a wildly wrong value.
+func (p *Pes) TimestampDelay() (float64, bool) {
+	if delay, ok := p.BracketedTimestampDelay(); ok {
+		return delay, true
+	}
+	if p.nextAnchor.valid || !p.hasPcrReference() {
 		return 0, false
 	}
-	return p.TimestampDelay()
+	return p.timing(analysis.ClockTime{Valid: true, Ticks: p.prevAnchor.pcr, Ms: pcrToMs(float64(p.prevAnchor.pcr))}).LeadMs()
+}
+
+// BracketedTimestampDelay returns a delay only when PCR observations of one
+// timing segment on both sides of the PES position are available. Compliance
+// evaluation uses this stricter form because treating the previous PCR value
+// as if it occurred at a later PES position overstates the delay near the end
+// of a stream.
+func (p *Pes) BracketedTimestampDelay() (float64, bool) {
+	return p.timing(arrivalAt(p.prevAnchor, p.nextAnchor, p.pos)).LeadMs()
 }
 
 // dumpTimestamp prints one PTS/DTS line and returns the PCR-to-timestamp delay
 // (the end-to-end buffering delay) in milliseconds.
 func (p *Pes) dumpTimestamp(label string, stamp uint64) float64 {
 	stampMs := float64(stamp) / 90
-	refPcr, ok := p.referencePcrMs()
+	pcrDelay, ok := p.TimestampDelay()
 	if !ok {
 		fmt.Printf("0x%08x %s: 0x%08x[%012fms] (pid:0x%02x)\n", p.pos, label, stamp, stampMs, p.pid)
 		return 0
 	}
-	pcrDelay := stampMs - refPcr
 	fmt.Printf("0x%08x %s: 0x%08x[%012fms] (pid:0x%02x) (delay:%fms)\n", p.pos, label, stamp, stampMs, p.pid, pcrDelay)
 	return pcrDelay
-}
-
-// referencePcrMs returns the reference PCR (in milliseconds) at this PES's byte
-// position. When a following PCR was captured during the PES, the value is
-// interpolated between the surrounding PCRs by byte position for a tighter
-// estimate. When no following PCR exists (e.g. the final PES before EOF), it
-// falls back to the most recent PCR — interpolating against an unset nextPcr
-// would otherwise produce a wildly wrong delay. The bool is false when there is
-// no preceding PCR to reference at all.
-func (p *Pes) referencePcrMs() (float64, bool) {
-	if !p.hasPrevPcr {
-		return 0, false
-	}
-	prevPcr := pcrToMs(float64(p.prevPcr))
-	if p.hasNextPcr && p.nextPcr > p.prevPcr && p.nextPcrPos > p.prevPcrPos {
-		nextPcr := pcrToMs(float64(p.nextPcr))
-		return prevPcr + (nextPcr-prevPcr)*(float64(p.pos-p.prevPcrPos)/float64(p.nextPcrPos-p.prevPcrPos)), true
-	}
-	return prevPcr, true
 }
 
 // pcrToMs converts a 27 MHz PCR value or interval to milliseconds.

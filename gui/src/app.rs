@@ -304,12 +304,7 @@ impl App {
         match running.job.poll() {
             JobUpdate::Running(progress) => running.progress = progress.or(running.progress.take()),
             JobUpdate::Finished(Ok(report)) if report.status == "failed" => {
-                self.error = Some(
-                    report
-                        .error
-                        .or(report.reason)
-                        .unwrap_or_else(|| "The analysis failed.".to_owned()),
-                );
+                self.error = Some(crate::report::failure_message(&report));
                 self.running = None;
             }
             JobUpdate::Finished(Ok(report)) => {

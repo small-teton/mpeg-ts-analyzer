@@ -35,6 +35,10 @@
       "type": "string",
       "description": "Human-readable error detail; not a stable matching interface."
     },
+    "acquisition": {
+      "$ref": "json-schema-v2.json#/$defs/acquisition",
+      "description": "Evidence of a failed initial acquisition, as in the summary report."
+    },
     "analysis_start_offset_bytes": {
       "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger",
       "description": "Offset where the scan started: the earliest program's analysis start. Absent when no program was analyzed."
@@ -300,7 +304,7 @@
         },
         "pcr_gap_ms": {
           "type": "number",
-          "description": "PCR to DTS (or PTS) gap, when PCRs bracket the PES."
+          "description": "PCR to DTS (or PTS) gap, when two PCRs of one timing segment bracket the PES; read modulo 2^33 as the signed difference nearest to zero."
         }
       }
     },

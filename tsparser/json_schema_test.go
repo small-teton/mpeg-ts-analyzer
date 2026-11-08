@@ -472,13 +472,41 @@ func summarySchemaCases() []schemaCase {
 			name: "failed without a transport stream", schema: summarySchemaFile,
 			path:    func(t *testing.T) string { return writeFixture(t, "garbage.ts", bytes.Repeat([]byte{0xFF}, 4096)) },
 			wantErr: true,
-			want:    map[string]any{"/status": "failed", "/reason": "sync_not_acquired", "/error": present{}, "/sync": absent{}},
+			want: map[string]any{
+				"/status": "failed", "/reason": "sync_not_acquired", "/error": present{}, "/sync": absent{}, "/input/packet_size_bytes": absent{},
+				"/acquisition/alignment/status": "not_acquired", "/acquisition/alignment/layouts/2/status": "not_found", "/acquisition/pat": absent{},
+			},
+		},
+		{
+			name: "failed on a range too short for an alignment", schema: summarySchemaFile,
+			path:    func(t *testing.T) string { return writeFixture(t, "short.ts", nullPackets(2)) },
+			wantErr: true,
+			want: map[string]any{
+				"/status": "failed", "/reason": "insufficient_data_for_sync", "/acquisition/scanned_bytes": 376,
+				"/acquisition/alignment/status": "insufficient_data", "/acquisition/alignment/layouts/0/required_bytes": 377,
+			},
 		},
 		{
 			name: "failed with packets but without a PAT", schema: summarySchemaFile,
 			path:    func(t *testing.T) string { return writeFixture(t, "no-pat.ts", syncTestStream(nil, 20)[4*188:]) },
 			wantErr: true,
-			want:    map[string]any{"/status": "failed", "/reason": "analysis_failed", "/error": present{}},
+			want: map[string]any{
+				"/status": "failed", "/reason": "pat_not_observed", "/error": present{}, "/acquisition/pat/status": "not_observed",
+				"/acquisition/alignment/packet_size_bytes": 188, "/acquisition/pat/first_packet_offset_bytes": absent{},
+			},
+		},
+		{
+			name: "failed with an unusable PAT in M2TS", schema: summarySchemaFile,
+			path: func(t *testing.T) string {
+				tei := acquisitionPatPacket()
+				tei[1] |= 0x80
+				return writeFixture(t, "tei-pat.ts", asPacketSize(append(tei, nullPackets(5)...), m2tsPacketSize))
+			},
+			wantErr: true,
+			want: map[string]any{
+				"/status": "failed", "/reason": "pat_not_acquired", "/acquisition/pat/status": "not_acquired",
+				"/acquisition/pat/unusable_packet_count": 1, "/acquisition/alignment/aligned_packet_count": 6, "/input/packet_size_bytes": 192,
+			},
 		},
 		{
 			name: "complete with every finding in 204-byte packets", schema: summarySchemaFile, path: fixedPath(allFindingsFixtures[2].path),
@@ -655,6 +683,17 @@ func analysisSchemaCases() []schemaCase {
 				"/status": "incomplete", "/reason": "no_program_analyzed", "/analysis_start_offset_bytes": absent{},
 				"/continuity_counter": absent{}, "/transport_errors": absent{}, "/scrambled_packets": absent{}, "/pid_references": absent{},
 				"/psi_health": absent{}, "/pes_headers": absent{}, "/pts_repetition": absent{}, "/multiplexing": absent{},
+			},
+		},
+		{
+			name: "failed without a PAT in 204-byte packets", schema: analysisSchemaFile, opts: analysis,
+			path: func(t *testing.T) string {
+				return writeFixture(t, "no-pat.ts", asPacketSize(nullPackets(8), trailerPacketSize))
+			},
+			wantErr: true,
+			want: map[string]any{
+				"/status": "failed", "/reason": "pat_not_observed", "/acquisition/alignment/packet_size_bytes": 204,
+				"/acquisition/alignment/aligned_packet_count": 8, "/acquisition/range_end_offset_bytes": 8 * 204, "/sync": absent{},
 			},
 		},
 		{
