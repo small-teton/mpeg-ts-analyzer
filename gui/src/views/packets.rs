@@ -45,7 +45,7 @@ pub(super) fn paint_cells(
     strong: bool,
 ) {
     let font = if strong {
-        egui::FontId::proportional(12.5)
+        crate::theme::semibold_font(egui::TextStyle::Body.resolve(ui.style()).size)
     } else {
         egui::TextStyle::Monospace.resolve(ui.style())
     };
@@ -75,7 +75,7 @@ pub(super) fn header_row(ui: &mut egui::Ui, width: f32, columns: &[(&str, f32, &
         rect,
         TEXT_INSET,
         &cells,
-        ui.visuals().strong_text_color(),
+        crate::theme::table_header_color(ui.visuals()),
         true,
     );
     let mut x = rect.left() + TEXT_INSET;
@@ -170,7 +170,7 @@ pub(super) fn field_tree(
     fields: &[Field],
     highlight: &mut Option<FieldSelection>,
 ) {
-    egui::CollapsingHeader::new(egui::RichText::new(title).color(color))
+    egui::CollapsingHeader::new(crate::theme::emphasis(title).color(color))
         .default_open(true)
         .show(ui, |ui| key_values(ui, title, fields, highlight));
 }
@@ -255,7 +255,7 @@ pub(super) fn span_table(
         .spacing([16.0, 2.0])
         .show(ui, |ui| {
             for title in titles {
-                ui.strong(*title);
+                ui.label(crate::theme::table_header_text(title, ui.visuals()));
             }
             ui.end_row();
             for (cells, selection) in rows {
@@ -344,7 +344,7 @@ pub(super) fn bit_summary(ranges: &[std::ops::Range<usize>]) -> String {
 /// from bit 7 (most significant) to bit 0, with only the field's bits marked.
 pub(super) fn bit_inspector(ui: &mut egui::Ui, raw: &[u8], selection: Option<&FieldSelection>) {
     ui.horizontal(|ui| {
-        ui.strong("Bit inspector");
+        ui.label(crate::theme::emphasis("Bit inspector"));
         ui.weak("file order ↓ · each byte MSB → LSB");
     });
     let Some(selection) = selection else {
@@ -353,7 +353,7 @@ pub(super) fn bit_inspector(ui: &mut egui::Ui, raw: &[u8], selection: Option<&Fi
     };
     let ranges = selection.bit_ranges();
     ui.horizontal_wrapped(|ui| {
-        ui.label(egui::RichText::new(&selection.key).strong());
+        ui.label(crate::theme::emphasis(&selection.key));
         if !selection.value.is_empty() {
             ui.monospace(&selection.value);
         }
@@ -412,12 +412,12 @@ pub(super) enum ByteLayer {
 
 pub(super) fn layer_color(layer: ByteLayer) -> egui::Color32 {
     match layer {
-        ByteLayer::TsHeader => egui::Color32::from_rgb(0x7c, 0xc4, 0xff),
+        ByteLayer::TsHeader => theme::LAYER_TS_HEADER,
         ByteLayer::AdaptationField => theme::PCR_COLOR,
-        ByteLayer::PesHeader => egui::Color32::from_rgb(0x8f, 0xe3, 0x9f),
+        ByteLayer::PesHeader => theme::LAYER_PES_HEADER,
         ByteLayer::Section => theme::PSI_COLOR,
-        ByteLayer::Payload => egui::Color32::GRAY,
-        ByteLayer::Trailer => egui::Color32::from_rgb(0xe0, 0x8a, 0xb4),
+        ByteLayer::Payload => theme::LAYER_PAYLOAD,
+        ByteLayer::Trailer => theme::LAYER_TRAILER,
     }
 }
 

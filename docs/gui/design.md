@@ -172,8 +172,9 @@ separate Analyze step per screen.
 ## Screens
 
 Navigation is a left rail of tiles (large icon over a short label): Overview,
-Timeline, Bitrate, Packets. Update, Settings and About are icons at the bottom
-of the rail, in that order (see [Updates](#updates) for the update button).
+Timeline, Bitrate, Packets. Updates, Settings and About are tiles of the same
+size and style grouped at the bottom of the rail, in that order (see
+[Updates](#updates) for the update button).
 There is no menu bar.
 
 ### Program selection
@@ -409,18 +410,34 @@ the whole range is never held in memory.
     there are. The selection is the field, not its bytes, so fields that share a
     byte (`version_number`, `current_next_indicator`) are selected one at a
     time.
-  - **Detailed inspection** (#190): a button under the packet heading opens a
-    full-width page for that packet inside Packets, in place of the list and
-    the pane, not a dialog. The pane above stays the fast summary with its
-    compact preview.
-    - Header: Back to Packets, the breadcrumb `Packets › Packet #n of N ›
-      Detailed inspection`, Previous / Next (every packet of the analyzed
-      range in file order, whatever the PID filter shows; disabled at the
-      ends of the range), and the offset, PID, what the PID carries, the
-      packet size and how many of its bits are classified. A legend of the
-      role colors follows.
+  - **Detailed inspection** (#190): a text-only button under the packet
+    heading, and a second one at the very end of the pane after the Bit
+    inspector (separated by a rule), opens a full-width page for that packet
+    inside Packets, in place of the list and the pane, not a dialog. Both use
+    the regular button padding and height (`theme::BUTTON_PADDING`,
+    `theme::BUTTON_HEIGHT`) rather than the pane's compact height, with space
+    above and below. The pane above stays the fast summary with its compact
+    preview.
+    - Header: Back to Packets, the breadcrumb `Packets › Packet #n of N
+      [kind] › Detailed inspection`, and Previous / Next (every packet of the
+      analyzed range in file order, whatever the PID filter shows; disabled at
+      the ends of the range; ← / → do the same unless a text field has the
+      keyboard or a modifier is held; ↑ / ↓ likewise move the selection
+      through the field list's lines as drawn, skipping collapsed ones, and
+      scroll the list and grid to it). The kind badge (`presentation::packet::packet_kind`: `PAT`,
+      `PMT`, a PSI/SI table name from table_id, `PES · <stream>` with the
+      stream type the PMT announces or else the stream_id class,
+      `PES payload · …` and `… · continued` for later packets of a unit,
+      `PCR only`, `Adaptation field only`, `Null`) is a badge like the status
+      badges (14 pt white semibold text) on a fill by kind, the same
+      in light and dark and at least 5:1 against white (`theme::KIND_*`: PSI
+      `#7B3FB0`, video `#1F63B5`, audio `#2E7D32`, PCR `#9A5300`, other PES
+      `#3D6A93`, no payload of its own `#59636E`). Below: the offset, PID,
+      what the PID carries, the packet size and how many of its bits are
+      classified, and a legend of the role colors.
     - Left (resizable): "Fields", one section per layer in file order. Each
-      line is a part of the layer's `bit_layout`: label, value, packet bits,
+      line is a part of the layer's `bit_layout`: label, value (in the
+      monospace data face, as everywhere else), packet bits,
       and ✓ or "✗ expected …" where the specification fixes the bits. The
       parts of one decoded field (PTS/DTS prefix, value runs and marker bits;
       PCR/OPCR base, reserved bits and extension) are beneath that field's
@@ -436,7 +453,8 @@ the whole range is never held in memory.
       role, not per field: value/flag in the selection blue, reserved gray,
       marker/prefix purple, stuffing yellow, payload green, not decoded
       striped and outlined, and a fixed-bit mismatch red whatever its role.
-      Part boundaries are drawn inside a byte, and the selection is outlined.
+      No lines are drawn between parts (inside a byte only, they read as
+      byte structure); the selection is outlined instead.
       Hovering a bit describes its part; clicking it selects the part.
     - Back restores the list as it was left: page, PID filter, selected row
       (the packet the page was opened for, even after Previous/Next) and
@@ -480,7 +498,7 @@ range in a saved file are clamped when they are used.
 
 ## Look and feel
 
-- Status badges: white Inter SemiBold 14 px text on a solid fill, 10 × 3
+- Status badges: white Inter SemiBold 14 pt text on a solid fill, 10 × 3
   points of padding, at least 48 points wide, 4-point radius. Fills by
   class, the same in light and dark: success (`ok`, `complete`) `#2E7D32`,
   failure (`ng`, `errors`, `failed`, `lost`) `#C62828`, warning (`warning`,
@@ -488,9 +506,9 @@ range in a saved file are clamped when they are used.
   `#59636E`; each is at least 4.5:1 against white.
 - Tables (Transport health, Verdicts) use Material 3-style tonal surfaces
   with values fixed per appearance (light / dark): header row `#E5E7EA` /
-  `#292B2E` with 15 px semibold `#3C4043` / `#E0E0E0` text and a 1-point
+  `#292B2E` with semibold `#3C4043` / `#E0E0E0` text (the table-header role) and a 1-point
   `#AEB4BC` / `#565A61` rule below it; category rows `#F1F3F5` / `#222427`
-  with 12 px semibold capitals in `#0969DA` / `#58A6FF`; row dividers
+  with 12.5 pt semibold capitals in `#0969DA` / `#58A6FF`; row dividers
   `#D5D8DC` / `#383B40`; outer border `#B8BDC4` / `#4B4F56`. They follow the
   OS appearance like the rest of the GUI.
 - Fonts: Inter (UI; SemiBold for headings), JetBrains Mono (data), Phosphor
@@ -506,9 +524,53 @@ range in a saved file are clamped when they are used.
 - Phosphor is registered as its own font family `icons` and always selected
   explicitly (`icons::text`, `icons::font`). As a fallback font its Private Use
   Area codepoints collide with glyphs in other fonts.
-- Text and controls are larger than egui's defaults (body 15, heading 22,
-  monospace 13.5, control height 26). Data-dense areas (packet list, detail,
-  hex dump) use a compact style.
+- Text colors: weak (secondary) text is a fixed gray, at least 4.5:1 on the
+  panel: `#969696` on the dark panel (5.8:1), `#6E6E6E` on the light one
+  (4.8:1), instead of egui's 60 % of the text color (under 3:1). So that it
+  stays secondary, dark-theme body text is raised from egui's `#8C8C8C` to
+  `#BEBEBE` (9.3:1); light body text keeps egui's `#505050`
+  (`theme::DARK_TEXT`, `DARK_WEAK_TEXT`, `LIGHT_WEAK_TEXT`).
+- Packet field values (Packets pane, Detailed inspection) are decimal first
+  with the hexadecimal in parentheses, padded to the field's width
+  (`4097 (0x1001)`, `23 (0x017)`), formatted by the GUI
+  (`presentation::packet::field_value`); the CLI's JSON keeps its notation.
+  Fields of 4 bits or fewer stay decimal, bit patterns stay binary, and
+  CRC_32, sync_byte, packet_start_code_prefix and the PCR/OPCR (a 27 MHz
+  count, not a bit pattern) stay as the CLI writes them; fixed-bit parts
+  (reserved, marker, prefix, stuffing) keep the notation of their expected
+  value.
+- Text and controls are larger than egui's defaults (control height 26).
+  Data-dense areas (packet list, detail, hex dump) use a compact style. Every
+  text uses one of these roles, defined once in `gui/src/theme.rs`; views do
+  not set sizes, weights or text colors of their own. Sizes are in points;
+  "semibold" is Inter SemiBold, "regular" Inter, "mono" JetBrains Mono.
+
+  | Role | Size | Weight / family | Color (light / dark) | Used for |
+  |---|---|---|---|---|
+  | Page title | 26 | semibold | default text | a check's detail page (`theme::page_title`) |
+  | Section heading | 22 | semibold | default text | Overview sections, the Packets pane's "Packet #n", dialogs, empty states (`ui.heading`) |
+  | Subheading | 18 | semibold | default text | headings inside a check's detail page (`theme::subheading`) |
+  | Body | 15 (compact 13) | regular | `#505050` / `#BEBEBE` | text, buttons, check names |
+  | Emphasis | body size | semibold | strong text | panel and group titles (Fields, Bit inspector, Scan range, Bitrate per PID …), selected field names, the breadcrumb's "Packet #n of N", the Start button (`theme::emphasis`) |
+  | Layer title | body size | semibold | the layer's color | TS header, PES header, PMT … in the Packets pane and on the Detailed inspection page |
+  | Table header | body size (packet list 13) | semibold | `#3C4043` / `#E0E0E0` | every table's and grid's column headers (`theme::table_header_text`); column widths are measured from the same text |
+  | Category label | 12.5 | semibold capitals | `#0969DA` / `#58A6FF` | category rows of the Transport health table |
+  | Weak (secondary) | body size | regular | `#6E6E6E` / `#969696` | hints, context lines, keys, legends, the status bar (`ui.weak`) |
+  | Monospace data | 13.5 (compact 12.5) | mono | default text | values on every screen (including the Detailed inspection field lines), PIDs, offsets, hex, bits |
+  | Small | 12.5 | regular | by context | rail labels, the range bar's label (`theme::caption_font`, egui's Small style) |
+  | Badge | 14 | semibold | `theme::ON_FILL_TEXT` (white) | status and packet-kind badges |
+  | Text on fill | by role | by role | `theme::ON_FILL_TEXT` (white) | badges and the Start button; every fill keeps at least 4.5:1 against it |
+
+  Intentional exceptions: the breadcrumb's "Packet #n of N" stays body-sized
+  (emphasis, not a heading) so the header stays one compact row; the
+  collapsible group headers on the Overview ("Findings (n)", "Unavailable
+  analysis (n)", "Program x") are plain body text; icon glyphs have their own
+  sizes (rail 28, empty states 40, the Help button 16); data colors are not
+  text roles: packet layers and range-bar loads are constants in `theme.rs`
+  (`LAYER_*`, `LOAD_*`), bit roles and plot series stay beside their views; selected bytes
+  and bits use egui's selection colors; the Timeline's ring around the
+  selected point uses the strong text color so it shows on light and dark
+  plots.
 
 ## Development
 
@@ -618,13 +680,14 @@ names the GUI and its version).
   not a modal: analysis and the rest of the GUI stay usable. With the setting
   off, nothing is requested or shown.
 - **Manually**, from the update button in the navigation rail (an
-  arrow-circle-up icon above Settings, named and tooltipped "Check for
-  Updates") or the "Check for Updates…" button in the About window. The result
+  arrows-clockwise tile labeled "Updates" above Settings, named and
+  tooltipped "Check for Updates") or the "Check for Updates…" button in the About window. The result
   is shown in the update window: up to date, an update, or the error. A
   manual check ignores a skipped version.
 
 Once a check has found an update, the rail button shows a colored badge dot
-and its name and tooltip become "Update available: X.Y.Z"; activating it opens
+on its icon, its label becomes "Update" and its name and tooltip become
+"Update available: X.Y.Z"; activating it opens
 the window without checking again. The status bar does not announce updates.
 
 The "Software update" window shows the running and new GUI versions, the CLI

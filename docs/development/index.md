@@ -171,6 +171,7 @@ the repository root. On Linux, the usual desktop development packages
 
 ```bash
 make gui-run    # build the CLI into out/gui/ and run the GUI against it
+make gui-run-sample # the same, opening the standard 188-byte sample and analyzing the whole file
 make gui-test   # cargo test
 make gui-lint   # rustfmt check and clippy -D warnings
 make gui-package # package for this OS into gui/target/release/ (needs cargo-packager)
@@ -180,6 +181,13 @@ To open and immediately analyze the same range while iterating on the UI:
 
 ```bash
 make gui-run GUI_ARGS='sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts --offset 0 --limit 67108864'
+```
+
+`make gui-run-sample` opens the standard 188-byte sample and analyzes the
+whole file (`--limit 0`); set `SAMPLE` to open another file:
+
+```bash
+make gui-run-sample SAMPLE=sample_data/diagnostics/sample_204byte_all_findings.ts
 ```
 
 `make gui-package` builds the CLI from this tree into `gui/target/bundled-cli/`
@@ -225,11 +233,12 @@ The GUI images of the README and the GUI guide are rendered, not captured:
 
 - `docs/images/gui-tabs.png`: Overview, Timeline, Bitrate and Packets in a
   2×2 grid.
-- `docs/images/gui-inspectors.png`: the Byte and Bit inspectors with the
-  13-bit PID of a PMT packet selected. It is drawn by the same function as the
+- `docs/images/gui-byte-inspector.png` and `docs/images/gui-bit-inspector.png`:
+  the Byte inspector and the Bit inspector, each on its own, with the 13-bit
+  PID of a PMT packet selected. They are drawn by the same functions as the
   Packets screen.
 - `docs/images/gui-wire-layout.png`: the detailed inspection page of that PMT
-  packet, with reserved bits of a stream entry selected.
+  packet, with its PID selected.
 
 ```bash
 make gui-screenshots        # render the images into docs/images/

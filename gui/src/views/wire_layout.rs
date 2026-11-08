@@ -14,6 +14,7 @@ use eframe::egui;
 
 use super::packets::{ByteLayer, layer_color};
 use crate::icons;
+use crate::presentation::packet::{field_text, field_value};
 use crate::report::{DecodedPacket, LayoutPart, PacketField, PacketLayer};
 
 /// What a run of bits is on the wire (`kind` in the packet detail).
@@ -137,7 +138,7 @@ impl Part {
             label: part.label.clone(),
             kind: Kind::parse(&part.kind),
             ranges: part.bit_ranges(),
-            value: part.value.clone(),
+            value: layout_value(part),
             expected: part.expected.clone(),
             valid: part.valid,
             rule: part.rule.clone(),
@@ -157,12 +158,25 @@ impl Part {
             label: field.name.clone(),
             kind: Kind::Value,
             ranges,
-            value: field.value.clone(),
+            value: field_text(field),
             expected: None,
             valid: None,
             rule: None,
             context: context(layer, row, None),
         }
+    }
+}
+
+/// The value of a layout part for display (see [`field_value`]). Fixed bits
+/// (reserved, marker, prefix, stuffing) stay as written, the notation their
+/// expected value uses.
+fn layout_value(part: &LayoutPart) -> String {
+    match Kind::parse(&part.kind) {
+        Kind::Value | Kind::Flag => {
+            let bits = part.bits.iter().map(|b| b.bit_length).sum();
+            field_value(&part.label, &part.value, bits)
+        }
+        _ => part.value.clone(),
     }
 }
 
@@ -310,10 +324,10 @@ impl Model {
     }
 
     fn entry_node(&self, layer: &PacketLayer, row: usize, members: Members) -> Node {
-        let values: Vec<&str> = layer
+        let values: Vec<String> = layer
             .rows
             .get(row)
-            .map(|fields| fields.iter().map(|f| f.value.as_str()).collect())
+            .map(|fields| fields.iter().map(field_text).collect())
             .unwrap_or_default();
         Node::Group {
             key: format!("{}/{row}", layer.name),
@@ -339,7 +353,7 @@ impl Model {
                     let value = fields
                         .iter()
                         .find(|f| &f.name == name)
-                        .map_or(String::new(), |f| f.value.clone());
+                        .map_or(String::new(), field_text);
                     let row_key = row.map_or(String::new(), |r| format!("/{r}"));
                     nodes.push(Node::Group {
                         key: format!("{}{row_key}/{name}", layer.name),
@@ -380,7 +394,7 @@ impl Model {
                 label: format!("{} {}", row_noun(&layer.name), row + 1),
                 value: fields
                     .iter()
-                    .map(|f| f.value.as_str())
+                    .map(field_text)
                     .collect::<Vec<_>>()
                     .join(" · "),
                 children,
@@ -535,6 +549,11 @@ fn grid_width(bytes: usize) -> f32 {
 pub struct State {
     pub selection: Option<Selection>,
     scroll_to_selection: bool,
+    /// The selectable lines of the field list as last drawn, top to bottom:
+    /// the lines of collapsed groups and layers are not in it.
+    lines: Vec<Selection>,
+    /// Scroll the field list to the selected line on the next frame.
+    scroll_list: bool,
 }
 
 impl State {
@@ -543,13 +562,30 @@ impl State {
     pub fn with(selection: Option<Selection>) -> Self {
         State {
             selection,
-            scroll_to_selection: false,
+            ..State::default()
         }
     }
 
     pub fn select(&mut self, selection: Option<Selection>) {
         self.scroll_to_selection = selection.is_some();
         self.selection = selection;
+    }
+
+    /// Moves the selection `delta` lines up (negative) or down the field list
+    /// as drawn, stopping at its ends; nothing happens without a selection.
+    /// The list and the grid scroll to the new line.
+    pub fn step(&mut self, delta: isize) {
+        let Some(current) = &self.selection else {
+            return;
+        };
+        let Some(at) = self.lines.iter().position(|l| l == current) else {
+            return;
+        };
+        let to = at.saturating_add_signed(delta).min(self.lines.len() - 1);
+        if to != at {
+            self.select(Some(self.lines[to].clone()));
+            self.scroll_list = true;
+        }
     }
 }
 
@@ -627,7 +663,7 @@ pub fn selection_card(ui: &mut egui::Ui, model: &Model, state: &State) {
                 let part = &model.parts[*index];
                 ui.horizontal(|ui| {
                     swatch(ui, part.role());
-                    ui.strong(&part.label);
+                    ui.label(crate::theme::emphasis(&part.label));
                 });
                 facts(ui, "selected_part", &describe(part));
             }
@@ -642,7 +678,7 @@ pub fn selection_card(ui: &mut egui::Ui, model: &Model, state: &State) {
                     .filter(|&&i| model.parts[i].valid == Some(false))
                     .count();
                 let (label, value) = group_label(model, selection);
-                ui.strong(label);
+                ui.label(crate::theme::emphasis(label));
                 let mut rows = vec![
                     ("Value".to_owned(), value),
                     ("Position".to_owned(), position(&merge(ranges))),
@@ -699,22 +735,24 @@ fn facts(ui: &mut egui::Ui, id: &str, rows: &[(String, String)]) {
         });
 }
 
-/// The field list: one collapsible section per layer, in file order.
+/// The field list: one collapsible section per layer, in file order. Lines
+/// are dense (small button padding and spacing) so a long table fits.
 pub fn field_list(ui: &mut egui::Ui, model: &Model, state: &mut State) {
+    state.lines.clear();
+    let spacing = ui.spacing_mut();
+    spacing.button_padding = egui::vec2(8.0, 3.0);
+    spacing.interact_size.y = 19.0;
+    spacing.item_spacing.y = 2.0;
     for (index, layer) in model.layers.iter().enumerate() {
         let color = layer_color(byte_layer(&layer.name));
-        egui::CollapsingHeader::new(
-            egui::RichText::new(layer_title(&layer.name))
-                .color(color)
-                .strong(),
-        )
-        .id_salt(("wire_layer", index))
-        .default_open(true)
-        .show(ui, |ui| {
-            for node in &layer.nodes {
-                node_line(ui, model, node, state);
-            }
-        });
+        egui::CollapsingHeader::new(crate::theme::emphasis(layer_title(&layer.name)).color(color))
+            .id_salt(("wire_layer", index))
+            .default_open(true)
+            .show(ui, |ui| {
+                for node in &layer.nodes {
+                    node_line(ui, model, node, state);
+                }
+            });
     }
 }
 
@@ -729,19 +767,43 @@ fn byte_layer(name: &str) -> ByteLayer {
     }
 }
 
-/// The text of a part's line: label, value, bits and the validity of fixed bits.
-pub fn part_line(part: &Part) -> String {
+/// The text of a part's line: label, value, bits and the validity of fixed
+/// bits, as (label, value, the rest).
+pub fn part_line(part: &Part) -> (String, String, String) {
     let mark = match (part.valid, &part.expected) {
         (Some(true), _) => " ✓".to_owned(),
         (Some(false), Some(expected)) => format!(" ✗ expected {expected}"),
         _ => String::new(),
     };
-    format!(
-        "{}  {}{mark}  · {}",
-        part.label,
-        part.value,
-        bits_text(&part.ranges)
+    (
+        part.label.clone(),
+        part.value.clone(),
+        format!("{mark}  · {}", bits_text(&part.ranges)),
     )
+}
+
+/// A line of the field list: the label, the value in the monospace data
+/// face (as in the Packets pane and the facts), then the rest. Its text, and
+/// so its accessible name, is `label  value rest`.
+fn line_text(ui: &egui::Ui, label: &str, value: &str, rest: &str) -> egui::text::LayoutJob {
+    let mut job = egui::text::LayoutJob::default();
+    let style = ui.style();
+    let font = egui::FontSelection::Default;
+    let valign = egui::Align::Center;
+    egui::RichText::new(format!("{label}  ")).append_to(&mut job, style, font.clone(), valign);
+    egui::RichText::new(value)
+        .monospace()
+        .append_to(&mut job, style, font.clone(), valign);
+    egui::RichText::new(rest).append_to(&mut job, style, font, valign);
+    job
+}
+
+/// Brings the selected line into view after ↑/↓ moved the selection to it.
+fn scroll_if_stepped(state: &mut State, on: bool, response: &egui::Response) {
+    if on && state.scroll_list {
+        state.scroll_list = false;
+        response.scroll_to_me(None);
+    }
 }
 
 fn node_line(ui: &mut egui::Ui, model: &Model, node: &Node, state: &mut State) {
@@ -752,9 +814,13 @@ fn node_line(ui: &mut egui::Ui, model: &Model, node: &Node, state: &mut State) {
             ui.horizontal(|ui| {
                 swatch(ui, part.role());
                 let on = state.selection.as_ref() == Some(&selection);
+                let (label, value, rest) = part_line(part);
+                let text = line_text(ui, &label, &value, &rest);
                 let response = ui
-                    .selectable_label(on, part_line(part))
+                    .selectable_label(on, text)
                     .on_hover_ui(|ui| facts(ui, &format!("hover_{}", part.id), &describe(part)));
+                scroll_if_stepped(state, on, &response);
+                state.lines.push(selection.clone());
                 if response.clicked() {
                     state.select(if on { None } else { Some(selection) });
                 }
@@ -812,12 +878,16 @@ fn node_line(ui: &mut egui::Ui, model: &Model, node: &Node, state: &mut State) {
                     .collect();
                 ranges.sort_by_key(|r| r.start);
                 let bad = parts.iter().any(|&i| model.parts[i].valid == Some(false));
-                let text = format!(
-                    "{label}  {value}{}  · {}",
+                let rest = format!(
+                    "{}  · {}",
                     if bad { " ✗" } else { "" },
                     bits_text(&merge(ranges))
                 );
-                if ui.selectable_label(on, text).clicked() {
+                let text = line_text(ui, label, value, &rest);
+                let response = ui.selectable_label(on, text);
+                scroll_if_stepped(state, on, &response);
+                state.lines.push(selection.clone());
+                if response.clicked() {
                     state.select(if on { None } else { Some(selection.clone()) });
                 }
             });
@@ -914,17 +984,6 @@ pub fn bit_grid(ui: &mut egui::Ui, raw: &[u8], per_row: usize, model: &Model, st
                 }
                 None => weak,
             };
-            // A line where one part ends and the next begins.
-            if bit % 8 != 0 && owner != model.owners[bit - 1] {
-                let left = cell_rect(bit).left();
-                painter.line_segment(
-                    [
-                        egui::pos2(left, cell.top()),
-                        egui::pos2(left, cell.bottom()),
-                    ],
-                    egui::Stroke::new(1.5, visuals.strong_text_color()),
-                );
-            }
             let value = (raw[bit / 8] >> (7 - bit % 8)) & 1;
             painter.text(
                 cell.center(),
@@ -978,7 +1037,7 @@ pub fn bit_grid(ui: &mut egui::Ui, raw: &[u8], per_row: usize, model: &Model, st
             match model.owners[bit] {
                 Some(owner) => {
                     let part = &model.parts[owner];
-                    ui.strong(&part.label);
+                    ui.label(crate::theme::emphasis(&part.label));
                     facts(ui, "hover_bit", &describe(part));
                 }
                 None => {
@@ -1049,12 +1108,15 @@ pub enum Action {
 /// The packet the page shows and its neighbors in the analyzed range.
 pub struct Header {
     pub title: String,
+    /// What the packet is (see `presentation::packet::packet_kind`), once decoded.
+    pub kind: Option<String>,
     pub context: String,
     pub previous: Option<u64>,
     pub next: Option<u64>,
 }
 
-/// The page header: back to the list, where the packet is, and Previous/Next.
+/// The page header: back to the list, where the packet is with a badge
+/// saying what it is, and Previous/Next.
 pub fn header(ui: &mut egui::Ui, header: &Header) -> Option<Action> {
     let mut action = None;
     ui.horizontal(|ui| {
@@ -1064,8 +1126,11 @@ pub fn header(ui: &mut egui::Ui, header: &Header) -> Option<Action> {
             action = Some(Action::Back);
         }
         ui.weak("Packets ›");
-        let title = ui.strong(&header.title);
+        let title = ui.label(crate::theme::emphasis(&header.title));
         title.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Heading, true, &header.title));
+        if let Some(kind) = &header.kind {
+            kind_badge(ui, kind);
+        }
         ui.weak("› Detailed inspection");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui
@@ -1073,6 +1138,7 @@ pub fn header(ui: &mut egui::Ui, header: &Header) -> Option<Action> {
                     header.next.is_some(),
                     egui::Button::new(("Next", icons::text(icons::CARET_RIGHT))),
                 )
+                .on_hover_text("The next packet of the range (→)")
                 .clicked()
             {
                 action = header.next.map(Action::Go);
@@ -1082,6 +1148,7 @@ pub fn header(ui: &mut egui::Ui, header: &Header) -> Option<Action> {
                     header.previous.is_some(),
                     egui::Button::new((icons::text(icons::CARET_LEFT), "Previous")),
                 )
+                .on_hover_text("The previous packet of the range (←)")
                 .clicked()
             {
                 action = header.previous.map(Action::Go);
@@ -1090,6 +1157,39 @@ pub fn header(ui: &mut egui::Ui, header: &Header) -> Option<Action> {
     });
     ui.weak(&header.context);
     action
+}
+
+/// The badge of the packet kind: a status badge's text on a fill by kind
+/// (PSI, video, audio, PCR, other).
+fn kind_badge(ui: &mut egui::Ui, kind: &str) {
+    let response = egui::Frame::new()
+        .fill(kind_color(kind))
+        .corner_radius(crate::theme::BADGE_RADIUS)
+        .inner_margin(crate::theme::BADGE_MARGIN)
+        .show(ui, |ui| {
+            ui.label(crate::theme::badge_text(kind).color(crate::theme::ON_FILL_TEXT))
+        })
+        .inner;
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::Role::Label, true, format!("Packet type: {kind}"))
+    });
+}
+
+fn kind_color(kind: &str) -> egui::Color32 {
+    use crate::theme::{KIND_AUDIO, KIND_OTHER, KIND_PCR, KIND_PES, KIND_PSI, KIND_VIDEO};
+    if kind.contains("audio") {
+        KIND_AUDIO
+    } else if kind.contains("video") {
+        KIND_VIDEO
+    } else if kind == "PCR only" || kind == "PCR" {
+        KIND_PCR
+    } else if kind.starts_with("PES") {
+        KIND_PES
+    } else if matches!(kind, "Null" | "Adaptation field only" | "TS packet") {
+        KIND_OTHER
+    } else {
+        KIND_PSI
+    }
 }
 
 #[cfg(test)]

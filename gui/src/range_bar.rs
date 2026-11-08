@@ -168,7 +168,7 @@ impl AnalysisRange {
             rect.center(),
             egui::Align2::CENTER_CENTER,
             format!("{} of {}", human_size(self.limit), human_size(file_size)),
-            egui::FontId::proportional(12.0),
+            crate::theme::caption_font(),
             visuals.strong_text_color(),
         );
         match hover_grab {
@@ -230,11 +230,11 @@ impl Load {
     /// Blue for light ranges, shifting through teal, yellow and orange to red.
     pub fn color(self) -> egui::Color32 {
         match self {
-            Load::Light => egui::Color32::from_rgb(0x4e, 0xa8, 0xff),
-            Load::Moderate => egui::Color32::from_rgb(0x4f, 0xc3, 0xb5),
-            Load::Heavy => egui::Color32::from_rgb(0xe6, 0xc4, 0x4c),
-            Load::VeryHeavy => egui::Color32::from_rgb(0xf0, 0x8c, 0x3c),
-            Load::NeedsConfirmation => egui::Color32::from_rgb(0xff, 0x6b, 0x6b),
+            Load::Light => crate::theme::LOAD_LIGHT,
+            Load::Moderate => crate::theme::LOAD_MODERATE,
+            Load::Heavy => crate::theme::LOAD_HEAVY,
+            Load::VeryHeavy => crate::theme::LOAD_VERY_HEAVY,
+            Load::NeedsConfirmation => crate::theme::LOAD_NEEDS_CONFIRMATION,
         }
     }
 

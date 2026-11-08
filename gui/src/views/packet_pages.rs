@@ -19,6 +19,7 @@ use super::wire_layout::{self, Model};
 use crate::cli;
 use crate::cli::{Cli, Reply, Request};
 use crate::icons;
+use crate::presentation::packet::{field_text, field_value, packet_kind};
 use crate::psi::{NULL_PID, PsiLayout};
 use crate::range_bar;
 use crate::report::{
@@ -707,12 +708,12 @@ impl PacketPages {
                 .find(|f| f.name == "PID")
                 .map(|f| f.value.clone())
         });
+        let carries = pid.as_ref().map(|pid| self.psi.label(pid, offset));
         let mut context = vec![format!("offset {}", range_bar::bytes(offset))];
         if let Some(pid) = &pid {
-            context.push(format!("PID {pid}"));
-            let carries = self.psi.label(pid, offset);
-            if !carries.is_empty() {
-                context.push(carries);
+            context.push(format!("PID {}", field_value("PID", pid, 13)));
+            if let Some(carries) = carries.as_ref().filter(|c| !c.is_empty()) {
+                context.push(carries.clone());
             }
         }
         if !raw.is_empty() {
@@ -730,6 +731,10 @@ impl PacketPages {
                 (Some(i), Some(g)) => format!("Packet #{} of {}", i + 1, g.count),
                 _ => "Packet".to_owned(),
             },
+            kind: packet.map(|p| {
+                let unit = detail.as_ref().ok().and_then(|d| d.unit.as_ref());
+                packet_kind(p, unit, carries.as_deref().unwrap_or_default())
+            }),
             context: context.join(" · "),
             previous: neighbor(-1),
             next: neighbor(1),
@@ -743,6 +748,29 @@ impl PacketPages {
             wire_layout::legend(ui);
             ui.add_space(2.0);
         });
+        // ← and → step through the packets as Previous and Next do, ↑ and ↓
+        // through the lines of the field list, unless a text field has the
+        // keyboard.
+        if action.is_none() && !ui.ctx().egui_wants_keyboard_input() {
+            let pressed = |key| ui.input(|i| i.modifiers.is_none() && i.key_pressed(key));
+            let (left, right) = (
+                pressed(egui::Key::ArrowLeft),
+                pressed(egui::Key::ArrowRight),
+            );
+            if pressed(egui::Key::ArrowUp) {
+                inspect.state.step(-1);
+            } else if pressed(egui::Key::ArrowDown) {
+                inspect.state.step(1);
+            }
+            let to = if left {
+                header.previous
+            } else if right {
+                header.next
+            } else {
+                None
+            };
+            action = to.map(wire_layout::Action::Go);
+        }
         match (&detail, &model) {
             (Ok(_), Some(model)) => {
                 let width = ui.available_width();
@@ -753,7 +781,7 @@ impl PacketPages {
                     .show(ui, |ui| {
                         crate::theme::compact(ui);
                         ui.horizontal(|ui| {
-                            ui.strong("Fields");
+                            ui.label(crate::theme::emphasis("Fields"));
                             ui.weak("decoded values and their encoded parts");
                         });
                         egui::ScrollArea::both()
@@ -766,7 +794,7 @@ impl PacketPages {
                 egui::CentralPanel::default().show(ui, |ui| {
                     crate::theme::compact(ui);
                     ui.horizontal(|ui| {
-                        ui.strong("Bit inspector");
+                        ui.label(crate::theme::emphasis("Bit inspector"));
                         ui.weak("file order ↓ · each byte MSB → LSB");
                     });
                     if !model.complete {
@@ -850,7 +878,6 @@ impl PacketPages {
             .map(|(_, selection)| selection);
         let index = self.geometry.and_then(|g| g.index_of(offset));
 
-        let mut inspect = false;
         ui.horizontal(|ui| {
             ui.heading(match index {
                 Some(index) => format!("Packet #{}", index + 1),
@@ -858,13 +885,7 @@ impl PacketPages {
             });
             ui.weak(range_bar::bytes(offset));
         });
-        if ui
-            .button("Detailed inspection")
-            .on_hover_text("Open the complete wire layout of this packet on a full-width page")
-            .clicked()
-        {
-            inspect = true;
-        }
+        let mut inspect = detailed_inspection_button(ui);
         let mut target = None;
         if let Some(unit) = &detail.unit {
             target = unit_card(ui, unit);
@@ -872,7 +893,7 @@ impl PacketPages {
         }
 
         ui.horizontal(|ui| {
-            ui.strong("This packet");
+            ui.label(crate::theme::emphasis("This packet"));
             ui.weak("· click a field to inspect its bytes and bits");
         });
         for layer in &packet.layers {
@@ -885,6 +906,10 @@ impl PacketPages {
         ui.add_space(8.0);
         ui.separator();
         inspectors(ui, packet, highlight.as_ref());
+        // Again after the Bit inspector, where wanting more detail begins.
+        ui.add_space(6.0);
+        ui.separator();
+        inspect |= detailed_inspection_button(ui);
         self.highlight = highlight.map(|selection| (offset, selection));
 
         if let Some(target) = target {
@@ -895,31 +920,71 @@ impl PacketPages {
     }
 }
 
+/// Opens the detailed inspection page; shown above the decoded fields and
+/// again below the Bit inspector. Text only, at the app's regular button size
+/// (the pane around it is compact), with room above and below.
+fn detailed_inspection_button(ui: &mut egui::Ui) -> bool {
+    ui.add_space(6.0);
+    let clicked = ui
+        .scope(|ui| {
+            ui.spacing_mut().button_padding = theme::BUTTON_PADDING;
+            ui.spacing_mut().interact_size.y = theme::BUTTON_HEIGHT;
+            ui.button(
+                egui::RichText::new("Detailed inspection").text_style(egui::TextStyle::Button),
+            )
+            .on_hover_text("Open the complete wire layout of this packet on a full-width page")
+            .clicked()
+        })
+        .inner;
+    ui.add_space(6.0);
+    clicked
+}
+
 /// The Byte and Bit inspectors of a decoded packet, with the selected field's
 /// bytes and bits marked.
 fn inspectors(ui: &mut egui::Ui, packet: &DecodedPacket, highlight: Option<&FieldSelection>) {
+    byte_inspector(ui, packet, highlight);
+    ui.add_space(8.0);
+    ui.separator();
+    bit_inspector(ui, &packet.raw(), highlight);
+}
+
+fn byte_inspector(ui: &mut egui::Ui, packet: &DecodedPacket, highlight: Option<&FieldSelection>) {
     let raw = packet.raw();
     let colors = byte_colors(raw.len(), &packet.layers);
     let bytes: Vec<(u8, egui::Color32)> = raw.iter().copied().zip(colors).collect();
     ui.horizontal(|ui| {
-        ui.strong("Byte inspector");
+        ui.label(crate::theme::emphasis("Byte inspector"));
         if let Some(selection) = highlight {
             ui.weak(format!("{} selected", byte_span_text(&selection.bytes)));
         }
     });
     hex_dump_bytes(ui, &bytes, highlight.map(|s| &s.bytes));
-    ui.add_space(8.0);
-    ui.separator();
-    bit_inspector(ui, &raw, highlight);
 }
 
-/// The production inspectors with the named field of a decoded packet
+/// Which of the production inspectors a screenshot shows.
+#[cfg(all(test, feature = "screenshots"))]
+#[derive(Clone, Copy)]
+pub(crate) enum Inspector {
+    Byte,
+    Bit,
+}
+
+/// One production inspector with the named field of a decoded packet
 /// selected, for screenshots.
 #[cfg(all(test, feature = "screenshots"))]
-pub(crate) fn show_inspectors_for_test(ui: &mut egui::Ui, detail: &PacketDetail, name: &str) {
+pub(crate) fn show_inspector_for_test(
+    ui: &mut egui::Ui,
+    detail: &PacketDetail,
+    name: &str,
+    inspector: Inspector,
+) {
     let packet = detail.packet.as_ref().expect("a decoded packet");
     let selection = field_selection(packet, name).unwrap_or_else(|| panic!("no field {name}"));
-    inspectors(ui, packet, Some(&selection));
+    match inspector {
+        Inspector::Byte => byte_inspector(ui, packet, Some(&selection)),
+        Inspector::Bit => bit_inspector(ui, &packet.raw(), Some(&selection)),
+    }
 }
 
 /// The selection a click on a field of the decoded packet makes.
@@ -932,7 +997,7 @@ fn field_selection(packet: &DecodedPacket, name: &str) -> Option<FieldSelection>
         .find(|field| field.name == name)?;
     Some(FieldSelection {
         key: field.name.clone(),
-        value: field.value.clone(),
+        value: field_text(field),
         bytes: span(field),
         bits: field.bit_ranges(),
     })
@@ -1077,7 +1142,7 @@ fn unit_card(ui: &mut egui::Ui, unit: &PacketUnit) -> Option<u64> {
         };
         ui.horizontal(|ui| {
             ui.weak("Belongs to");
-            ui.strong(name);
+            ui.label(crate::theme::emphasis(name));
         });
         if unit.kind == "none" {
             return;
@@ -1176,7 +1241,7 @@ fn layer_fields(ui: &mut egui::Ui, layer: &PacketLayer, highlight: &mut Option<F
     let fields: Vec<Field> = layer
         .fields
         .iter()
-        .map(|f| Field::new(f.name.clone(), f.value.clone(), span(f)).with_bits(f.bit_ranges()))
+        .map(|f| Field::new(f.name.clone(), field_text(f), span(f)).with_bits(f.bit_ranges()))
         .collect();
     let color = layer_color(byte_layer(&layer.name));
     field_tree(ui, &layer_title(layer), color, &fields, highlight);
@@ -1188,7 +1253,7 @@ fn layer_fields(ui: &mut egui::Ui, layer: &PacketLayer, highlight: &mut Option<F
             .enumerate()
             .filter_map(|(index, row)| {
                 let selection = row_selection(&layer.name, index, row)?;
-                Some((row.iter().map(|f| f.value.clone()).collect(), selection))
+                Some((row.iter().map(field_text).collect(), selection))
             })
             .collect();
         span_table(
@@ -1224,11 +1289,7 @@ fn row_selection(
     bits.sort_by_key(|r| r.start);
     Some(FieldSelection {
         key: format!("{layer} row {index}"),
-        value: row
-            .iter()
-            .map(|f| f.value.as_str())
-            .collect::<Vec<_>>()
-            .join(" · "),
+        value: row.iter().map(field_text).collect::<Vec<_>>().join(" · "),
         bytes: start..end,
         bits,
     })
@@ -1453,7 +1514,7 @@ mod tests {
                 "sample_192byte_two_programs_mpeg2_160x120_25fps_mp2.ts",
                 192,
             ),
-            ("sample_204byte_all_findings.ts", 204),
+            ("diagnostics/sample_204byte_all_findings.ts", 204),
         ] {
             let input = samples.join(name);
             let size = std::fs::metadata(&input).unwrap().len();
@@ -1778,7 +1839,7 @@ mod tests {
                 "sample_192byte_two_programs_mpeg2_160x120_25fps_mp2.ts",
                 192,
             ),
-            ("sample_204byte_all_findings.ts", 204),
+            ("diagnostics/sample_204byte_all_findings.ts", 204),
         ] {
             let pages = PacketPages {
                 packet_size,

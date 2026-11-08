@@ -24,9 +24,9 @@ var syncLossFixtures = []struct {
 	// flag selects the packet size of the generator: none, -m2ts or -trailer.
 	flag string
 }{
-	{"../sample_data/sample_188byte_sync_loss.ts", 188, ""},
-	{"../sample_data/sample_192byte_sync_loss.ts", 192, "-m2ts"},
-	{"../sample_data/sample_204byte_sync_loss.ts", 204, "-trailer"},
+	{"../sample_data/diagnostics/sample_188byte_sync_loss.ts", 188, ""},
+	{"../sample_data/diagnostics/sample_192byte_sync_loss.ts", 192, "-m2ts"},
+	{"../sample_data/diagnostics/sample_204byte_sync_loss.ts", 204, "-trailer"},
 }
 
 func generateSyncLoss(t *testing.T, args ...string) string {

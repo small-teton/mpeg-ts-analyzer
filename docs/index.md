@@ -23,7 +23,9 @@ desktop GUI. The [README](https://github.com/small-teton/mpeg-ts-analyzer#readme
 ## Use the desktop GUI
 
 - [Desktop GUI](gui/overview.md): the Overview, Timeline, Bitrate and Packets
-  views, and the Byte and Bit inspectors.
+  views, the Byte and Bit inspectors, and Detailed inspection: every bit of a
+  packet with its role (value, flag, reserved, marker, prefix, stuffing, not
+  decoded), fixed bits checked against ISO/IEC 13818-1 with the rule cited.
 
 ## Reference
 

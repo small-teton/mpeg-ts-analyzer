@@ -396,7 +396,7 @@ impl App {
             return;
         }
         ui.horizontal_wrapped(|ui| {
-            ui.strong("Scan range");
+            ui.label(crate::theme::emphasis("Scan range"));
             let controls_width = 470.0;
             let bar_width = (ui.available_width() - controls_width).max(160.0);
             self.range.bar(ui, bar_width, self.file_size, load);
@@ -443,10 +443,10 @@ impl App {
         }
         ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
             ui.add_space(6.0);
-            if icon_button(ui, icons::INFO, "About").clicked() {
+            if rail_button(ui, icons::INFO, "About", "About").clicked() {
                 self.about_open = true;
             }
-            if icon_button(ui, icons::GEAR, "Settings").clicked() {
+            if rail_button(ui, icons::GEAR, "Settings", "Settings").clicked() {
                 self.settings_open = true;
             }
             if update_button(ui, self.updates.available_version()).clicked() {
@@ -699,21 +699,20 @@ fn empty_state(ui: &mut egui::Ui, title: &str, hint: &str) {
 /// other controls and from the blue scan-range bar next to it. Shown only
 /// while it can be pressed: a plain button says there is nothing to start.
 fn primary_button(label: &str) -> egui::Button<'static> {
-    let color = egui::Color32::WHITE;
+    let color = crate::theme::ON_FILL_TEXT;
     egui::Button::new((
         icons::text(icons::PLAY).color(color),
-        egui::RichText::new(label).color(color).strong(),
+        crate::theme::emphasis(label).color(color),
     ))
     .fill(crate::theme::START_COLOR)
 }
 
-/// A frameless icon button; `name` is its tooltip and its accessible name,
-/// since the icon glyph alone names nothing.
-fn icon_button(ui: &mut egui::Ui, glyph: &str, name: &str) -> egui::Response {
-    let button = egui::Button::new(icons::text(glyph).size(20.0)).frame(false);
-    let response = ui.add(button).on_hover_text(name);
+/// A button of the rail's bottom group, drawn like the navigation tiles: a
+/// large icon over a short `title`. `name` is its accessible name and tooltip.
+fn rail_button(ui: &mut egui::Ui, glyph: &str, title: &str, name: &str) -> egui::Response {
+    let response = rail_tile(ui, glyph, title, false);
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, name));
-    response
+    response.on_hover_text(name)
 }
 
 /// The rail's update button: "Check for Updates", or, once a check has found
@@ -726,9 +725,15 @@ fn update_button(
         Some(version) => format!("Update available: {version}"),
         None => "Check for Updates".to_owned(),
     };
-    let response = icon_button(ui, icons::ARROW_CIRCLE_UP, &name);
+    let title = if available.is_some() {
+        "Update"
+    } else {
+        "Updates"
+    };
+    let response = rail_button(ui, icons::ARROWS_CLOCKWISE, title, &name);
     if available.is_some() && ui.is_rect_visible(response.rect) {
-        let center = response.rect.right_top() + egui::vec2(-3.0, 3.0);
+        // On the icon's upper right, as on an app icon.
+        let center = response.rect.center_top() + egui::vec2(14.0, 10.0);
         let painter = ui.painter();
         painter.circle(
             center,
@@ -742,11 +747,17 @@ fn update_button(
 
 /// A navigation entry drawn as a raised card: a large icon over a short label.
 fn navigation_tile(ui: &mut egui::Ui, screen: Screen, selected: bool) -> egui::Response {
-    let size = egui::vec2(ui.available_width(), 64.0);
-    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    let response = rail_tile(ui, screen.icon(), screen.title(), selected);
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::Role::Tab, true, selected, screen.title())
     });
+    response
+}
+
+/// A raised card of the rail: a large icon over a short label.
+fn rail_tile(ui: &mut egui::Ui, glyph: &str, title: &str, selected: bool) -> egui::Response {
+    let size = egui::vec2(ui.available_width(), 64.0);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
 
     if ui.is_rect_visible(rect) {
         let card = rect.shrink2(egui::vec2(6.0, 1.0));
@@ -770,18 +781,21 @@ fn navigation_tile(ui: &mut egui::Ui, screen: Screen, selected: bool) -> egui::R
         let painter = ui.painter();
         painter.add(shadow.as_shape(card, 8));
         painter.rect_filled(card, 8, fill);
+        if response.has_focus() {
+            painter.rect_stroke(card, 8, visuals.selection.stroke, egui::StrokeKind::Outside);
+        }
         painter.text(
             card.center_top() + egui::vec2(0.0, 23.0),
             egui::Align2::CENTER_CENTER,
-            screen.icon(),
+            glyph,
             icons::font(28.0),
             text_color,
         );
         painter.text(
             card.center_bottom() - egui::vec2(0.0, 12.0),
             egui::Align2::CENTER_CENTER,
-            screen.title(),
-            egui::FontId::proportional(12.5),
+            title,
+            crate::theme::caption_font(),
             text_color,
         );
     }

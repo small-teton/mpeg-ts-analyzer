@@ -7,12 +7,12 @@ and demonstrate the TS synchronization check, never as an example of a
 compliant stream.
 
 ```sh
-go run ./tools/generate_sync_loss -output sample_data/sample_188byte_sync_loss.ts
-go run ./tools/generate_sync_loss -m2ts -output sample_data/sample_192byte_sync_loss.ts
-go run ./tools/generate_sync_loss -trailer -output sample_data/sample_204byte_sync_loss.ts
-./mpeg-ts-analyzer sample_data/sample_188byte_sync_loss.ts
-tsp -I file sample_data/sample_188byte_sync_loss.ts -P count -O drop
-tsresync -c -m 960 -s 1024 -v -d3 -k -o resynced.ts sample_data/sample_188byte_sync_loss.ts
+go run ./tools/generate_sync_loss -output sample_data/diagnostics/sample_188byte_sync_loss.ts
+go run ./tools/generate_sync_loss -m2ts -output sample_data/diagnostics/sample_192byte_sync_loss.ts
+go run ./tools/generate_sync_loss -trailer -output sample_data/diagnostics/sample_204byte_sync_loss.ts
+./mpeg-ts-analyzer sample_data/diagnostics/sample_188byte_sync_loss.ts
+tsp -I file sample_data/diagnostics/sample_188byte_sync_loss.ts -P count -O drop
+tsresync -c -m 960 -s 1024 -v -d3 -k -o resynced.ts sample_data/diagnostics/sample_188byte_sync_loss.ts
 tsp -I file resynced.ts -P continuity -P count -O drop
 ```
 

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -143,7 +142,7 @@ func rowKey(row *int) string {
 // of every sample (188-, 192- and 204-byte), and that the samples that are
 // not made to fail health checks have no expected-value mismatch.
 func TestPacketLayoutCoversEveryBit(t *testing.T) {
-	paths, err := filepath.Glob("../sample_data/sample_*byte_*.ts")
+	paths, err := sampleGlob("sample_*byte_*.ts")
 	if err != nil || len(paths) < 30 {
 		t.Fatalf("samples: %v %v", paths, err)
 	}

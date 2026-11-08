@@ -23,8 +23,8 @@ var pcrDiscontinuitiesFixtures = []struct {
 	packetSize int64
 	m2ts       bool
 }{
-	{"../sample_data/sample_188byte_pcr_discontinuities.ts", 188, false},
-	{"../sample_data/sample_192byte_pcr_discontinuities.ts", 192, true},
+	{"../sample_data/diagnostics/sample_188byte_pcr_discontinuities.ts", 188, false},
+	{"../sample_data/diagnostics/sample_192byte_pcr_discontinuities.ts", 192, true},
 }
 
 func generatePcrDiscontinuities(t *testing.T, args ...string) string {

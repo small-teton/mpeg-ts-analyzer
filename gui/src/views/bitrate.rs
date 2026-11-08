@@ -30,7 +30,7 @@ pub fn show_report(
     let context = (generation, *selected);
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.horizontal(|ui| {
-            ui.strong("Bitrate per PID");
+            ui.label(crate::theme::emphasis("Bitrate per PID"));
             ui.weak("Mbps · PCR time base · 1 s windows (the last one may be shorter)");
         });
         time_plot(
@@ -63,7 +63,7 @@ pub fn show_report(
         let jitter = program.pcr_jitter.as_ref();
         ui.columns(2, |columns| {
             columns[0].horizontal(|ui| {
-                ui.strong("PCR jitter");
+                ui.label(crate::theme::emphasis("PCR jitter"));
                 ui.weak(format!(
                     "PCR PID {} · deviation from the expected PCR, ms",
                     program.pcr_pid.as_deref().unwrap_or("none")
@@ -107,7 +107,7 @@ pub fn show_report(
             });
 
             columns[1].horizontal(|ui| {
-                ui.strong("Jitter histogram");
+                ui.label(crate::theme::emphasis("Jitter histogram"));
                 ui.weak(format!("{} samples, ms", data.jitter_samples));
             });
             let bars = data
@@ -137,7 +137,7 @@ pub fn show_report(
                 .spacing([24.0, 4.0])
                 .show(ui, |ui| {
                     for header in ["PID", "Carries", "Average", "Peak (1 s)", "Share"] {
-                        ui.strong(header);
+                        ui.label(crate::theme::table_header_text(header, ui.visuals()));
                     }
                     ui.end_row();
                     for row in rows {
@@ -156,7 +156,7 @@ pub fn show_report(
                         ui.monospace(share);
                         ui.end_row();
                     }
-                    ui.strong("Program").on_hover_text("All PIDs of the program, including PAT and PMT");
+                    ui.label(crate::theme::emphasis("Program")).on_hover_text("All PIDs of the program, including PAT and PMT");
                     ui.label("");
                     ui.monospace(format!("{:.3} Mbps", bitrate.program_average_bps / 1e6));
                     ui.monospace(

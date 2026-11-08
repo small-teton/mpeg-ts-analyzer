@@ -20,8 +20,8 @@ var psiHealthFixtures = []struct {
 	packetSize int64
 	m2ts       bool
 }{
-	{"../sample_data/sample_188byte_psi_health.ts", 188, false},
-	{"../sample_data/sample_192byte_psi_health.ts", 192, true},
+	{"../sample_data/diagnostics/sample_188byte_psi_health.ts", 188, false},
+	{"../sample_data/diagnostics/sample_192byte_psi_health.ts", 192, true},
 }
 
 // psiTableWant pins one table of a scenario. Offsets are slots.

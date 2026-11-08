@@ -7,11 +7,11 @@ ISO/IEC 13818-1, 2.4.3.5 requires): use it to test PCR timing, never as an
 example of a compliant stream.
 
 ```sh
-go run ./tools/generate_pcr_discontinuities -output sample_data/sample_188byte_pcr_discontinuities.ts
-go run ./tools/generate_pcr_discontinuities -m2ts -output sample_data/sample_192byte_pcr_discontinuities.ts
-tsp -I file sample_data/sample_188byte_pcr_discontinuities.ts -P pcrextract --pcr --csv -O drop
-tsp -I file sample_data/sample_188byte_pcr_discontinuities.ts -P pcrverify -P timewrap -O drop
-tsp -I file --format m2ts sample_data/sample_192byte_pcr_discontinuities.ts -P pcrverify -i -P timewrap -O drop
+go run ./tools/generate_pcr_discontinuities -output sample_data/diagnostics/sample_188byte_pcr_discontinuities.ts
+go run ./tools/generate_pcr_discontinuities -m2ts -output sample_data/diagnostics/sample_192byte_pcr_discontinuities.ts
+tsp -I file sample_data/diagnostics/sample_188byte_pcr_discontinuities.ts -P pcrextract --pcr --csv -O drop
+tsp -I file sample_data/diagnostics/sample_188byte_pcr_discontinuities.ts -P pcrverify -P timewrap -O drop
+tsp -I file --format m2ts sample_data/diagnostics/sample_192byte_pcr_discontinuities.ts -P pcrverify -i -P timewrap -O drop
 ```
 
 260 packets of one 20 ms slot each (75.2 kbit/s, 5.2 s): program 1 (PMT PID

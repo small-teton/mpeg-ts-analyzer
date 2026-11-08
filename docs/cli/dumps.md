@@ -179,7 +179,7 @@ PCR-PTS/DTS max gap: 726.666667ms [OK, limit: <= 1000.000000ms]
 ```
 
 Across a wraparound, in the intentionally unusual
-`sample_data/sample_188byte_pts_gap_wraparound.ts` (video DTS lead 700 ms,
+`sample_data/diagnostics/sample_188byte_pts_gap_wraparound.ts` (video DTS lead 700 ms,
 audio PTS lead 30 ms, AAC PTS lead -150 ms; the PCR wraps between the PCRs at
 0x000047f8 and 0x00004ae8, the video DTS earlier, the AAC PTS later), every
 delay stays the lead of its stream:
@@ -208,7 +208,7 @@ appears): a PCR can arrive on time yet carry a wrong value, which upsets the
 decoder's clock recovery (audio pops, video stutter).
 
 ```
-$ ./mpeg-ts-analyzer sample_data/sample_188byte_all_findings.ts --dump-pcr-jitter
+$ ./mpeg-ts-analyzer sample_data/diagnostics/sample_188byte_all_findings.ts --dump-pcr-jitter
 ...
 -----------------------------
 PCR Jitter Summary (per-interval, byte-position model):

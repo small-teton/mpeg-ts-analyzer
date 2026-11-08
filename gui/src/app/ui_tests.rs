@@ -316,6 +316,15 @@ fn rail_update_button_checks_and_announces_an_update() {
     };
     assert!(top("Check for Updates") < top("Settings"));
     assert!(top("Settings") < top("About"));
+    // As large as the navigation tabs above them.
+    let height = |node: Node<'_>| bounds(&node).height();
+    let tab = height(harness.get_by_role_and_label(Role::Tab, "Overview"));
+    for label in ["Check for Updates", "Settings", "About"] {
+        assert_eq!(
+            height(harness.get_by_role_and_label(Role::Button, label)),
+            tab
+        );
+    }
     assert!(
         harness
             .query_by_label_contains("Update available")
@@ -527,7 +536,7 @@ fn selecting_a_field_shows_its_bytes_and_bits() {
 /// A 204-byte packet keeps its 16-byte trailer out of the decoded TS packet:
 /// the trailer is listed as a layer of its own, and its bytes can be selected
 /// like any field. The page and the video packet at offset 2448 (slot 12) are
-/// what the CLI writes for `sample_data/sample_204byte_all_findings.ts`.
+/// what the CLI writes for `sample_data/diagnostics/sample_204byte_all_findings.ts`.
 #[test]
 fn packet_detail_shows_the_trailer_of_a_204_byte_packet() {
     let page: PacketsPage =
@@ -558,7 +567,7 @@ fn packet_detail_shows_the_trailer_of_a_204_byte_packet() {
 fn packet_fixtures_match_the_cli() {
     const TWO_PROGRAMS_188: &str = "sample_188byte_two_programs_mpeg2_160x120_25fps_mp2.ts";
     const TWO_PROGRAMS_192: &str = "sample_192byte_two_programs_mpeg2_160x120_25fps_mp2.ts";
-    const ALL_FINDINGS_204: &str = "sample_204byte_all_findings.ts";
+    const ALL_FINDINGS_204: &str = "diagnostics/sample_204byte_all_findings.ts";
     for (sample, args, fixture) in [
         (
             ALL_FINDINGS_204,
@@ -625,7 +634,7 @@ fn packet_detail_pane_keeps_its_width_for_every_packet() {
     assert_eq!(pat, pmt);
 }
 
-/// The CLI's analysis of `sample_data/sample_188byte_all_findings.ts`, in
+/// The CLI's analysis of `sample_data/diagnostics/sample_188byte_all_findings.ts`, in
 /// which every transport-health check reports a problem.
 fn all_findings_report() -> AnalysisReport {
     serde_json::from_str(include_str!(
@@ -1415,7 +1424,8 @@ fn not_assessable_jitter_has_its_evidence_on_the_detail_page() {
 #[test]
 fn pcr_discontinuities_fixture_matches_the_cli() {
     let args = ["--format", "json", "--output", "analysis"];
-    let Some(json) = crate::cli::run_on_sample("sample_188byte_pcr_discontinuities.ts", &args)
+    let Some(json) =
+        crate::cli::run_on_sample("diagnostics/sample_188byte_pcr_discontinuities.ts", &args)
     else {
         return;
     };
@@ -1434,7 +1444,8 @@ fn pcr_discontinuities_fixture_matches_the_cli() {
 #[test]
 fn all_findings_fixture_matches_the_cli() {
     let args = ["--format", "json", "--output", "analysis"];
-    let Some(json) = crate::cli::run_on_sample("sample_188byte_all_findings.ts", &args) else {
+    let Some(json) = crate::cli::run_on_sample("diagnostics/sample_188byte_all_findings.ts", &args)
+    else {
         return;
     };
     let fixture: serde_json::Value = serde_json::from_str(include_str!(
@@ -1445,7 +1456,8 @@ fn all_findings_fixture_matches_the_cli() {
     output["input"]["path"] = fixture["input"]["path"].clone();
     assert_eq!(output, fixture, "regenerate the fixture with the CLI");
 
-    let m2ts = crate::cli::run_on_sample("sample_192byte_all_findings.ts", &args).unwrap();
+    let m2ts =
+        crate::cli::run_on_sample("diagnostics/sample_192byte_all_findings.ts", &args).unwrap();
     let m2ts = crate::report::parse_analysis(&m2ts, "2").unwrap();
     let report = all_findings_report();
     let summary = |report: &AnalysisReport| -> Vec<(String, String)> {
@@ -1464,7 +1476,9 @@ fn all_findings_fixture_matches_the_cli() {
 #[test]
 fn pid_references_fixture_matches_the_cli() {
     let args = ["--format", "json", "--output", "analysis"];
-    let Some(json) = crate::cli::run_on_sample("sample_188byte_pid_references.ts", &args) else {
+    let Some(json) =
+        crate::cli::run_on_sample("diagnostics/sample_188byte_pid_references.ts", &args)
+    else {
         return;
     };
     let fixture: serde_json::Value = serde_json::from_str(include_str!(
@@ -1500,7 +1514,8 @@ fn referenced_pids_page_opens_the_packet_before_a_silence() {
 #[test]
 fn packet_gaps_fixture_matches_the_cli() {
     let args = ["--format", "json", "--output", "analysis"];
-    let Some(json) = crate::cli::run_on_sample("sample_188byte_packet_gaps.ts", &args) else {
+    let Some(json) = crate::cli::run_on_sample("diagnostics/sample_188byte_packet_gaps.ts", &args)
+    else {
         return;
     };
     let fixture: serde_json::Value = serde_json::from_str(include_str!(
@@ -1541,7 +1556,8 @@ fn packet_gaps_page_lists_every_pid_of_the_program() {
 #[test]
 fn mux_lead_fixture_matches_the_cli() {
     let args = ["--format", "json", "--output", "analysis"];
-    let Some(json) = crate::cli::run_on_sample("sample_188byte_mux_lead.ts", &args) else {
+    let Some(json) = crate::cli::run_on_sample("diagnostics/sample_188byte_mux_lead.ts", &args)
+    else {
         return;
     };
     let fixture: serde_json::Value = serde_json::from_str(include_str!(
@@ -1596,7 +1612,8 @@ fn mux_lead_page_lists_every_pid_and_audio_stream() {
 #[test]
 fn sync_loss_fixture_matches_the_cli() {
     let args = ["--format", "json", "--output", "analysis"];
-    let Some(json) = crate::cli::run_on_sample("sample_188byte_sync_loss.ts", &args) else {
+    let Some(json) = crate::cli::run_on_sample("diagnostics/sample_188byte_sync_loss.ts", &args)
+    else {
         return;
     };
     let fixture: serde_json::Value = serde_json::from_str(include_str!(
@@ -1655,15 +1672,15 @@ fn detailed_inspection_is_a_full_page_and_back_restores_the_list() {
         harness.run();
         let scrolled = pages_mut(&mut harness).list_offset_for_test(None);
         assert!(scrolled.y > 0.0);
-        harness
-            .get_by_role_and_label(Role::Button, "Detailed inspection")
-            .click();
+        detailed_inspection_buttons(&harness)[0].click();
         harness.run();
         assert_eq!(pages_mut(&mut harness).inspected_for_test(), Some(564));
         // A page of its own: neither the list nor the compact pane is shown.
         assert!(harness.query_by_label("This packet").is_none());
         assert!(harness.query_by_label("Page 1 / 1").is_none());
         harness.get_by_label("Packet #4 of 40");
+        harness.get_by_label("Packet type: PMT");
+        harness.get_by_label_contains("· PID 4097 (0x1001) ·");
         harness.get_by_label("Bit grid: 1504 of 1504 bits classified");
 
         // A reserved run is selectable although several parts are labeled
@@ -1688,6 +1705,122 @@ fn detailed_inspection_is_a_full_page_and_back_restores_the_list() {
         assert_eq!(pages.list_offset_for_test(None), scrolled);
         harness.get_by_label("Page 1 / 1");
     }
+}
+
+/// The "Detailed inspection" buttons of the packet detail pane, top first.
+fn detailed_inspection_buttons<'a>(harness: &'a Harness<'_, App>) -> Vec<Node<'a>> {
+    let mut buttons: Vec<Node<'a>> = harness
+        .query_all_by_role_and_label(Role::Button, "Detailed inspection")
+        .collect();
+    buttons.sort_by(|a, b| bounds(a).min.y.total_cmp(&bounds(b).min.y));
+    buttons
+}
+
+/// The pane offers "Detailed inspection" above the decoded fields and again
+/// at its very end, after the Bit inspector; either opens the page.
+#[test]
+fn detailed_inspection_is_offered_again_after_the_bit_inspector() {
+    let mut harness = packets_screen(WIDE);
+    let buttons = detailed_inspection_buttons(&harness);
+    assert_eq!(buttons.len(), 2);
+    let top = |node: &Node<'_>| bounds(node).min.y;
+    assert!(top(&buttons[0]) < top(&harness.get_by_label("This packet")));
+    assert!(top(&buttons[1]) > top(&harness.get_by_label("Bit inspector")));
+    let last = detailed_inspection_buttons(&harness).pop().unwrap();
+    last.scroll_to_me();
+    harness.run();
+    detailed_inspection_buttons(&harness).pop().unwrap().click();
+    harness.run();
+    assert_eq!(pages_mut(&mut harness).inspected_for_test(), Some(564));
+    harness.get_by_label("Packet #4 of 40");
+}
+
+/// The Packets field list shows numbers decimal first with the hexadecimal
+/// padded to the field's width; flags, bit patterns and checksums stay as written.
+#[test]
+fn packet_fields_are_decimal_with_hex() {
+    let harness = packets_screen(WIDE);
+    harness.get_by_label("4097 (0x1001)");
+    harness.get_by_label("2 (0x02)");
+    harness.get_by_label("23 (0x017)");
+    harness.get_by_label("0x1058355a");
+    assert!(harness.query_by_label("0x1001").is_none());
+}
+
+/// ← and → step through the packets like Previous and Next, within the range.
+#[test]
+fn arrow_keys_step_through_the_packets() {
+    let mut harness = packets_screen(WIDE);
+    detailed_inspection_buttons(&harness)[0].click();
+    harness.run();
+    harness.key_press(egui::Key::ArrowRight);
+    harness.run_steps(10);
+    assert_eq!(pages_mut(&mut harness).inspected_for_test(), Some(752));
+    harness.key_press(egui::Key::ArrowLeft);
+    harness.key_press(egui::Key::ArrowLeft);
+    harness.run_steps(10);
+    assert_eq!(pages_mut(&mut harness).inspected_for_test(), Some(376));
+
+    // Not past the first packet of the range.
+    let mut app = analyzed_app();
+    app.screen = Screen::Packets;
+    let mut pages = PacketPages::loaded_for_test(packets_page(), 0, pat_packet_detail());
+    pages.inspect_for_test(None);
+    app.session_mut().packet_pages = pages;
+    let mut harness = self::harness(app);
+    harness.key_press(egui::Key::ArrowLeft);
+    harness.run_steps(4);
+    assert_eq!(pages_mut(&mut harness).inspected_for_test(), Some(0));
+}
+
+/// ↑ and ↓ move the selection through the lines of the field list as drawn,
+/// updating the facts above the grid; they stop at the ends of the list.
+#[test]
+fn up_and_down_step_through_the_field_list() {
+    let mut app = analyzed_app();
+    app.screen = Screen::Packets;
+    let mut pages = PacketPages::loaded_for_test(packets_page(), 564, pmt_packet_detail());
+    pages.inspect_for_test(Some(crate::views::wire_layout::Selection::Part(
+        "ts_header.pid@11".to_owned(),
+    )));
+    app.session_mut().packet_pages = pages;
+    let mut harness = harness(app);
+    harness.get_by_label_contains("packet bits 11–23 (13 bits)");
+    harness.key_press(egui::Key::ArrowDown);
+    harness.run();
+    harness.get_by_label_contains("packet bits 24–25 (2 bits)");
+    harness.key_press(egui::Key::ArrowUp);
+    harness.key_press(egui::Key::ArrowUp);
+    harness.run();
+    harness.get_by_label_contains("packet bit 10 (1 bit)");
+    // Not past the first line; the packet stays the same.
+    for _ in 0..6 {
+        harness.key_press(egui::Key::ArrowUp);
+    }
+    harness.run();
+    harness.get_by_label_contains("packet bits 0–7 (8 bits)");
+    assert_eq!(pages_mut(&mut harness).inspected_for_test(), Some(564));
+
+    // The lines are 25 points apart.
+    let top = |prefix: &str| bounds(&layout_line(&harness, prefix)).min.y;
+    let pitch = top("transport_error_indicator") - top("sync_byte");
+    assert!((pitch - 25.0).abs() < 0.5, "row pitch {pitch}");
+}
+
+/// The header names what the packet is with a badge.
+#[test]
+fn the_header_names_the_kind_of_packet() {
+    let inspect = |offset: u64, detail: PacketDetail| {
+        let mut app = analyzed_app();
+        app.screen = Screen::Packets;
+        let mut pages = PacketPages::loaded_for_test(packets_page(), offset, detail);
+        pages.inspect_for_test(None);
+        app.session_mut().packet_pages = pages;
+        harness(app)
+    };
+    inspect(188, pat_packet_detail()).get_by_label("Packet type: PAT");
+    inspect(564, pmt_packet_detail()).get_by_label("Packet type: PMT");
+    inspect(30528, pes_pcr_192_detail()).get_by_label_contains("Packet type: PES · ");
 }
 
 fn button_containing<'a>(harness: &'a Harness<'_, App>, text: &'a str) -> Node<'a> {
@@ -1737,7 +1870,10 @@ fn timestamps_and_clock_references_have_their_parts_beneath_them() {
         harness(app)
     };
     let mut harness = inspect(None);
-    click_line(&mut harness, "PTS  144000 (1.600000 s)  · bits 200–239");
+    click_line(
+        &mut harness,
+        "PTS  144000 (0x000023280, 1.600000 s)  · bits 200–239",
+    );
     harness.get_by_label("packet bits 200–239 (40 bits) · byte 25, bit 7 – byte 29, bit 0");
     harness.get_by_label("7");
     assert!(
@@ -1802,7 +1938,7 @@ fn detailed_inspection_falls_back_to_field_bits() {
     app.session_mut().packet_pages = pages;
     let mut harness = harness(app);
     harness.get_by_label_contains("does not report the wire layout");
-    click_line(&mut harness, "PID  0x0000");
+    click_line(&mut harness, "PID  0 (0x0000)");
     harness.get_by_label_contains("packet bits 11–23 (13 bits)");
 }
 

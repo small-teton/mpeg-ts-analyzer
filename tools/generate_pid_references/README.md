@@ -7,13 +7,13 @@ invalid**: use it to test the PID reference check, never as an example of a
 compliant stream.
 
 ```sh
-go run ./tools/generate_pid_references -output sample_data/sample_188byte_pid_references.ts
-go run ./tools/generate_pid_references -m2ts -output sample_data/sample_192byte_pid_references.ts
-./mpeg-ts-analyzer sample_data/sample_188byte_pid_references.ts
-tsanalyze --json sample_data/sample_188byte_pid_references.ts
-tsanalyze --format m2ts --json sample_data/sample_192byte_pid_references.ts
-tsp -I file sample_data/sample_188byte_pid_references.ts -P count --summary -O drop
-tsp -I file sample_data/sample_188byte_pid_references.ts -P continuity -O drop
+go run ./tools/generate_pid_references -output sample_data/diagnostics/sample_188byte_pid_references.ts
+go run ./tools/generate_pid_references -m2ts -output sample_data/diagnostics/sample_192byte_pid_references.ts
+./mpeg-ts-analyzer sample_data/diagnostics/sample_188byte_pid_references.ts
+tsanalyze --json sample_data/diagnostics/sample_188byte_pid_references.ts
+tsanalyze --format m2ts --json sample_data/diagnostics/sample_192byte_pid_references.ts
+tsp -I file sample_data/diagnostics/sample_188byte_pid_references.ts -P count --summary -O drop
+tsp -I file sample_data/diagnostics/sample_188byte_pid_references.ts -P continuity -O drop
 ```
 
 160 frames of 100 ms, each of four 25 ms packet slots (640 packets,

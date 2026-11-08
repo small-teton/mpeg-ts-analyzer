@@ -69,12 +69,12 @@ func TestFailOnExitStatus(t *testing.T) {
 	}
 	const (
 		healthy     = "../sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts"
-		findings188 = "../sample_data/sample_188byte_all_findings.ts"
-		findings192 = "../sample_data/sample_192byte_all_findings.ts"
-		findings204 = "../sample_data/sample_204byte_all_findings.ts"
-		syncLoss    = "../sample_data/sample_204byte_sync_loss.ts"
-		references  = "../sample_data/sample_192byte_pid_references.ts"
-		packetGaps  = "../sample_data/sample_204byte_packet_gaps.ts"
+		findings188 = "../sample_data/diagnostics/sample_188byte_all_findings.ts"
+		findings192 = "../sample_data/diagnostics/sample_192byte_all_findings.ts"
+		findings204 = "../sample_data/diagnostics/sample_204byte_all_findings.ts"
+		syncLoss    = "../sample_data/diagnostics/sample_204byte_sync_loss.ts"
+		references  = "../sample_data/diagnostics/sample_192byte_pid_references.ts"
+		packetGaps  = "../sample_data/diagnostics/sample_204byte_packet_gaps.ts"
 		twoPrograms = "../sample_data/sample_188byte_two_programs_mpeg2_160x120_25fps_mp2.ts"
 	)
 	for _, tt := range []struct {
