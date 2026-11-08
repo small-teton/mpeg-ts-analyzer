@@ -11,6 +11,14 @@ on:
     # and the development container is checked against current package sources.
     - cron: "0 6 * * 1"
 
+# A newer push to a pull request cancels the run it supersedes; the newer run
+# reports the same checks on the new head commit. Pushes to master and
+# scheduled runs each get their own group (the run ID), so they are never
+# cancelled or dropped from the queue.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('go-pr-{0}', github.ref) || format('go-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -227,11 +235,45 @@ jobs:
       with:
         persist-credentials: false
 
+    # Compose would build the dev service as `<project>-dev` with USER_UID from
+    # DEV_UID. Building that same image here and loading it under that name
+    # lets `docker compose run` below use it without a second build.
+    - name: Resolve the Compose image
+      id: image
+      run: |
+        echo "name=$(docker compose config --images dev)" >> "$GITHUB_OUTPUT"
+        echo "uid=$(id -u)" >> "$GITHUB_OUTPUT"
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+    # The same context, Dockerfile and build argument as
+    # `DEV_UID="$(id -u)" docker compose build dev`, with the layers cached in
+    # the GitHub Actions cache: while the Dockerfile is unchanged (for example
+    # on a go.mod, Makefile or compose.yaml change), the apt and TSDuck download
+    # layer is reused instead of downloaded again. Only pushes to master and the
+    # weekly run save, so pull requests restore master's cache and do not evict
+    # it. The weekly run builds without the cache, so it still checks the
+    # Dockerfile against current package sources, and then refreshes the cache.
     - name: Build development container
-      run: DEV_UID="$(id -u)" docker compose build dev
+      uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+      with:
+        context: .
+        file: docker/Dockerfile
+        build-args: USER_UID=${{ steps.image.outputs.uid }}
+        tags: ${{ steps.image.outputs.name }}
+        load: true
+        provenance: false
+        no-cache: ${{ github.event_name == 'schedule' }}
+        cache-from: type=gha,scope=development-container
+        cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,scope=development-container,mode=max' || '' }}
 
     - name: Check development tools and coverage
+      env:
+        IMAGE: ${{ steps.image.outputs.name }}
       run: |
+        # Fail rather than let Compose silently rebuild the image uncached.
+        docker image inspect "$IMAGE" > /dev/null
         docker compose run --rm dev go version
         docker compose run --rm dev ffprobe -version
         docker compose run --rm dev tsanalyze --version

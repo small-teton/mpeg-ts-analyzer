@@ -8,6 +8,14 @@ on:
   schedule:
     - cron: "0 6 * * 1" # Every Monday at 6:00 UTC
 
+# A newer push to a pull request cancels the run it supersedes; the newer run
+# reports the same checks on the new head commit. Pushes to master and
+# scheduled runs each get their own group (the run ID), so they are never
+# cancelled or dropped from the queue.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('codeql-pr-{0}', github.ref) || format('codeql-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 

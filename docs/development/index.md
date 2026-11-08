@@ -322,6 +322,22 @@ dependencies with `Swatinem/rust-cache`, one cache per job and operating
 system. Only pushes to `master` save it, so pull requests reuse `master`'s
 cache without evicting it. `GUI release` does not use this cache.
 
+The development-container job builds the image with Buildx and keeps its layers
+in the GitHub Actions cache, so a run whose `docker/Dockerfile` is unchanged
+reuses the installed packages and the TSDuck download. As with the Rust cache,
+only pushes to `master` and the weekly run save it; the weekly run builds
+without the cache so it still checks current package sources, and the image is
+loaded under the name Compose uses, so the checks still run through
+`docker compose run`. The Dockerfile retries the apt and TSDuck downloads
+(`curl --retry-all-errors` also retries HTTP 5xx responses). Downloads made
+inside third-party actions, such as the CodeQL bundle or the GoReleaser binary,
+use those actions' own retries.
+
+A newer push to a pull request cancels the superseded `Go`, `GUI`, `CodeQL`,
+`Dependency review` and `Documentation policy` runs; the newer run reports the
+required checks for the new head commit. Pushes to `master`, scheduled runs and
+release runs are never cancelled this way.
+
 Release publication is kept out of ordinary CI:
 
 - `Release` publishes the CLI release when manually dispatched on `master`, or
