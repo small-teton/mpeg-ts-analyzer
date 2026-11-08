@@ -15,6 +15,7 @@ on:
       - go.sum
       - .goreleaser.yaml
       - .github/scripts/release-state.sh
+      - .github/scripts/go-third-party-notices.sh
       - .github/workflows/release.yml
   push:
     # Only well-formed version tags; a malformed tag such as "v.1.5.0" would

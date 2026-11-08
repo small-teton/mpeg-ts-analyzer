@@ -1,6 +1,11 @@
 # cargo-about configuration for the third-party notices shipped in the GUI
 # packages (gui-release.yml). Licenses are preferred in this order where a
 # crate offers a choice.
+#
+# `accepted` is also the license allowlist of the License check workflow
+# (license-check.yml): gui/deny.toml must allow the same licenses
+# (.github/scripts/license-allowlist.py check), and the Go modules of the CLI
+# may use any of them except MPL-2.0, which is granted to option-ext only.
 accepted = [
   "MIT",
   "Apache-2.0",
