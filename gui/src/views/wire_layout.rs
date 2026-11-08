@@ -234,6 +234,33 @@ pub enum Node {
 pub struct LayerTree {
     pub name: String,
     pub nodes: Vec<Node>,
+    /// The layer whose bytes this one decodes: the payload, for a PES header
+    /// or a PSI section. The field list draws it beneath that layer.
+    pub parent: Option<usize>,
+}
+
+/// The layers that decode another layer's bytes, by position: a layer after
+/// the payload (a PES header or a PSI section such as a PAT or PMT) decodes
+/// that payload. The framing layers (M2TS header, TS header, adaptation
+/// field, payload and the trailer of a 204-byte packet) partition the packet
+/// and have no parent.
+pub fn layer_parents<'a>(names: impl IntoIterator<Item = &'a str>) -> Vec<Option<usize>> {
+    let mut payload = None;
+    names
+        .into_iter()
+        .enumerate()
+        .map(|(index, name)| match name {
+            "payload" => {
+                payload = Some(index);
+                None
+            }
+            "m2ts_header" | "ts_header" | "adaptation_field" | "trailer" => {
+                payload = None;
+                None
+            }
+            _ => payload,
+        })
+        .collect()
 }
 
 /// The selected line: one part, or a field or entry with all its parts.
@@ -263,15 +290,25 @@ impl Model {
             owners: vec![None; bits],
             complete,
         };
-        for layer in &packet.layers {
+        let parents = layer_parents(packet.layers.iter().map(|l| l.name.as_str()));
+        for (layer, parent) in packet.layers.iter().zip(parents) {
+            let first = model.parts.len();
             let nodes = if complete {
                 model.layout_nodes(layer)
             } else {
                 model.field_nodes(layer)
             };
+            // "Payload › PMT › …": where the part is, as the list nests it.
+            if let Some(parent) = parent {
+                let title = layer_title(&packet.layers[parent].name);
+                for part in &mut model.parts[first..] {
+                    part.context = format!("{title} › {}", part.context);
+                }
+            }
             model.layers.push(LayerTree {
                 name: layer.name.clone(),
                 nodes,
+                parent,
             });
         }
         for (index, part) in model.parts.iter().enumerate() {
@@ -422,6 +459,17 @@ impl Model {
         }
     }
 
+    /// The parts of a layer and of the layers beneath it.
+    fn layer_parts(&self, index: usize) -> Vec<usize> {
+        let mut parts: Vec<usize> = self.layers[index].nodes.iter().flat_map(leaves).collect();
+        for (child, layer) in self.layers.iter().enumerate() {
+            if layer.parent == Some(index) {
+                parts.extend(self.layer_parts(child));
+            }
+        }
+        parts
+    }
+
     /// Bits that some part classifies.
     pub fn classified(&self) -> usize {
         self.owners.iter().filter(|o| o.is_some()).count()
@@ -554,6 +602,9 @@ pub struct State {
     lines: Vec<Selection>,
     /// Scroll the field list to the selected line on the next frame.
     scroll_list: bool,
+    /// Open the layers holding the selection on the next frame, which may
+    /// have been made in the grid while they were collapsed.
+    reveal: bool,
 }
 
 impl State {
@@ -561,6 +612,7 @@ impl State {
     #[cfg(test)]
     pub fn with(selection: Option<Selection>) -> Self {
         State {
+            reveal: selection.is_some(),
             selection,
             ..State::default()
         }
@@ -568,6 +620,7 @@ impl State {
 
     pub fn select(&mut self, selection: Option<Selection>) {
         self.scroll_to_selection = selection.is_some();
+        self.reveal = selection.is_some();
         self.selection = selection;
     }
 
@@ -735,25 +788,53 @@ fn facts(ui: &mut egui::Ui, id: &str, rows: &[(String, String)]) {
         });
 }
 
-/// The field list: one collapsible section per layer, in file order. Lines
-/// are dense (small button padding and spacing) so a long table fits.
+/// The field list: one collapsible section per layer, in file order, with
+/// the layer that decodes the payload (PES header or PSI section) inside the
+/// payload's section. Lines are dense (small button padding and spacing) so
+/// a long table fits.
 pub fn field_list(ui: &mut egui::Ui, model: &Model, state: &mut State) {
     state.lines.clear();
+    let reveal = std::mem::take(&mut state.reveal);
     let spacing = ui.spacing_mut();
     spacing.button_padding = egui::vec2(8.0, 3.0);
     spacing.interact_size.y = 19.0;
     spacing.item_spacing.y = 2.0;
     for (index, layer) in model.layers.iter().enumerate() {
-        let color = layer_color(byte_layer(&layer.name));
+        if layer.parent.is_none() {
+            layer_section(ui, model, index, state, reveal);
+        }
+    }
+}
+
+/// A layer's section with the layers beneath it; opened when `reveal` asks
+/// for the selection to be shown and it is inside.
+fn layer_section(ui: &mut egui::Ui, model: &Model, index: usize, state: &mut State, reveal: bool) {
+    let layer = &model.layers[index];
+    let color = layer_color(byte_layer(&layer.name));
+    let mut header =
         egui::CollapsingHeader::new(crate::theme::emphasis(layer_title(&layer.name)).color(color))
             .id_salt(("wire_layer", index))
-            .default_open(true)
-            .show(ui, |ui| {
-                for node in &layer.nodes {
-                    node_line(ui, model, node, state);
-                }
-            });
+            .default_open(true);
+    if reveal && let Some(selection) = &state.selection {
+        let parts = model.layer_parts(index);
+        if model
+            .selected_parts(selection)
+            .iter()
+            .any(|i| parts.contains(i))
+        {
+            header = header.open(Some(true));
+        }
     }
+    header.show(ui, |ui| {
+        for node in &layer.nodes {
+            node_line(ui, model, node, state);
+        }
+        for (child, layer) in model.layers.iter().enumerate() {
+            if layer.parent == Some(index) {
+                layer_section(ui, model, child, state, reveal);
+            }
+        }
+    });
 }
 
 fn byte_layer(name: &str) -> ByteLayer {
@@ -1052,11 +1133,8 @@ pub fn bit_grid(ui: &mut egui::Ui, raw: &[u8], per_row: usize, model: &Model, st
         && let Some(owner) = model.owners[bit]
     {
         let selection = Selection::Part(model.parts[owner].id.clone());
-        state.selection = if state.selection.as_ref() == Some(&selection) {
-            None
-        } else {
-            Some(selection)
-        };
+        let on = state.selection.as_ref() == Some(&selection);
+        state.select(if on { None } else { Some(selection) });
     }
 }
 
@@ -1304,7 +1382,51 @@ mod tests {
                 "ES_info_length"
             ]
         );
-        assert_eq!(model.parts[stream[1]].context, "PMT › stream 1");
+        assert_eq!(model.parts[stream[1]].context, "Payload › PMT › stream 1");
+    }
+
+    /// A PES header or PSI section decodes the payload it follows; the
+    /// framing layers, the trailer among them, have no parent.
+    #[test]
+    fn decoded_layers_are_beneath_the_payload() {
+        assert_eq!(
+            layer_parents(["ts_header", "payload", "pmt"]),
+            [None, None, Some(1)]
+        );
+        assert_eq!(
+            layer_parents([
+                "ts_header",
+                "adaptation_field",
+                "payload",
+                "pes_header",
+                "trailer"
+            ]),
+            [None, None, None, Some(2), None]
+        );
+        // A continuation or scrambled payload: nothing decodes it.
+        assert_eq!(layer_parents(["ts_header", "payload"]), [None, None]);
+        assert_eq!(
+            layer_parents(["ts_header", "payload", "trailer"]),
+            [None, None, None]
+        );
+        // Nothing to decode before a payload.
+        assert_eq!(layer_parents(["ts_header", "pmt"]), [None, None]);
+
+        let packet = video_204().packet.unwrap();
+        let model = Model::new(&packet, 204 * 8);
+        let parents: Vec<_> = model.layers.iter().map(|l| l.parent).collect();
+        assert_eq!(parents, [None, None, None, Some(2), None]);
+        // The payload's parts include those of the PES header beneath it.
+        let pes = model.parts.iter().position(|p| p.label == "PTS[14..0]");
+        assert!(model.layer_parts(2).contains(&pes.unwrap()));
+        assert!(!model.layer_parts(4).contains(&pes.unwrap()));
+        let prefix = model.owners[1264].unwrap();
+        assert_eq!(
+            model.parts[prefix].context,
+            "Payload › PES header › packet_start_code_prefix"
+        );
+        let pid = model.owners[11].unwrap();
+        assert_eq!(model.parts[pid].context, "TS header › PID");
     }
 
     #[test]
