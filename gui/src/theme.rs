@@ -6,7 +6,7 @@ use eframe::egui::{self, Color32, FontFamily, FontId, TextStyle};
 const HEADING_FAMILY: &str = "heading";
 
 /// The verdict of a check, shown as a colored badge.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Verdict {
     Ok,
     Ng,

@@ -970,10 +970,7 @@ fn every_check_has_a_detail_page() {
             )
             .unwrap();
             harness.get_by_role_and_label(Role::Heading, help.title);
-            harness.get_by_label(&format!(
-                "Status: {}",
-                crate::views::overview::status_label(&row.status)
-            ));
+            harness.get_by_label(&format!("Status: {}", row.status.label()));
             for heading in [
                 "Current result",
                 "Verdicts",
@@ -1020,7 +1017,7 @@ fn every_check_has_a_detail_page() {
             for (node, (status, meaning)) in rows.iter().zip(help.statuses) {
                 let label = format!(
                     "{}: {meaning}",
-                    crate::views::overview::status_label(status)
+                    crate::presentation::CheckStatus::parse(status).label()
                 );
                 assert_eq!(
                     node.accesskit_node().label().as_deref(),
@@ -1028,7 +1025,7 @@ fn every_check_has_a_detail_page() {
                 );
                 assert_eq!(
                     node.accesskit_node().is_selected(),
-                    Some(*status == row.status),
+                    Some(*status == row.status.as_str()),
                     "{check:?} {status}"
                 );
                 assert_eq!(cell_widths(node).len(), 2);
@@ -1441,7 +1438,7 @@ fn all_findings_fixture_matches_the_cli() {
         crate::views::overview::findings(report, &report.programs[0])
             .0
             .into_iter()
-            .map(|f| (f.status, f.label))
+            .map(|f| (f.status.to_string(), f.label))
             .collect()
     };
     assert_eq!(summary(&m2ts), summary(&report));

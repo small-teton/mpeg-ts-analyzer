@@ -43,6 +43,16 @@ Work is tracked in #101 (milestone GUI v0.1).
 - Analysis logic and verdicts live only in the CLI, so the GUI and the CLI
   cannot disagree. CLI changes for the GUI add output surfaces; they do not
   change analysis results.
+- The views do not read status strings themselves. `gui/src/report.rs` holds
+  the JSON documents as the schema defines them and keeps every status as the
+  CLI wrote it, so a newer CLI with additive fields or status values still
+  parses. `gui/src/presentation/` normalizes those statuses into
+  `CheckStatus`, one variant per value the current schema documents for a
+  check plus `Unknown` for any other, and owns their severity (badge color),
+  badge text, classification (finding, unavailable analysis, report without a
+  verdict) and the scope of a finding. A status the GUI does not know keeps
+  its text and a neutral badge, never a warning color. A test pins every
+  documented check status of the schemas to its own variant.
 - The GUI packages bundle a published CLI release, named in
   `gui/BUNDLED_CLI_VERSION`. A GUI change that needs new CLI output is released
   after the CLI release that provides it.
