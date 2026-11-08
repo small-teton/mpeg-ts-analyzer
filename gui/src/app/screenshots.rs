@@ -3,7 +3,8 @@
 //! Packets in a 2×2 grid), `docs/images/gui-byte-inspector.png` and
 //! `docs/images/gui-bit-inspector.png` (the Byte and Bit inspectors with the
 //! 13-bit PID selected) and `docs/images/gui-wire-layout.png` (the detailed
-//! inspection of a PMT packet with its PID selected).
+//! inspection of a PMT packet with its PID selected), and
+//! `docs/images/gui-star-reminder.png` (Packets with the star reminder).
 //!
 //! `make check-gui-screenshots` renders them and compares them with the
 //! committed images; `make gui-screenshots` (`UPDATE_SNAPSHOTS=1`) writes them.
@@ -123,6 +124,26 @@ fn wire_layout(size: egui::Vec2) -> RgbaImage {
     without_margin(harness.render().expect("render the wire layout"), 1.0)
 }
 
+/// Packets, with the star reminder above the status bar
+/// (`docs/images/gui-star-reminder.png`).
+fn star_reminder(size: egui::Vec2) -> RgbaImage {
+    let mut app = analyzed_app();
+    app.screen = Screen::Packets;
+    let mut pages = PacketPages::loaded_for_test(packets_page(), 564, pmt_packet_detail());
+    pages.select_field_for_test("PID");
+    app.session_mut().packet_pages = pages;
+    app.star_reminder.state = crate::star_reminder::ReminderState::Eligible;
+    let mut harness = Harness::builder()
+        .with_size(size)
+        .with_pixels_per_point(1.0)
+        .with_theme(egui::Theme::Dark)
+        .with_context_setup(crate::theme::apply_with_bundled_fonts)
+        .wgpu()
+        .build_ui_state(|ui, app: &mut App| app.show(ui), app);
+    harness.run();
+    without_margin(harness.render().expect("render the star reminder"), 1.0)
+}
+
 fn manifest_dir() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))
 }
@@ -170,6 +191,7 @@ fn readme_screenshots_are_current() {
             "gui-bit-inspector",
         ),
         (wire_layout(TAB_SIZE), "gui-wire-layout"),
+        (star_reminder(TAB_SIZE), "gui-star-reminder"),
     ]
     .iter()
     .filter_map(|(image, name)| check(image, name).err())

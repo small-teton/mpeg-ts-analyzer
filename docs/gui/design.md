@@ -177,6 +177,12 @@ size and style grouped at the bottom of the rail, in that order (see
 [Updates](#updates) for the update button).
 There is no menu bar.
 
+The root shell, top to bottom: the file and scan-range bar, then the rail on
+the left with the active screen beside it, then the status bar across the
+whole window. When the [star reminder](#star-reminder) is shown, it takes a
+row of its own between the screen and the status bar, right of the rail; the
+screen gets that much less height, and nothing is drawn over it.
+
 ### Program selection
 
 A transport stream can carry several programs (for example a broadcast capture
@@ -496,6 +502,11 @@ loaded at startup; fields missing from an older save take their defaults, and
 the `language` value that earlier versions saved is ignored. Values out of
 range in a saved file are clamped when they are used.
 
+The [star reminder](#star-reminder) keeps its state in the same store under a
+key of its own (`star_reminder`), not in the settings: it is not a
+preference, and Restore defaults must not bring back a reminder the user
+answered.
+
 ## Look and feel
 
 - Status badges: white Inter SemiBold 14 pt text on a solid fill, 10 × 3
@@ -559,7 +570,7 @@ range in a saved file are clamped when they are used.
   | Monospace data | 13.5 (compact 12.5) | mono | default text | values on every screen (including the Detailed inspection field lines), PIDs, offsets, hex, bits |
   | Small | 12.5 | regular | by context | rail labels, the range bar's label (`theme::caption_font`, egui's Small style) |
   | Badge | 14 | semibold | `theme::ON_FILL_TEXT` (white) | status and packet-kind badges |
-  | Text on fill | by role | by role | `theme::ON_FILL_TEXT` (white) | badges and the Start button; every fill keeps at least 4.5:1 against it |
+  | Text on fill | by role | by role | `theme::ON_FILL_TEXT` (white) | badges, the Start button and the star reminder's Star on GitHub; every fill keeps at least 4.5:1 against it |
 
   Intentional exceptions: the breadcrumb's "Packet #n of N" stays body-sized
   (emphasis, not a heading) so the header stays one compact row; the
@@ -571,6 +582,12 @@ range in a saved file are clamped when they are used.
   and bits use egui's selection colors; the Timeline's ring around the
   selected point uses the strong text color so it shows on light and dark
   plots.
+- Star reminder: the heading is emphasis, the sentence body text. Its warm
+  accent (`theme::star_accent`, `#B36B00` light / `#F2B544` dark, at least
+  3:1 on the panel) colors the star icon and the rule above the row, and tints
+  the row while it breathes. **Star on GitHub** is filled
+  `theme::STAR_FILL` `#8F5A00` with white text (5.8:1); **Don't ask again**
+  is a plain button and close a frameless × (Phosphor `star` and `x`).
 
 ## Development
 
@@ -741,6 +758,55 @@ GUI; the signed trusted comment must name exactly that file. Only then does
 - Developer ID signing and notarization (still excluded, see
   [release-security.md](release-security.md)).
 
+## Star reminder
+
+After a few successful analyses the GUI asks, once in a while, for a GitHub
+star (#215). It is a row of the root shell, not a dialog
+(`gui/src/star_reminder.rs`).
+
+- **Placement**: a compact row reserved immediately above the status bar,
+  right of the rail, on every screen including the Detailed inspection page.
+  The screen above loses that height; the row never covers the screen, the
+  rail or the status bar. In a wide window it is one line, with the actions on
+  the right; when they do not fit, the text wraps and the actions move to a
+  line of their own inside the row.
+- **Copy**: "Is mpeg-ts-analyzer useful to you?" (emphasis), "A GitHub star
+  helps other people find this project.", then **Star on GitHub**, **Don't
+  ask again** and a close button ("Close the reminder").
+- **When**: only analyses the GUI accepted count (the same point where a new
+  session replaces the old one); cancelled runs, CLI errors and reports with
+  `status: "failed"` do not, nor do launches. States, with the counts as
+  named constants:
+
+  ```text
+  Pending --3 successful analyses--> Eligible --close--> Deferred --5 more--> Eligible ...
+  Eligible --Star on GitHub / Don't ask again--> Completed
+  ```
+
+  Close only defers, by `REMIND_AGAIN_AFTER` (5) analyses every time; there
+  is no limit on how often it comes back. Only **Star on GitHub** and
+  **Don't ask again** complete it, and a completed reminder never returns.
+- **Star on GitHub** opens `https://github.com/small-teton/mpeg-ts-analyzer`
+  in the default browser and completes; whether the user then stars is not
+  checked. If the browser cannot be opened, the reminder is not completed:
+  the row stays, says that the browser did not open and shows the address as
+  selectable text, and the button can be tried again.
+- **Local only**: no `gh`, GitHub API, sign-in or telemetry; the GUI cannot
+  know whether the user already starred, so **Don't ask again** is the way out.
+  Nothing about the reminder is passed to the CLI.
+- **Persistence**: `{successful_analyses, state}` in eframe's store under
+  `star_reminder`, saved with the settings; a missing key or field (an older
+  GUI) starts at zero, pending; an unreadable value starts over.
+- **Attention**: while shown, the row breathes slowly: its background tints
+  toward the warm accent and back, and the rule above it thickens slightly,
+  one cycle every 2 s, until the user acts. Only colors change, so nothing
+  moves, and the row never takes the keyboard focus; its buttons are reached
+  with Tab like any other. It repaints at about 18 frames a second only while
+  shown (about 6 % of one core on an Apple silicon Mac, against about 1 % idle);
+  hidden, the app is idle. egui does not expose the OS reduced-motion setting;
+  with egui's animation time set to 0 the row shows a static tint instead.
+  Tests and screenshots draw it without the highlight.
+
 ## Decisions
 
 | Decision | Why | Rejected |
@@ -771,6 +837,7 @@ GUI; the signed trusted comment must name exactly that file. Only then does
 | One table of check texts (`check_help.rs`) for the table, detail pages, findings and tests | One source of truth; a new check is one entry | Texts in the view code |
 | One Findings list counting every non-OK check, events and warnings; skipped checks listed separately | The count must agree with the table; an event counts once | The former Warnings list of parser events only |
 | The GUI shows the CLI's statuses as they are; PCR jitter `not_assessable` is unavailable analysis, not a finding | The CLI decides whether a file-based estimate deserves a verdict (schema 2.0, #152); a variable-rate file is not evidence of a PCR fault | Downgrading or hiding `ng` in the GUI; grading the estimate in the GUI |
+| Star reminder as a reserved row above the status bar, counting successful analyses, with explicit states (#215) | Visible on every screen without covering content or blocking analysis; the state machine keeps close (defer) apart from the two completing actions | A modal; an Overview card; a floating toast; checking the star through `gh` or OAuth |
 | Modal progress dialog during analysis | Results of every analysis screen are being replaced; one clear place to wait and cancel | Per-screen overlays while other screens stay usable |
 
 ## Open questions

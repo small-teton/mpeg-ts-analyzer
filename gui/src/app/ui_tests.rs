@@ -1974,3 +1974,311 @@ fn session_keeps_plots_instead_of_the_raw_series() {
         assert_eq!(bitrate.jitter_samples, jitter);
     }
 }
+
+// The star reminder: a row of the root shell above the status bar.
+
+use crate::star_reminder::{self, ReminderState};
+
+/// `app` with the star reminder shown, as after three successful analyses.
+fn with_star_reminder(mut app: App) -> App {
+    app.star_reminder.successful_analyses = star_reminder::FIRST_REMINDER_AFTER;
+    app.star_reminder.state = ReminderState::Eligible;
+    app
+}
+
+fn shell(harness: &Harness<'_, App>) -> super::ShellLayout {
+    harness.state().shell.expect("a frame was drawn")
+}
+
+fn star_button<'a>(harness: &'a Harness<'_, App>) -> Node<'a> {
+    harness.get_by_role_and_label(Role::Button, star_reminder::STAR_ACTION)
+}
+
+fn dont_ask_button<'a>(harness: &'a Harness<'_, App>) -> Node<'a> {
+    harness.get_by_role_and_label(Role::Button, star_reminder::DONT_ASK_ACTION)
+}
+
+fn close_reminder_button<'a>(harness: &'a Harness<'_, App>) -> Node<'a> {
+    harness.get_by_role_and_label(Role::Button, star_reminder::CLOSE_ACTION)
+}
+
+/// The row is reserved between the content and the status bar, right of the
+/// rail, and the content area ends above it: nothing is drawn over anything.
+fn assert_reminder_reserves_its_row(harness: &Harness<'_, App>, size: egui::Vec2) {
+    let shell = shell(harness);
+    let row = shell.star_reminder.expect("the reminder is shown");
+    assert!(
+        row.bottom() <= shell.status.top() + 0.5,
+        "{row:?} {shell:?}"
+    );
+    assert!(
+        shell.central.bottom() <= row.top() + 0.5,
+        "{row:?} {shell:?}"
+    );
+    assert!(
+        row.left() >= shell.navigation.right() - 0.5,
+        "{row:?} {shell:?}"
+    );
+    assert!(row.right() <= size.x + 0.5, "{row:?}");
+    for button in [
+        star_button(harness),
+        dont_ask_button(harness),
+        close_reminder_button(harness),
+    ] {
+        let b = bounds(&button);
+        assert!(row.expand(0.5).contains_rect(b), "{b:?} outside {row:?}");
+    }
+    harness.get_by_label(star_reminder::HEADING);
+    harness.get_by_label(star_reminder::BODY);
+    // The status bar is unchanged below the row.
+    // The status bar's text (Packets' header also names the packet size).
+    let status = harness
+        .query_all_by_label_contains("-byte packets")
+        .map(|node| bounds(&node))
+        .max_by(|a, b| a.top().total_cmp(&b.top()))
+        .expect("the status bar");
+    assert!(status.top() >= row.bottom() - 0.5, "{status:?} {row:?}");
+}
+
+/// Shown from every screen and from the Detailed inspection page, always in
+/// the same reserved row, never over the screen's content.
+#[test]
+fn star_reminder_is_shown_on_every_screen() {
+    for screen in Screen::ANALYSIS {
+        let mut app = with_star_reminder(analyzed_app());
+        app.screen = screen;
+        let harness = harness(app);
+        assert_reminder_reserves_its_row(&harness, WIDE);
+    }
+    let mut harness = packets_screen(WIDE);
+    harness.state_mut().star_reminder = with_star_reminder(App::default()).star_reminder;
+    harness.run();
+    detailed_inspection_buttons(&harness)[0].click();
+    harness.run();
+    assert_eq!(pages_mut(&mut harness).inspected_for_test(), Some(564));
+    harness.get_by_label("Packet #4 of 40");
+    assert_reminder_reserves_its_row(&harness, WIDE);
+}
+
+/// Wide windows keep the row to one line with the actions on the right;
+/// narrow ones wrap it inside the reserved row, and the content area shrinks
+/// by the row instead of being covered.
+#[test]
+fn star_reminder_wraps_in_narrow_windows() {
+    for size in [WIDE, egui::vec2(820.0, 640.0), NARROW] {
+        let mut app = analyzed_app();
+        app.screen = Screen::Packets;
+        let hidden = shell(&harness_sized(app, size));
+        assert!(hidden.star_reminder.is_none());
+
+        let mut app = with_star_reminder(analyzed_app());
+        app.screen = Screen::Packets;
+        let harness = harness_sized(app, size);
+        assert_reminder_reserves_its_row(&harness, size);
+        let shown = shell(&harness);
+        let row = shown.star_reminder.unwrap();
+        assert!((shown.central.bottom() - (hidden.central.bottom() - row.height())).abs() < 1.0);
+        assert_eq!(shown.status, hidden.status);
+        let heading = bounds(&harness.get_by_label(star_reminder::HEADING));
+        let star = bounds(&star_button(&harness));
+        if size == WIDE {
+            assert!(
+                star.top() < heading.bottom(),
+                "one row: {heading:?} {star:?}"
+            );
+            assert!(star.left() > bounds(&harness.get_by_label(star_reminder::BODY)).right());
+        } else {
+            assert!(
+                star.top() >= heading.bottom() - 0.5,
+                "wrapped: {heading:?} {star:?}"
+            );
+        }
+    }
+}
+
+/// Appearing does not take the keyboard focus; the actions follow each
+/// other in Tab order and work with the keyboard.
+#[test]
+fn star_reminder_keeps_the_focus_and_works_with_the_keyboard() {
+    let mut harness = packets_screen(WIDE);
+    harness.state_mut().star_reminder.successful_analyses = 2;
+    harness.run();
+    assert!(harness.query_by_label(star_reminder::HEADING).is_none());
+    tab(&harness, Screen::Bitrate).focus();
+    harness.run();
+    assert!(tab(&harness, Screen::Bitrate).is_focused());
+
+    harness
+        .state_mut()
+        .star_reminder
+        .record_successful_analysis();
+    harness.run();
+    harness.get_by_label(star_reminder::HEADING);
+    assert!(tab(&harness, Screen::Bitrate).is_focused());
+    assert!(!star_button(&harness).is_focused());
+
+    star_button(&harness).focus();
+    harness.run();
+    harness.key_press(egui::Key::Tab);
+    harness.run();
+    assert!(dont_ask_button(&harness).is_focused());
+    harness.key_press(egui::Key::Tab);
+    harness.run();
+    assert!(close_reminder_button(&harness).is_focused());
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    assert!(harness.query_by_label(star_reminder::HEADING).is_none());
+    assert_eq!(
+        harness.state().star_reminder.state,
+        ReminderState::Deferred {
+            until: 3 + star_reminder::REMIND_AGAIN_AFTER
+        }
+    );
+}
+
+/// Records the URLs the app opens, answering with `result`.
+fn recording_opener(
+    app: &mut App,
+    result: Result<(), String>,
+) -> Arc<std::sync::Mutex<Vec<String>>> {
+    let opened = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let record = Arc::clone(&opened);
+    app.open_url = Box::new(move |url| {
+        record.lock().unwrap().push(url.to_owned());
+        result.clone()
+    });
+    opened
+}
+
+#[test]
+fn star_on_github_opens_the_repository_and_completes() {
+    let mut app = with_star_reminder(analyzed_app());
+    let opened = recording_opener(&mut app, Ok(()));
+    let mut harness = harness(app);
+    star_button(&harness).click();
+    harness.run();
+    assert_eq!(*opened.lock().unwrap(), [star_reminder::REPOSITORY_URL]);
+    assert_eq!(
+        harness.state().star_reminder.state,
+        ReminderState::Completed
+    );
+    assert!(harness.query_by_label(star_reminder::HEADING).is_none());
+    assert!(shell(&harness).star_reminder.is_none());
+}
+
+/// A browser that does not open: the row stays with the reason and the
+/// address, and a later attempt that works completes it.
+#[test]
+fn star_on_github_stays_when_the_browser_does_not_open() {
+    let mut app = with_star_reminder(analyzed_app());
+    let opened = recording_opener(&mut app, Err("no browser".to_owned()));
+    let mut harness = harness(app);
+    star_button(&harness).click();
+    harness.run();
+    assert_eq!(opened.lock().unwrap().len(), 1);
+    assert_eq!(harness.state().star_reminder.state, ReminderState::Eligible);
+    harness.get_by_label_contains("The browser did not open (no browser)");
+    harness.get_by_label(star_reminder::REPOSITORY_URL);
+    assert_reminder_reserves_its_row(&harness, WIDE);
+
+    let opened = recording_opener(harness.state_mut(), Ok(()));
+    star_button(&harness).click();
+    harness.run();
+    assert_eq!(opened.lock().unwrap().len(), 1);
+    assert_eq!(
+        harness.state().star_reminder.state,
+        ReminderState::Completed
+    );
+    assert!(
+        harness
+            .query_by_label_contains("The browser did not open")
+            .is_none()
+    );
+}
+
+#[test]
+fn dont_ask_again_completes_without_opening_anything() {
+    let mut app = with_star_reminder(analyzed_app());
+    let opened = recording_opener(&mut app, Ok(()));
+    let mut harness = harness(app);
+    dont_ask_button(&harness).click();
+    harness.run();
+    assert!(opened.lock().unwrap().is_empty());
+    assert_eq!(
+        harness.state().star_reminder.state,
+        ReminderState::Completed
+    );
+    for _ in 0..50 {
+        harness
+            .state_mut()
+            .star_reminder
+            .record_successful_analysis();
+    }
+    harness.run();
+    assert!(harness.query_by_label(star_reminder::HEADING).is_none());
+}
+
+/// Close hides the row until five more analyses, every time.
+#[test]
+fn close_brings_the_reminder_back_after_five_analyses() {
+    let mut app = with_star_reminder(analyzed_app());
+    let opened = recording_opener(&mut app, Ok(()));
+    let mut harness = harness(app);
+    for _ in 0..3 {
+        close_reminder_button(&harness).click();
+        harness.run();
+        assert!(harness.query_by_label(star_reminder::HEADING).is_none());
+        for _ in 0..star_reminder::REMIND_AGAIN_AFTER - 1 {
+            harness
+                .state_mut()
+                .star_reminder
+                .record_successful_analysis();
+            harness.run();
+            assert!(harness.query_by_label(star_reminder::HEADING).is_none());
+        }
+        harness
+            .state_mut()
+            .star_reminder
+            .record_successful_analysis();
+        harness.run();
+        harness.get_by_label(star_reminder::HEADING);
+    }
+    assert!(opened.lock().unwrap().is_empty());
+}
+
+/// The breathing highlight repaints only while the row is shown; hidden, the
+/// app is idle. (Tests draw it without the highlight unless asked.)
+#[test]
+fn star_reminder_repaints_only_while_shown() {
+    let repaint_delay = |harness: &Harness<'_, App>| {
+        harness.output().viewport_output[&egui::ViewportId::ROOT].repaint_delay
+    };
+    // Animations off (egui_kittest's default, egui's reduced motion): a
+    // static highlight, and no repaints.
+    let mut app = with_star_reminder(analyzed_app());
+    app.star_pulse = true;
+    let mut harness = harness(app);
+    harness.step();
+    assert_eq!(repaint_delay(&harness), std::time::Duration::MAX);
+
+    let mut app = analyzed_app();
+    app.star_pulse = true;
+    let mut harness = self::harness(app);
+    // Animations on: the highlight breathes.
+    harness
+        .ctx
+        .all_styles_mut(|style| style.animation_time = 1.0 / 12.0);
+    harness.run();
+    assert_eq!(repaint_delay(&harness), std::time::Duration::MAX);
+
+    harness.state_mut().star_reminder = with_star_reminder(App::default()).star_reminder;
+    harness.run();
+    harness.step();
+    let delay = repaint_delay(&harness);
+    assert!(delay <= star_reminder::PULSE_FRAME, "{delay:?}");
+
+    dont_ask_button(&harness).click();
+    harness.run();
+    harness.step();
+    assert_eq!(repaint_delay(&harness), std::time::Duration::MAX);
+}

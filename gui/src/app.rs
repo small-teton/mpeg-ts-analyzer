@@ -6,6 +6,7 @@ use crate::cli::{self, AnalysisJob, JobUpdate};
 use crate::icons;
 use crate::range_bar::{self, AnalysisRange, Load};
 use crate::settings::Settings;
+use crate::star_reminder::{self, StarReminder};
 use crate::update::{InstallKind, Updates};
 use crate::views::overview::{self, OverviewAction};
 use crate::views::{Screen, bitrate, timeline::TimelineView};
@@ -58,6 +59,34 @@ pub struct App {
     about_open: bool,
     /// The in-app update: its check, window and pending install.
     updates: Updates,
+    /// The GitHub star reminder above the status bar, saved between runs.
+    star_reminder: StarReminder,
+    /// Why the last **Star on GitHub** could not open the browser.
+    star_open_error: Option<String>,
+    /// When (egui's input time) the reminder appeared on screen, the phase
+    /// origin of its breathing highlight; `None` while it is hidden.
+    star_shown_since: Option<f64>,
+    /// Whether the reminder breathes; off in tests, so they and the
+    /// screenshots see a fixed phase (no highlight).
+    star_pulse: bool,
+    /// Opens a URL in the default browser; tests replace it.
+    open_url: Box<UrlOpener>,
+    /// Where the last frame put the shell's panels, for layout tests.
+    #[cfg(test)]
+    shell: Option<ShellLayout>,
+}
+
+/// Opens a URL, or says why it could not.
+type UrlOpener = dyn FnMut(&str) -> Result<(), String>;
+
+/// Rects of the root shell's panels in the last frame.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug)]
+struct ShellLayout {
+    status: egui::Rect,
+    navigation: egui::Rect,
+    star_reminder: Option<egui::Rect>,
+    central: egui::Rect,
 }
 
 impl Default for App {
@@ -74,6 +103,7 @@ impl App {
             .and_then(|storage| eframe::get_value(storage, crate::settings::STORAGE_KEY))
             .unwrap_or_default();
         let mut app = Self::with_launch(settings, Some(cc.egui_ctx.clone()), launch);
+        app.star_reminder = StarReminder::load(cc.storage);
         // Only here, not in the constructors tests use: they stay offline.
         app.startup_update_check(&cc.egui_ctx);
         app
@@ -130,6 +160,13 @@ impl App {
             settings_open: false,
             about_open: false,
             updates: Updates::new(InstallKind::detect()),
+            star_reminder: StarReminder::default(),
+            star_open_error: None,
+            star_shown_since: None,
+            star_pulse: !cfg!(test),
+            open_url: Box::new(default_open_url),
+            #[cfg(test)]
+            shell: None,
         }
     }
 }
@@ -275,6 +312,7 @@ impl App {
                     self.generations,
                 ));
                 self.analysis = AnalysisState::Idle;
+                self.star_reminder.record_successful_analysis();
             }
             JobUpdate::Finished(Err(err)) => {
                 self.error = Some(err);
@@ -519,6 +557,7 @@ impl App {
 impl eframe::App for App {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, crate::settings::STORAGE_KEY, &self.settings);
+        eframe::set_value(storage, star_reminder::STORAGE_KEY, &self.star_reminder);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -548,7 +587,7 @@ impl App {
         self.start_awaited(ui.ctx());
         self.poll_analysis();
         egui::Panel::top("top_bar").show(ui, |ui| self.top_bar(ui));
-        egui::Panel::bottom("status").show(ui, |ui| {
+        let _status = egui::Panel::bottom("status").show(ui, |ui| {
             ui.horizontal(|ui| {
                 match &self.session {
                     Some(session) => ui.weak(format!(
@@ -566,11 +605,14 @@ impl App {
                 };
             });
         });
-        egui::Panel::left("navigation")
+        let _navigation = egui::Panel::left("navigation")
             .resizable(false)
             .exact_size(96.0)
             .show(ui, |ui| self.navigation(ui));
-        egui::CentralPanel::default().show(ui, |ui| {
+        // After the rail, so the row spans the content area only and the
+        // rail keeps its bottom tiles in place.
+        let _star_reminder = self.star_reminder_row(ui);
+        let _central = egui::CentralPanel::default().show(ui, |ui| {
             let mut open_packet = None;
             let navigate = match &mut self.session {
                 Some(session) => {
@@ -659,6 +701,15 @@ impl App {
                 session.packet_pages.go_to(offset);
             }
         });
+        #[cfg(test)]
+        {
+            self.shell = Some(ShellLayout {
+                status: _status.response.rect,
+                navigation: _navigation.response.rect,
+                star_reminder: _star_reminder,
+                central: _central.response.rect,
+            });
+        }
 
         let ctx = ui.ctx().clone();
         let status = crate::settings::CliStatus {
@@ -682,6 +733,66 @@ impl App {
         self.analysis_dialog(&ctx);
         self.error_dialog(&ctx);
     }
+}
+
+impl App {
+    /// The star reminder: a row of the root shell reserved above the status
+    /// bar, on every screen, never over the content. Returns its rect.
+    fn star_reminder_row(&mut self, ui: &mut egui::Ui) -> Option<egui::Rect> {
+        if !self.star_reminder.is_shown() {
+            self.star_shown_since = None;
+            return None;
+        }
+        // A slow breathing highlight while the row is shown, until the user
+        // acts on it. Colors only, so nothing moves. egui's animation time 0
+        // (no OS reduced-motion signal reaches egui) leaves a static tint.
+        let now = ui.input(|i| i.time);
+        let since = *self.star_shown_since.get_or_insert(now);
+        let pulse = if !self.star_pulse {
+            0.0
+        } else if ui.style().animation_time > 0.0 {
+            ui.ctx().request_repaint_after(star_reminder::PULSE_FRAME);
+            star_reminder::pulse(now - since)
+        } else {
+            star_reminder::STATIC_HIGHLIGHT
+        };
+        let accent = crate::theme::star_accent(ui.visuals());
+        const MARGIN: egui::Margin = egui::Margin::symmetric(12, 6);
+        let base = egui::Frame::side_top_panel(ui.style());
+        let fill = base.fill.lerp_to_gamma(accent, 0.22 * pulse);
+        let frame = base.inner_margin(MARGIN).fill(fill);
+        let panel = egui::Panel::bottom("star_reminder")
+            .frame(frame)
+            .show_separator_line(false)
+            .show(ui, |ui| {
+                // The warm rule across the top of the row.
+                let top = ui.max_rect().top() - f32::from(MARGIN.top);
+                ui.painter().hline(
+                    ui.max_rect()
+                        .expand2(egui::vec2(f32::from(MARGIN.left), 0.0))
+                        .x_range(),
+                    top,
+                    egui::Stroke::new(1.0 + pulse, accent),
+                );
+                star_reminder::show(ui, self.star_open_error.as_deref())
+            });
+        if let Some(action) = panel.inner {
+            let result = self.star_reminder.apply(action, &mut *self.open_url);
+            self.star_open_error = result.err();
+        }
+        Some(panel.response.rect)
+    }
+}
+
+/// The browser in the app; tests never open one unless they install their own.
+#[cfg(not(test))]
+fn default_open_url(url: &str) -> Result<(), String> {
+    star_reminder::open_in_browser(url)
+}
+
+#[cfg(test)]
+fn default_open_url(_url: &str) -> Result<(), String> {
+    Err("tests do not open a browser".to_owned())
 }
 
 /// What a screen shows when it has nothing to show: a title and what to do.
@@ -918,6 +1029,18 @@ mod tests {
         finish(&mut app);
         let session = app.session.as_ref().expect("a session");
         assert_eq!((session.range, session.generation), ((188, 2000), 2));
+        // Each accepted analysis counts towards the star reminder.
+        assert_eq!(app.star_reminder.successful_analyses, 2);
+
+        // A report with status "failed": an error, not counted.
+        let failed = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/analysis_failed.json");
+        app.cli = CliState::Ready(cli::fake_cli(&dir, &format!("cat '{}'", failed.display())));
+        app.range.offset = 376;
+        app.start(&ctx);
+        finish(&mut app);
+        assert!(app.error.take().is_some());
+        assert_eq!(app.star_reminder.successful_analyses, 2);
 
         // A CLI that fails: an error, and the last analysis stays.
         app.cli = CliState::Ready(cli::fake_cli(&dir, "echo broken >&2\nexit 1"));
@@ -938,6 +1061,8 @@ mod tests {
         assert!(cli::wait_until_exited(&child), "the analysis kept running");
         assert_eq!(app.session.as_ref().map(|s| s.generation), Some(2));
         assert!(app.error.is_none());
+        // Neither the CLI failure nor the cancelled run counted.
+        assert_eq!(app.star_reminder.successful_analyses, 2);
     }
 
     /// A command-line range starts once the CLI check has passed, and not at

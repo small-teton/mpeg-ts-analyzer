@@ -209,6 +209,16 @@ pub const KIND_OTHER: Color32 = Color32::from_rgb(0x59, 0x63, 0x6e);
 /// Fill of the buttons that start an analysis, with [`ON_FILL_TEXT`].
 pub const START_COLOR: Color32 = Color32::from_rgb(0x2e, 0x8b, 0x4f);
 
+/// Fill of the star reminder's **Star on GitHub** button, with
+/// [`ON_FILL_TEXT`] (5.8:1): a muted amber, the same in light and dark.
+pub const STAR_FILL: Color32 = Color32::from_rgb(0x8f, 0x5a, 0x00);
+
+/// The star reminder's warm accent: its star icon and the rule above the row.
+/// At least 3:1 on the panel (light `#B36B00`, dark `#F2B544`).
+pub fn star_accent(visuals: &egui::Visuals) -> Color32 {
+    by_theme(visuals, 0xB36B00, 0xF2B544)
+}
+
 /// Larger than egui's defaults so menus, dialogs and controls are easy to read and hit.
 pub fn apply(ctx: &egui::Context) {
     install_fonts(ctx, true);

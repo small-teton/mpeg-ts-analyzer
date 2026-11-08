@@ -2291,6 +2291,7 @@ dependencies = [
  "rfd",
  "serde",
  "serde_json",
+ "webbrowser",
 ]
 
 [[package]]

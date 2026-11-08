@@ -242,6 +242,8 @@ The GUI images of the README and the GUI guide are rendered, not captured:
   Packets screen.
 - `docs/images/gui-wire-layout.png`: the detailed inspection page of that PMT
   packet, with its PID selected.
+- `docs/images/gui-star-reminder.png`: Packets with the star reminder above
+  the status bar. The other images are rendered without it.
 
 ```bash
 make gui-screenshots        # render the images into docs/images/

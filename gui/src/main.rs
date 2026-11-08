@@ -10,6 +10,7 @@ mod psi;
 mod range_bar;
 mod report;
 mod settings;
+mod star_reminder;
 mod theme;
 mod update;
 mod views;
