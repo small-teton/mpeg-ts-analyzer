@@ -463,7 +463,7 @@ jobs:
       github.event_name != 'pull_request' &&
       needs.version.outputs.state != 'published' &&
       needs.package.result == 'success'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     environment: gui-release
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -507,7 +507,7 @@ jobs:
   sign-updates-dry-run:
     needs: [version, package]
     if: github.event_name == 'pull_request' && needs.package.result == 'success'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       VERSION: ${{ needs.version.outputs.version }}
       TAG: ${{ needs.version.outputs.tag }}
