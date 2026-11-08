@@ -275,6 +275,29 @@ fn layer_bits(layer: &PacketLayer) -> Option<Range<usize>> {
     Some(start..end)
 }
 
+/// The packet bit where a decoded layer ends. Without a layout, a PES
+/// header's fields may not reach its end (optional fields and stuffing
+/// that are not reported), so its end is where PES_header_data_length says.
+fn decoded_end(layer: &PacketLayer, raw: &[u8]) -> Option<usize> {
+    let fields_end = layer_bits(layer)?.end;
+    if layer.name != "pes_header" || !layer.bit_layout.is_empty() {
+        return Some(fields_end);
+    }
+    match layer
+        .fields
+        .iter()
+        .find(|f| f.name == "PES_header_data_length")
+    {
+        Some(length) => {
+            let at = length.byte_offset;
+            let data = usize::from(*raw.get(at)?);
+            Some(fields_end.max((at + 1 + data) * 8))
+        }
+        // A stream_id without the optional header: its fields end it.
+        None => Some(fields_end),
+    }
+}
+
 /// See [`PayloadRest`]; `unit` is the kind of the unit the packet belongs
 /// to (`pes`, `psi`, ...).
 pub fn payload_rest(packet: &DecodedPacket, unit: Option<&str>) -> Option<PayloadRest> {
@@ -296,11 +319,8 @@ pub fn payload_rest(packet: &DecodedPacket, unit: Option<&str>) -> Option<Payloa
         };
         return (unit == Some("pes") && !all.bits.is_empty()).then_some(all);
     }
-    let covered = decoded
-        .iter()
-        .filter_map(|l| layer_bits(l))
-        .map(|r| r.end)
-        .max()?;
+    let raw = packet.raw();
+    let covered = decoded.iter().filter_map(|l| decoded_end(l, &raw)).max()?;
     if covered >= payload.end {
         return None;
     }
@@ -308,7 +328,6 @@ pub fn payload_rest(packet: &DecodedPacket, unit: Option<&str>) -> Option<Payloa
     let (label, kind) = if decoded.iter().any(|l| l.name == "pes_header") {
         ("PES payload", Kind::Payload)
     } else {
-        let raw = packet.raw();
         let bytes = raw
             .get(bits.start / 8..bits.end.div_ceil(8))
             .unwrap_or_default();
@@ -1646,6 +1665,32 @@ mod tests {
         assert_eq!(
             rest("video_204", None),
             Some(pes("PES payload", 1376..1504))
+        );
+
+        // Without a layout, a PES header ends where PES_header_data_length
+        // says, even past its last reported field: here the DTS is not
+        // reported, and the header (10 bytes of data from byte 25) still
+        // ends at byte 35.
+        let mut document = fixture("pes_pcr_192");
+        let layers = document["packet"]["layers"].as_array_mut().unwrap();
+        for layer in layers.iter_mut() {
+            layer["bit_layout"] = serde_json::json!([]);
+        }
+        let pes_header = &mut layers[4]["fields"];
+        pes_header.as_array_mut().unwrap().pop();
+        assert_eq!(
+            payload_rest(&packet_of(document.clone()), Some("pes")),
+            Some(pes("PES payload", 280..1536))
+        );
+        // Without PES_header_data_length, the header ends after its last
+        // field (here the 2-bit PTS_DTS_flags).
+        let fields = document["packet"]["layers"][4]["fields"]
+            .as_array_mut()
+            .unwrap();
+        fields.retain(|f| f["name"] != "PES_header_data_length" && f["name"] != "PTS");
+        assert_eq!(
+            payload_rest(&packet_of(document), Some("pes")),
+            Some(pes("PES payload", 186..1536))
         );
 
         // Bytes after a section that are not stuffing.
