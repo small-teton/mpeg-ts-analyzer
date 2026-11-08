@@ -108,7 +108,7 @@ pub fn show_report(
 
             columns[1].horizontal(|ui| {
                 ui.strong("Jitter histogram");
-                ui.weak(format!("{} samples, ms", data.jitter.len()));
+                ui.weak(format!("{} samples, ms", data.jitter_samples));
             });
             let bars = data
                 .jitter_histogram

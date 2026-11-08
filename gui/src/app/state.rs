@@ -112,18 +112,29 @@ pub(super) struct Plots {
 }
 
 impl Plots {
-    fn of(report: &AnalysisReport) -> Self {
+    /// Derives the plots of every program from its raw series, which are
+    /// taken out of `report` and consumed one program at a time, so each
+    /// program's raw series is freed as soon as its plots exist.
+    ///
+    /// Every program is derived at once rather than when it is first shown:
+    /// deriving one later would mean keeping its raw series until then,
+    /// which hold more than the plot data made from them (see
+    /// docs/gui/memory-profile.md).
+    fn take_from(report: &mut AnalysisReport) -> Self {
+        let series: Vec<_> = report
+            .programs
+            .iter_mut()
+            .map(|program| program.series.take())
+            .collect();
+        let (timelines, bitrates) = report
+            .programs
+            .iter()
+            .zip(series)
+            .map(|(program, series)| plot_data::derive(report, program, series))
+            .unzip();
         Plots {
-            timelines: report
-                .programs
-                .iter()
-                .map(|program| plot_data::timeline(report, program))
-                .collect(),
-            bitrates: report
-                .programs
-                .iter()
-                .map(|program| plot_data::bitrate(report, program))
-                .collect(),
+            timelines,
+            bitrates,
         }
     }
 }
@@ -131,8 +142,10 @@ impl Plots {
 /// A completed analysis: the CLI's report and everything the screens derive
 /// from it, which lives and goes with it.
 pub(super) struct AnalysisSession {
+    /// The report without its programs' raw series (`Program::series` is
+    /// `None`): what Overview, the program selectors and Packets read.
     pub report: Box<AnalysisReport>,
-    /// Plot series of `report`, derived once rather than every frame.
+    /// Plot series derived once from the raw series, which they replace.
     pub plots: Plots,
     /// Packets of the analyzed range, read from the CLI page by page.
     pub packet_pages: PacketPages,
@@ -158,13 +171,13 @@ impl AnalysisSession {
 
     /// The session of `report` with the given packet paging.
     pub fn with_pages(
-        report: Box<AnalysisReport>,
+        mut report: Box<AnalysisReport>,
         range: (u64, u64),
         packet_pages: PacketPages,
         generation: u64,
     ) -> Self {
         AnalysisSession {
-            plots: Plots::of(&report),
+            plots: Plots::take_from(&mut report),
             report,
             packet_pages,
             range,
