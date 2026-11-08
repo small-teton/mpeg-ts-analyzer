@@ -117,6 +117,15 @@ fn long_report() -> AnalysisReport {
     report
 }
 
+/// Program `index`'s plots, from its series, which are taken out of `report`.
+fn program_plots(
+    report: &mut AnalysisReport,
+    index: usize,
+) -> (plot_data::Timeline, plot_data::Bitrate) {
+    let series = report.programs[index].series.take();
+    plot_data::derive(report, &report.programs[index], series)
+}
+
 fn harness(app: App) -> Harness<'static, App> {
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1280.0, 800.0))
@@ -141,9 +150,9 @@ fn per_frame(report: AnalysisReport, screen: Screen) -> Frame {
     // Byte sizes a per-frame copy of a drawn series would allocate: its
     // coordinates as two `f64`s, or the events as picking points. Short
     // series are left out: their sizes are too common to tell apart.
-    let program = &report.programs[0];
-    let timeline = plot_data::timeline(&report, program);
-    let bitrate = plot_data::bitrate(&report, program);
+    let mut app = app_with_report(report);
+    let plots = &app.session.as_ref().expect("a session").plots;
+    let (timeline, bitrate) = (&plots.timelines[0], &plots.bitrates[0]);
     let lengths = [
         timeline.pcr_drawn.len(),
         timeline.pcr_over_limit.len(),
@@ -171,7 +180,6 @@ fn per_frame(report: AnalysisReport, screen: Screen) -> Frame {
     sizes.dedup();
     assert!(sizes.len() <= WATCHED);
 
-    let mut app = app_with_report(report);
     app.screen = screen;
     let mut harness = harness(app);
     for _ in 0..3 {
@@ -193,17 +201,16 @@ fn per_frame(report: AnalysisReport, screen: Screen) -> Frame {
 }
 
 fn report_frames(report: impl Fn() -> AnalysisReport) -> Vec<(Screen, Frame)> {
-    let report_once = report();
+    let mut report_once = report();
+    let programs = report_once.programs.len();
     let started = Instant::now();
     let (_, derive_bytes) = counted(|| {
-        for program in &report_once.programs {
-            drop(plot_data::timeline(&report_once, program));
-            drop(plot_data::bitrate(&report_once, program));
+        for index in 0..programs {
+            drop(program_plots(&mut report_once, index));
         }
     });
     eprintln!(
-        "plot derivation for {} programs: {:?}, {} KiB allocated",
-        report_once.programs.len(),
+        "plot derivation for {programs} programs: {:?}, {} KiB allocated",
         started.elapsed(),
         derive_bytes / 1024
     );
@@ -225,8 +232,7 @@ fn report_frames(report: impl Fn() -> AnalysisReport) -> Vec<(Screen, Frame)> {
 /// Run with `-- --nocapture` for the numbers.
 #[test]
 fn plot_screens_do_not_copy_series_per_frame() {
-    let report = long_report();
-    let timeline = plot_data::timeline(&report, &report.programs[0]);
+    let (timeline, _) = program_plots(&mut long_report(), 0);
     // Long enough for the events and every drawn line to be watched.
     assert!(timeline.events.len() >= 1_000 && timeline.pcr_drawn.len() >= 1_000);
     for (screen, frame) in report_frames(long_report) {
