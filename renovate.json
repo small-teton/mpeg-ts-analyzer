@@ -22,7 +22,7 @@
     "enabled": false
   },
   "constraints": {
-    "python": "3.13"
+    "python": "3.15"
   },
   "packageRules": [
     {
