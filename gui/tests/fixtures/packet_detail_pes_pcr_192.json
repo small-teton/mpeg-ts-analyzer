@@ -1,0 +1,1119 @@
+{
+  "schema_version": "1.0",
+  "output": "packet",
+  "input": {
+    "path": "sample_data/sample_192byte_two_programs_mpeg2_160x120_25fps_mp2.ts",
+    "file_size_bytes": 207168,
+    "packet_size_bytes": 192,
+    "offset_bytes": 30528
+  },
+  "status": "complete",
+  "packet": {
+    "offset_bytes": 30528,
+    "bytes": "00026d184741003107100000972c7e00000001e0000080c00a310009650111000948e1000001000117fffb80000001b5811ff34180000001011270c7000001021270ea419c0069c0000001031270eac1f3ffe9c0000001041270c7000001051270ea7a7000000106128981425a407c4080a0d48f23100007f633800da48c1789e40a898141a91e468bd9f6e6b5fcc01cc59292282ea261ac03f8b192f0e8b2539b89f513fb6ce752e474e37000fc9d6c315d8194006a2f3d2e2897877074fffb",
+    "layers": [
+      {
+        "name": "m2ts_header",
+        "fields": [
+          {
+            "name": "copy_permission_indicator",
+            "value": "0",
+            "byte_offset": 0,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 0,
+                "bit_length": 2
+              }
+            ]
+          },
+          {
+            "name": "arrival_time_stamp",
+            "value": "159000",
+            "byte_offset": 0,
+            "byte_length": 4,
+            "bits": [
+              {
+                "bit_offset": 2,
+                "bit_length": 30
+              }
+            ]
+          }
+        ],
+        "bit_layout": [
+          {
+            "id": "m2ts_header.copy_permission_indicator@0",
+            "label": "copy_permission_indicator",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 0,
+                "bit_length": 2
+              }
+            ],
+            "value": "0",
+            "field": "copy_permission_indicator"
+          },
+          {
+            "id": "m2ts_header.arrival_time_stamp@2",
+            "label": "arrival_time_stamp",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 2,
+                "bit_length": 30
+              }
+            ],
+            "value": "159000",
+            "field": "arrival_time_stamp"
+          }
+        ]
+      },
+      {
+        "name": "ts_header",
+        "fields": [
+          {
+            "name": "sync_byte",
+            "value": "0x47",
+            "byte_offset": 4,
+            "byte_length": 1
+          },
+          {
+            "name": "transport_error_indicator",
+            "value": "0",
+            "byte_offset": 5,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 40,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "payload_unit_start_indicator",
+            "value": "1",
+            "byte_offset": 5,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 41,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "transport_priority",
+            "value": "0",
+            "byte_offset": 5,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 42,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "PID",
+            "value": "0x0100",
+            "byte_offset": 5,
+            "byte_length": 2,
+            "bits": [
+              {
+                "bit_offset": 43,
+                "bit_length": 13
+              }
+            ]
+          },
+          {
+            "name": "transport_scrambling_control",
+            "value": "0",
+            "byte_offset": 7,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 56,
+                "bit_length": 2
+              }
+            ]
+          },
+          {
+            "name": "adaptation_field_control",
+            "value": "3 (adaptation field and payload)",
+            "byte_offset": 7,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 58,
+                "bit_length": 2
+              }
+            ]
+          },
+          {
+            "name": "continuity_counter",
+            "value": "1",
+            "byte_offset": 7,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 60,
+                "bit_length": 4
+              }
+            ]
+          }
+        ],
+        "bit_layout": [
+          {
+            "id": "ts_header.sync_byte@32",
+            "label": "sync_byte",
+            "kind": "prefix",
+            "bits": [
+              {
+                "bit_offset": 32,
+                "bit_length": 8
+              }
+            ],
+            "value": "0x47",
+            "expected": "0x47",
+            "valid": true,
+            "rule": "ISO/IEC 13818-1 Table 2-2: sync_byte is 0x47",
+            "field": "sync_byte"
+          },
+          {
+            "id": "ts_header.transport_error_indicator@40",
+            "label": "transport_error_indicator",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 40,
+                "bit_length": 1
+              }
+            ],
+            "value": "0",
+            "field": "transport_error_indicator"
+          },
+          {
+            "id": "ts_header.payload_unit_start_indicator@41",
+            "label": "payload_unit_start_indicator",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 41,
+                "bit_length": 1
+              }
+            ],
+            "value": "1",
+            "field": "payload_unit_start_indicator"
+          },
+          {
+            "id": "ts_header.transport_priority@42",
+            "label": "transport_priority",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 42,
+                "bit_length": 1
+              }
+            ],
+            "value": "0",
+            "field": "transport_priority"
+          },
+          {
+            "id": "ts_header.pid@43",
+            "label": "PID",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 43,
+                "bit_length": 13
+              }
+            ],
+            "value": "0x0100",
+            "field": "PID"
+          },
+          {
+            "id": "ts_header.transport_scrambling_control@56",
+            "label": "transport_scrambling_control",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 56,
+                "bit_length": 2
+              }
+            ],
+            "value": "0",
+            "field": "transport_scrambling_control"
+          },
+          {
+            "id": "ts_header.adaptation_field_control@58",
+            "label": "adaptation_field_control",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 58,
+                "bit_length": 2
+              }
+            ],
+            "value": "3 (adaptation field and payload)",
+            "field": "adaptation_field_control"
+          },
+          {
+            "id": "ts_header.continuity_counter@60",
+            "label": "continuity_counter",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 60,
+                "bit_length": 4
+              }
+            ],
+            "value": "1",
+            "field": "continuity_counter"
+          }
+        ]
+      },
+      {
+        "name": "adaptation_field",
+        "fields": [
+          {
+            "name": "adaptation_field_length",
+            "value": "7",
+            "byte_offset": 8,
+            "byte_length": 1
+          },
+          {
+            "name": "discontinuity_indicator",
+            "value": "0",
+            "byte_offset": 9,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 72,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "random_access_indicator",
+            "value": "0",
+            "byte_offset": 9,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 73,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "elementary_stream_priority_indicator",
+            "value": "0",
+            "byte_offset": 9,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 74,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "PCR_flag",
+            "value": "1",
+            "byte_offset": 9,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 75,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "OPCR_flag",
+            "value": "0",
+            "byte_offset": 9,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 76,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "splicing_point_flag",
+            "value": "0",
+            "byte_offset": 9,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 77,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "transport_private_data_flag",
+            "value": "0",
+            "byte_offset": 9,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 78,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "adaptation_field_extension_flag",
+            "value": "0",
+            "byte_offset": 9,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 79,
+                "bit_length": 1
+              }
+            ]
+          },
+          {
+            "name": "program_clock_reference",
+            "value": "23220000 (0.860000 s)",
+            "byte_offset": 10,
+            "byte_length": 6,
+            "bits": [
+              {
+                "bit_offset": 80,
+                "bit_length": 33
+              },
+              {
+                "bit_offset": 119,
+                "bit_length": 9
+              }
+            ]
+          }
+        ],
+        "bit_layout": [
+          {
+            "id": "adaptation_field.adaptation_field_length@64",
+            "label": "adaptation_field_length",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 64,
+                "bit_length": 8
+              }
+            ],
+            "value": "7",
+            "field": "adaptation_field_length"
+          },
+          {
+            "id": "adaptation_field.discontinuity_indicator@72",
+            "label": "discontinuity_indicator",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 72,
+                "bit_length": 1
+              }
+            ],
+            "value": "0",
+            "field": "discontinuity_indicator"
+          },
+          {
+            "id": "adaptation_field.random_access_indicator@73",
+            "label": "random_access_indicator",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 73,
+                "bit_length": 1
+              }
+            ],
+            "value": "0",
+            "field": "random_access_indicator"
+          },
+          {
+            "id": "adaptation_field.elementary_stream_priority_indicator@74",
+            "label": "elementary_stream_priority_indicator",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 74,
+                "bit_length": 1
+              }
+            ],
+            "value": "0",
+            "field": "elementary_stream_priority_indicator"
+          },
+          {
+            "id": "adaptation_field.pcr_flag@75",
+            "label": "PCR_flag",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 75,
+                "bit_length": 1
+              }
+            ],
+            "value": "1",
+            "field": "PCR_flag"
+          },
+          {
+            "id": "adaptation_field.opcr_flag@76",
+            "label": "OPCR_flag",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 76,
+                "bit_length": 1
+              }
+            ],
+            "value": "0",
+            "field": "OPCR_flag"
+          },
+          {
+            "id": "adaptation_field.splicing_point_flag@77",
+            "label": "splicing_point_flag",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 77,
+                "bit_length": 1
+              }
+            ],
+            "value": "0",
+            "field": "splicing_point_flag"
+          },
+          {
+            "id": "adaptation_field.transport_private_data_flag@78",
+            "label": "transport_private_data_flag",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 78,
+                "bit_length": 1
+              }
+            ],
+            "value": "0",
+            "field": "transport_private_data_flag"
+          },
+          {
+            "id": "adaptation_field.adaptation_field_extension_flag@79",
+            "label": "adaptation_field_extension_flag",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 79,
+                "bit_length": 1
+              }
+            ],
+            "value": "0",
+            "field": "adaptation_field_extension_flag"
+          },
+          {
+            "id": "adaptation_field.program_clock_reference.base@80",
+            "label": "program_clock_reference_base",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 80,
+                "bit_length": 33
+              }
+            ],
+            "value": "77400",
+            "field": "program_clock_reference"
+          },
+          {
+            "id": "adaptation_field.program_clock_reference.reserved@113",
+            "label": "reserved",
+            "kind": "reserved",
+            "bits": [
+              {
+                "bit_offset": 113,
+                "bit_length": 6
+              }
+            ],
+            "value": "111111",
+            "expected": "111111",
+            "valid": true,
+            "rule": "ISO/IEC 13818-1 2.1 (reserved): reserved bits are set to '1' unless otherwise specified; receivers ignore them",
+            "field": "program_clock_reference"
+          },
+          {
+            "id": "adaptation_field.program_clock_reference.extension@119",
+            "label": "program_clock_reference_extension",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 119,
+                "bit_length": 9
+              }
+            ],
+            "value": "0",
+            "field": "program_clock_reference"
+          }
+        ]
+      },
+      {
+        "name": "payload",
+        "fields": [
+          {
+            "name": "payload",
+            "value": "176 bytes",
+            "byte_offset": 16,
+            "byte_length": 176
+          }
+        ],
+        "bit_layout": [
+          {
+            "id": "payload.payload@128",
+            "label": "payload",
+            "kind": "payload",
+            "bits": [
+              {
+                "bit_offset": 128,
+                "bit_length": 1408
+              }
+            ],
+            "value": "176 bytes",
+            "field": "payload"
+          }
+        ]
+      },
+      {
+        "name": "pes_header",
+        "fields": [
+          {
+            "name": "packet_start_code_prefix",
+            "value": "0x000001",
+            "byte_offset": 16,
+            "byte_length": 3
+          },
+          {
+            "name": "stream_id",
+            "value": "0xe0",
+            "byte_offset": 19,
+            "byte_length": 1
+          },
+          {
+            "name": "PES_packet_length",
+            "value": "0",
+            "byte_offset": 20,
+            "byte_length": 2
+          },
+          {
+            "name": "PES_scrambling_control",
+            "value": "0",
+            "byte_offset": 22,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 178,
+                "bit_length": 2
+              }
+            ]
+          },
+          {
+            "name": "PTS_DTS_flags",
+            "value": "3",
+            "byte_offset": 23,
+            "byte_length": 1,
+            "bits": [
+              {
+                "bit_offset": 184,
+                "bit_length": 2
+              }
+            ]
+          },
+          {
+            "name": "PES_header_data_length",
+            "value": "10",
+            "byte_offset": 24,
+            "byte_length": 1
+          },
+          {
+            "name": "PTS",
+            "value": "144000 (1.600000 s)",
+            "byte_offset": 25,
+            "byte_length": 5,
+            "bits": [
+              {
+                "bit_offset": 204,
+                "bit_length": 3
+              },
+              {
+                "bit_offset": 208,
+                "bit_length": 15
+              },
+              {
+                "bit_offset": 224,
+                "bit_length": 15
+              }
+            ]
+          },
+          {
+            "name": "DTS",
+            "value": "140400 (1.560000 s)",
+            "byte_offset": 30,
+            "byte_length": 5,
+            "bits": [
+              {
+                "bit_offset": 244,
+                "bit_length": 3
+              },
+              {
+                "bit_offset": 248,
+                "bit_length": 15
+              },
+              {
+                "bit_offset": 264,
+                "bit_length": 15
+              }
+            ]
+          }
+        ],
+        "bit_layout": [
+          {
+            "id": "pes_header.packet_start_code_prefix@128",
+            "label": "packet_start_code_prefix",
+            "kind": "prefix",
+            "bits": [
+              {
+                "bit_offset": 128,
+                "bit_length": 24
+              }
+            ],
+            "value": "0x000001",
+            "expected": "0x000001",
+            "valid": true,
+            "rule": "ISO/IEC 13818-1 Table 2-21: packet_start_code_prefix is 0x000001",
+            "field": "packet_start_code_prefix"
+          },
+          {
+            "id": "pes_header.stream_id@152",
+            "label": "stream_id",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 152,
+                "bit_length": 8
+              }
+            ],
+            "value": "0xe0",
+            "field": "stream_id"
+          },
+          {
+            "id": "pes_header.pes_packet_length@160",
+            "label": "PES_packet_length",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 160,
+                "bit_length": 16
+              }
+            ],
+            "value": "0",
+            "field": "PES_packet_length"
+          },
+          {
+            "id": "pes_header.fixed_10@176",
+            "label": "'10'",
+            "kind": "prefix",
+            "bits": [
+              {
+                "bit_offset": 176,
+                "bit_length": 2
+              }
+            ],
+            "value": "10",
+            "expected": "10",
+            "valid": true,
+            "rule": "ISO/IEC 13818-1 Table 2-21: the optional PES header starts with '10'"
+          },
+          {
+            "id": "pes_header.pes_scrambling_control@178",
+            "label": "PES_scrambling_control",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 178,
+                "bit_length": 2
+              }
+            ],
+            "value": "0",
+            "field": "PES_scrambling_control"
+          },
+          {
+            "id": "pes_header.pes_priority@180",
+            "label": "PES_priority",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 180,
+                "bit_length": 1
+              }
+            ],
+            "value": "0"
+          },
+          {
+            "id": "pes_header.data_alignment_indicator@181",
+            "label": "data_alignment_indicator",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 181,
+                "bit_length": 1
+              }
+            ],
+            "value": "0"
+          },
+          {
+            "id": "pes_header.copyright@182",
+            "label": "copyright",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 182,
+                "bit_length": 1
+              }
+            ],
+            "value": "0"
+          },
+          {
+            "id": "pes_header.original_or_copy@183",
+            "label": "original_or_copy",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 183,
+                "bit_length": 1
+              }
+            ],
+            "value": "0"
+          },
+          {
+            "id": "pes_header.pts_dts_flags@184",
+            "label": "PTS_DTS_flags",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 184,
+                "bit_length": 2
+              }
+            ],
+            "value": "3",
+            "field": "PTS_DTS_flags"
+          },
+          {
+            "id": "pes_header.escr_flag@186",
+            "label": "ESCR_flag",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 186,
+                "bit_length": 1
+              }
+            ],
+            "value": "0"
+          },
+          {
+            "id": "pes_header.es_rate_flag@187",
+            "label": "ES_rate_flag",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 187,
+                "bit_length": 1
+              }
+            ],
+            "value": "0"
+          },
+          {
+            "id": "pes_header.dsm_trick_mode_flag@188",
+            "label": "DSM_trick_mode_flag",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 188,
+                "bit_length": 1
+              }
+            ],
+            "value": "0"
+          },
+          {
+            "id": "pes_header.additional_copy_info_flag@189",
+            "label": "additional_copy_info_flag",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 189,
+                "bit_length": 1
+              }
+            ],
+            "value": "0"
+          },
+          {
+            "id": "pes_header.pes_crc_flag@190",
+            "label": "PES_CRC_flag",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 190,
+                "bit_length": 1
+              }
+            ],
+            "value": "0"
+          },
+          {
+            "id": "pes_header.pes_extension_flag@191",
+            "label": "PES_extension_flag",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 191,
+                "bit_length": 1
+              }
+            ],
+            "value": "0"
+          },
+          {
+            "id": "pes_header.pes_header_data_length@192",
+            "label": "PES_header_data_length",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 192,
+                "bit_length": 8
+              }
+            ],
+            "value": "10",
+            "field": "PES_header_data_length"
+          },
+          {
+            "id": "pes_header.pts.prefix@200",
+            "label": "prefix",
+            "kind": "prefix",
+            "bits": [
+              {
+                "bit_offset": 200,
+                "bit_length": 4
+              }
+            ],
+            "value": "0011",
+            "expected": "0011",
+            "valid": true,
+            "rule": "ISO/IEC 13818-1 Table 2-21: with PTS_DTS_flags '11', the PTS starts with '0011'",
+            "field": "PTS"
+          },
+          {
+            "id": "pes_header.pts.bits_32_30@204",
+            "label": "PTS[32..30]",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 204,
+                "bit_length": 3
+              }
+            ],
+            "value": "000",
+            "field": "PTS"
+          },
+          {
+            "id": "pes_header.pts.marker_bit@207",
+            "label": "marker_bit",
+            "kind": "marker",
+            "bits": [
+              {
+                "bit_offset": 207,
+                "bit_length": 1
+              }
+            ],
+            "value": "1",
+            "expected": "1",
+            "valid": true,
+            "rule": "ISO/IEC 13818-1 Table 2-21: marker_bit is '1'",
+            "field": "PTS"
+          },
+          {
+            "id": "pes_header.pts.bits_29_15@208",
+            "label": "PTS[29..15]",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 208,
+                "bit_length": 15
+              }
+            ],
+            "value": "000000000000100",
+            "field": "PTS"
+          },
+          {
+            "id": "pes_header.pts.marker_bit@223",
+            "label": "marker_bit",
+            "kind": "marker",
+            "bits": [
+              {
+                "bit_offset": 223,
+                "bit_length": 1
+              }
+            ],
+            "value": "1",
+            "expected": "1",
+            "valid": true,
+            "rule": "ISO/IEC 13818-1 Table 2-21: marker_bit is '1'",
+            "field": "PTS"
+          },
+          {
+            "id": "pes_header.pts.bits_14_0@224",
+            "label": "PTS[14..0]",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 224,
+                "bit_length": 15
+              }
+            ],
+            "value": "011001010000000",
+            "field": "PTS"
+          },
+          {
+            "id": "pes_header.pts.marker_bit@239",
+            "label": "marker_bit",
+            "kind": "marker",
+            "bits": [
+              {
+                "bit_offset": 239,
+                "bit_length": 1
+              }
+            ],
+            "value": "1",
+            "expected": "1",
+            "valid": true,
+            "rule": "ISO/IEC 13818-1 Table 2-21: marker_bit is '1'",
+            "field": "PTS"
+          },
+          {
+            "id": "pes_header.dts.prefix@240",
+            "label": "prefix",
+            "kind": "prefix",
+            "bits": [
+              {
+                "bit_offset": 240,
+                "bit_length": 4
+              }
+            ],
+            "value": "0001",
+            "expected": "0001",
+            "valid": true,
+            "rule": "ISO/IEC 13818-1 Table 2-21: with PTS_DTS_flags '11', the DTS starts with '0001'",
+            "field": "DTS"
+          },
+          {
+            "id": "pes_header.dts.bits_32_30@244",
+            "label": "DTS[32..30]",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 244,
+                "bit_length": 3
+              }
+            ],
+            "value": "000",
+            "field": "DTS"
+          },
+          {
+            "id": "pes_header.dts.marker_bit@247",
+            "label": "marker_bit",
+            "kind": "marker",
+            "bits": [
+              {
+                "bit_offset": 247,
+                "bit_length": 1
+              }
+            ],
+            "value": "1",
+            "expected": "1",
+            "valid": true,
+            "rule": "ISO/IEC 13818-1 Table 2-21: marker_bit is '1'",
+            "field": "DTS"
+          },
+          {
+            "id": "pes_header.dts.bits_29_15@248",
+            "label": "DTS[29..15]",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 248,
+                "bit_length": 15
+              }
+            ],
+            "value": "000000000000100",
+            "field": "DTS"
+          },
+          {
+            "id": "pes_header.dts.marker_bit@263",
+            "label": "marker_bit",
+            "kind": "marker",
+            "bits": [
+              {
+                "bit_offset": 263,
+                "bit_length": 1
+              }
+            ],
+            "value": "1",
+            "expected": "1",
+            "valid": true,
+            "rule": "ISO/IEC 13818-1 Table 2-21: marker_bit is '1'",
+            "field": "DTS"
+          },
+          {
+            "id": "pes_header.dts.bits_14_0@264",
+            "label": "DTS[14..0]",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 264,
+                "bit_length": 15
+              }
+            ],
+            "value": "010010001110000",
+            "field": "DTS"
+          },
+          {
+            "id": "pes_header.dts.marker_bit@279",
+            "label": "marker_bit",
+            "kind": "marker",
+            "bits": [
+              {
+                "bit_offset": 279,
+                "bit_length": 1
+              }
+            ],
+            "value": "1",
+            "expected": "1",
+            "valid": true,
+            "rule": "ISO/IEC 13818-1 Table 2-21: marker_bit is '1'",
+            "field": "DTS"
+          }
+        ]
+      }
+    ]
+  },
+  "unit": {
+    "kind": "pes",
+    "first_offset_bytes": 30528,
+    "position": 1,
+    "packets_in_range": 3,
+    "next_offset_bytes": 30720,
+    "stream_id": "0xe0",
+    "pts_ms": 1600,
+    "dts_ms": 1560,
+    "header_packet_offsets": [
+      30528
+    ]
+  },
+  "warnings": []
+}

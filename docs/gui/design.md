@@ -370,6 +370,40 @@ the whole range is never held in memory.
     there are. The selection is the field, not its bytes, so fields that share a
     byte (`version_number`, `current_next_indicator`) are selected one at a
     time.
+  - **Detailed inspection** (#190): a button under the packet heading opens a
+    full-width page for that packet inside Packets, in place of the list and
+    the pane, not a dialog. The pane above stays the fast summary with its
+    compact preview.
+    - Header: Back to Packets, the breadcrumb `Packets › Packet #n of N ›
+      Detailed inspection`, Previous / Next (every packet of the analyzed
+      range in file order, whatever the PID filter shows; disabled at the
+      ends of the range), and the offset, PID, what the PID carries, the
+      packet size and how many of its bits are classified. A legend of the
+      role colors follows.
+    - Left (resizable): "Fields", one section per layer in file order. Each
+      line is a part of the layer's `bit_layout`: label, value, packet bits,
+      and ✓ or "✗ expected …" where the specification fixes the bits. The
+      parts of one decoded field (PTS/DTS prefix, value runs and marker bits;
+      PCR/OPCR base, reserved bits and extension) are beneath that field's
+      line, and those of a PAT program or PMT stream beneath the entry's
+      line; selecting the field or entry marks its complete encoded span.
+      Several `reserved` parts are told apart by their `id`.
+    - Right: the selected part's kind, packet bits and byte/bit coordinates,
+      value, expected value and validity, the rule that fixes it, and where
+      it is (`PMT › stream 2`); then the bit grid: every bit of the packet,
+      4, 2 or 1 bytes a row depending on the width (4 bytes, a 32-bit word,
+      is how the specification draws its syntax), each byte from bit 7 to bit
+      0 with its hex value, column heads kept in view. Bits are colored by
+      role, not per field: value/flag in the selection blue, reserved gray,
+      marker/prefix purple, stuffing yellow, payload green, not decoded
+      striped and outlined, and a fixed-bit mismatch red whatever its role.
+      Part boundaries are drawn inside a byte, and the selection is outlined.
+      Hovering a bit describes its part; clicking it selects the part.
+    - Back restores the list as it was left: page, PID filter, selected row
+      (the packet the page was opened for, even after Previous/Next) and
+      scroll position.
+    - A CLI without `bit_layout` gets the same page with only the decoded
+      fields' bits classified, and a note saying so.
 - The GUI keeps the **PSI layout** (where PAT/PMT occur and what they say,
   including mid-range changes) from the range scan, and uses it to label
   packets. Packet pages themselves are read without PSI context: a section in

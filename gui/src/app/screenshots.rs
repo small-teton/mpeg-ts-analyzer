@@ -1,9 +1,11 @@
 //! The README screenshots, rendered from fixtures with egui_kittest's wgpu
 //! renderer: `docs/images/gui-tabs.png` (Overview, Timeline, Bitrate and
-//! Packets in a 2×2 grid) and `docs/images/gui-inspectors.png` (the Byte and
-//! Bit inspectors with the 13-bit PID selected).
+//! Packets in a 2×2 grid), `docs/images/gui-inspectors.png` (the Byte and
+//! Bit inspectors with the 13-bit PID selected) and
+//! `docs/images/gui-wire-layout.png` (the detailed inspection of a PMT
+//! packet with reserved bits of a stream entry selected).
 //!
-//! `make check-gui-screenshots` renders both and compares them with the
+//! `make check-gui-screenshots` renders them and compares them with the
 //! committed images; `make gui-screenshots` (`UPDATE_SNAPSHOTS=1`) writes them.
 //! Comparison output (`.new.png`, `.diff.png`) goes to `gui/target/screenshots`.
 //! The canonical renderer is macOS (the `gui-screenshots` CI job).
@@ -19,6 +21,7 @@ use super::ui_tests::{analyzed_app, packets_page, pmt_packet_detail};
 use crate::views::Screen;
 use crate::views::packet_pages::PacketPages;
 use crate::views::packet_pages::show_inspectors_for_test;
+use crate::views::wire_layout::Selection;
 
 /// Logical size of each tab. After cropping each tab's margin, the grid is
 /// 2588×1628 pixels.
@@ -96,6 +99,32 @@ fn inspectors() -> RgbaImage {
     without_margin(harness.render().expect("render the inspectors"), 2.0)
 }
 
+/// Packets showing the detailed inspection of program 2's PMT packet at
+/// offset 564, with the reserved bits before the second stream's
+/// elementary_PID selected.
+pub(super) fn wire_layout_app() -> App {
+    let mut app = analyzed_app();
+    app.screen = Screen::Packets;
+    let mut pages = PacketPages::loaded_for_test(packets_page(), 564, pmt_packet_detail());
+    pages.inspect_for_test(Some(Selection::Part(
+        "pmt.stream[1].elementary_pid.reserved@184".to_owned(),
+    )));
+    app.packet_pages = Some(pages);
+    app
+}
+
+fn wire_layout(size: egui::Vec2) -> RgbaImage {
+    let mut harness = Harness::builder()
+        .with_size(size)
+        .with_pixels_per_point(1.0)
+        .with_theme(egui::Theme::Dark)
+        .with_context_setup(crate::theme::apply_with_bundled_fonts)
+        .wgpu()
+        .build_ui_state(|ui, app: &mut App| app.show(ui), wire_layout_app());
+    harness.run();
+    without_margin(harness.render().expect("render the wire layout"), 1.0)
+}
+
 fn manifest_dir() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))
 }
@@ -132,10 +161,14 @@ fn check(image: &RgbaImage, name: &str) -> Result<(), String> {
 
 #[test]
 fn readme_screenshots_are_current() {
-    let errors: Vec<String> = [(tabs_grid(), "gui-tabs"), (inspectors(), "gui-inspectors")]
-        .iter()
-        .filter_map(|(image, name)| check(image, name).err())
-        .collect();
+    let errors: Vec<String> = [
+        (tabs_grid(), "gui-tabs"),
+        (inspectors(), "gui-inspectors"),
+        (wire_layout(TAB_SIZE), "gui-wire-layout"),
+    ]
+    .iter()
+    .filter_map(|(image, name)| check(image, name).err())
+    .collect();
     assert!(
         errors.is_empty(),
         "{}\nRun `make gui-screenshots` on macOS and commit the images.",

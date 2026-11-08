@@ -14,6 +14,7 @@ use super::packets::{
     bit_inspector, byte_span_text, field_tree, header_row, hex_dump_bytes, key_values, layer_color,
     paint_cells, paint_row_background, row_text_color, span_table,
 };
+use super::wire_layout::{self, Model};
 #[cfg(test)]
 use crate::cli;
 use crate::cli::{Cli, Reply, Request};
@@ -194,6 +195,19 @@ pub struct PacketPages {
     psi: PsiLayout,
     hidden_pids: BTreeSet<String>,
     highlight: Option<(u64, FieldSelection)>,
+    /// The detailed inspection page, shown instead of the list while set.
+    inspect: Option<Inspect>,
+    /// The list's scroll offset, restored when the inspection page closes.
+    list_offset: egui::Vec2,
+    restore_list_offset: bool,
+}
+
+/// The packet the detailed inspection page shows and the page's selection.
+/// The list's page, filter and selected row are left as they were, so going
+/// back shows the list as it was left.
+struct Inspect {
+    offset: u64,
+    state: wire_layout::State,
 }
 
 impl PacketPages {
@@ -222,6 +236,9 @@ impl PacketPages {
             psi: PsiLayout::new(report),
             hidden_pids: BTreeSet::new(),
             highlight: None,
+            inspect: None,
+            list_offset: egui::Vec2::ZERO,
+            restore_list_offset: false,
         }
     }
 
@@ -244,6 +261,9 @@ impl PacketPages {
             psi: PsiLayout::default(),
             hidden_pids: BTreeSet::new(),
             highlight: None,
+            inspect: None,
+            list_offset: egui::Vec2::ZERO,
+            restore_list_offset: false,
         }
     }
 
@@ -264,6 +284,32 @@ impl PacketPages {
     #[cfg(test)]
     pub(crate) fn selected_for_test(&self) -> Option<u64> {
         self.selected
+    }
+
+    /// The packet the detailed inspection page shows, if it is open.
+    #[cfg(test)]
+    pub(crate) fn inspected_for_test(&self) -> Option<u64> {
+        self.inspect.as_ref().map(|i| i.offset)
+    }
+
+    /// The list's scroll offset, and sets it as a scroll would.
+    #[cfg(test)]
+    pub(crate) fn list_offset_for_test(&mut self, set: Option<egui::Vec2>) -> egui::Vec2 {
+        if let Some(offset) = set {
+            self.list_offset = offset;
+            self.restore_list_offset = true;
+        }
+        self.list_offset
+    }
+
+    /// Opens the detailed inspection of the selected packet with a line of
+    /// its field list selected, as clicks do.
+    #[cfg(test)]
+    pub(crate) fn inspect_for_test(&mut self, selection: Option<wire_layout::Selection>) {
+        self.open_inspection();
+        if let Some(inspect) = &mut self.inspect {
+            inspect.state = wire_layout::State::with(selection);
+        }
     }
 
     /// Selects a field of the decoded packet, as a click on it does.
@@ -297,8 +343,10 @@ impl PacketPages {
         }
     }
 
-    /// Shows the packet at `offset` (e.g. from Timeline's "Open packet").
+    /// Shows the packet at `offset` (e.g. from Timeline's "Open packet") in
+    /// the list.
     pub fn go_to(&mut self, offset: u64) {
+        self.close_inspection();
         match self.geometry {
             Some(geometry) => {
                 if let Some(index) = geometry.index_of(offset) {
@@ -315,6 +363,34 @@ impl PacketPages {
             self.selected = Some(offset);
             self.detail = None;
         }
+    }
+
+    /// Opens the detailed inspection page for the selected packet.
+    fn open_inspection(&mut self) {
+        if let Some(offset) = self.selected {
+            self.inspect = Some(Inspect {
+                offset,
+                state: wire_layout::State::default(),
+            });
+        }
+    }
+
+    /// Back to the list, with the page, filter, selected row and scroll
+    /// position it had. The decoded packet is read again when the page had
+    /// moved to another one.
+    fn close_inspection(&mut self) {
+        if self.inspect.take().is_some() {
+            self.restore_list_offset = true;
+            if !matches!(&self.detail, Some((at, _)) if Some(*at) == self.selected) {
+                self.detail = None;
+            }
+        }
+    }
+
+    /// The packet whose decoding is needed: the inspected one, else the
+    /// selected one.
+    fn focus(&self) -> Option<u64> {
+        self.inspect.as_ref().map(|i| i.offset).or(self.selected)
     }
 
     /// The CLI arguments; the input path is passed as is, never through a
@@ -378,7 +454,7 @@ impl PacketPages {
             page.poll();
         }
 
-        if let Some(offset) = self.selected {
+        if let Some(offset) = self.focus() {
             match &mut self.detail {
                 Some((at, detail)) if *at == offset => detail.poll(),
                 _ => {
@@ -412,6 +488,10 @@ impl PacketPages {
 
     pub fn show(&mut self, ui: &mut egui::Ui, cli: &Cli) {
         self.update(cli, ui.ctx());
+        if self.inspect.is_some() {
+            self.inspection_page(ui);
+            return;
+        }
         egui::Panel::right("packet_detail_live")
             .resizable(true)
             .default_size(480.0)
@@ -544,43 +624,185 @@ impl PacketPages {
             }
         };
         let mut clicked = None;
-        egui::ScrollArea::both().auto_shrink(false).show_rows(
-            ui,
-            ROW_HEIGHT,
-            packets.len() + 1,
-            |ui, visible| {
-                ui.spacing_mut().item_spacing.y = 0.0;
-                let width = ui.available_width().max(MIN_LIST_WIDTH);
-                for row in visible {
-                    if row == 0 {
-                        header_row(ui, width, &COLUMNS);
-                        continue;
-                    }
-                    let packet = &packets[row - 1];
-                    let index = geometry.index_of(packet.offset_bytes).unwrap_or(0);
-                    let selected = self.selected == Some(packet.offset_bytes);
-                    let pid = packet.pid.as_deref().unwrap_or_default();
-                    let row = Row {
-                        carries: if packet.pid.is_some() {
-                            self.psi.label(pid, packet.offset_bytes)
-                        } else {
-                            String::new()
-                        },
-                        sections: self.psi.sections_text(
-                            pid,
-                            packet.offset_bytes,
-                            &packet.sections,
-                        ),
-                        change: self.psi.change_at(packet.offset_bytes),
-                    };
-                    if packet_row(ui, width, packet, index, &row, selected).clicked() {
-                        clicked = Some(packet.offset_bytes);
-                    }
+        let mut area = egui::ScrollArea::both()
+            .id_salt("packet_list")
+            .auto_shrink(false);
+        if std::mem::take(&mut self.restore_list_offset) {
+            area = area.scroll_offset(self.list_offset);
+        }
+        let output = area.show_rows(ui, ROW_HEIGHT, packets.len() + 1, |ui, visible| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            let width = ui.available_width().max(MIN_LIST_WIDTH);
+            for row in visible {
+                if row == 0 {
+                    header_row(ui, width, &COLUMNS);
+                    continue;
                 }
-            },
-        );
+                let packet = &packets[row - 1];
+                let index = geometry.index_of(packet.offset_bytes).unwrap_or(0);
+                let selected = self.selected == Some(packet.offset_bytes);
+                let pid = packet.pid.as_deref().unwrap_or_default();
+                let row = Row {
+                    carries: if packet.pid.is_some() {
+                        self.psi.label(pid, packet.offset_bytes)
+                    } else {
+                        String::new()
+                    },
+                    sections: self
+                        .psi
+                        .sections_text(pid, packet.offset_bytes, &packet.sections),
+                    change: self.psi.change_at(packet.offset_bytes),
+                };
+                if packet_row(ui, width, packet, index, &row, selected).clicked() {
+                    clicked = Some(packet.offset_bytes);
+                }
+            }
+        });
+        self.list_offset = output.state.clamped_offset();
         if let Some(offset) = clicked {
             self.select(offset);
+        }
+    }
+
+    /// The full-width detailed inspection of one packet, with its complete
+    /// wire layout; see `wire_layout`.
+    fn inspection_page(&mut self, ui: &mut egui::Ui) {
+        let Some(mut inspect) = self.inspect.take() else {
+            return;
+        };
+        let offset = inspect.offset;
+        let geometry = self.geometry;
+        let index = geometry.and_then(|g| g.index_of(offset));
+        let neighbor = |delta: i64| -> Option<u64> {
+            let (g, i) = (geometry?, index? as i64 + delta);
+            (i >= 0 && (i as u64) < g.count).then(|| g.first + i as u64 * g.packet_size)
+        };
+        let detail = match &self.detail {
+            Some((at, Fetch::Ready(detail))) if *at == offset => Ok(detail),
+            Some((at, Fetch::Failed(err))) if *at == offset => Err(Some(err.clone())),
+            _ => Err(None),
+        };
+        let packet = detail.as_ref().ok().and_then(|d| d.packet.as_ref());
+        let raw = packet.map(DecodedPacket::raw).unwrap_or_default();
+        let model = packet.map(|p| Model::new(p, raw.len() * 8));
+        let pid = packet.and_then(|p| {
+            p.layers
+                .iter()
+                .find(|l| l.name == "ts_header")?
+                .fields
+                .iter()
+                .find(|f| f.name == "PID")
+                .map(|f| f.value.clone())
+        });
+        let mut context = vec![format!("offset {}", range_bar::bytes(offset))];
+        if let Some(pid) = &pid {
+            context.push(format!("PID {pid}"));
+            let carries = self.psi.label(pid, offset);
+            if !carries.is_empty() {
+                context.push(carries);
+            }
+        }
+        if !raw.is_empty() {
+            context.push(format!("{}-byte packet", raw.len()));
+        }
+        if let Some(model) = &model {
+            context.push(format!(
+                "{} of {} bits classified",
+                model.classified(),
+                raw.len() * 8
+            ));
+        }
+        let header = wire_layout::Header {
+            title: match (index, geometry) {
+                (Some(i), Some(g)) => format!("Packet #{} of {}", i + 1, g.count),
+                _ => "Packet".to_owned(),
+            },
+            context: context.join(" · "),
+            previous: neighbor(-1),
+            next: neighbor(1),
+        };
+
+        let mut action = None;
+        egui::Panel::top("wire_layout_header").show(ui, |ui| {
+            crate::theme::compact(ui);
+            ui.add_space(4.0);
+            action = wire_layout::header(ui, &header);
+            wire_layout::legend(ui);
+            ui.add_space(2.0);
+        });
+        match (&detail, &model) {
+            (Ok(_), Some(model)) => {
+                let width = ui.available_width();
+                egui::Panel::left("wire_layout_fields")
+                    .resizable(true)
+                    .default_size((width * 0.38).clamp(260.0, 520.0))
+                    .size_range(220.0..=(width - 240.0).max(240.0))
+                    .show(ui, |ui| {
+                        crate::theme::compact(ui);
+                        ui.horizontal(|ui| {
+                            ui.strong("Fields");
+                            ui.weak("decoded values and their encoded parts");
+                        });
+                        egui::ScrollArea::both()
+                            .id_salt("wire_layout_fields")
+                            .auto_shrink(false)
+                            .show(ui, |ui| {
+                                wire_layout::field_list(ui, model, &mut inspect.state)
+                            });
+                    });
+                egui::CentralPanel::default().show(ui, |ui| {
+                    crate::theme::compact(ui);
+                    ui.horizontal(|ui| {
+                        ui.strong("Bit inspector");
+                        ui.weak("file order ↓ · each byte MSB → LSB");
+                    });
+                    if !model.complete {
+                        ui.colored_label(
+                            ui.visuals().warn_fg_color,
+                            "This CLI does not report the wire layout (bit_layout); only the bits of decoded fields are classified.",
+                        );
+                    }
+                    wire_layout::selection_card(ui, model, &inspect.state);
+                    ui.add_space(4.0);
+                    let per_row = wire_layout::bytes_per_row(ui.available_width() - 16.0);
+                    wire_layout::grid_header(ui, per_row);
+                    egui::ScrollArea::vertical()
+                        .id_salt(("wire_layout_grid", offset))
+                        .auto_shrink(false)
+                        .show(ui, |ui| {
+                            wire_layout::bit_grid(ui, &raw, per_row, model, &mut inspect.state)
+                        });
+                });
+            }
+            (Err(Some(err)), _) => {
+                egui::CentralPanel::default().show(ui, |ui| {
+                    ui.colored_label(ui.visuals().error_fg_color, err);
+                });
+            }
+            (Ok(_), None) => {
+                egui::CentralPanel::default().show(ui, |ui| {
+                    ui.weak("The CLI returned no packet.");
+                });
+            }
+            (Err(None), _) => {
+                egui::CentralPanel::default().show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.weak("Decoding the packet…");
+                    });
+                });
+            }
+        }
+        self.inspect = Some(inspect);
+        match action {
+            Some(wire_layout::Action::Back) => self.close_inspection(),
+            Some(wire_layout::Action::Go(to)) => {
+                self.inspect = Some(Inspect {
+                    offset: to,
+                    state: wire_layout::State::default(),
+                });
+            }
+            None => {}
         }
     }
 
@@ -615,6 +837,7 @@ impl PacketPages {
             .map(|(_, selection)| selection);
         let index = self.geometry.and_then(|g| g.index_of(offset));
 
+        let mut inspect = false;
         ui.horizontal(|ui| {
             ui.heading(match index {
                 Some(index) => format!("Packet #{}", index + 1),
@@ -622,6 +845,13 @@ impl PacketPages {
             });
             ui.weak(range_bar::bytes(offset));
         });
+        if ui
+            .button("Detailed inspection")
+            .on_hover_text("Open the complete wire layout of this packet on a full-width page")
+            .clicked()
+        {
+            inspect = true;
+        }
         let mut target = None;
         if let Some(unit) = &detail.unit {
             target = unit_card(ui, unit);
@@ -646,6 +876,8 @@ impl PacketPages {
 
         if let Some(target) = target {
             self.go_to(target);
+        } else if inspect {
+            self.open_inspection();
         }
     }
 }
@@ -1148,6 +1380,7 @@ mod tests {
             fields,
             rows: Vec::new(),
             truncated: false,
+            bit_layout: Vec::new(),
         };
         let layers = [
             layer("ts_header", vec![field(0, 4)]),
@@ -1602,6 +1835,32 @@ mod tests {
             }));
             assert_eq!(value_of(&raw, &version_bits).to_string(), version.value);
             assert_eq!(value_of(&raw, &current_bits).to_string(), current.value);
+
+            // The wire layout classifies every bit of the packet, and the
+            // binary values of fixed and reserved runs are the raw bits.
+            for packet in [&pat, &decode(packet_size * 12)] {
+                let raw = packet.raw();
+                let model = Model::new(packet, raw.len() * 8);
+                assert!(model.complete, "{name}");
+                assert_eq!(model.classified(), raw.len() * 8, "{name}");
+                for part in packet.layers.iter().flat_map(|l| &l.bit_layout) {
+                    if matches!(part.kind.as_str(), "reserved" | "marker") {
+                        let bits: String = part
+                            .bit_ranges()
+                            .iter()
+                            .flat_map(|r| r.clone())
+                            .map(|bit| {
+                                if raw[bit / 8] >> (7 - bit % 8) & 1 == 1 {
+                                    '1'
+                                } else {
+                                    '0'
+                                }
+                            })
+                            .collect();
+                        assert_eq!(bits, part.value, "{name} {}", part.id);
+                    }
+                }
+            }
         }
     }
 

@@ -5,6 +5,7 @@ pub mod overview;
 pub mod packet_pages;
 pub mod packets;
 pub mod timeline;
+pub mod wire_layout;
 
 use eframe::egui;
 use egui_plot::PlotUi;
