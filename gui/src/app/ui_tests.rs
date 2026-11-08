@@ -1805,3 +1805,36 @@ fn detailed_inspection_falls_back_to_field_bits() {
     click_line(&mut harness, "PID  0x0000");
     harness.get_by_label_contains("packet bits 11–23 (13 bits)");
 }
+
+/// The session keeps the plot data in place of the CLI's raw series (#154):
+/// no program of its report retains `series`, while the plots of every
+/// program hold what Timeline and Bitrate draw and pick from.
+#[test]
+fn session_keeps_plots_instead_of_the_raw_series() {
+    let report: AnalysisReport = serde_json::from_str(include_str!(
+        "../../tests/fixtures/analysis_two_programs_188.json"
+    ))
+    .expect("analysis fixture");
+    let raw: Vec<(usize, usize)> = report
+        .programs
+        .iter()
+        .map(|program| {
+            let series = program.series.as_ref().expect("fixture series");
+            let intervals = series.pcr.iter().filter(|p| p.interval_ms.is_some());
+            (intervals.count(), series.pcr_jitter.len())
+        })
+        .collect();
+    let app = app_with_report(report);
+    let session = app.session.as_ref().expect("a session");
+    assert!(session.report.programs.iter().all(|p| p.series.is_none()));
+    assert_eq!(session.plots.timelines.len(), raw.len());
+    assert_eq!(session.plots.bitrates.len(), raw.len());
+    let plots = session.plots.timelines.iter().zip(&session.plots.bitrates);
+    for ((timeline, bitrate), (intervals, jitter)) in plots.zip(raw) {
+        // Timeline picks from every PCR interval and PCR → PTS/DTS gap.
+        assert_eq!(timeline.pcr_interval.len(), intervals);
+        assert!(timeline.gaps.iter().all(|gap| !gap.points.is_empty()));
+        assert!(!timeline.gaps.is_empty() && !bitrate.pids.is_empty());
+        assert_eq!(bitrate.jitter_samples, jitter);
+    }
+}

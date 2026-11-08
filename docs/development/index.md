@@ -211,6 +211,14 @@ input widget a test reaches needs an accessible name: tie a field to its label
 with `labelled_by`, and give an icon-only button a name with `widget_info`. Run
 only these tests with `cargo test --manifest-path gui/Cargo.toml ui_tests`.
 
+### GUI memory profile
+
+`gui/scripts/memory-profile.sh` measures the GUI's peak and retained heap for
+a default and a large range, two programs, page navigation, a cancelled
+analysis and a replacement file (needs ffmpeg; the inputs are generated
+outside the repository). Run it before and after a change to what an analysis
+keeps, and update the results in [GUI memory profile](../gui/memory-profile.md).
+
 ### README screenshots
 
 The GUI images of the README and the GUI guide are rendered, not captured:
