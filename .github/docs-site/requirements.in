@@ -1,4 +1,4 @@
 # The documentation site toolchain (mkdocs.yml). requirements.txt is the
 # hash-pinned lock compiled from this file; see docs/development/index.md.
 mkdocs==1.6.1
-mkdocs-material==9.8.0
+mkdocs-material==9.8.1
