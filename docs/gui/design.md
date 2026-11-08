@@ -165,8 +165,9 @@ separate Analyze step per screen.
 ## Screens
 
 Navigation is a left rail of tiles (large icon over a short label): Overview,
-Timeline, Bitrate, Packets. Update, Settings and About are icons at the bottom
-of the rail, in that order (see [Updates](#updates) for the update button).
+Timeline, Bitrate, Packets. Updates, Settings and About are tiles of the same
+size and style grouped at the bottom of the rail, in that order (see
+[Updates](#updates) for the update button).
 There is no menu bar.
 
 ### Program selection
@@ -402,16 +403,23 @@ the whole range is never held in memory.
     there are. The selection is the field, not its bytes, so fields that share a
     byte (`version_number`, `current_next_indicator`) are selected one at a
     time.
-  - **Detailed inspection** (#190): a button under the packet heading opens a
+  - **Detailed inspection** (#190): a button under the packet heading, and a
+    second one at the very end of the pane after the Bit inspector, opens a
     full-width page for that packet inside Packets, in place of the list and
     the pane, not a dialog. The pane above stays the fast summary with its
     compact preview.
-    - Header: Back to Packets, the breadcrumb `Packets › Packet #n of N ›
-      Detailed inspection`, Previous / Next (every packet of the analyzed
-      range in file order, whatever the PID filter shows; disabled at the
-      ends of the range), and the offset, PID, what the PID carries, the
-      packet size and how many of its bits are classified. A legend of the
-      role colors follows.
+    - Header: Back to Packets, the breadcrumb `Packets › Detailed
+      inspection`, Previous / Next (every packet of the analyzed range in
+      file order, whatever the PID filter shows; disabled at the ends of the
+      range; ← / → do the same unless a text field has the keyboard), then
+      the heading `Packet #n of N` with a large badge of the packet kind
+      (`presentation::packet::packet_kind`: `PAT`, `PMT`, a PSI/SI table
+      name from table_id, `PES · <stream>` with the stream type the PMT
+      announces or else the stream_id class, `PES payload · …` and
+      `… · continued` for later packets of a unit, `PCR only`, `Adaptation
+      field only`, `Null`), colored like PSI, video, audio and PCR elsewhere.
+      Below: the offset, PID, what the PID carries, the packet size and how
+      many of its bits are classified, and a legend of the role colors.
     - Left (resizable): "Fields", one section per layer in file order. Each
       line is a part of the layer's `bit_layout`: label, value, packet bits,
       and ✓ or "✗ expected …" where the specification fixes the bits. The
@@ -429,7 +437,8 @@ the whole range is never held in memory.
       role, not per field: value/flag in the selection blue, reserved gray,
       marker/prefix purple, stuffing yellow, payload green, not decoded
       striped and outlined, and a fixed-bit mismatch red whatever its role.
-      Part boundaries are drawn inside a byte, and the selection is outlined.
+      No lines are drawn between parts (inside a byte only, they read as
+      byte structure); the selection is outlined instead.
       Hovering a bit describes its part; clicking it selects the part.
     - Back restores the list as it was left: page, PID filter, selected row
       (the packet the page was opened for, even after Previous/Next) and
@@ -499,6 +508,15 @@ range in a saved file are clamped when they are used.
 - Phosphor is registered as its own font family `icons` and always selected
   explicitly (`icons::text`, `icons::font`). As a fallback font its Private Use
   Area codepoints collide with glyphs in other fonts.
+- Packet field values (Packets pane, Detailed inspection) are decimal first
+  with the hexadecimal in parentheses, padded to the field's width
+  (`4097 (0x1001)`, `23 (0x017)`), formatted by the GUI
+  (`presentation::packet::field_value`); the CLI's JSON keeps its notation.
+  Fields of 4 bits or fewer stay decimal, bit patterns stay binary, and
+  CRC_32, sync_byte, packet_start_code_prefix and the PCR/OPCR (a 27 MHz
+  count, not a bit pattern) stay as the CLI writes them; fixed-bit parts
+  (reserved, marker, prefix, stuffing) keep the notation of their expected
+  value.
 - Text and controls are larger than egui's defaults (body 15, heading 22,
   monospace 13.5, control height 26). Data-dense areas (packet list, detail,
   hex dump) use a compact style.
@@ -611,13 +629,14 @@ names the GUI and its version).
   not a modal: analysis and the rest of the GUI stay usable. With the setting
   off, nothing is requested or shown.
 - **Manually**, from the update button in the navigation rail (an
-  arrow-circle-up icon above Settings, named and tooltipped "Check for
-  Updates") or the "Check for Updates…" button in the About window. The result
+  arrows-clockwise tile labeled "Updates" above Settings, named and
+  tooltipped "Check for Updates") or the "Check for Updates…" button in the About window. The result
   is shown in the update window: up to date, an update, or the error. A
   manual check ignores a skipped version.
 
 Once a check has found an update, the rail button shows a colored badge dot
-and its name and tooltip become "Update available: X.Y.Z"; activating it opens
+on its icon, its label becomes "Update" and its name and tooltip become
+"Update available: X.Y.Z"; activating it opens
 the window without checking again. The status bar does not announce updates.
 
 The "Software update" window shows the running and new GUI versions, the CLI

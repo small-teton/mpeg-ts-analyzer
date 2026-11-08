@@ -217,11 +217,12 @@ The GUI images of the README and the GUI guide are rendered, not captured:
 
 - `docs/images/gui-tabs.png`: Overview, Timeline, Bitrate and Packets in a
   2×2 grid.
-- `docs/images/gui-inspectors.png`: the Byte and Bit inspectors with the
-  13-bit PID of a PMT packet selected. It is drawn by the same function as the
+- `docs/images/gui-byte-inspector.png` and `docs/images/gui-bit-inspector.png`:
+  the Byte inspector and the Bit inspector, each on its own, with the 13-bit
+  PID of a PMT packet selected. They are drawn by the same functions as the
   Packets screen.
 - `docs/images/gui-wire-layout.png`: the detailed inspection page of that PMT
-  packet, with reserved bits of a stream entry selected.
+  packet, with its PID selected.
 
 ```bash
 make gui-screenshots        # render the images into docs/images/
