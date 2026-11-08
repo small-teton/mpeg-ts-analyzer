@@ -2279,7 +2279,7 @@ dependencies = [
 
 [[package]]
 name = "mpeg-ts-analyzer-gui"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "base64 0.23.1",
  "cargo-packager-updater",
