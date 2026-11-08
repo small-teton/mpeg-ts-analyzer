@@ -8,10 +8,17 @@ before:
     - go mod tidy
     # you may remove this if you don't need go generate
     - go generate ./...
+    # The licenses of the Go standard library and the modules compiled into
+    # the binaries, for every port of the GOOS values built below (a superset
+    # of the GOARCH values GoReleaser builds). Written outside dist/, which
+    # --clean removes, and byte-identical for the same commit and toolchain.
+    - mkdir -p out/release
+    - sh -c '.github/scripts/go-third-party-notices.sh "Third-party software in the mpeg-ts-analyzer CLI" linux windows darwin > out/release/THIRD-PARTY-NOTICES.txt'
 
 builds:
   - env:
       - CGO_ENABLED=0
+    # Keep in sync with the notices hook above.
     goos:
       - linux
       - windows
@@ -44,6 +51,13 @@ archives:
           group: root
           mode: 0644
           mtime: "{{ .CommitDate }}"
+      - src: out/release/THIRD-PARTY-NOTICES.txt
+        strip_parent: true
+        info:
+          owner: root
+          group: root
+          mode: 0644
+          mtime: "{{ .CommitDate }}"
     # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
       {{ .ProjectName }}_
@@ -69,6 +83,21 @@ nfpms:
       - deb
       - rpm
       - apk
+    contents:
+      - src: LICENSE
+        dst: /usr/share/doc/mpeg-ts-analyzer/LICENSE
+        file_info:
+          owner: root
+          group: root
+          mode: 0644
+          mtime: "{{ .CommitDate }}"
+      - src: out/release/THIRD-PARTY-NOTICES.txt
+        dst: /usr/share/doc/mpeg-ts-analyzer/THIRD-PARTY-NOTICES.txt
+        file_info:
+          owner: root
+          group: root
+          mode: 0644
+          mtime: "{{ .CommitDate }}"
 
 homebrew_casks:
   - repository:

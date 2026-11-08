@@ -203,8 +203,10 @@ versions pinned in `.github/workflows/gui-release.yml`
 `cargo install cargo-about --version <version> --locked --features cli`). The
 notices cover the Rust crates of the GUI (cargo-about with `gui/about.toml` and
 `gui/about.hbs`; a crate under a license missing from `accepted` fails the
-build) and the Go standard library and the modules recorded in the CLI built for
-each released target. To check a
+build) and the Go standard library and the modules of the CLI for each released
+target, written by `.github/scripts/go-third-party-notices.sh`, which also
+writes the notices of the CLI release archives (see
+[Release](release.md)). To check a
 package, run its GUI executable with `--check-cli`: it prints which CLI it found
 and from where, without opening a window, and exits non-zero when none works.
 The icons in `gui/assets/icons/` are generated from `icon.svg` by
@@ -334,7 +336,7 @@ Release publication is kept out of ordinary CI:
   change the packaging it builds and installs the packages and signs the
   update packages with a throwaway key as a dry run, and its signing with the
   release key and its publication job are skipped. The packaging means the icons, the notices
-  configuration, `cli.rs`, `main.rs`, the toolchain, the workflow,
+  configuration and scripts, `cli.rs`, `main.rs`, the toolchain, the workflow,
   `gui/BUNDLED_CLI_VERSION`, `VERSION`, the update signing key
   (`gui/updater.pub`), the release scripts and notes, and any
   change to `gui/Cargo.toml` other than

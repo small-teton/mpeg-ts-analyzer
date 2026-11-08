@@ -24,13 +24,29 @@ fails the release.
 
 That is the whole flow — bump `VERSION` in a PR, then trigger the workflow.
 
+Every archive and Linux package carries `LICENSE` and
+`THIRD-PARTY-NOTICES.txt` (the packages under
+`/usr/share/doc/mpeg-ts-analyzer/`). A GoReleaser `before` hook writes the
+notices to `out/release/` with `.github/scripts/go-third-party-notices.sh`: the
+license of the Go standard library, naming the Go version, and every
+`LICENSE*`, `LICENCE*`, `COPYING*` and `NOTICE*` file of each module that
+`go list -deps` reports for the CLI on any Go port of the released GOOS values
+(linux, windows, darwin), a superset of the GOARCH values GoReleaser builds.
+The module set differs by target: cobra uses mousetrap only on Windows. A
+module without a license file, or one replaced in `go.mod`, fails the build.
+To check the notices without a release, run
+`.github/scripts/go-third-party-notices.sh "<title>" linux windows darwin`, or
+pass built CLI binaries instead of GOOS values to read their recorded modules.
+The GUI packages use the same script for their bundled CLI.
+
 The two builds are identical because `.goreleaser.yaml` pins every timestamp
-and file owner. They run in the same job because the rpm records the build
+and file owner, and the notices are sorted, have no timestamps and come from
+the Go toolchain that `go.mod` pins. They run in the same job because the rpm records the build
 host. GoReleaser builds twice since its open-source edition cannot publish an
 earlier build.
 
-Pull requests that change `VERSION`, the Go modules, `.goreleaser.yaml` or the
-workflow run the same checks and first build, without a tag or a release. A
+Pull requests that change `VERSION`, the Go modules, `.goreleaser.yaml`, the
+release scripts or the workflow run the same checks and first build, without a tag or a release. A
 `VERSION` that a pull request changes must not have been released yet.
 
 A tag `vX.Y.Z` pushed by a user (`make release`) starts the same workflow. The

@@ -59,7 +59,7 @@ check belongs are in [Architecture](docs/development/architecture.md).
 | `.golangci.yml` | golangci-lint configuration. | |
 | `.goreleaser.yaml` | GoReleaser configuration of the CLI release builds. | [Release](docs/development/release.md) |
 | `.github/workflows/` | CI (Go, GUI, CodeQL, dependency review, documentation policy and site) and the CLI and GUI release and version-bump workflows. | [Dependency and supply-chain checks](docs/development/index.md#dependency-and-supply-chain-checks), [Release](docs/development/release.md) |
-| `.github/scripts/`, `.github/gui-release-notes.md` | Helper scripts and the release-notes template of the release workflows. | [Release](docs/development/release.md) |
+| `.github/scripts/`, `.github/gui-release-notes.md` | Helper scripts and the release-notes template of the release workflows, including the Go third-party notices shared by the CLI and GUI releases. | [Release](docs/development/release.md) |
 | `.github/tools/` | A separate Go module that pins CI tools (golangci-lint, govulncheck), run with `go tool -modfile`. | |
 | `.github/docs-site/` | The hash-pinned MkDocs toolchain of the documentation site. | [Documentation site](docs/development/index.md#documentation-site) |
 | `.github/ISSUE_TEMPLATE/`, `.github/pull_request_template.md`, `.github/CODEOWNERS` | Issue forms, the pull-request template and code owners. | [`AGENTS.md`](AGENTS.md#contribution-workflow) |
@@ -68,7 +68,8 @@ check belongs are in [Architecture](docs/development/architecture.md).
 
 ## Not committed
 
-`out/` (build and coverage output), `dist/` (release builds), `gui/target/`
+`out/` (build and coverage output, and the CLI release notices in
+`out/release/`), `dist/` (release builds), `gui/target/`
 (Rust build output), `site/` and `.venv-docs/` (local documentation-site
 builds), and `local/` (private, machine-specific agent rules and helpers) are
 ignored by Git.

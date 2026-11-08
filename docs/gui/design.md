@@ -605,7 +605,8 @@ range in a saved file are clamped when they are used.
   the previous release.
 - Every package carries `LICENSE`, the bundled fonts' licenses and
   `THIRD-PARTY-NOTICES.txt`, generated at release time by
-  `gui/scripts/third-party-notices.sh`: the Rust crates of the GUI for all
+  `gui/scripts/third-party-notices.sh` (its Go part by
+  `.github/scripts/go-third-party-notices.sh`, shared with the CLI release): the Rust crates of the GUI for all
   three targets (cargo-about, `gui/about.toml`), including the fonts egui
   embeds, and the Go standard library and the modules recorded in the bundled
   CLI binary of each of the three targets (cobra uses mousetrap only on

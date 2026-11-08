@@ -35,6 +35,10 @@ sudo apk add --allow-untrusted mpeg-ts-analyzer_<version>_linux_amd64.apk
 
 Download from the [Releases](https://github.com/small-teton/mpeg-ts-analyzer/releases) page. No additional tools are required.
 
+Each archive contains `LICENSE` and `THIRD-PARTY-NOTICES.txt`, the licenses of
+the Go standard library and the Go modules compiled into the binary. The Linux
+packages install both files in `/usr/share/doc/mpeg-ts-analyzer/`.
+
 ### Install with Go
 
 If you have a [Go](https://go.dev/dl/) environment (1.26+):
