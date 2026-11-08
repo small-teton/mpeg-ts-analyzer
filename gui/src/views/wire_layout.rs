@@ -773,7 +773,9 @@ fn node_line(ui: &mut egui::Ui, model: &Model, node: &Node, state: &mut State) {
                     .selected_parts(s)
                     .iter()
                     .any(|i| leaves(node).contains(i)),
-                Selection::Group(k) => k != key && k.starts_with(key.as_str()),
+                Selection::Group(k) => k
+                    .strip_prefix(key.as_str())
+                    .is_some_and(|rest| rest.starts_with('/')),
             });
             // Open when asked to, or while one of its parts is selected.
             let mut open = ui.data(|d| d.get_temp::<bool>(id)).unwrap_or(false) || inside;
