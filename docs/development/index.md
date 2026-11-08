@@ -213,16 +213,18 @@ only these tests with `cargo test --manifest-path gui/Cargo.toml ui_tests`.
 
 ### README screenshots
 
-The two GUI images in the README are rendered, not captured:
+The GUI images of the README and the GUI guide are rendered, not captured:
 
 - `docs/images/gui-tabs.png`: Overview, Timeline, Bitrate and Packets in a
   2×2 grid.
 - `docs/images/gui-inspectors.png`: the Byte and Bit inspectors with the
   13-bit PID of a PMT packet selected. It is drawn by the same function as the
   Packets screen.
+- `docs/images/gui-wire-layout.png`: the detailed inspection page of that PMT
+  packet, with reserved bits of a stream entry selected.
 
 ```bash
-make gui-screenshots        # render both images into docs/images/
+make gui-screenshots        # render the images into docs/images/
 make check-gui-screenshots  # render them again and compare with docs/images/
 ```
 

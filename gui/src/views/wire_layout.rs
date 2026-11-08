@@ -1,0 +1,1256 @@
+//! The detailed inspection of one packet: a full-width page inside Packets
+//! with the packet's complete wire layout. The left column lists every
+//! structure, decoded field and encoded part (reserved, marker and prefix
+//! bits, stuffing, undecoded bytes) in file order; the right column shows
+//! every bit of the packet colored by its role, with the selection marked.
+//!
+//! The layout comes from the `bit_layout` of the packet detail. A CLI that
+//! does not report it gets the same page with only the decoded fields'
+//! bits classified, as the compact Bit inspector shows them.
+
+use std::ops::Range;
+
+use eframe::egui;
+
+use super::packets::{ByteLayer, layer_color};
+use crate::icons;
+use crate::report::{DecodedPacket, LayoutPart, PacketField, PacketLayer};
+
+/// What a run of bits is on the wire (`kind` in the packet detail).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    Value,
+    Flag,
+    Reserved,
+    Marker,
+    Prefix,
+    Stuffing,
+    Payload,
+    Unknown,
+}
+
+impl Kind {
+    /// An unrecognized kind from a newer CLI is shown as unknown.
+    pub fn parse(kind: &str) -> Self {
+        match kind {
+            "value" => Kind::Value,
+            "flag" => Kind::Flag,
+            "reserved" => Kind::Reserved,
+            "marker" => Kind::Marker,
+            "prefix" => Kind::Prefix,
+            "stuffing" => Kind::Stuffing,
+            "payload" => Kind::Payload,
+            _ => Kind::Unknown,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Kind::Value => "value",
+            Kind::Flag => "flag",
+            Kind::Reserved => "reserved",
+            Kind::Marker => "marker",
+            Kind::Prefix => "prefix",
+            Kind::Stuffing => "stuffing",
+            Kind::Payload => "payload",
+            Kind::Unknown => "not decoded",
+        }
+    }
+}
+
+/// The colors of the roles, shared by the swatches, the legend and the grid:
+/// one per role rather than per field, so the same kind of bits looks the
+/// same everywhere. Bits whose fixed value is wrong are red whatever their role.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Role {
+    Value,
+    Reserved,
+    Fixed,
+    Stuffing,
+    Payload,
+    Unknown,
+    Mismatch,
+}
+
+impl Role {
+    pub const LEGEND: [(Role, &'static str); 7] = [
+        (Role::Value, "value / flag"),
+        (Role::Reserved, "reserved"),
+        (Role::Fixed, "marker / prefix"),
+        (Role::Stuffing, "stuffing"),
+        (Role::Payload, "payload"),
+        (Role::Unknown, "not decoded"),
+        (Role::Mismatch, "fixed-bit mismatch"),
+    ];
+
+    pub fn of(kind: Kind, valid: Option<bool>) -> Self {
+        if valid == Some(false) {
+            return Role::Mismatch;
+        }
+        match kind {
+            Kind::Value | Kind::Flag => Role::Value,
+            Kind::Reserved => Role::Reserved,
+            Kind::Marker | Kind::Prefix => Role::Fixed,
+            Kind::Stuffing => Role::Stuffing,
+            Kind::Payload => Role::Payload,
+            Kind::Unknown => Role::Unknown,
+        }
+    }
+
+    /// The fill of the role; "not decoded" has none and is striped instead.
+    pub fn color(self, visuals: &egui::Visuals) -> egui::Color32 {
+        match self {
+            Role::Value => visuals.selection.bg_fill,
+            Role::Reserved => egui::Color32::from_rgb(0x84, 0x88, 0x8e),
+            Role::Fixed => egui::Color32::from_rgb(0x9b, 0x6b, 0xd6),
+            Role::Stuffing => egui::Color32::from_rgb(0xb8, 0x9b, 0x3e),
+            Role::Payload => egui::Color32::from_rgb(0x4f, 0x8a, 0x7a),
+            Role::Unknown => egui::Color32::TRANSPARENT,
+            Role::Mismatch => egui::Color32::from_rgb(0xd9, 0x3f, 0x3f),
+        }
+    }
+}
+
+/// One classified run of the packet.
+#[derive(Clone, Debug)]
+pub struct Part {
+    pub id: String,
+    pub label: String,
+    pub kind: Kind,
+    pub ranges: Vec<Range<usize>>,
+    pub value: String,
+    pub expected: Option<String>,
+    pub valid: Option<bool>,
+    pub rule: Option<String>,
+    /// Where the part is: layer, table entry and field.
+    pub context: String,
+}
+
+impl Part {
+    pub fn role(&self) -> Role {
+        Role::of(self.kind, self.valid)
+    }
+
+    fn from_layout(layer: &PacketLayer, part: &LayoutPart) -> Self {
+        Part {
+            id: part.id.clone(),
+            label: part.label.clone(),
+            kind: Kind::parse(&part.kind),
+            ranges: part.bit_ranges(),
+            value: part.value.clone(),
+            expected: part.expected.clone(),
+            valid: part.valid,
+            rule: part.rule.clone(),
+            context: context(layer, part.row, part.field.as_deref()),
+        }
+    }
+
+    /// A decoded field as a part, for a CLI that reports no layout.
+    fn from_field(layer: &PacketLayer, row: Option<usize>, field: &PacketField) -> Self {
+        let mut ranges = field.bit_ranges();
+        if ranges.is_empty() {
+            ranges.push(field.byte_offset * 8..(field.byte_offset + field.byte_length) * 8);
+        }
+        let row_id = row.map_or(String::new(), |r| format!("row[{r}]."));
+        Part {
+            id: format!("{}.{row_id}{}@{}", layer.name, field.name, ranges[0].start),
+            label: field.name.clone(),
+            kind: Kind::Value,
+            ranges,
+            value: field.value.clone(),
+            expected: None,
+            valid: None,
+            rule: None,
+            context: context(layer, row, None),
+        }
+    }
+}
+
+/// "pmt › stream 2 › elementary_PID".
+fn context(layer: &PacketLayer, row: Option<usize>, field: Option<&str>) -> String {
+    let mut path = vec![layer_title(&layer.name).to_owned()];
+    if let Some(row) = row {
+        path.push(format!("{} {}", row_noun(&layer.name), row + 1));
+    }
+    if let Some(field) = field {
+        path.push(field.to_owned());
+    }
+    path.join(" › ")
+}
+
+fn row_noun(layer: &str) -> &'static str {
+    match layer {
+        "pat" => "program",
+        "pmt" => "stream",
+        _ => "entry",
+    }
+}
+
+pub fn layer_title(name: &str) -> &str {
+    match name {
+        "m2ts_header" => "M2TS header",
+        "ts_header" => "TS header",
+        "adaptation_field" => "Adaptation field",
+        "payload" => "Payload",
+        "pes_header" => "PES header",
+        "pat" => "PAT",
+        "pmt" => "PMT",
+        "psi_section" => "PSI section",
+        "trailer" => "Trailer",
+        other => other,
+    }
+}
+
+/// Parts in wire order with the field each belongs to.
+type Members = Vec<(Option<String>, usize)>;
+
+/// A line of the field list: a part, a decoded field made of several parts
+/// (a PTS, a PCR), or a table entry.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Node {
+    Part(usize),
+    Group {
+        key: String,
+        label: String,
+        value: String,
+        children: Vec<Node>,
+    },
+}
+
+pub struct LayerTree {
+    pub name: String,
+    pub nodes: Vec<Node>,
+}
+
+/// The selected line: one part, or a field or entry with all its parts.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Selection {
+    Part(String),
+    Group(String),
+}
+
+/// The classified packet.
+pub struct Model {
+    pub parts: Vec<Part>,
+    pub layers: Vec<LayerTree>,
+    /// The part of each packet bit; PES headers and sections over the
+    /// payload they sit in.
+    pub owners: Vec<Option<usize>>,
+    /// Whether the CLI reported the layout, rather than only field bits.
+    pub complete: bool,
+}
+
+impl Model {
+    pub fn new(packet: &DecodedPacket, bits: usize) -> Self {
+        let complete = packet.layers.iter().any(|l| !l.bit_layout.is_empty());
+        let mut model = Model {
+            parts: Vec::new(),
+            layers: Vec::new(),
+            owners: vec![None; bits],
+            complete,
+        };
+        for layer in &packet.layers {
+            let nodes = if complete {
+                model.layout_nodes(layer)
+            } else {
+                model.field_nodes(layer)
+            };
+            model.layers.push(LayerTree {
+                name: layer.name.clone(),
+                nodes,
+            });
+        }
+        for (index, part) in model.parts.iter().enumerate() {
+            for bit in part.ranges.iter().flat_map(|r| r.clone()) {
+                if let Some(owner) = model.owners.get_mut(bit) {
+                    *owner = Some(index);
+                }
+            }
+        }
+        model
+    }
+
+    fn push(&mut self, part: Part) -> usize {
+        self.parts.push(part);
+        self.parts.len() - 1
+    }
+
+    /// The layout of a layer, its parts grouped by table entry and then by
+    /// the field they belong to.
+    fn layout_nodes(&mut self, layer: &PacketLayer) -> Vec<Node> {
+        let mut nodes = Vec::new();
+        let mut entry: Option<(usize, Members)> = None;
+        let mut loose: Members = Vec::new();
+        for part in &layer.bit_layout {
+            let index = self.push(Part::from_layout(layer, part));
+            match (part.row, &mut entry) {
+                (Some(row), Some((current, members))) if *current == row => {
+                    members.push((part.field.clone(), index));
+                }
+                (Some(row), _) => {
+                    nodes.extend(self.by_field(layer, None, std::mem::take(&mut loose)));
+                    if let Some((current, members)) = entry.take() {
+                        nodes.push(self.entry_node(layer, current, members));
+                    }
+                    entry = Some((row, vec![(part.field.clone(), index)]));
+                }
+                (None, _) => {
+                    if let Some((current, members)) = entry.take() {
+                        nodes.push(self.entry_node(layer, current, members));
+                    }
+                    loose.push((part.field.clone(), index));
+                }
+            }
+        }
+        nodes.extend(self.by_field(layer, None, loose));
+        if let Some((current, members)) = entry {
+            nodes.push(self.entry_node(layer, current, members));
+        }
+        nodes
+    }
+
+    fn entry_node(&self, layer: &PacketLayer, row: usize, members: Members) -> Node {
+        let values: Vec<&str> = layer
+            .rows
+            .get(row)
+            .map(|fields| fields.iter().map(|f| f.value.as_str()).collect())
+            .unwrap_or_default();
+        Node::Group {
+            key: format!("{}/{row}", layer.name),
+            label: format!("{} {}", row_noun(&layer.name), row + 1),
+            value: values.join(" · "),
+            children: self.by_field(layer, Some(row), members),
+        }
+    }
+
+    /// Consecutive parts of one field become one line with the parts beneath.
+    fn by_field(&self, layer: &PacketLayer, row: Option<usize>, parts: Members) -> Vec<Node> {
+        let mut nodes: Vec<Node> = Vec::new();
+        let mut run: Vec<usize> = Vec::new();
+        let mut run_field: Option<String> = None;
+        let flush = |nodes: &mut Vec<Node>, field: &Option<String>, run: &mut Vec<usize>| {
+            match (field, run.len()) {
+                (_, 0) => {}
+                (Some(name), n) if n > 1 => {
+                    let fields = match row {
+                        Some(r) => layer.rows.get(r).map(Vec::as_slice).unwrap_or_default(),
+                        None => layer.fields.as_slice(),
+                    };
+                    let value = fields
+                        .iter()
+                        .find(|f| &f.name == name)
+                        .map_or(String::new(), |f| f.value.clone());
+                    let row_key = row.map_or(String::new(), |r| format!("/{r}"));
+                    nodes.push(Node::Group {
+                        key: format!("{}{row_key}/{name}", layer.name),
+                        label: name.clone(),
+                        value,
+                        children: run.iter().map(|&i| Node::Part(i)).collect(),
+                    });
+                }
+                _ => nodes.extend(run.iter().map(|&i| Node::Part(i))),
+            }
+            run.clear();
+        };
+        for (field, index) in parts {
+            if field.is_none() || field != run_field {
+                flush(&mut nodes, &run_field, &mut run);
+                run_field = field;
+            }
+            run.push(index);
+        }
+        flush(&mut nodes, &run_field, &mut run);
+        nodes
+    }
+
+    /// The decoded fields of a layer, for a CLI without a layout.
+    fn field_nodes(&mut self, layer: &PacketLayer) -> Vec<Node> {
+        let mut nodes: Vec<Node> = layer
+            .fields
+            .iter()
+            .map(|f| Node::Part(self.push(Part::from_field(layer, None, f))))
+            .collect();
+        for (row, fields) in layer.rows.iter().enumerate() {
+            let children = fields
+                .iter()
+                .map(|f| Node::Part(self.push(Part::from_field(layer, Some(row), f))))
+                .collect();
+            nodes.push(Node::Group {
+                key: format!("{}/{row}", layer.name),
+                label: format!("{} {}", row_noun(&layer.name), row + 1),
+                value: fields
+                    .iter()
+                    .map(|f| f.value.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" · "),
+                children,
+            });
+        }
+        nodes
+    }
+
+    /// The parts a selection covers.
+    pub fn selected_parts(&self, selection: &Selection) -> Vec<usize> {
+        match selection {
+            Selection::Part(id) => self
+                .parts
+                .iter()
+                .position(|p| &p.id == id)
+                .into_iter()
+                .collect(),
+            Selection::Group(key) => self
+                .layers
+                .iter()
+                .flat_map(|l| &l.nodes)
+                .find_map(|node| find_group(node, key))
+                .map(leaves)
+                .unwrap_or_default(),
+        }
+    }
+
+    /// Bits that some part classifies.
+    pub fn classified(&self) -> usize {
+        self.owners.iter().filter(|o| o.is_some()).count()
+    }
+}
+
+fn find_group<'a>(node: &'a Node, key: &str) -> Option<&'a Node> {
+    match node {
+        Node::Group {
+            key: k, children, ..
+        } => {
+            if k == key {
+                Some(node)
+            } else {
+                children.iter().find_map(|c| find_group(c, key))
+            }
+        }
+        Node::Part(_) => None,
+    }
+}
+
+fn leaves(node: &Node) -> Vec<usize> {
+    match node {
+        Node::Part(i) => vec![*i],
+        Node::Group { children, .. } => children.iter().flat_map(leaves).collect(),
+    }
+}
+
+/// "bits 107–119" or "bit 9".
+pub fn bits_text(ranges: &[Range<usize>]) -> String {
+    let spans: Vec<String> = ranges
+        .iter()
+        .map(|r| {
+            if r.len() == 1 {
+                r.start.to_string()
+            } else {
+                format!("{}–{}", r.start, r.end - 1)
+            }
+        })
+        .collect();
+    let count: usize = ranges.iter().map(Range::len).sum();
+    format!(
+        "bit{} {}",
+        if count == 1 { "" } else { "s" },
+        spans.join(", ")
+    )
+}
+
+/// "byte 13, bit 4" for packet bit 108: bits are numbered 7 (MSB) to 0.
+pub fn coordinates(bit: usize) -> String {
+    format!("byte {}, bit {}", bit / 8, 7 - bit % 8)
+}
+
+/// Where a part is: its packet bits and the byte/bit coordinates they span.
+pub fn position(ranges: &[Range<usize>]) -> String {
+    let (Some(first), Some(last)) = (ranges.first(), ranges.last()) else {
+        return String::new();
+    };
+    let count: usize = ranges.iter().map(Range::len).sum();
+    let span = if count == 1 {
+        coordinates(first.start)
+    } else {
+        format!(
+            "{} – {}",
+            coordinates(first.start),
+            coordinates(last.end - 1)
+        )
+    };
+    format!(
+        "packet {} ({count} bit{}) · {span}",
+        bits_text(ranges),
+        if count == 1 { "" } else { "s" }
+    )
+}
+
+/// The facts of a part: label and kind, position, value, expected value and
+/// rule, and where it is.
+pub fn describe(part: &Part) -> Vec<(String, String)> {
+    let mut rows = vec![
+        ("Kind".to_owned(), part.kind.name().to_owned()),
+        ("Position".to_owned(), position(&part.ranges)),
+        ("Value".to_owned(), part.value.clone()),
+    ];
+    if let Some(expected) = &part.expected {
+        let verdict = match part.valid {
+            Some(false) => "mismatch",
+            _ => "valid",
+        };
+        rows.push(("Expected".to_owned(), format!("{expected} · {verdict}")));
+    }
+    if let Some(rule) = &part.rule {
+        rows.push(("Rule".to_owned(), rule.clone()));
+    }
+    if part.kind == Kind::Unknown {
+        rows.push((
+            "Note".to_owned(),
+            "Present in the packet but not interpreted by this decoder".to_owned(),
+        ));
+    }
+    rows.push(("In".to_owned(), part.context.clone()));
+    rows
+}
+
+/// Bytes per grid row that fit `width`: 4 (a 32-bit word, as the
+/// specification draws its syntax), 2 or 1.
+pub fn bytes_per_row(width: f32) -> usize {
+    [4, 2]
+        .into_iter()
+        .find(|&n| grid_width(n) <= width)
+        .unwrap_or(1)
+}
+
+const CELL: egui::Vec2 = egui::vec2(15.0, 20.0);
+const BYTE_GAP: f32 = 8.0;
+const OFFSET_WIDTH: f32 = 40.0;
+const HEX_WIDTH: f32 = 22.0;
+
+fn grid_width(bytes: usize) -> f32 {
+    OFFSET_WIDTH + bytes as f32 * (8.0 * CELL.x + BYTE_GAP + HEX_WIDTH)
+}
+
+/// The page's state: the selected line, and whether the grid should scroll
+/// to it.
+#[derive(Default)]
+pub struct State {
+    pub selection: Option<Selection>,
+    scroll_to_selection: bool,
+}
+
+impl State {
+    /// A page opened with `selection`, at the top of the packet.
+    #[cfg(test)]
+    pub fn with(selection: Option<Selection>) -> Self {
+        State {
+            selection,
+            scroll_to_selection: false,
+        }
+    }
+
+    pub fn select(&mut self, selection: Option<Selection>) {
+        self.scroll_to_selection = selection.is_some();
+        self.selection = selection;
+    }
+}
+
+/// The swatch of a role: a filled square, or an outlined striped one for
+/// bits that are not decoded.
+fn swatch(ui: &mut egui::Ui, role: Role) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+    paint_cell(ui.painter(), rect, role, ui.visuals(), 1.0);
+}
+
+fn paint_cell(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    role: Role,
+    visuals: &egui::Visuals,
+    alpha: f32,
+) {
+    let color = role.color(visuals);
+    if role == Role::Unknown {
+        let stroke = egui::Stroke::new(
+            1.0,
+            visuals.weak_text_color().gamma_multiply(alpha.max(0.6)),
+        );
+        let clipped = painter.with_clip_rect(rect);
+        let mut x = rect.left() - rect.height();
+        while x < rect.right() {
+            clipped.line_segment(
+                [
+                    egui::pos2(x, rect.bottom()),
+                    egui::pos2(x + rect.height(), rect.top()),
+                ],
+                stroke,
+            );
+            x += 5.0;
+        }
+        painter.rect_stroke(rect, 1.0, stroke, egui::StrokeKind::Inside);
+    } else {
+        painter.rect_filled(rect, 1.0, color.gamma_multiply(alpha));
+    }
+    if role == Role::Mismatch {
+        painter.rect_stroke(
+            rect,
+            1.0,
+            egui::Stroke::new(1.5, color),
+            egui::StrokeKind::Inside,
+        );
+    }
+}
+
+/// The legend of the role colors.
+pub fn legend(ui: &mut egui::Ui) {
+    ui.horizontal_wrapped(|ui| {
+        for (role, label) in Role::LEGEND {
+            // Each swatch stays with its label when the legend wraps.
+            ui.horizontal(|ui| {
+                swatch(ui, role);
+                ui.weak(label);
+            });
+            ui.add_space(6.0);
+        }
+    });
+}
+
+/// The facts of the selection, above the grid.
+pub fn selection_card(ui: &mut egui::Ui, model: &Model, state: &State) {
+    egui::Frame::group(ui.style()).show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        let Some(selection) = &state.selection else {
+            ui.weak("Select a field or part on the left, or click a bit, to see its wire layout.");
+            return;
+        };
+        let parts = model.selected_parts(selection);
+        match (selection, parts.as_slice()) {
+            (Selection::Part(_), [index]) => {
+                let part = &model.parts[*index];
+                ui.horizontal(|ui| {
+                    swatch(ui, part.role());
+                    ui.strong(&part.label);
+                });
+                facts(ui, "selected_part", &describe(part));
+            }
+            (_, indices) if !indices.is_empty() => {
+                let mut ranges: Vec<Range<usize>> = indices
+                    .iter()
+                    .flat_map(|&i| model.parts[i].ranges.clone())
+                    .collect();
+                ranges.sort_by_key(|r| r.start);
+                let mismatches = indices
+                    .iter()
+                    .filter(|&&i| model.parts[i].valid == Some(false))
+                    .count();
+                let (label, value) = group_label(model, selection);
+                ui.strong(label);
+                let mut rows = vec![
+                    ("Value".to_owned(), value),
+                    ("Position".to_owned(), position(&merge(ranges))),
+                    ("Parts".to_owned(), indices.len().to_string()),
+                ];
+                if mismatches > 0 {
+                    rows.push((
+                        "Fixed bits".to_owned(),
+                        format!("{mismatches} mismatch(es)"),
+                    ));
+                }
+                facts(ui, "selected_group", &rows);
+            }
+            _ => {
+                ui.weak("The selection is not in this packet.");
+            }
+        }
+    });
+}
+
+fn group_label(model: &Model, selection: &Selection) -> (String, String) {
+    if let Selection::Group(key) = selection {
+        for node in model.layers.iter().flat_map(|l| &l.nodes) {
+            if let Some(Node::Group { label, value, .. }) = find_group(node, key) {
+                return (label.clone(), value.clone());
+            }
+        }
+    }
+    (String::new(), String::new())
+}
+
+/// Adjacent ranges joined, so a field's complete span reads as one.
+fn merge(ranges: Vec<Range<usize>>) -> Vec<Range<usize>> {
+    let mut merged: Vec<Range<usize>> = Vec::new();
+    for r in ranges {
+        match merged.last_mut() {
+            Some(last) if last.end == r.start => last.end = r.end,
+            _ => merged.push(r),
+        }
+    }
+    merged
+}
+
+fn facts(ui: &mut egui::Ui, id: &str, rows: &[(String, String)]) {
+    egui::Grid::new(id)
+        .num_columns(2)
+        .spacing([12.0, 2.0])
+        .show(ui, |ui| {
+            for (key, value) in rows {
+                ui.weak(key);
+                ui.add(egui::Label::new(egui::RichText::new(value).monospace()).wrap());
+                ui.end_row();
+            }
+        });
+}
+
+/// The field list: one collapsible section per layer, in file order.
+pub fn field_list(ui: &mut egui::Ui, model: &Model, state: &mut State) {
+    for (index, layer) in model.layers.iter().enumerate() {
+        let color = layer_color(byte_layer(&layer.name));
+        egui::CollapsingHeader::new(
+            egui::RichText::new(layer_title(&layer.name))
+                .color(color)
+                .strong(),
+        )
+        .id_salt(("wire_layer", index))
+        .default_open(true)
+        .show(ui, |ui| {
+            for node in &layer.nodes {
+                node_line(ui, model, node, state);
+            }
+        });
+    }
+}
+
+fn byte_layer(name: &str) -> ByteLayer {
+    match name {
+        "m2ts_header" | "ts_header" => ByteLayer::TsHeader,
+        "adaptation_field" => ByteLayer::AdaptationField,
+        "pes_header" => ByteLayer::PesHeader,
+        "payload" => ByteLayer::Payload,
+        "trailer" => ByteLayer::Trailer,
+        _ => ByteLayer::Section,
+    }
+}
+
+/// The text of a part's line: label, value, bits and the validity of fixed bits.
+pub fn part_line(part: &Part) -> String {
+    let mark = match (part.valid, &part.expected) {
+        (Some(true), _) => " ✓".to_owned(),
+        (Some(false), Some(expected)) => format!(" ✗ expected {expected}"),
+        _ => String::new(),
+    };
+    format!(
+        "{}  {}{mark}  · {}",
+        part.label,
+        part.value,
+        bits_text(&part.ranges)
+    )
+}
+
+fn node_line(ui: &mut egui::Ui, model: &Model, node: &Node, state: &mut State) {
+    match node {
+        Node::Part(index) => {
+            let part = &model.parts[*index];
+            let selection = Selection::Part(part.id.clone());
+            ui.horizontal(|ui| {
+                swatch(ui, part.role());
+                let on = state.selection.as_ref() == Some(&selection);
+                let response = ui
+                    .selectable_label(on, part_line(part))
+                    .on_hover_ui(|ui| facts(ui, &format!("hover_{}", part.id), &describe(part)));
+                if response.clicked() {
+                    state.select(if on { None } else { Some(selection) });
+                }
+            });
+        }
+        Node::Group {
+            key,
+            label,
+            value,
+            children,
+        } => {
+            let selection = Selection::Group(key.clone());
+            let id = ui.make_persistent_id(("wire_group", key));
+            let inside = state.selection.as_ref().is_some_and(|s| match s {
+                Selection::Part(_) => model
+                    .selected_parts(s)
+                    .iter()
+                    .any(|i| leaves(node).contains(i)),
+                Selection::Group(k) => k
+                    .strip_prefix(key.as_str())
+                    .is_some_and(|rest| rest.starts_with('/')),
+            });
+            // Open when asked to, or while one of its parts is selected.
+            let mut open = ui.data(|d| d.get_temp::<bool>(id)).unwrap_or(false) || inside;
+            ui.horizontal(|ui| {
+                let toggle = ui
+                    .add(
+                        egui::Button::new(icons::text(if open {
+                            icons::CARET_DOWN
+                        } else {
+                            icons::CARET_RIGHT
+                        }))
+                        .frame(false),
+                    )
+                    .on_hover_text(if open {
+                        "Hide the parts"
+                    } else {
+                        "Show the parts"
+                    });
+                toggle.widget_info(|| {
+                    egui::WidgetInfo::labeled(
+                        egui::Role::Button,
+                        true,
+                        format!("{} parts of {label}", if open { "Hide" } else { "Show" }),
+                    )
+                });
+                if toggle.clicked() {
+                    open = !open;
+                }
+                let on = state.selection.as_ref() == Some(&selection);
+                let parts = leaves(node);
+                let mut ranges: Vec<Range<usize>> = parts
+                    .iter()
+                    .flat_map(|&i| model.parts[i].ranges.clone())
+                    .collect();
+                ranges.sort_by_key(|r| r.start);
+                let bad = parts.iter().any(|&i| model.parts[i].valid == Some(false));
+                let text = format!(
+                    "{label}  {value}{}  · {}",
+                    if bad { " ✗" } else { "" },
+                    bits_text(&merge(ranges))
+                );
+                if ui.selectable_label(on, text).clicked() {
+                    state.select(if on { None } else { Some(selection.clone()) });
+                }
+            });
+            ui.data_mut(|d| d.insert_temp(id, open));
+            if open {
+                ui.indent(id, |ui| {
+                    for child in children {
+                        node_line(ui, model, child, state);
+                    }
+                });
+            }
+        }
+    }
+}
+
+/// Every bit of the packet in file order, `bytes_per_row` bytes a row, each
+/// byte from bit 7 to bit 0, colored by role with the selection marked.
+/// Hovering a bit describes its part; clicking selects it.
+/// `per_row` comes from [`bytes_per_row`]; [`grid_header`] heads the columns.
+pub fn bit_grid(ui: &mut egui::Ui, raw: &[u8], per_row: usize, model: &Model, state: &mut State) {
+    let rows = raw.len().div_ceil(per_row);
+    let size = egui::vec2(grid_width(per_row), CELL.y * rows as f32);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    let total = raw.len() * 8;
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(
+            egui::Role::Image,
+            true,
+            format!(
+                "Bit grid: {} of {total} bits classified",
+                model.classified()
+            ),
+        )
+    });
+    let selected: Vec<usize> = state
+        .selection
+        .as_ref()
+        .map(|s| model.selected_parts(s))
+        .unwrap_or_default();
+    let byte_x = |column: usize| {
+        rect.left() + OFFSET_WIDTH + column as f32 * (8.0 * CELL.x + BYTE_GAP + HEX_WIDTH)
+    };
+    let cell_rect = |bit: usize| {
+        let byte = bit / 8;
+        let (row, column) = (byte / per_row, byte % per_row);
+        egui::Rect::from_min_size(
+            egui::pos2(
+                byte_x(column) + (bit % 8) as f32 * CELL.x,
+                rect.top() + row as f32 * CELL.y,
+            ),
+            CELL,
+        )
+    };
+    let bit_at = |pos: egui::Pos2| (0..total).find(|&bit| cell_rect(bit).contains(pos));
+
+    if ui.is_rect_visible(rect) {
+        let painter = ui.painter();
+        let visuals = ui.visuals();
+        let mono = egui::TextStyle::Monospace.resolve(ui.style());
+        let weak = visuals.weak_text_color();
+        for (index, &byte) in raw.iter().enumerate() {
+            let (row, column) = (index / per_row, index % per_row);
+            let y = rect.top() + (row as f32 + 0.5) * CELL.y;
+            if column == 0 {
+                painter.text(
+                    egui::pos2(rect.left(), y),
+                    egui::Align2::LEFT_CENTER,
+                    format!("{index:03}"),
+                    mono.clone(),
+                    weak,
+                );
+            }
+            painter.text(
+                egui::pos2(byte_x(column) + 8.0 * CELL.x + 4.0, y),
+                egui::Align2::LEFT_CENTER,
+                format!("{byte:02X}"),
+                mono.clone(),
+                weak,
+            );
+        }
+        for bit in 0..total {
+            let cell = cell_rect(bit).shrink2(egui::vec2(0.5, 1.0));
+            let owner = model.owners[bit];
+            let on = owner.is_some_and(|o| selected.contains(&o));
+            let text_color = match owner {
+                Some(o) => {
+                    let role = model.parts[o].role();
+                    paint_cell(painter, cell, role, visuals, if on { 1.0 } else { 0.4 });
+                    if on {
+                        visuals.strong_text_color()
+                    } else {
+                        visuals.text_color()
+                    }
+                }
+                None => weak,
+            };
+            // A line where one part ends and the next begins.
+            if bit % 8 != 0 && owner != model.owners[bit - 1] {
+                let left = cell_rect(bit).left();
+                painter.line_segment(
+                    [
+                        egui::pos2(left, cell.top()),
+                        egui::pos2(left, cell.bottom()),
+                    ],
+                    egui::Stroke::new(1.5, visuals.strong_text_color()),
+                );
+            }
+            let value = (raw[bit / 8] >> (7 - bit % 8)) & 1;
+            painter.text(
+                cell.center(),
+                egui::Align2::CENTER_CENTER,
+                value.to_string(),
+                mono.clone(),
+                text_color,
+            );
+        }
+        // The selection outlined, one box per run within a row.
+        let stroke = egui::Stroke::new(2.0, visuals.strong_text_color());
+        let mut bit = 0;
+        while bit < total {
+            let on = model.owners[bit].is_some_and(|o| selected.contains(&o));
+            if !on {
+                bit += 1;
+                continue;
+            }
+            let start = bit;
+            while bit + 1 < total
+                && model.owners[bit + 1].is_some_and(|o| selected.contains(&o))
+                && (bit + 1) % 8 != 0
+            {
+                bit += 1;
+            }
+            let outline = cell_rect(start).union(cell_rect(bit));
+            painter.rect_stroke(outline, 2.0, stroke, egui::StrokeKind::Inside);
+            bit += 1;
+        }
+    }
+
+    if state.scroll_to_selection {
+        state.scroll_to_selection = false;
+        if let Some(first) =
+            (0..total).find(|&b| model.owners[b].is_some_and(|o| selected.contains(&o)))
+        {
+            // Only as far as needed to bring it into view.
+            let cell = cell_rect(first);
+            if !ui.clip_rect().contains_rect(cell) {
+                ui.scroll_to_rect(cell, None);
+            }
+        }
+    }
+
+    let hovered = response.hover_pos().and_then(bit_at);
+    let clicked = response.clicked();
+    let response = match hovered {
+        Some(bit) => response.on_hover_ui_at_pointer(|ui| {
+            let value = (raw[bit / 8] >> (7 - bit % 8)) & 1;
+            ui.monospace(format!("packet bit {bit} · {} = {value}", coordinates(bit)));
+            match model.owners[bit] {
+                Some(owner) => {
+                    let part = &model.parts[owner];
+                    ui.strong(&part.label);
+                    facts(ui, "hover_bit", &describe(part));
+                }
+                None => {
+                    ui.weak("Not classified: this CLI does not report the wire layout.");
+                }
+            }
+        }),
+        None => response,
+    };
+    if clicked
+        && let Some(bit) = response.interact_pointer_pos().and_then(bit_at)
+        && let Some(owner) = model.owners[bit]
+    {
+        let selection = Selection::Part(model.parts[owner].id.clone());
+        state.selection = if state.selection.as_ref() == Some(&selection) {
+            None
+        } else {
+            Some(selection)
+        };
+    }
+}
+
+/// The column heads of the bit grid, kept above its scrolling rows: the bit
+/// numbers 7 to 0 of each byte.
+pub fn grid_header(ui: &mut egui::Ui, per_row: usize) {
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(grid_width(per_row), CELL.y),
+        egui::Sense::hover(),
+    );
+    let mono = egui::TextStyle::Monospace.resolve(ui.style());
+    let weak = ui.visuals().weak_text_color();
+    let painter = ui.painter();
+    painter.text(
+        rect.left_center(),
+        egui::Align2::LEFT_CENTER,
+        "byte",
+        mono.clone(),
+        weak,
+    );
+    for column in 0..per_row {
+        let x = rect.left() + OFFSET_WIDTH + column as f32 * (8.0 * CELL.x + BYTE_GAP + HEX_WIDTH);
+        for bit in 0..8 {
+            painter.text(
+                egui::pos2(x + (bit as f32 + 0.5) * CELL.x, rect.center().y),
+                egui::Align2::CENTER_CENTER,
+                (7 - bit).to_string(),
+                mono.clone(),
+                weak,
+            );
+        }
+        painter.text(
+            egui::pos2(x + 8.0 * CELL.x + 4.0, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            "hex",
+            mono.clone(),
+            weak,
+        );
+    }
+}
+
+/// What the page asks its owner to do.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Action {
+    Back,
+    Go(u64),
+}
+
+/// The packet the page shows and its neighbors in the analyzed range.
+pub struct Header {
+    pub title: String,
+    pub context: String,
+    pub previous: Option<u64>,
+    pub next: Option<u64>,
+}
+
+/// The page header: back to the list, where the packet is, and Previous/Next.
+pub fn header(ui: &mut egui::Ui, header: &Header) -> Option<Action> {
+    let mut action = None;
+    ui.horizontal(|ui| {
+        let back = ui.button((icons::text(icons::ARROW_LEFT), "Back to Packets"));
+        back.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Back to Packets"));
+        if back.clicked() {
+            action = Some(Action::Back);
+        }
+        ui.weak("Packets ›");
+        let title = ui.strong(&header.title);
+        title.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Heading, true, &header.title));
+        ui.weak("› Detailed inspection");
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui
+                .add_enabled(
+                    header.next.is_some(),
+                    egui::Button::new(("Next", icons::text(icons::CARET_RIGHT))),
+                )
+                .clicked()
+            {
+                action = header.next.map(Action::Go);
+            }
+            if ui
+                .add_enabled(
+                    header.previous.is_some(),
+                    egui::Button::new((icons::text(icons::CARET_LEFT), "Previous")),
+                )
+                .clicked()
+            {
+                action = header.previous.map(Action::Go);
+            }
+        });
+    });
+    ui.weak(&header.context);
+    action
+}
+
+#[cfg(test)]
+// Bit ranges are lists of ranges; a list of one is the common case here.
+#[allow(clippy::single_range_in_vec_init)]
+mod tests {
+    use super::*;
+    use crate::report::PacketDetail;
+
+    fn detail(json: &str) -> PacketDetail {
+        serde_json::from_str(json).unwrap()
+    }
+
+    fn video_204() -> PacketDetail {
+        detail(include_str!(
+            "../../tests/fixtures/packet_detail_video_204.json"
+        ))
+    }
+
+    #[test]
+    fn classifies_every_bit_of_a_204_byte_packet() {
+        let detail = video_204();
+        let packet = detail.packet.unwrap();
+        let model = Model::new(&packet, packet.raw().len() * 8);
+        assert!(model.complete);
+        assert_eq!(model.classified(), 204 * 8);
+        // The trailer is not decoded; the AF stuffing and PCR reserved bits
+        // have their own roles.
+        let trailer = model.owners[1504].unwrap();
+        assert_eq!(model.parts[trailer].role(), Role::Unknown);
+        assert_eq!(model.parts[model.owners[100].unwrap()].kind, Kind::Stuffing);
+        assert_eq!(
+            model.parts[model.owners[81].unwrap()].role(),
+            Role::Reserved
+        );
+        // The PES header covers the payload bits it sits in.
+        assert_eq!(
+            model.parts[model.owners[1264].unwrap()].label,
+            "packet_start_code_prefix"
+        );
+    }
+
+    #[test]
+    fn groups_the_parts_of_a_field_under_it() {
+        let detail = video_204();
+        let packet = detail.packet.unwrap();
+        let model = Model::new(&packet, 204 * 8);
+        let pts = Selection::Group("pes_header/PTS".to_owned());
+        let parts = model.selected_parts(&pts);
+        let labels: Vec<&str> = parts
+            .iter()
+            .map(|&i| model.parts[i].label.as_str())
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                "prefix",
+                "PTS[32..30]",
+                "marker_bit",
+                "PTS[29..15]",
+                "marker_bit",
+                "PTS[14..0]",
+                "marker_bit"
+            ]
+        );
+        // The complete encoded span of the PTS: 5 bytes.
+        let ranges = merge(
+            parts
+                .iter()
+                .flat_map(|&i| model.parts[i].ranges.clone())
+                .collect(),
+        );
+        assert_eq!(ranges, [1336..1376]);
+        let pcr = model.selected_parts(&Selection::Group(
+            "adaptation_field/program_clock_reference".to_owned(),
+        ));
+        assert_eq!(pcr.len(), 3);
+        // A part on its own is not a group.
+        let pid = model.selected_parts(&Selection::Part("ts_header.pid@11".to_owned()));
+        assert_eq!(model.parts[pid[0]].ranges, [11..24]);
+    }
+
+    #[test]
+    fn groups_table_entries() {
+        let detail = detail(include_str!(
+            "../../tests/fixtures/packet_detail_pmt_1001_188.json"
+        ));
+        let packet = detail.packet.unwrap();
+        let model = Model::new(&packet, 188 * 8);
+        let pmt = model.layers.iter().find(|l| l.name == "pmt").unwrap();
+        let entries: Vec<&str> = pmt
+            .nodes
+            .iter()
+            .filter_map(|n| match n {
+                Node::Group { label, .. } => Some(label.as_str()),
+                Node::Part(_) => None,
+            })
+            .collect();
+        assert_eq!(entries, ["stream 1", "stream 2"]);
+        let stream = model.selected_parts(&Selection::Group("pmt/0".to_owned()));
+        let labels: Vec<&str> = stream
+            .iter()
+            .map(|&i| model.parts[i].label.as_str())
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                "stream_type",
+                "reserved",
+                "elementary_PID",
+                "reserved",
+                "ES_info_length"
+            ]
+        );
+        assert_eq!(model.parts[stream[1]].context, "PMT › stream 1");
+    }
+
+    #[test]
+    fn falls_back_to_field_bits_without_a_layout() {
+        let detail = detail(include_str!(
+            "../../tests/fixtures/packet_detail_pat_188.json"
+        ));
+        let packet = detail.packet.unwrap();
+        assert!(packet.layers.iter().all(|l| l.bit_layout.is_empty()));
+        let model = Model::new(&packet, 188 * 8);
+        assert!(!model.complete);
+        // Field bits only: the PID keeps its 13 bits, and the 3 reserved
+        // bits before program_map_PID are only part of the payload.
+        let pid = model.parts.iter().position(|p| p.label == "PID").unwrap();
+        assert_eq!(model.parts[pid].ranges, [11..24]);
+        assert_eq!(model.parts[model.owners[120].unwrap()].label, "payload");
+        assert_eq!(
+            model.parts[model.owners[123].unwrap()].label,
+            "program_map_PID"
+        );
+    }
+
+    #[test]
+    fn mismatches_override_the_role() {
+        assert_eq!(Role::of(Kind::Reserved, Some(false)), Role::Mismatch);
+        assert_eq!(Role::of(Kind::Reserved, Some(true)), Role::Reserved);
+        assert_eq!(Role::of(Kind::Prefix, None), Role::Fixed);
+        assert_eq!(Kind::parse("something new"), Kind::Unknown);
+        let visuals = egui::Visuals::dark();
+        let colors: std::collections::HashSet<_> = Role::LEGEND
+            .iter()
+            .map(|(role, _)| role.color(&visuals))
+            .collect();
+        assert_eq!(colors.len(), Role::LEGEND.len());
+    }
+
+    #[test]
+    fn describes_positions() {
+        assert_eq!(coordinates(108), "byte 13, bit 3");
+        assert_eq!(
+            position(&[107..120]),
+            "packet bits 107–119 (13 bits) · byte 13, bit 4 – byte 14, bit 0"
+        );
+        assert_eq!(position(&[9..10]), "packet bit 9 (1 bit) · byte 1, bit 6");
+        assert_eq!(bytes_per_row(2000.0), 4);
+        assert_eq!(bytes_per_row(500.0), 2);
+        assert_eq!(bytes_per_row(200.0), 1);
+    }
+}

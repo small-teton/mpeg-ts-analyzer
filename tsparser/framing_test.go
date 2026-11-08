@@ -310,7 +310,8 @@ func TestTrailerPacketsPagesAndDetail(t *testing.T) {
 		detail.Packet.Bytes[:2*tsPayloadSize] != want.Packet.Bytes || detail.Packet.Bytes[2*tsPayloadSize:] != "8c8d8e8f909192939495969798999a9b" {
 		t.Errorf("bytes %s", detail.Packet.Bytes)
 	}
-	if toJSON(t, trailer) != `{"name":"trailer","fields":[{"name":"trailer_bytes","value":"16 bytes","byte_offset":188,"byte_length":16}]}` {
+	if toJSON(t, trailer) != `{"name":"trailer","fields":[{"name":"trailer_bytes","value":"16 bytes","byte_offset":188,"byte_length":16}],`+
+		`"bit_layout":[{"id":"trailer.trailer_bytes@1504","label":"trailer_bytes","kind":"unknown","bits":[{"bit_offset":1504,"bit_length":128}],"value":"16 bytes","field":"trailer_bytes"}]}` {
 		t.Errorf("trailer %s", toJSON(t, trailer))
 	}
 	if toJSON(t, layers[:len(layers)-1]) != toJSON(t, want.Packet.Layers) {

@@ -105,6 +105,115 @@
               }
             ]
           }
+        ],
+        "bit_layout": [
+          {
+            "id": "ts_header.sync_byte@0",
+            "label": "sync_byte",
+            "kind": "prefix",
+            "bits": [
+              {
+                "bit_offset": 0,
+                "bit_length": 8
+              }
+            ],
+            "value": "0x47",
+            "expected": "0x47",
+            "valid": true,
+            "rule": "ISO/IEC 13818-1 Table 2-2: sync_byte is 0x47",
+            "field": "sync_byte"
+          },
+          {
+            "id": "ts_header.transport_error_indicator@8",
+            "label": "transport_error_indicator",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 8,
+                "bit_length": 1
+              }
+            ],
+            "value": "0",
+            "field": "transport_error_indicator"
+          },
+          {
+            "id": "ts_header.payload_unit_start_indicator@9",
+            "label": "payload_unit_start_indicator",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 9,
+                "bit_length": 1
+              }
+            ],
+            "value": "1",
+            "field": "payload_unit_start_indicator"
+          },
+          {
+            "id": "ts_header.transport_priority@10",
+            "label": "transport_priority",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 10,
+                "bit_length": 1
+              }
+            ],
+            "value": "0",
+            "field": "transport_priority"
+          },
+          {
+            "id": "ts_header.pid@11",
+            "label": "PID",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 11,
+                "bit_length": 13
+              }
+            ],
+            "value": "0x1001",
+            "field": "PID"
+          },
+          {
+            "id": "ts_header.transport_scrambling_control@24",
+            "label": "transport_scrambling_control",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 24,
+                "bit_length": 2
+              }
+            ],
+            "value": "0",
+            "field": "transport_scrambling_control"
+          },
+          {
+            "id": "ts_header.adaptation_field_control@26",
+            "label": "adaptation_field_control",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 26,
+                "bit_length": 2
+              }
+            ],
+            "value": "1 (payload only)",
+            "field": "adaptation_field_control"
+          },
+          {
+            "id": "ts_header.continuity_counter@28",
+            "label": "continuity_counter",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 28,
+                "bit_length": 4
+              }
+            ],
+            "value": "0",
+            "field": "continuity_counter"
+          }
         ]
       },
       {
@@ -115,6 +224,21 @@
             "value": "184 bytes",
             "byte_offset": 4,
             "byte_length": 184
+          }
+        ],
+        "bit_layout": [
+          {
+            "id": "payload.payload@32",
+            "label": "payload",
+            "kind": "payload",
+            "bits": [
+              {
+                "bit_offset": 32,
+                "bit_length": 1472
+              }
+            ],
+            "value": "184 bytes",
+            "field": "payload"
           }
         ]
       },
@@ -295,6 +419,390 @@
               ]
             }
           ]
+        ],
+        "bit_layout": [
+          {
+            "id": "pmt.pointer_field@32",
+            "label": "pointer_field",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 32,
+                "bit_length": 8
+              }
+            ],
+            "value": "0",
+            "field": "pointer_field"
+          },
+          {
+            "id": "pmt.table_id@40",
+            "label": "table_id",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 40,
+                "bit_length": 8
+              }
+            ],
+            "value": "0x02",
+            "field": "table_id"
+          },
+          {
+            "id": "pmt.section_syntax_indicator@48",
+            "label": "section_syntax_indicator",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 48,
+                "bit_length": 1
+              }
+            ],
+            "value": "1",
+            "expected": "1",
+            "valid": true,
+            "rule": "ISO/IEC 13818-1 TS program map section: section_syntax_indicator is '1'",
+            "field": "section_syntax_indicator"
+          },
+          {
+            "id": "pmt.zero@49",
+            "label": "'0'",
+            "kind": "marker",
+            "bits": [
+              {
+                "bit_offset": 49,
+                "bit_length": 1
+              }
+            ],
+            "value": "0",
+            "expected": "0",
+            "valid": true,
+            "rule": "ISO/IEC 13818-1 TS program map section: the bit after section_syntax_indicator is '0'"
+          },
+          {
+            "id": "pmt.section_length.reserved@50",
+            "label": "reserved",
+            "kind": "reserved",
+            "bits": [
+              {
+                "bit_offset": 50,
+                "bit_length": 2
+              }
+            ],
+            "value": "11",
+            "expected": "11",
+            "valid": true,
+            "rule": "ISO/IEC 13818-1 2.1 (reserved): reserved bits are set to '1' unless otherwise specified; receivers ignore them"
+          },
+          {
+            "id": "pmt.section_length@52",
+            "label": "section_length",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 52,
+                "bit_length": 12
+              }
+            ],
+            "value": "23",
+            "field": "section_length"
+          },
+          {
+            "id": "pmt.program_number@64",
+            "label": "program_number",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 64,
+                "bit_length": 16
+              }
+            ],
+            "value": "2",
+            "field": "program_number"
+          },
+          {
+            "id": "pmt.version_number.reserved@80",
+            "label": "reserved",
+            "kind": "reserved",
+            "bits": [
+              {
+                "bit_offset": 80,
+                "bit_length": 2
+              }
+            ],
+            "value": "11",
+            "expected": "11",
+            "valid": true,
+            "rule": "ISO/IEC 13818-1 2.1 (reserved): reserved bits are set to '1' unless otherwise specified; receivers ignore them"
+          },
+          {
+            "id": "pmt.version_number@82",
+            "label": "version_number",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 82,
+                "bit_length": 5
+              }
+            ],
+            "value": "0",
+            "field": "version_number"
+          },
+          {
+            "id": "pmt.current_next_indicator@87",
+            "label": "current_next_indicator",
+            "kind": "flag",
+            "bits": [
+              {
+                "bit_offset": 87,
+                "bit_length": 1
+              }
+            ],
+            "value": "1",
+            "field": "current_next_indicator"
+          },
+          {
+            "id": "pmt.section_number@88",
+            "label": "section_number",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 88,
+                "bit_length": 8
+              }
+            ],
+            "value": "0",
+            "field": "section_number"
+          },
+          {
+            "id": "pmt.last_section_number@96",
+            "label": "last_section_number",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 96,
+                "bit_length": 8
+              }
+            ],
+            "value": "0",
+            "field": "last_section_number"
+          },
+          {
+            "id": "pmt.pcr_pid.reserved@104",
+            "label": "reserved",
+            "kind": "reserved",
+            "bits": [
+              {
+                "bit_offset": 104,
+                "bit_length": 3
+              }
+            ],
+            "value": "111",
+            "expected": "111",
+            "valid": true,
+            "rule": "ISO/IEC 13818-1 2.1 (reserved): reserved bits are set to '1' unless otherwise specified; receivers ignore them"
+          },
+          {
+            "id": "pmt.pcr_pid@107",
+            "label": "PCR_PID",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 107,
+                "bit_length": 13
+              }
+            ],
+            "value": "0x0102",
+            "field": "PCR_PID"
+          },
+          {
+            "id": "pmt.program_info_length.reserved@120",
+            "label": "reserved",
+            "kind": "reserved",
+            "bits": [
+              {
+                "bit_offset": 120,
+                "bit_length": 4
+              }
+            ],
+            "value": "1111",
+            "expected": "1111",
+            "valid": true,
+            "rule": "ISO/IEC 13818-1 2.1 (reserved): reserved bits are set to '1' unless otherwise specified; receivers ignore them"
+          },
+          {
+            "id": "pmt.program_info_length@124",
+            "label": "program_info_length",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 124,
+                "bit_length": 12
+              }
+            ],
+            "value": "0",
+            "field": "program_info_length"
+          },
+          {
+            "id": "pmt.stream[0].stream_type@136",
+            "label": "stream_type",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 136,
+                "bit_length": 8
+              }
+            ],
+            "value": "0x02 (13818-2 video or 11172-2 constrained parameter video stream)",
+            "field": "stream_type",
+            "row": 0
+          },
+          {
+            "id": "pmt.stream[0].elementary_pid.reserved@144",
+            "label": "reserved",
+            "kind": "reserved",
+            "bits": [
+              {
+                "bit_offset": 144,
+                "bit_length": 3
+              }
+            ],
+            "value": "111",
+            "expected": "111",
+            "valid": true,
+            "rule": "ISO/IEC 13818-1 2.1 (reserved): reserved bits are set to '1' unless otherwise specified; receivers ignore them",
+            "row": 0
+          },
+          {
+            "id": "pmt.stream[0].elementary_pid@147",
+            "label": "elementary_PID",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 147,
+                "bit_length": 13
+              }
+            ],
+            "value": "0x0102",
+            "field": "elementary_PID",
+            "row": 0
+          },
+          {
+            "id": "pmt.stream[0].es_info_length.reserved@160",
+            "label": "reserved",
+            "kind": "reserved",
+            "bits": [
+              {
+                "bit_offset": 160,
+                "bit_length": 4
+              }
+            ],
+            "value": "1111",
+            "expected": "1111",
+            "valid": true,
+            "rule": "ISO/IEC 13818-1 2.1 (reserved): reserved bits are set to '1' unless otherwise specified; receivers ignore them",
+            "row": 0
+          },
+          {
+            "id": "pmt.stream[0].es_info_length@164",
+            "label": "ES_info_length",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 164,
+                "bit_length": 12
+              }
+            ],
+            "value": "0",
+            "field": "ES_info_length",
+            "row": 0
+          },
+          {
+            "id": "pmt.stream[1].stream_type@176",
+            "label": "stream_type",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 176,
+                "bit_length": 8
+              }
+            ],
+            "value": "0x03 (11172 audio)",
+            "field": "stream_type",
+            "row": 1
+          },
+          {
+            "id": "pmt.stream[1].elementary_pid.reserved@184",
+            "label": "reserved",
+            "kind": "reserved",
+            "bits": [
+              {
+                "bit_offset": 184,
+                "bit_length": 3
+              }
+            ],
+            "value": "111",
+            "expected": "111",
+            "valid": true,
+            "rule": "ISO/IEC 13818-1 2.1 (reserved): reserved bits are set to '1' unless otherwise specified; receivers ignore them",
+            "row": 1
+          },
+          {
+            "id": "pmt.stream[1].elementary_pid@187",
+            "label": "elementary_PID",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 187,
+                "bit_length": 13
+              }
+            ],
+            "value": "0x0103",
+            "field": "elementary_PID",
+            "row": 1
+          },
+          {
+            "id": "pmt.stream[1].es_info_length.reserved@200",
+            "label": "reserved",
+            "kind": "reserved",
+            "bits": [
+              {
+                "bit_offset": 200,
+                "bit_length": 4
+              }
+            ],
+            "value": "1111",
+            "expected": "1111",
+            "valid": true,
+            "rule": "ISO/IEC 13818-1 2.1 (reserved): reserved bits are set to '1' unless otherwise specified; receivers ignore them",
+            "row": 1
+          },
+          {
+            "id": "pmt.stream[1].es_info_length@204",
+            "label": "ES_info_length",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 204,
+                "bit_length": 12
+              }
+            ],
+            "value": "0",
+            "field": "ES_info_length",
+            "row": 1
+          },
+          {
+            "id": "pmt.crc_32@216",
+            "label": "CRC_32",
+            "kind": "value",
+            "bits": [
+              {
+                "bit_offset": 216,
+                "bit_length": 32
+              }
+            ],
+            "value": "0x1058355a",
+            "field": "CRC_32"
+          }
         ]
       }
     ]

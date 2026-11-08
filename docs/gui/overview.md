@@ -246,5 +246,34 @@ trailer is listed as "Trailer (after the TS packet; not decoded)"; selecting
 it highlights bytes 188–203. It is not decoded, validated or labeled as
 Reed-Solomon parity.
 
-Both images are rendered from fixtures by the GUI's tests rather than captured
+### Detailed inspection: the complete wire layout
+
+The compact Bit inspector shows the bits a decoded value is read from. To read
+a packet beside ISO/IEC 13818-1 bit by bit, press **Detailed inspection**
+under the packet heading. Packets then shows that packet on a full-width page:
+every structure, decoded field and encoded part on the left, and every bit of
+the packet on the right, colored by what it is on the wire.
+
+[![Detailed inspection of a PMT packet with the reserved bits before the second stream's elementary_PID selected](../images/gui-wire-layout.png)](../images/gui-wire-layout.png)
+
+- Reserved bits, marker bits and fixed prefixes, stuffing and bytes the
+  analyzer does not decode have lines and colors of their own, so "reserved by
+  the specification" (gray) is never confused with "not decoded" (striped).
+- Where the specification fixes the bits (sync byte, start code, `'10'`, PTS
+  prefix, marker bits, PAT/PMT fixed bits, reserved bits, stuffing bytes), the
+  line shows ✓ or "✗ expected …", a mismatch is red in the grid, and the
+  selected part names the rule.
+- A PTS, DTS, PCR or OPCR is one line spanning its whole encoding, with its
+  prefix, value runs, reserved and marker bits beneath it; a PAT program or
+  PMT stream likewise lists its fields and reserved bits.
+- Hover a bit for its part, position and value; click it to select the part.
+- Previous / Next step through the packets of the analyzed range; **Back to
+  Packets** returns to the list with its page, filter, selected row and
+  scroll position.
+
+The layout comes from the `bit_layout` of the packet detail
+([Wire layout](../reference/json-output.md#wire-layout)). With a CLI that does
+not report it, the page classifies only the bits of decoded fields.
+
+These images are rendered from fixtures by the GUI's tests rather than captured
 by hand; see [README screenshots](../development/index.md#readme-screenshots).

@@ -288,6 +288,73 @@
         "truncated": {
           "type": "boolean",
           "description": "The structure continues past this packet; fields beyond it are not listed."
+        },
+        "bit_layout": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/layoutPart"
+          },
+          "description": "The wire layout of the structure within this packet: ordered, non-overlapping parts that together cover every bit of the structure up to its end or the end of the packet, including reserved, marker, prefix, stuffing and undecoded bits. Optional: absent from a CLI that predates it."
+        }
+      }
+    },
+    "layoutPart": {
+      "type": "object",
+      "required": [
+        "id",
+        "label",
+        "kind",
+        "bits",
+        "value"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+(\\.[a-z0-9_\\[\\]]+)*@[0-9]+$",
+          "description": "Unique within the packet and stable for the same bytes: the layer, the structure path (for example pmt.stream[1].elementary_pid) and @ the first bit offset. Several parts may share a label such as reserved; the id tells them apart."
+        },
+        "label": {
+          "type": "string",
+          "description": "The syntax element name, for example reserved, marker_bit, PTS[29..15], program_clock_reference_base."
+        },
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z_]+$",
+          "description": "Current values: value (a value or field), flag (a 1-bit indicator), reserved, marker (marker_bit and other fixed bits), prefix (sync_byte, start codes, the PTS/DTS prefix and the '10' of the optional PES header), stuffing, payload (data carried for another structure), unknown (bits this decoder does not interpret, or that are cut off). Consumers should treat an unrecognized kind as unknown."
+        },
+        "bits": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/bitRange"
+          },
+          "description": "The bits of the part, in wire order; packet-relative like field bits."
+        },
+        "value": {
+          "type": "string",
+          "description": "The bits as read: the linked field's value when the part has exactly its bits, otherwise binary digits for short fixed or value runs, a number, or a byte count."
+        },
+        "expected": {
+          "type": "string",
+          "description": "Present only where the specification fixes the bits and this decoder checks them, in the same notation as value (for stuffing, the value of every byte)."
+        },
+        "valid": {
+          "type": "boolean",
+          "description": "Present with expected: whether the bits are the expected ones."
+        },
+        "rule": {
+          "type": "string",
+          "description": "Present with expected: the specification rule that fixes the bits."
+        },
+        "field": {
+          "type": "string",
+          "description": "The decoded field (in fields, or in rows[row] when row is present) whose bytes hold the part. Several parts can share a field, such as the prefix, value runs and marker bits of a PTS."
+        },
+        "row": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Index into rows of the table entry (PAT program, PMT stream) the part belongs to."
         }
       }
     },

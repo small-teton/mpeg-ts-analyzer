@@ -131,6 +131,12 @@ from its first one.
   PID, lengths, PCR, PTS/DTS) also carry packet-relative bit ranges in wire
   order, so a bit inspector can highlight exactly their bits; a field without
   ranges uses every bit of its byte span.
+- Every layer also carries `bit_layout` (#190): its complete wire layout as
+  ordered, non-overlapping parts with a stable `id`, a `kind` (value, flag,
+  reserved, marker, prefix, stuffing, payload, unknown), the bits, the value,
+  `expected` / `valid` / `rule` where the specification fixes the bits, and a
+  link to the decoded field and table row. The detailed inspection page is
+  drawn from it; without it, the GUI classifies only field bits.
 
 ### Capabilities
 
@@ -157,7 +163,7 @@ Analyze a smaller range, or check the CLI chosen in Settings.*
 |---|---|---|
 | `--capabilities` | 64 KiB | about 500 bytes |
 | `--output packets` | 1 MiB + 4 KiB per requested packet (1.4 MiB for the default page of 100, about 40 MiB for the largest of 10,000) | about 300 bytes per packet |
-| `--output packet` | 1 MiB | under 8 KiB |
+| `--output packet` | 1 MiB | 25–30 KiB with the wire layout; about 90 KiB for a packet full of PAT entries |
 | `--output analysis` | 64 MiB + 4 bytes per byte of the range (320 MiB for the default 64 MiB) | 0.22–0.24 bytes per input byte on the samples |
 | stderr diagnostics | the latest 64 KiB of lines, each cut at 4 KiB | — |
 | progress events | the latest event only | one per progress step |
@@ -190,6 +196,7 @@ Tracking: #101 (milestone GUI v0.1).
 | #84 | Packet paging |
 | #85 | Packet detail with byte spans and unit membership |
 | #109 | Bit ranges of packet detail fields (bit inspector) |
+| #190 | Complete wire layout of packet detail layers (detailed inspection) |
 | #89 | Capabilities query |
 | #90 | Progress events on stderr (`--progress json`) |
 | #92 | SDT service names (`programs[].service`; ARIB excluded) |

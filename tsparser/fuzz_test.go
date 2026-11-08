@@ -387,3 +387,20 @@ func FuzzSyncRecovery(f *testing.F) {
 		}
 	})
 }
+
+// FuzzPacketLayout decodes any bytes as a 188-, 192- or 204-byte packet for
+// --output packet and checks that its bit layout stays complete, ordered and
+// consistent with the decoded fields (see checkLayout).
+func FuzzPacketLayout(f *testing.F) {
+	f.Add(byte(0), rawPsiPacket(0x1000, true, 0, append([]byte{0x00}, pmtSectionN(1, 0, 0, 0, 0x100, [2]uint16{0x02, 0x100})...)))
+	f.Add(byte(1), append([]byte{0, 0, 0, 0}, pesStartPacket(0x100, 0, 90000)...))
+	f.Add(byte(2), append(tsPacket([4]byte{0x47, 0x01, 0x00, 0x30}, 7, 0x10), bytes.Repeat([]byte{0x80}, trailerSize)...))
+	f.Add(byte(0), tsPacket([4]byte{0x47, 0x41, 0x00, 0x10}, 0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0xFF, 0xFF))
+	f.Add(byte(0), []byte{0x47})
+	f.Fuzz(func(t *testing.T, size byte, data []byte) {
+		packetSize := supportedPacketSizes[int(size)%len(supportedPacketSizes)]
+		raw := make([]byte, packetSize)
+		copy(raw, data)
+		checkLayout(t, "fuzz", raw, decodePacketLayers(raw), false)
+	})
+}

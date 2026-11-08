@@ -72,6 +72,10 @@ when a field such as the 13-bit PID spans two bytes:
   </a>
 </p>
 
+**Detailed inspection** opens a packet's complete wire layout on a full-width
+page: reserved and marker bits, prefixes, stuffing and undecoded bytes are
+classified and checked against ISO/IEC 13818-1 alongside the decoded values.
+
 See the [GUI guide][docs-gui].
 
 ## Install

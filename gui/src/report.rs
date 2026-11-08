@@ -1023,6 +1023,39 @@ pub struct PacketLayer {
     pub rows: Vec<Vec<PacketField>>,
     #[serde(default)]
     pub truncated: bool,
+    /// The wire layout of the layer: every bit of it classified, in wire
+    /// order. Empty from a CLI that does not report it.
+    #[serde(default)]
+    pub bit_layout: Vec<LayoutPart>,
+}
+
+/// One run of a layer's wire layout (`bit_layout` in the packet detail).
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct LayoutPart {
+    /// Unique within the packet; several parts can share a label.
+    pub id: String,
+    pub label: String,
+    /// value, flag, reserved, marker, prefix, stuffing, payload or unknown;
+    /// an unrecognized kind is shown as unknown.
+    pub kind: String,
+    pub bits: Vec<BitRange>,
+    pub value: String,
+    /// Set where the specification fixes the bits, with `valid` and `rule`.
+    pub expected: Option<String>,
+    pub valid: Option<bool>,
+    pub rule: Option<String>,
+    /// The decoded field (of `rows[row]` when `row` is set) the bits belong to.
+    pub field: Option<String>,
+    pub row: Option<usize>,
+}
+
+impl LayoutPart {
+    pub fn bit_ranges(&self) -> Vec<std::ops::Range<usize>> {
+        self.bits
+            .iter()
+            .map(|b| b.bit_offset..b.bit_offset + b.bit_length)
+            .collect()
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
