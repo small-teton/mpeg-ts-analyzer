@@ -13,10 +13,10 @@ PID references, PES header health, packet gaps, mux lead, PTS/DTS wraparound,
 multi-section PSI, PSI version changes, continuity counters, and one stream
 with every Overview finding.
 
-- Their output is committed under `sample_data/diagnostics/` (or
-  `sample_data/` for the multi-section PSI rewrite of a healthy sample) and is
-  used by the CLI and GUI tests, by documented examples, and for TSDuck
-  cross-checks.
+- Except for the uncommitted `generate_continuity` reference stream, their
+  output is committed under `sample_data/diagnostics/` (or `sample_data/` for
+  the multi-section PSI rewrite of a healthy sample) and is used by the CLI
+  and GUI tests, by documented examples, and for TSDuck cross-checks.
 - `tsparser` tests check that every committed file equals its generator's
   output, so a generator change must come with the regenerated files.
 - `-m2ts` writes 192-byte M2TS packets and `-trailer` 204-byte packets (a
