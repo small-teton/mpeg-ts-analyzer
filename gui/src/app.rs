@@ -803,6 +803,10 @@ fn rail_tile(ui: &mut egui::Ui, glyph: &str, title: &str, selected: bool) -> egu
 }
 
 #[cfg(test)]
+mod heap;
+#[cfg(test)]
+mod memory_profile;
+#[cfg(test)]
 mod plot_alloc_tests;
 #[cfg(all(test, feature = "screenshots"))]
 mod screenshots;
@@ -904,6 +908,7 @@ mod tests {
         assert_eq!((session.range, session.generation), ((0, 1000), 1));
         assert_eq!(session.plots.timelines.len(), session.report.programs.len());
         assert_eq!(session.plots.bitrates.len(), session.report.programs.len());
+        assert!(session.report.programs.iter().all(|p| p.series.is_none()));
 
         app.range = AnalysisRange {
             offset: 188,

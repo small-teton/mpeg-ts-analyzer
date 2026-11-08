@@ -2,18 +2,17 @@
 //! series must be drawn from the derived plot data without copying every
 //! point vector on each frame.
 //!
-//! Allocations are counted per thread by a counting global allocator, so
-//! tests running in parallel do not disturb each other: the egui_kittest
-//! harness builds frames on the calling thread.
+//! Allocations are counted per thread by the counting global allocator
+//! ([`super::heap`]), so tests running in parallel do not disturb each other:
+//! the egui_kittest harness builds frames on the calling thread.
 
-use std::alloc::{GlobalAlloc, Layout, System};
-use std::cell::Cell;
 use std::time::Instant;
 
 use eframe::egui;
 use egui_kittest::Harness;
 
 use super::App;
+use super::heap::{WATCHED, counted, watching};
 use super::ui_tests::app_with_report;
 use crate::plot_data;
 use crate::report::{
@@ -21,86 +20,6 @@ use crate::report::{
     PesPoint, TimestampEvent,
 };
 use crate::views::Screen;
-
-/// Forwards to the system allocator and counts what the current thread asks for.
-struct Counting;
-
-/// How many allocation sizes [`watching`] can watch at once.
-const WATCHED: usize = 32;
-
-thread_local! {
-    static ALLOCATIONS: Cell<u64> = const { Cell::new(0) };
-    static ALLOCATED_BYTES: Cell<u64> = const { Cell::new(0) };
-    /// Sizes of a copy of a drawn series; 0 is unused.
-    static WATCHED_SIZES: Cell<[usize; WATCHED]> = const { Cell::new([0; WATCHED]) };
-    static WATCHED_HITS: Cell<u64> = const { Cell::new(0) };
-}
-
-fn record(bytes: usize) {
-    // `try_with`: the thread-locals are gone while a thread shuts down.
-    let _ = ALLOCATIONS.try_with(|count| count.set(count.get() + 1));
-    let _ = ALLOCATED_BYTES.try_with(|total| total.set(total.get() + bytes as u64));
-    if bytes > 0
-        && WATCHED_SIZES
-            .try_with(|sizes| sizes.get().contains(&bytes))
-            .unwrap_or(false)
-    {
-        let _ = WATCHED_HITS.try_with(|hits| hits.set(hits.get() + 1));
-    }
-}
-
-// SAFETY: every call is forwarded unchanged to `System`, which upholds the
-// `GlobalAlloc` contract; counting touches only const-initialized
-// thread-locals, which never allocate.
-unsafe impl GlobalAlloc for Counting {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        record(layout.size());
-        // SAFETY: the caller's guarantees for `layout` are passed on.
-        unsafe { System.alloc(layout) }
-    }
-
-    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        record(layout.size());
-        // SAFETY: as for `alloc`.
-        unsafe { System.alloc_zeroed(layout) }
-    }
-
-    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        record(new_size);
-        // SAFETY: `ptr` was allocated by this allocator, that is by `System`.
-        unsafe { System.realloc(ptr, layout, new_size) }
-    }
-
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        // SAFETY: `ptr` was allocated by this allocator, that is by `System`.
-        unsafe { System.dealloc(ptr, layout) }
-    }
-}
-
-#[global_allocator]
-static ALLOCATOR: Counting = Counting;
-
-/// Allocations and bytes requested by this thread while `f` runs.
-fn counted(f: impl FnOnce()) -> (u64, u64) {
-    let before = (ALLOCATIONS.get(), ALLOCATED_BYTES.get());
-    f();
-    (
-        ALLOCATIONS.get() - before.0,
-        ALLOCATED_BYTES.get() - before.1,
-    )
-}
-
-/// How many allocations of exactly one of `sizes` bytes this thread makes
-/// while `f` runs.
-fn watching(sizes: &[usize], f: impl FnOnce()) -> u64 {
-    let mut watched = [0; WATCHED];
-    watched[..sizes.len()].copy_from_slice(sizes);
-    WATCHED_SIZES.set(watched);
-    let before = WATCHED_HITS.get();
-    f();
-    WATCHED_SIZES.set([0; WATCHED]);
-    WATCHED_HITS.get() - before
-}
 
 /// PCRs (and jitter samples) per program: 40 ms apart, 20 minutes.
 const PCRS: usize = 30_000;
@@ -198,6 +117,15 @@ fn long_report() -> AnalysisReport {
     report
 }
 
+/// Program `index`'s plots, from its series, which are taken out of `report`.
+fn program_plots(
+    report: &mut AnalysisReport,
+    index: usize,
+) -> (plot_data::Timeline, plot_data::Bitrate) {
+    let series = report.programs[index].series.take();
+    plot_data::derive(report, &report.programs[index], series)
+}
+
 fn harness(app: App) -> Harness<'static, App> {
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1280.0, 800.0))
@@ -222,9 +150,9 @@ fn per_frame(report: AnalysisReport, screen: Screen) -> Frame {
     // Byte sizes a per-frame copy of a drawn series would allocate: its
     // coordinates as two `f64`s, or the events as picking points. Short
     // series are left out: their sizes are too common to tell apart.
-    let program = &report.programs[0];
-    let timeline = plot_data::timeline(&report, program);
-    let bitrate = plot_data::bitrate(&report, program);
+    let mut app = app_with_report(report);
+    let plots = &app.session.as_ref().expect("a session").plots;
+    let (timeline, bitrate) = (&plots.timelines[0], &plots.bitrates[0]);
     let lengths = [
         timeline.pcr_drawn.len(),
         timeline.pcr_over_limit.len(),
@@ -252,7 +180,6 @@ fn per_frame(report: AnalysisReport, screen: Screen) -> Frame {
     sizes.dedup();
     assert!(sizes.len() <= WATCHED);
 
-    let mut app = app_with_report(report);
     app.screen = screen;
     let mut harness = harness(app);
     for _ in 0..3 {
@@ -274,17 +201,16 @@ fn per_frame(report: AnalysisReport, screen: Screen) -> Frame {
 }
 
 fn report_frames(report: impl Fn() -> AnalysisReport) -> Vec<(Screen, Frame)> {
-    let report_once = report();
+    let mut report_once = report();
+    let programs = report_once.programs.len();
     let started = Instant::now();
     let (_, derive_bytes) = counted(|| {
-        for program in &report_once.programs {
-            drop(plot_data::timeline(&report_once, program));
-            drop(plot_data::bitrate(&report_once, program));
+        for index in 0..programs {
+            drop(program_plots(&mut report_once, index));
         }
     });
     eprintln!(
-        "plot derivation for {} programs: {:?}, {} KiB allocated",
-        report_once.programs.len(),
+        "plot derivation for {programs} programs: {:?}, {} KiB allocated",
         started.elapsed(),
         derive_bytes / 1024
     );
@@ -306,8 +232,7 @@ fn report_frames(report: impl Fn() -> AnalysisReport) -> Vec<(Screen, Frame)> {
 /// Run with `-- --nocapture` for the numbers.
 #[test]
 fn plot_screens_do_not_copy_series_per_frame() {
-    let report = long_report();
-    let timeline = plot_data::timeline(&report, &report.programs[0]);
+    let (timeline, _) = program_plots(&mut long_report(), 0);
     // Long enough for the events and every drawn line to be watched.
     assert!(timeline.events.len() >= 1_000 && timeline.pcr_drawn.len() >= 1_000);
     for (screen, frame) in report_frames(long_report) {

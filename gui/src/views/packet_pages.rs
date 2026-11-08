@@ -287,6 +287,19 @@ impl PacketPages {
         self.selected
     }
 
+    /// Whether the page shown and the selected packet's decoding have
+    /// arrived (or failed), so nothing the screen asked for is still loading.
+    #[cfg(test)]
+    pub(crate) fn settled_for_test(&self) -> bool {
+        let loading = |fetch: Option<&Fetch<_>>| matches!(fetch, None | Some(Fetch::Loading(_)));
+        self.geometry.is_some()
+            && !loading(self.pages.get(&self.page))
+            && self
+                .detail
+                .as_ref()
+                .is_none_or(|(_, detail)| !matches!(detail, Fetch::Loading(_)))
+    }
+
     /// The packet the detailed inspection page shows, if it is open.
     #[cfg(test)]
     pub(crate) fn inspected_for_test(&self) -> Option<u64> {

@@ -1,5 +1,10 @@
 //! Plot series derived from one program of the range analysis document.
 //!
+//! [`derive`] consumes the program's raw series (`series` of the CLI), so
+//! the session keeps only the data that is drawn or picked: the full PCR
+//! interval, PCR→PTS/DTS gap and event series that Timeline picks from, and
+//! reduced drawing series for everything else.
+//!
 //! Time is elapsed program time in seconds (`elapsed_ms` of the CLI), which
 //! stops across PCR discontinuities, so every plot shares one time axis.
 //! Values that carry only a byte offset (events, jitter samples) are placed at
@@ -8,7 +13,10 @@
 use egui_plot::PlotPoint;
 
 use crate::psi::{self, NULL_PID, ProgramPids};
-use crate::report::{AnalysisReport, PcrPoint, Program};
+use crate::report::{
+    AnalysisReport, BitrateWindows, JitterPoint, PcrPoint, PesPoint, Program, Series,
+    TimestampEvent,
+};
 
 /// The most points a line is drawn with; longer series are decimated.
 pub const MAX_PLOT_POINTS: usize = 4000;
@@ -20,13 +28,15 @@ pub struct Point {
     pub offset_bytes: u64,
 }
 
+/// The bitrate of one PID. Only the drawn steps are kept: nothing picks a
+/// bitrate window, so the full step series is not retained.
 #[derive(Debug, PartialEq)]
 pub struct PidSeries {
     pub pid: String,
     pub label: String,
-    pub points: Vec<Point>,
-    /// `points` reduced to at most about `MAX_PLOT_POINTS` for drawing, in
-    /// the form egui_plot borrows, so frames draw it without a copy.
+    /// Mbps as steps over the windows, reduced to at most about
+    /// `MAX_PLOT_POINTS` for drawing, in the form egui_plot borrows, so frames
+    /// draw it without a copy.
     pub drawn: Vec<PlotPoint>,
 }
 
@@ -90,11 +100,12 @@ pub struct Bitrate {
     /// The sum over the program's PIDs, without null packets, as steps
     /// reduced for drawing.
     pub program_drawn: Vec<PlotPoint>,
-    /// PCR jitter (ms) per sample.
-    pub jitter: Vec<Point>,
-    /// `jitter` reduced for drawing.
+    /// How many PCR jitter samples the program has on the time axis.
+    pub jitter_samples: usize,
+    /// PCR jitter (ms) per sample, reduced for drawing. Nothing picks a
+    /// jitter sample, so the samples themselves are not retained.
     pub jitter_drawn: Vec<PlotPoint>,
-    /// Histogram of `jitter`: (center, count, width) per bin.
+    /// Histogram of every jitter sample: (center, count, width) per bin.
     pub jitter_histogram: Vec<(f64, f64, f64)>,
     /// Fixed Y range of the bitrate plot (Mbps), from 0 to above the highest window.
     pub mbps_range: (f64, f64),
@@ -115,15 +126,70 @@ pub fn seconds_at(pcr: &[PcrPoint], offset: u64) -> Option<f64> {
         .map(|p| p.elapsed_ms / 1000.0)
 }
 
-pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
-    let Some(series) = &program.series else {
-        return Timeline {
+/// The Timeline and Bitrate data of one program, derived from its `series`,
+/// which this consumes: each raw series is dropped as soon as what is drawn
+/// and picked from it has been built, so the CLI's raw series and the plot
+/// data never stay side by side. A program without series (its PMT could not
+/// be read) gets empty plots.
+pub fn derive(
+    report: &AnalysisReport,
+    program: &Program,
+    series: Option<Series>,
+) -> (Timeline, Bitrate) {
+    let program_pids = ProgramPids::new(report, program);
+    let Some(Series {
+        pcr,
+        pes,
+        timestamp_events,
+        pcr_jitter,
+        bitrate: windows,
+    }) = series
+    else {
+        let timeline = Timeline {
             time_range: EMPTY_TIME_RANGE,
             ..Timeline::default()
         };
+        let bitrate = Bitrate {
+            time_range: EMPTY_TIME_RANGE,
+            mbps_range: EMPTY_MBPS_RANGE,
+            jitter_range: EMPTY_JITTER_RANGE,
+            program_pids,
+            ..Bitrate::default()
+        };
+        return (timeline, bitrate);
     };
-    let pcr_interval: Vec<Point> = series
-        .pcr
+    let jitter = Jitter::of(&pcr, pcr_jitter);
+    let steps = Steps::of(windows, &program_pids);
+    let gaps = gaps(pes, &program_pids);
+    let timeline = timeline(report, program, &program_pids, pcr, gaps, timestamp_events);
+    let bitrate = Bitrate {
+        time_range: elapsed_range(steps.elapsed),
+        mbps_range: (0.0, padded(steps.top, EMPTY_MBPS_RANGE.1)),
+        jitter_range: {
+            let half = padded(jitter.deviation, EMPTY_JITTER_RANGE.1);
+            (-half, half)
+        },
+        pids: steps.pids,
+        program_drawn: steps.program_drawn,
+        jitter_samples: jitter.samples,
+        jitter_drawn: jitter.drawn,
+        jitter_histogram: jitter.histogram,
+        program_pids,
+    };
+    (timeline, bitrate)
+}
+
+/// The Timeline of one program from its PCRs, its PCR→PTS/DTS gaps and its
+/// timestamp events, which it consumes.
+fn timeline(
+    report: &AnalysisReport,
+    program: &Program,
+    program_pids: &ProgramPids,
+    pcr: Vec<PcrPoint>,
+    gaps: Vec<GapSeries>,
+    timestamp_events: Vec<TimestampEvent>,
+) -> Timeline {
+    let pcr_interval: Vec<Point> = pcr
         .iter()
         .filter_map(|p| {
             p.interval_ms.map(|ms| Point {
@@ -142,9 +208,74 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
     let pcr_drawn = plot_points(decimate(&pcr_interval, MAX_PLOT_POINTS));
     let pcr_over_limit = pcr_drawn.iter().copied().filter(|p| p.y > limit).collect();
 
-    let program_pids = ProgramPids::new(report, program);
+    let markers: Vec<Marker> = report
+        .psi_transitions
+        .iter()
+        .filter(|t| psi::concerns(t, program))
+        .filter_map(|t| {
+            Some(Marker {
+                seconds: seconds_at(&pcr, t.offset_bytes)?,
+                offset_bytes: t.offset_bytes,
+                pid: t.pid.clone(),
+                label: psi::describe(t),
+            })
+        })
+        .collect();
+
+    let mut events: Vec<Event> = timestamp_events
+        .into_iter()
+        .filter_map(|e| {
+            Some(Event {
+                seconds: seconds_at(&pcr, e.offset_bytes)?,
+                offset_bytes: e.offset_bytes,
+                label: format!("{} {}", e.kind, e.pid),
+                pid: e.pid,
+            })
+        })
+        .collect();
+    events.extend(
+        report
+            .continuity_events
+            .iter()
+            .filter(|e| program_pids.belongs(&e.pid, e.offset_bytes))
+            .filter_map(|e| {
+                Some(Event {
+                    seconds: seconds_at(&pcr, e.offset_bytes)?,
+                    offset_bytes: e.offset_bytes,
+                    pid: e.pid.clone(),
+                    label: format!(
+                        "CC {} expected {}, got {}",
+                        e.pid, e.expected_cc, e.actual_cc
+                    ),
+                })
+            }),
+    );
+    events.sort_by_key(|e| e.offset_bytes);
+    let event_drawn = events
+        .iter()
+        .map(|e| PlotPoint::new(e.seconds, 0.0))
+        .collect();
+
+    let elapsed = pcr.last().map_or(0.0, |point| point.elapsed_ms / 1000.0);
+    drop(pcr);
+
+    Timeline {
+        time_range: elapsed_range(elapsed),
+        pcr_drawn,
+        pcr_interval,
+        pcr_over_limit,
+        gaps,
+        markers,
+        events,
+        event_drawn,
+    }
+}
+
+/// PCR→PTS/DTS gaps per elementary-stream PID, in PID order, from the PES
+/// points, which it consumes.
+fn gaps(pes: Vec<PesPoint>, program_pids: &ProgramPids) -> Vec<GapSeries> {
     let mut gaps: Vec<GapSeries> = Vec::new();
-    for pes in &series.pes {
+    for pes in pes {
         let (Some(elapsed), Some(gap)) = (pes.elapsed_ms, pes.pcr_gap_ms) else {
             continue;
         };
@@ -156,10 +287,10 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
         match gaps.iter_mut().find(|s| s.pid == pes.pid) {
             Some(existing) => existing.points.push(point),
             None => gaps.push(GapSeries {
-                pid: pes.pid.clone(),
                 label: format!("{} {}", pes.pid, program_pids.carried_by(&pes.pid, ""))
                     .trim_end()
                     .to_owned(),
+                pid: pes.pid,
                 points: vec![point],
                 drawn: Vec::new(),
             }),
@@ -184,69 +315,101 @@ pub fn timeline(report: &AnalysisReport, program: &Program) -> Timeline {
             .map(|points| plot_points(decimate(points, budget)))
             .collect();
     }
-    let markers: Vec<Marker> = report
-        .psi_transitions
-        .iter()
-        .filter(|t| psi::concerns(t, program))
-        .filter_map(|t| {
-            Some(Marker {
-                seconds: seconds_at(&series.pcr, t.offset_bytes)?,
-                offset_bytes: t.offset_bytes,
-                pid: t.pid.clone(),
-                label: psi::describe(t),
-            })
-        })
-        .collect();
+    gaps
+}
 
-    let mut events: Vec<Event> = series
-        .timestamp_events
-        .iter()
-        .filter_map(|e| {
-            Some(Event {
-                seconds: seconds_at(&series.pcr, e.offset_bytes)?,
-                offset_bytes: e.offset_bytes,
-                pid: e.pid.clone(),
-                label: format!("{} {}", e.kind, e.pid),
-            })
-        })
-        .collect();
-    events.extend(
-        report
-            .continuity_events
-            .iter()
-            .filter(|e| program_pids.belongs(&e.pid, e.offset_bytes))
-            .filter_map(|e| {
-                Some(Event {
-                    seconds: seconds_at(&series.pcr, e.offset_bytes)?,
-                    offset_bytes: e.offset_bytes,
-                    pid: e.pid.clone(),
-                    label: format!(
-                        "CC {} expected {}, got {}",
-                        e.pid, e.expected_cc, e.actual_cc
-                    ),
+/// The PCR jitter plots of one program.
+struct Jitter {
+    samples: usize,
+    drawn: Vec<PlotPoint>,
+    histogram: Vec<(f64, f64, f64)>,
+    /// The largest absolute jitter (ms).
+    deviation: f64,
+}
+
+impl Jitter {
+    /// From the jitter samples, which it consumes, placed on the PCR time axis.
+    fn of(pcr: &[PcrPoint], samples: Vec<JitterPoint>) -> Self {
+        let jitter: Vec<Point> = samples
+            .into_iter()
+            .filter_map(|j| {
+                Some(Point {
+                    seconds: seconds_at(pcr, j.offset_bytes)?,
+                    value: j.jitter_ns / 1e6,
+                    offset_bytes: j.offset_bytes,
                 })
-            }),
-    );
-    events.sort_by_key(|e| e.offset_bytes);
-    let event_drawn = events
-        .iter()
-        .map(|e| PlotPoint::new(e.seconds, 0.0))
-        .collect();
+            })
+            .collect();
+        let values: Vec<f64> = jitter.iter().map(|p| p.value).collect();
+        Jitter {
+            samples: jitter.len(),
+            drawn: plot_points(decimate(&jitter, MAX_PLOT_POINTS)),
+            histogram: histogram(&values, HISTOGRAM_BINS),
+            deviation: values.iter().map(|v| v.abs()).fold(0.0, f64::max),
+        }
+    }
+}
 
-    let elapsed = series
-        .pcr
-        .last()
-        .map_or(0.0, |point| point.elapsed_ms / 1000.0);
+/// The bitrate steps of one program.
+struct Steps {
+    /// Seconds the windows cover.
+    elapsed: f64,
+    pids: Vec<PidSeries>,
+    program_drawn: Vec<PlotPoint>,
+    /// The highest program bitrate of a window (Mbps).
+    top: f64,
+}
 
-    Timeline {
-        time_range: elapsed_range(elapsed),
-        pcr_drawn,
-        pcr_interval,
-        pcr_over_limit,
-        gaps,
-        markers,
-        events,
-        event_drawn,
+impl Steps {
+    /// From the bitrate windows, which it consumes.
+    fn of(windows: BitrateWindows, program_pids: &ProgramPids) -> Self {
+        let mut starts = Vec::with_capacity(windows.duration_seconds.len());
+        let mut elapsed = 0.0;
+        for duration in &windows.duration_seconds {
+            starts.push(elapsed);
+            elapsed += duration;
+        }
+        let steps = |bps: &dyn Fn(usize) -> f64| -> Vec<[f64; 2]> {
+            let mut points = Vec::with_capacity(2 * starts.len());
+            for (index, start) in starts.iter().enumerate() {
+                let mbps = bps(index) / 1e6;
+                points.push([*start, mbps]);
+                points.push([start + windows.duration_seconds[index], mbps]);
+            }
+            points
+        };
+
+        let mut pids = Vec::new();
+        let mut program_bytes = vec![0u64; starts.len()];
+        for pid in &windows.pids {
+            if pid.pid == NULL_PID {
+                continue;
+            }
+            for (sum, bytes) in program_bytes.iter_mut().zip(&pid.bytes) {
+                *sum += bytes;
+            }
+            if program_pids.is_psi(&pid.pid) {
+                continue;
+            }
+            let pid_steps = steps(&|i| pid.bps.get(i).copied().unwrap_or(0.0));
+            pids.push(PidSeries {
+                pid: pid.pid.clone(),
+                label: format!(
+                    "{} {}",
+                    pid.pid,
+                    program_pids.carried_by(&pid.pid, &pid.label)
+                ),
+                drawn: plot_points(decimate_steps(&pid_steps, MAX_PLOT_POINTS)),
+            });
+        }
+        let program_series =
+            steps(&|i| program_bytes[i] as f64 * 8.0 / windows.duration_seconds[i]);
+        Steps {
+            elapsed,
+            pids,
+            top: program_series.iter().map(|p| p[1]).fold(0.0, f64::max),
+            program_drawn: plot_points(decimate_steps(&program_series, MAX_PLOT_POINTS)),
+        }
     }
 }
 
@@ -260,99 +423,6 @@ fn elapsed_range(seconds: f64) -> (f64, f64) {
         (0.0, seconds)
     } else {
         EMPTY_TIME_RANGE
-    }
-}
-
-pub fn bitrate(report: &AnalysisReport, program: &Program) -> Bitrate {
-    let program_pids = ProgramPids::new(report, program);
-    // A program whose PMT could not be read has no series.
-    let Some(series) = &program.series else {
-        return Bitrate {
-            time_range: EMPTY_TIME_RANGE,
-            mbps_range: EMPTY_MBPS_RANGE,
-            jitter_range: EMPTY_JITTER_RANGE,
-            program_pids,
-            ..Bitrate::default()
-        };
-    };
-    let windows = &series.bitrate;
-    let mut starts = Vec::with_capacity(windows.duration_seconds.len());
-    let mut elapsed = 0.0;
-    for duration in &windows.duration_seconds {
-        starts.push(elapsed);
-        elapsed += duration;
-    }
-    let steps = |bps: &dyn Fn(usize) -> f64| -> Vec<[f64; 2]> {
-        let mut points = Vec::with_capacity(2 * starts.len());
-        for (index, start) in starts.iter().enumerate() {
-            let mbps = bps(index) / 1e6;
-            points.push([*start, mbps]);
-            points.push([start + windows.duration_seconds[index], mbps]);
-        }
-        points
-    };
-
-    let mut pids = Vec::new();
-    let mut program_bytes = vec![0u64; starts.len()];
-    for pid in &windows.pids {
-        if pid.pid == NULL_PID {
-            continue;
-        }
-        for (sum, bytes) in program_bytes.iter_mut().zip(&pid.bytes) {
-            *sum += bytes;
-        }
-        if program_pids.is_psi(&pid.pid) {
-            continue;
-        }
-        let pid_steps = steps(&|i| pid.bps.get(i).copied().unwrap_or(0.0));
-        pids.push(PidSeries {
-            pid: pid.pid.clone(),
-            label: format!(
-                "{} {}",
-                pid.pid,
-                program_pids.carried_by(&pid.pid, &pid.label)
-            ),
-            drawn: plot_points(decimate_steps(&pid_steps, MAX_PLOT_POINTS)),
-            points: pid_steps
-                .into_iter()
-                .map(|[seconds, value]| Point {
-                    seconds,
-                    value,
-                    offset_bytes: 0,
-                })
-                .collect(),
-        });
-    }
-    let program_series = steps(&|i| program_bytes[i] as f64 * 8.0 / windows.duration_seconds[i]);
-
-    let jitter: Vec<Point> = series
-        .pcr_jitter
-        .iter()
-        .filter_map(|j| {
-            Some(Point {
-                seconds: seconds_at(&series.pcr, j.offset_bytes)?,
-                value: j.jitter_ns / 1e6,
-                offset_bytes: j.offset_bytes,
-            })
-        })
-        .collect();
-
-    let values: Vec<f64> = jitter.iter().map(|p| p.value).collect();
-    let top = program_series.iter().map(|p| p[1]).fold(0.0, f64::max);
-    let deviation = values.iter().map(|v| v.abs()).fold(0.0, f64::max);
-    Bitrate {
-        time_range: elapsed_range(elapsed),
-        mbps_range: (0.0, padded(top, EMPTY_MBPS_RANGE.1)),
-        jitter_range: {
-            let half = padded(deviation, EMPTY_JITTER_RANGE.1);
-            (-half, half)
-        },
-        pids,
-        program_drawn: plot_points(decimate_steps(&program_series, MAX_PLOT_POINTS)),
-        jitter_drawn: plot_points(decimate(&jitter, MAX_PLOT_POINTS)),
-        jitter_histogram: histogram(&values, HISTOGRAM_BINS),
-        jitter,
-        program_pids,
     }
 }
 
@@ -507,21 +577,27 @@ mod tests {
         .expect("fixture parses")
     }
 
+    /// Program `index`'s plots, from its series, which are taken out of
+    /// `report` (as the session does).
+    fn derive_program(report: &mut AnalysisReport, index: usize) -> (Timeline, Bitrate) {
+        let series = report.programs[index].series.take();
+        derive(report, &report.programs[index], series)
+    }
+
     #[test]
     fn timeline_matches_the_cli_series() {
-        let report = fixture();
-        for program in &report.programs {
-            let series = program.series.as_ref().unwrap();
-            let timeline = timeline(&report, program);
-            assert_eq!(
-                timeline.time_range,
-                (0.0, series.pcr.last().unwrap().elapsed_ms / 1000.0)
-            );
+        let mut report = fixture();
+        for index in 0..report.programs.len() {
+            let series = report.programs[index].series.take().unwrap();
+            let elapsed = series.pcr.last().unwrap().elapsed_ms / 1000.0;
             let intervals = series
                 .pcr
                 .iter()
                 .filter(|p| p.interval_ms.is_some())
                 .count();
+            let program = &report.programs[index];
+            let (timeline, _) = derive(&report, program, Some(series));
+            assert_eq!(timeline.time_range, (0.0, elapsed));
             assert_eq!(timeline.pcr_interval.len(), intervals);
             let max_interval = timeline
                 .pcr_interval
@@ -552,19 +628,24 @@ mod tests {
 
     #[test]
     fn bitrate_steps_reproduce_the_averages() {
-        let report = fixture();
-        for program in &report.programs {
-            let bitrate = bitrate(&report, program);
+        let mut report = fixture();
+        for index in 0..report.programs.len() {
+            let series = report.programs[index].series.as_ref().unwrap();
+            let windows = series.bitrate.duration_seconds.len();
+            let seconds: f64 = series.bitrate.duration_seconds.iter().sum();
+            let jitter_samples = series.pcr_jitter.len();
+            let (_, bitrate) = derive_program(&mut report, index);
+            let program = &report.programs[index];
             let summary = program.bitrate.as_ref().unwrap();
-            let durations = &program.series.as_ref().unwrap().bitrate.duration_seconds;
-            let seconds: f64 = durations.iter().sum();
             assert_eq!(bitrate.time_range, (0.0, seconds));
             for pid in &bitrate.pids {
+                // The fixture is short enough to be drawn without reduction.
+                assert_eq!(pid.drawn.len(), 2 * windows, "{}", pid.pid);
                 // Each window is a horizontal step: the area under it is bytes * 8.
                 let bits: f64 = pid
-                    .points
+                    .drawn
                     .chunks(2)
-                    .map(|step| step[0].value * 1e6 * (step[1].seconds - step[0].seconds))
+                    .map(|step| step[0].y * 1e6 * (step[1].x - step[0].x))
                     .sum();
                 let average = summary
                     .pids
@@ -593,21 +674,19 @@ mod tests {
             let (low, high) = bitrate.mbps_range;
             assert!(low == 0.0 && bitrate.program_drawn.iter().all(|p| p.y < high));
             let (low, high) = bitrate.jitter_range;
-            assert!(low == -high && bitrate.jitter.iter().all(|p| p.value.abs() < high));
-            assert_eq!(
-                bitrate.jitter.len(),
-                program.series.as_ref().unwrap().pcr_jitter.len()
-            );
+            assert!(low == -high && bitrate.jitter_drawn.iter().all(|p| p.y.abs() < high));
+            assert_eq!(bitrate.jitter_samples, jitter_samples);
+            assert_eq!(bitrate.jitter_drawn.len(), jitter_samples);
+            let histogram: f64 = bitrate.jitter_histogram.iter().map(|bin| bin.1).sum();
+            assert_eq!(histogram, jitter_samples as f64);
         }
     }
 
     /// egui_plot needs min < max for fixed bounds.
     #[test]
     fn bitrate_without_series_has_valid_ranges() {
-        let mut report = fixture();
-        report.programs[0].series = None;
-        let data = bitrate(&report, &report.programs[0]);
-        let timeline = timeline(&report, &report.programs[0]);
+        let report = fixture();
+        let (timeline, data) = derive(&report, &report.programs[0], None);
         assert_eq!(data.time_range, EMPTY_TIME_RANGE);
         assert_eq!(timeline.time_range, EMPTY_TIME_RANGE);
         assert_eq!(data.mbps_range, EMPTY_MBPS_RANGE);
@@ -698,17 +777,16 @@ mod tests {
     #[test]
     fn follows_pat_and_pmt_changes() {
         for sample in crate::psi::tests::VERSION_CHANGE {
-            let Some(report) = crate::psi::tests::analyze(sample) else {
+            let Some(mut report) = crate::psi::tests::analyze(sample) else {
                 return;
             };
-            let program = &report.programs[0];
-            let timeline = timeline(&report, program);
-            let series = program.series.as_ref().unwrap();
+            let series = report.programs[0].series.as_ref().unwrap();
             let changes: Vec<(u64, Option<f64>)> = report
                 .psi_transitions
                 .iter()
                 .map(|t| (t.offset_bytes, seconds_at(&series.pcr, t.offset_bytes)))
                 .collect();
+            let (timeline, bitrate) = derive_program(&mut report, 0);
             let markers: Vec<(u64, Option<f64>)> = timeline
                 .markers
                 .iter()
@@ -732,7 +810,6 @@ mod tests {
                 assert_eq!(gap(pid).drawn.len(), 1, "{sample} {pid}");
             }
 
-            let bitrate = bitrate(&report, program);
             let drawn: Vec<&str> = bitrate.pids.iter().map(|p| p.pid.as_str()).collect();
             assert_eq!(drawn, ["0x0100", "0x0101", "0x0200"], "{sample}");
             for pid in ["0x0000", "0x1000", "0x1100"] {
@@ -797,8 +874,9 @@ mod tests {
             event(&added, low + 1),
             event(&audio, high + 1),
         ]);
-        let report = crate::report::parse_analysis(document.to_string().as_bytes(), "2").unwrap();
-        let timeline = timeline(&report, &report.programs[0]);
+        let mut report =
+            crate::report::parse_analysis(document.to_string().as_bytes(), "2").unwrap();
+        let (timeline, _) = derive_program(&mut report, 0);
         let audio = timeline
             .gaps
             .iter()
@@ -843,8 +921,8 @@ mod tests {
         .unwrap();
         report["programs"][0]["series"]["pcr"] =
             serde_json::from_str(&format!("[{}]", pcr.join(","))).unwrap();
-        let report = crate::report::parse_analysis(report.to_string().as_bytes(), "2").unwrap();
-        let timeline = timeline(&report, &report.programs[0]);
+        let mut report = crate::report::parse_analysis(report.to_string().as_bytes(), "2").unwrap();
+        let (timeline, _) = derive_program(&mut report, 0);
         assert_eq!(timeline.pcr_interval.len(), 20_000);
         assert!(timeline.pcr_drawn.len() <= MAX_PLOT_POINTS);
         assert!(!timeline.pcr_over_limit.is_empty());
