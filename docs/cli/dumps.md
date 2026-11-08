@@ -276,7 +276,8 @@ the [PCR discontinuity check](usage.md#pcr-steps).
 
 When no estimate can be made (fewer than 3 PCRs, or too many discontinuities),
 the summary says `analysis skipped` with the reason, still followed by the
-`Delivery` line. PCR jitter does not affect `--fail-on-error`. The JSON form is
+`Delivery` line. PCR jitter does not affect `--fail-on-error` and is not a `--fail-on`
+category. The JSON form is
 described in [PCR jitter](../reference/json-output.md#pcr-jitter).
 
 ## Dump bitrate

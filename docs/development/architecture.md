@@ -71,6 +71,7 @@ observations it needs through focused methods.
 | Whether a continuity counter error occurred | `tsparser`, reported as `analysis.ContinuityError` |
 | How errors are counted per PID, how each PID is labeled, the check's status | `analysis` (`ContinuityCheck`) |
 | The `continuity_counter` JSON object, the text summary, exit codes | `tsparser` report code and `cmd` |
+| Which reported statuses fail each `--fail-on` category, and the `failure_policy` object | `tsparser` (`failure_policy.go`), from the same report statuses the output prints; `cmd` maps the result to exit 2 |
 | Whether a packet with `transport_error_indicator` set or a scrambled payload may feed PSI, PES or PCR analysis, and whether its data was excluded | `tsparser` (`TsPacket.payloadUntrusted`, `transportTrustSummary.observe`), reported as `analysis.TransportError` / `analysis.Scrambled` |
 | How much of a packet with `transport_error_indicator` set is decoded: its fixed 4-byte header only, never its adaptation field, so that a damaged packet is counted instead of failing the parse | `tsparser` (`TsPacket.Parse`, `TsPacket.parseUntrusted`) |
 | How affected packets are counted per PID, labeled, and the `ok` / `affected` / `data_excluded` status | `analysis` (`TransportTrustCheck`) |

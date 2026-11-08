@@ -104,6 +104,10 @@ type pesAnalysis struct {
 	psiWarnings []psiDiagnostic
 	sdt         *sdtCollector
 	health      *psiHealthCollector
+	// policy is the selected failure policy and failedCategories the
+	// selected categories that reported a finding.
+	policy           failurePolicy
+	failedCategories []string
 }
 
 // trackedTables are the PAT and PMT a single-program analysis starts from;
@@ -144,6 +148,10 @@ func trailingBytesAtEOF(reader io.Reader, buf []byte, rest int64) int {
 }
 
 func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos []ProgramInfo, tables *trackedTables, options options.Options, packetSize int, endOffset int64, quiet bool) (*pesAnalysis, error) {
+	policy, err := parseFailurePolicy(options.FailOn, options.FailOnError)
+	if err != nil {
+		return nil, err
+	}
 	analyzer := newProgramAnalyzer(options, *pos, uint16(options.Program), pmtPid, pcrPid, programInfos, false)
 	analyzer.pcrJitter.packetSize = packetSize
 	continuity := newContinuityCounterSummary(pmtPid, pcrPid, programInfos)
@@ -205,8 +213,11 @@ func bufferPes(reader io.Reader, pos *int64, pmtPid, pcrPid uint16, programInfos
 		}
 		dumpMuxLead(analyzer.pes.check)
 	}
-	if failures := report.failures(); options.FailOnError && len(failures) > 0 {
-		return result, &ComplianceError{Checks: failures}
+	result.policy = policy
+	failed, checks := policy.evaluate(result)
+	result.failedCategories = failed
+	if len(checks) > 0 {
+		return result, &ComplianceError{Checks: checks, Categories: failed}
 	}
 
 	return result, nil

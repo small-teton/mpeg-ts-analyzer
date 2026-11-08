@@ -32,6 +32,14 @@ command:
 mpeg-ts-analyzer input.ts --format json --fail-on-error
 ```
 
+To fail on other transport-health findings too, select them with `--fail-on`
+(`any` selects every category):
+
+```bash
+mpeg-ts-analyzer input.ts --format json --fail-on timing,continuity,psi_health
+mpeg-ts-analyzer input.ts --fail-on any
+```
+
 Next: [CLI usage](../cli/usage.md) explains every flag, the verdicts and the
 exit codes; [Machine-readable output](../reference/json-output.md) describes
 the JSON.
