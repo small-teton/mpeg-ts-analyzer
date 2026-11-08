@@ -82,16 +82,16 @@ Repeated runs agreed within 0.1 MiB.
 
 | Scenario | Peak before | Peak after | Retained before | Retained after |
 |---|---:|---:|---:|---:|
-| Default 64 MiB range, 1 program | 5.5 MiB | 3.8 MiB | 5.4 MiB | 2.4 MiB |
+| Default 64 MiB range, 1 program | 5.5 MiB | 3.6 MiB | 5.4 MiB | 2.4 MiB |
 | + Overview, Timeline, Bitrate drawn | 7.2 MiB | 4.2 MiB | 5.8 MiB | 2.8 MiB |
 | + Packets, 40 pages visited | 7.2 MiB | 4.2 MiB | 6.5 MiB | 3.5 MiB |
 | + whole file started, cancelled at 50 % | 6.8 MiB | 3.8 MiB | 6.5 MiB | 3.5 MiB |
 | Replacement file opened (session dropped) | 6.5 MiB | 3.5 MiB | 2.6 MiB | 2.6 MiB |
-| Default 64 MiB range, 2 programs | 8.9 MiB | 6.6 MiB | 8.8 MiB | 4.4 MiB |
+| Default 64 MiB range, 2 programs | 8.9 MiB | 6.4 MiB | 8.8 MiB | 4.4 MiB |
 | + Overview, Timeline, Bitrate drawn | 9.2 MiB | 4.8 MiB | 8.8 MiB | 4.3 MiB |
 | Large file opened (session dropped) | 8.8 MiB | 4.3 MiB | 2.5 MiB | 2.5 MiB |
-| Large range (whole file), 1 program | 63.5 MiB | 52.8 MiB | 61.4 MiB | 13.5 MiB |
-| + Overview, Timeline, Bitrate drawn | 61.9 MiB | 14.0 MiB | 61.3 MiB | 13.5 MiB |
+| Large range (whole file), 1 program | 62.3 MiB | 49.8 MiB | 61.4 MiB | 13.5 MiB |
+| + Overview, Timeline, Bitrate drawn | 61.8 MiB | 13.9 MiB | 61.3 MiB | 13.5 MiB |
 | Another file opened (session dropped) | 61.3 MiB | 13.5 MiB | 2.9 MiB | 2.9 MiB |
 
 What a session holds, from the heap freed when it is dropped:
