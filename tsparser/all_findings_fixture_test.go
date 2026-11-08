@@ -20,9 +20,9 @@ var allFindingsFixtures = []struct {
 	// flag selects the packet size of the generator: none, -m2ts or -trailer.
 	flag string
 }{
-	{"../sample_data/sample_188byte_all_findings.ts", 188, ""},
-	{"../sample_data/sample_192byte_all_findings.ts", 192, "-m2ts"},
-	{"../sample_data/sample_204byte_all_findings.ts", 204, "-trailer"},
+	{"../sample_data/diagnostics/sample_188byte_all_findings.ts", 188, ""},
+	{"../sample_data/diagnostics/sample_192byte_all_findings.ts", 192, "-m2ts"},
+	{"../sample_data/diagnostics/sample_204byte_all_findings.ts", 204, "-trailer"},
 }
 
 // cardStatuses returns the statuses of the ten Overview checks of the only

@@ -13,6 +13,7 @@
 //! verdict; the CLI remains the source of truth and this module only says how
 //! the GUI shows what the CLI reported.
 
+pub mod packet;
 pub mod status;
 
 pub use status::CheckStatus;

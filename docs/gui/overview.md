@@ -144,7 +144,7 @@ kind with its count, first offset and how far the PCR jumped. Max PCR interval
 measures only the intervals within a segment, so a clean interval and an
 undeclared jump show as two separate rows rather than one `OK`. The
 intentionally invalid PCR-discontinuities sample
-(`sample_data/sample_188byte_pcr_discontinuities.ts`) shows every kind.
+(`sample_data/diagnostics/sample_188byte_pcr_discontinuities.ts`) shows every kind.
 
 TS synchronization covers every packet from the start of the analysis. When a
 packet does not start with the sync byte, the CLI skips ahead to the next
@@ -154,7 +154,7 @@ usually also show as continuity errors. `LOST` means no new alignment was
 found within 1 MiB or before the end of the range, so the analysis stopped
 early. Packets pages through the range at the alignment of its start, so
 packets after a realignment can appear there as invalid. The sample
-`sample_data/sample_188byte_sync_loss.ts` shows a `RECOVERED` result.
+`sample_data/diagnostics/sample_188byte_sync_loss.ts` shows a `RECOVERED` result.
 
 Referenced and Unreferenced PIDs compare the PIDs the PAT and PMTs reference
 with the PIDs that carry packets, for every program of the multiplex. A video,
@@ -164,7 +164,7 @@ data, only have their presence reported. A PID that carries packets without
 a reference for more than 0.5 s is `UNREFERENCED`; packets read before the
 first PAT and PMT, and a stream added or removed by a PMT change within that
 time, do not count. Times are estimated from byte positions between PCRs. The
-sample `sample_data/sample_188byte_pid_references.ts` shows each status.
+sample `sample_data/diagnostics/sample_188byte_pid_references.ts` shows each status.
 
 **Packet gaps** reports, for each PID of the selected program, the longest run
 of other packets between two of its packets, in packets (exact) and in
@@ -174,7 +174,7 @@ remux that sends audio in large blocks shows a long gap even when its average
 bitrate is right. It is a report only: there is no limit, its `INFO` status is
 neutral, it never adds a finding and never changes the CLI's exit status. A
 stream removed by a PMT change and added back later has no gap across its
-absence. The bursty sample `sample_data/sample_188byte_packet_gaps.ts` shows
+absence. The bursty sample `sample_data/diagnostics/sample_188byte_packet_gaps.ts` shows
 it.
 
 **Mux lead** reports, for each elementary stream of the selected program, how
@@ -185,7 +185,7 @@ video and audio the largest difference between an audio lead and the video
 lead. It is a report only: its `INFO` status is neutral, a negative lead is an
 observation, it never adds a finding and never changes the CLI's exit status;
 the PCR → PTS/DTS gap judges the largest lead. The audio-preload sample
-`sample_data/sample_188byte_mux_lead.ts` shows it.
+`sample_data/diagnostics/sample_188byte_mux_lead.ts` shows it.
 
 **Findings** lists everything that needs attention, and its count includes
 every check that is not `OK`: each failed check, each kind of undeclared PCR
@@ -213,11 +213,11 @@ To see every verdict at once, open the intentionally invalid
 [diagnostic sample](../development/sample-data.md#diagnostic-sample-with-every-overview-finding):
 
 ```sh
-make gui-run GUI_ARGS='sample_data/sample_188byte_all_findings.ts'
+make gui-run GUI_ARGS='sample_data/diagnostics/sample_188byte_all_findings.ts'
 ```
 
 Its PCR clock is continuous, so PCR discontinuities stays `OK` there; open
-`sample_data/sample_188byte_pcr_discontinuities.ts` for that check.
+`sample_data/diagnostics/sample_188byte_pcr_discontinuities.ts` for that check.
 
 ## Open a file from the command line
 
@@ -242,14 +242,60 @@ its source bytes and its exact bit range. Multi-byte, non-byte-aligned fields
 are shown across byte boundaries; the 13-bit PID in the packet view spans the
 low five bits of one byte and all eight bits of the next byte.
 
-[![Byte and Bit inspectors with the 13-bit PID 0x1001 selected across bytes 1 and 2](../images/gui-inspectors.png)](../images/gui-inspectors.png)
+<table markdown="1">
+<tr markdown="1">
+<td width="36%" markdown="block">
+
+[![Byte inspector with the bytes 1 and 2 of the PID 4097 (0x1001) selected](../images/gui-byte-inspector.png)](../images/gui-byte-inspector.png)
+
+</td>
+<td width="64%" rowspan="2" markdown="block">
+
+[![Detailed inspection of a PMT packet with its 13-bit PID selected](../images/gui-wire-layout.png)](../images/gui-wire-layout.png)
+
+</td>
+</tr>
+<tr markdown="1">
+<td markdown="block">
+
+[![Bit inspector with the 13 bits of the PID 4097 (0x1001) marked across bytes 1 and 2](../images/gui-bit-inspector.png)](../images/gui-bit-inspector.png)
+
+</td>
+</tr>
+</table>
+
+*Left: the Byte and Bit inspectors of the Packets pane. Right: Detailed
+inspection of the same PMT packet with its PID selected.*
+
+Detailed inspection lays a packet out bit by bit, the way ISO/IEC 13818-1
+draws its syntax:
+
+- **Every bit has a role.** Each bit of the packet belongs to one part, shown
+  in a colored grid: decoded values and flags, and also reserved bits, marker
+  bits, prefixes, stuffing and bytes the analyzer does not decode.
+- **Fixed bits are checked.** Bits whose value the specification fixes are
+  marked ✓ or flagged in red with the expected value, and the rule is cited.
+- **Select a field, see its bits.** Its exact bits are highlighted, with its
+  value in decimal and hexadecimal, its position and the structure it belongs
+  to.
+- **188, 192 and 204-byte packets**: the M2TS header and the 204-byte trailer
+  are part of the layout.
 
 The Bit inspector follows packet/file order from top to bottom and displays
 each byte from MSB (`bit 7`) to LSB (`bit 0`), making it straightforward to
-compare raw packet data with ISO/IEC 13818-1 field layouts. The close-up above
-is the same Byte and Bit inspector shown in Packets: the PID `0x1001` of a PMT
+compare raw packet data with ISO/IEC 13818-1 field layouts. The close-ups
+above are the same Byte and Bit inspectors shown in Packets: the PID of a PMT
 packet is selected, so its bytes are highlighted and its 13 bits are marked
 across the two bytes they span.
+
+Numbers are shown decimal first with the hexadecimal in parentheses, padded to
+the field's width: PID `4097 (0x1001)`, table_id `2 (0x02)`, section_length
+`23 (0x017)`, a PTS `144000 (0x000023280, 1.600000 s)`. Fields of four bits
+or fewer (flags, continuity_counter) stay decimal, and bit patterns (reserved
+`111`, the parts of a PTS) stay binary. CRC_32, the sync byte and the PES
+start code prefix stay hexadecimal, and a PCR or OPCR stays a 27 MHz count
+with its time (its base and extension parts get both notations). The CLI's
+JSON is unchanged; this is only how the GUI shows it.
 
 For 204-byte packets, the Byte inspector shows all 204 bytes: the 188-byte TS
 packet colored by layer, then the 16-byte trailer in its own color. The
@@ -260,13 +306,20 @@ Reed-Solomon parity.
 ### Detailed inspection: the complete wire layout
 
 The compact Bit inspector shows the bits a decoded value is read from. To read
-a packet beside ISO/IEC 13818-1 bit by bit, press **Detailed inspection**
-under the packet heading. Packets then shows that packet on a full-width page:
-every structure, decoded field and encoded part on the left, and every bit of
-the packet on the right, colored by what it is on the wire.
+a packet beside ISO/IEC 13818-1 bit by bit, press **Detailed inspection**:
+the button is under the packet heading and again at the very end of the
+pane, after the Bit inspector. Packets then shows that packet on a full-width
+page: every structure, decoded field and encoded part on the left, and every
+bit of the packet on the right, colored by what it is on the wire.
 
-[![Detailed inspection of a PMT packet with the reserved bits before the second stream's elementary_PID selected](../images/gui-wire-layout.png)](../images/gui-wire-layout.png)
+[![Detailed inspection of a PMT packet with its 13-bit PID selected](../images/gui-wire-layout.png)](../images/gui-wire-layout.png)
 
+- A badge right after "Packet #n of N" in the header says what the packet is: `PAT`,
+  `PMT`, another PSI/SI table (`SDT`, `EIT`, …, or `… · continued` for a
+  section that started in an earlier packet), `PES · H.264 video` (the stream
+  type the PMT announces, else the stream_id's class), `PES payload · …` for a
+  later packet of a PES packet, `PCR only` or `Adaptation field only`, or
+  `Null`.
 - Reserved bits, marker bits and fixed prefixes, stuffing and bytes the
   analyzer does not decode have lines and colors of their own, so "reserved by
   the specification" (gray) is never confused with "not decoded" (striped).
@@ -278,9 +331,12 @@ the packet on the right, colored by what it is on the wire.
   prefix, value runs, reserved and marker bits beneath it; a PAT program or
   PMT stream likewise lists its fields and reserved bits.
 - Hover a bit for its part, position and value; click it to select the part.
-- Previous / Next step through the packets of the analyzed range; **Back to
-  Packets** returns to the list with its page, filter, selected row and
-  scroll position.
+- With a line selected, ↑ / ↓ move the selection to the previous or next line
+  of the field list as shown (the lines inside a collapsed field or entry are
+  skipped), updating the grid and the facts and scrolling the list to it.
+- Previous / Next, or the ← / → keys, step through the packets of the
+  analyzed range; **Back to Packets** returns to the list with its page,
+  filter, selected row and scroll position.
 
 The layout comes from the `bit_layout` of the packet detail
 ([Wire layout](../reference/json-output.md#wire-layout)). With a CLI that does

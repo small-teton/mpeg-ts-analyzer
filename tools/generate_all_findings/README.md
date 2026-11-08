@@ -7,14 +7,14 @@ problem, then check its defects with TSDuck. The stream is
 example of a compliant stream.
 
 ```sh
-go run ./tools/generate_all_findings -output sample_data/sample_188byte_all_findings.ts
-go run ./tools/generate_all_findings -m2ts -output sample_data/sample_192byte_all_findings.ts
-go run ./tools/generate_all_findings -trailer -output sample_data/sample_204byte_all_findings.ts
-tsanalyze --json sample_data/sample_188byte_all_findings.ts
-tsp -I file sample_data/sample_188byte_all_findings.ts -P continuity -O drop
-tsp -I file sample_data/sample_188byte_all_findings.ts -P pcrextract --pcr --pts --csv -O drop
-tsp -I file sample_data/sample_188byte_all_findings.ts -P pcrverify -b 75200 -j 1 -O drop
-tsp -I file --format m2ts sample_data/sample_192byte_all_findings.ts -P pcrverify -i -j 1 -O drop
+go run ./tools/generate_all_findings -output sample_data/diagnostics/sample_188byte_all_findings.ts
+go run ./tools/generate_all_findings -m2ts -output sample_data/diagnostics/sample_192byte_all_findings.ts
+go run ./tools/generate_all_findings -trailer -output sample_data/diagnostics/sample_204byte_all_findings.ts
+tsanalyze --json sample_data/diagnostics/sample_188byte_all_findings.ts
+tsp -I file sample_data/diagnostics/sample_188byte_all_findings.ts -P continuity -O drop
+tsp -I file sample_data/diagnostics/sample_188byte_all_findings.ts -P pcrextract --pcr --pts --csv -O drop
+tsp -I file sample_data/diagnostics/sample_188byte_all_findings.ts -P pcrverify -b 75200 -j 1 -O drop
+tsp -I file --format m2ts sample_data/diagnostics/sample_192byte_all_findings.ts -P pcrverify -i -j 1 -O drop
 ```
 
 120 packets of one 20 ms slot each (75.2 kbit/s, 2.4 s): program 1 (PMT PID

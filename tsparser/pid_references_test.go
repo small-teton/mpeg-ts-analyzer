@@ -20,8 +20,8 @@ var pidReferencesFixtures = []struct {
 	packetSize int64
 	m2ts       bool
 }{
-	{"../sample_data/sample_188byte_pid_references.ts", 188, false},
-	{"../sample_data/sample_192byte_pid_references.ts", 192, true},
+	{"../sample_data/diagnostics/sample_188byte_pid_references.ts", 188, false},
+	{"../sample_data/diagnostics/sample_192byte_pid_references.ts", 192, true},
 }
 
 func TestPidReferencesFixtureGenerator(t *testing.T) {

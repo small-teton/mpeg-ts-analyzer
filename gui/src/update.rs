@@ -919,7 +919,10 @@ enum Action {
 }
 
 fn describe(ui: &mut egui::Ui, available: &Available) {
-    ui.strong(format!("GUI {} is available", available.version));
+    ui.label(crate::theme::emphasis(format!(
+        "GUI {} is available",
+        available.version
+    )));
     ui.label(format!(
         "You have {}. The new version bundles CLI {}.",
         env!("CARGO_PKG_VERSION"),
@@ -1229,8 +1232,10 @@ mod tests {
     type State = (Updates, Option<String>);
 
     fn window(phase: Phase, kind: InstallKind, running: bool) -> Harness<'static, State> {
+        // The app's theme, whose fonts the window's text roles use.
         let mut harness = Harness::builder()
             .with_size(eframe::egui::vec2(800.0, 600.0))
+            .with_context_setup(crate::theme::apply)
             .build_ui_state(
                 move |ui, (updates, skipped): &mut State| {
                     updates.window(ui.ctx(), running, skipped)

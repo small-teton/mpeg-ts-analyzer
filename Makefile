@@ -1,4 +1,4 @@
-.PHONY: build test coverage demo check-demo check-docs-policy clean setup install uninstall release gui-run gui-test gui-lint gui-screenshots check-gui-screenshots gui-package
+.PHONY: build test coverage demo check-demo check-docs-policy clean setup install uninstall release gui-run gui-run-sample gui-test gui-lint gui-screenshots check-gui-screenshots gui-package
 
 DOCS_POLICY_BASE ?= origin/master
 
@@ -36,6 +36,13 @@ GUI_ARGS ?=
 gui-run:
 	go build -o "$(GUI_CLI)" .
 	MPEG_TS_ANALYZER_CLI="$(GUI_CLI)" cargo run --manifest-path gui/Cargo.toml -- $(GUI_ARGS)
+
+# Open the GUI on a sample and analyze the whole file (--limit 0 = to EOF).
+# Override SAMPLE to open another file: make gui-run-sample SAMPLE=path/to.ts
+SAMPLE ?= sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts
+
+gui-run-sample:
+	$(MAKE) gui-run GUI_ARGS='"$(SAMPLE)" --limit 0'
 
 # The CLI integration tests in gui/ run against the CLI built from this tree.
 gui-test:

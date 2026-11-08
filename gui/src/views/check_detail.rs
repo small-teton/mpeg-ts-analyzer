@@ -61,7 +61,7 @@ fn page(ui: &mut egui::Ui, context: &Context<'_>, check: Check) -> Option<Overvi
     let row = overview::row(context.report, context.program, check);
 
     ui.horizontal_wrapped(|ui| {
-        let title = ui.label(egui::RichText::new(help.title).heading().size(26.0));
+        let title = ui.label(crate::theme::page_title(help.title));
         title.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Heading, true, help.title));
         if let Some(row) = &row {
             let status = status_badge(ui, &row.status, Some(check));
@@ -169,7 +169,7 @@ fn page(ui: &mut egui::Ui, context: &Context<'_>, check: Check) -> Option<Overvi
 
 /// A heading of the page.
 fn section_heading(ui: &mut egui::Ui, text: &str) {
-    let response = ui.label(egui::RichText::new(text).size(18.0).strong());
+    let response = ui.label(crate::theme::subheading(text));
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Heading, true, text));
     ui.add_space(2.0);
 }
@@ -257,7 +257,7 @@ fn packet_gap_table(
                 .spacing([16.0, 4.0])
                 .show(ui, |ui| {
                     for header in ["PID", "Role", "Packets", "Gap", "Time", "From", "To"] {
-                        ui.strong(header);
+                        ui.label(crate::theme::table_header_text(header, ui.visuals()));
                     }
                     ui.end_row();
                     for pid in pids {
@@ -335,7 +335,7 @@ fn mux_lead_table(ui: &mut egui::Ui, pids: &[&MuxLeadPid]) -> Option<OverviewAct
                         "Spread",
                         "Unbracketed",
                     ] {
-                        ui.strong(header);
+                        ui.label(crate::theme::table_header_text(header, ui.visuals()));
                     }
                     ui.end_row();
                     for pid in pids {
@@ -388,7 +388,7 @@ fn av_lead_table(ui: &mut egui::Ui, av: &AvLeadProgram) -> Option<OverviewAction
                         "At",
                         "Comparisons",
                     ] {
-                        ui.strong(header);
+                        ui.label(crate::theme::table_header_text(header, ui.visuals()));
                     }
                     ui.end_row();
                     for audio in &av.audio {
@@ -447,7 +447,7 @@ fn verdict_table(ui: &mut egui::Ui, check: Check, current: Option<&CheckStatus>)
         .iter()
         .map(|(status, _)| badge_width(ui, status))
         .fold(
-            text_width(ui, egui::RichText::new("Status").strong()),
+            text_width(ui, crate::theme::table_header_text("Status", ui.visuals())),
             f32::max,
         )
         + 2.0 * CELL_PADDING;

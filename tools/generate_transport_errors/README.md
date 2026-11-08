@@ -7,15 +7,15 @@ stream is **intentionally invalid**: use it to test how the analyzer counts
 these packets and keeps their data out of the analysis.
 
 ```sh
-go run ./tools/generate_transport_errors -output sample_data/sample_188byte_transport_errors.ts
-go run ./tools/generate_transport_errors -m2ts -output sample_data/sample_192byte_transport_errors.ts
-go run ./tools/generate_transport_errors -malformed -output sample_data/sample_188byte_transport_errors_malformed.ts
-go run ./tools/generate_transport_errors -malformed -m2ts -output sample_data/sample_192byte_transport_errors_malformed.ts
-tsdump --headers-only sample_data/sample_188byte_transport_errors.ts
-tsdump --format m2ts --headers-only sample_data/sample_192byte_transport_errors.ts
-tsanalyze --json sample_data/sample_188byte_transport_errors.ts
-tsp -I file sample_data/sample_188byte_transport_errors.ts -P filter --valid --negate -P count --summary -O drop
-tsp -I file sample_data/sample_188byte_transport_errors.ts -P continuity -O drop
+go run ./tools/generate_transport_errors -output sample_data/diagnostics/sample_188byte_transport_errors.ts
+go run ./tools/generate_transport_errors -m2ts -output sample_data/diagnostics/sample_192byte_transport_errors.ts
+go run ./tools/generate_transport_errors -malformed -output sample_data/diagnostics/sample_188byte_transport_errors_malformed.ts
+go run ./tools/generate_transport_errors -malformed -m2ts -output sample_data/diagnostics/sample_192byte_transport_errors_malformed.ts
+tsdump --headers-only sample_data/diagnostics/sample_188byte_transport_errors.ts
+tsdump --format m2ts --headers-only sample_data/diagnostics/sample_192byte_transport_errors.ts
+tsanalyze --json sample_data/diagnostics/sample_188byte_transport_errors.ts
+tsp -I file sample_data/diagnostics/sample_188byte_transport_errors.ts -P filter --valid --negate -P count --summary -O drop
+tsp -I file sample_data/diagnostics/sample_188byte_transport_errors.ts -P continuity -O drop
 ```
 
 100 packets of one 20 ms slot each (75.2 kbit/s, 2 s): program 1 (PMT PID

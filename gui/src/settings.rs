@@ -174,7 +174,7 @@ impl Settings {
 
 fn section(ui: &mut egui::Ui, title: &str) {
     ui.add_space(6.0);
-    ui.strong(title);
+    ui.label(crate::theme::emphasis(title));
     ui.separator();
 }
 

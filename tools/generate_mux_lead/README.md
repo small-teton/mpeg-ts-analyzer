@@ -7,11 +7,11 @@ transport error, a PES packet multiplexed after its PTS): use it to test the
 report-only mux lead, never as an example of a compliant stream.
 
 ```sh
-go run ./tools/generate_mux_lead -output sample_data/sample_188byte_mux_lead.ts
-go run ./tools/generate_mux_lead -m2ts -output sample_data/sample_192byte_mux_lead.ts
-go run ./tools/generate_mux_lead -trailer -output sample_data/sample_204byte_mux_lead.ts
-tsp -I file sample_data/sample_188byte_mux_lead.ts -P pcrextract --pcr --pts --dts --csv -O drop
-tsp -I file --format m2ts sample_data/sample_192byte_mux_lead.ts -P pcrextract --pcr --pts --dts --csv -O drop
+go run ./tools/generate_mux_lead -output sample_data/diagnostics/sample_188byte_mux_lead.ts
+go run ./tools/generate_mux_lead -m2ts -output sample_data/diagnostics/sample_192byte_mux_lead.ts
+go run ./tools/generate_mux_lead -trailer -output sample_data/diagnostics/sample_204byte_mux_lead.ts
+tsp -I file sample_data/diagnostics/sample_188byte_mux_lead.ts -P pcrextract --pcr --pts --dts --csv -O drop
+tsp -I file --format m2ts sample_data/diagnostics/sample_192byte_mux_lead.ts -P pcrextract --pcr --pts --dts --csv -O drop
 ```
 
 240 packets of one 20 ms slot each (75.2 kbit/s, 4.8 s): program 1 (PMT PID

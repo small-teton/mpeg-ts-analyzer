@@ -86,21 +86,21 @@ var failurePolicyFixtures = []failurePolicyFixture{
 	{"all findings", [3]string{allFindingsFixtures[0].path, allFindingsFixtures[1].path, allFindingsFixtures[2].path},
 		// PCR jitter is ng here but has no category.
 		[]string{"timing", "timestamp", "pes_headers", "pts_repetition", "continuity", "transport_errors", "scrambled_packets", "psi_health"}},
-	{"sync loss", [3]string{"../sample_data/sample_188byte_sync_loss.ts", "../sample_data/sample_192byte_sync_loss.ts", "../sample_data/sample_204byte_sync_loss.ts"},
+	{"sync loss", [3]string{"../sample_data/diagnostics/sample_188byte_sync_loss.ts", "../sample_data/diagnostics/sample_192byte_sync_loss.ts", "../sample_data/diagnostics/sample_204byte_sync_loss.ts"},
 		[]string{"continuity", "sync"}},
 	// One referenced PID is insufficient_data, and does not fail.
-	{"PID references", [3]string{"../sample_data/sample_188byte_pid_references.ts", "../sample_data/sample_192byte_pid_references.ts", ""},
+	{"PID references", [3]string{"../sample_data/diagnostics/sample_188byte_pid_references.ts", "../sample_data/diagnostics/sample_192byte_pid_references.ts", ""},
 		[]string{"timestamp", "pts_repetition", "transport_errors", "referenced_pids", "unreferenced_pids"}},
 	// The PCR-PTS/DTS gap is skipped and both PES checks insufficient_data.
-	{"PCR discontinuities", [3]string{"../sample_data/sample_188byte_pcr_discontinuities.ts", "../sample_data/sample_192byte_pcr_discontinuities.ts", ""},
+	{"PCR discontinuities", [3]string{"../sample_data/diagnostics/sample_188byte_pcr_discontinuities.ts", "../sample_data/diagnostics/sample_192byte_pcr_discontinuities.ts", ""},
 		[]string{"timing"}},
 	// Referenced PIDs are insufficient_data.
-	{"PES health", [3]string{"../sample_data/sample_188byte_pes_health.ts", "../sample_data/sample_192byte_pes_health.ts", ""},
+	{"PES health", [3]string{"../sample_data/diagnostics/sample_188byte_pes_health.ts", "../sample_data/diagnostics/sample_192byte_pes_health.ts", ""},
 		[]string{"pes_headers", "pts_repetition"}},
-	{"transport errors", [3]string{"../sample_data/sample_188byte_transport_errors.ts", "../sample_data/sample_192byte_transport_errors.ts", ""},
+	{"transport errors", [3]string{"../sample_data/diagnostics/sample_188byte_transport_errors.ts", "../sample_data/diagnostics/sample_192byte_transport_errors.ts", ""},
 		[]string{"transport_errors", "scrambled_packets", "psi_health", "unreferenced_pids"}},
 	// Report-only packet gaps never fail; the forward PTS gaps are anomalies.
-	{"packet gaps", [3]string{"../sample_data/sample_188byte_packet_gaps.ts", "../sample_data/sample_192byte_packet_gaps.ts", "../sample_data/sample_204byte_packet_gaps.ts"},
+	{"packet gaps", [3]string{"../sample_data/diagnostics/sample_188byte_packet_gaps.ts", "../sample_data/diagnostics/sample_192byte_packet_gaps.ts", "../sample_data/diagnostics/sample_204byte_packet_gaps.ts"},
 		[]string{"timestamp"}},
 }
 
@@ -206,7 +206,7 @@ func TestFailOnErrorIsTimingCategory(t *testing.T) {
 // A range that ends in a loss of synchronization is incomplete and exits 0 by
 // default; --fail-on sync fails it.
 func TestFailOnSyncLost(t *testing.T) {
-	path := "../sample_data/sample_188byte_sync_loss.ts"
+	path := "../sample_data/diagnostics/sample_188byte_sync_loss.ts"
 	report, err := decodeJSONReport(t, func() error {
 		return ParseTsFile(path, options.Options{Format: "json", Limit: 23000})
 	})

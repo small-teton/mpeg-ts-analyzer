@@ -25,8 +25,8 @@ var transportErrorsFixtures = []struct {
 	// have a header or adaptation field that cannot be parsed.
 	malformed string
 }{
-	{"../sample_data/sample_188byte_transport_errors.ts", 188, false, "../sample_data/sample_188byte_transport_errors_malformed.ts"},
-	{"../sample_data/sample_192byte_transport_errors.ts", 192, true, "../sample_data/sample_192byte_transport_errors_malformed.ts"},
+	{"../sample_data/diagnostics/sample_188byte_transport_errors.ts", 188, false, "../sample_data/diagnostics/sample_188byte_transport_errors_malformed.ts"},
+	{"../sample_data/diagnostics/sample_192byte_transport_errors.ts", 192, true, "../sample_data/diagnostics/sample_192byte_transport_errors_malformed.ts"},
 }
 
 func generateTransportErrors(t *testing.T, args ...string) string {

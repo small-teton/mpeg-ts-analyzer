@@ -6,15 +6,15 @@ version mid-stream, then check the tables with TSDuck:
 ```sh
 go run ./tools/generate_psi_version_change \
   -input sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts \
-  -output sample_data/sample_188byte_psi_version_change_mpeg2_320x240_25fps_mp2.ts
+  -output sample_data/diagnostics/sample_188byte_psi_version_change_mpeg2_320x240_25fps_mp2.ts
 go run ./tools/generate_psi_version_change -m2ts \
   -input sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts \
-  -output sample_data/sample_192byte_psi_version_change_mpeg2_320x240_25fps_mp2.ts
-tsp -I file sample_data/sample_188byte_psi_version_change_mpeg2_320x240_25fps_mp2.ts \
+  -output sample_data/diagnostics/sample_192byte_psi_version_change_mpeg2_320x240_25fps_mp2.ts
+tsp -I file sample_data/diagnostics/sample_188byte_psi_version_change_mpeg2_320x240_25fps_mp2.ts \
   -P tables --pid 0 --pid 0x1000 --pid 0x1100 --diversified-payload --packet-index -O drop
-tsp -I file --format m2ts sample_data/sample_192byte_psi_version_change_mpeg2_320x240_25fps_mp2.ts \
+tsp -I file --format m2ts sample_data/diagnostics/sample_192byte_psi_version_change_mpeg2_320x240_25fps_mp2.ts \
   -P tables --pid 0 --pid 0x1000 --pid 0x1100 --diversified-payload --packet-index -O drop
-tsanalyze --json sample_data/sample_188byte_psi_version_change_mpeg2_320x240_25fps_mp2.ts
+tsanalyze --json sample_data/diagnostics/sample_188byte_psi_version_change_mpeg2_320x240_25fps_mp2.ts
 ```
 
 - PMT version 1, from packet 545 on PID 0x1000: `PCR_PID` 0x0200, video moved

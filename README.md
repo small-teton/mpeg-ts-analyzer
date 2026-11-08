@@ -10,7 +10,9 @@
 mpeg-ts-analyzer is an MPEG-2 Transport Stream analyzer (ISO/IEC 13818-1) for
 188-byte TS, 192-byte M2TS and 204-byte TS (with a 16-byte trailer) files. It checks transport-layer timing and gives
 a direct pass/fail answer, and it decodes every packet down to its fields and
-bits.
+bits. In the desktop GUI, [Detailed inspection](#desktop-gui) shows every bit
+of a packet with its role, and checks the fixed bits against the
+specification.
 
 ![mpeg-ts-analyzer terminal demo](docs/demo.gif)
 
@@ -64,17 +66,43 @@ Overview, Timeline, Bitrate and Packets.
 </p>
 
 Select any decoded field of a packet to see its bytes and its exact bits, even
-when a field such as the 13-bit PID spans two bytes:
+when a field such as the 13-bit PID spans two bytes. **Detailed inspection**
+then opens the packet's complete wire layout on a full-width page:
 
-<p align="center">
-  <a href="docs/images/gui-inspectors.png">
-    <img src="docs/images/gui-inspectors.png" alt="Byte and Bit inspectors with the 13-bit PID 0x1001 selected across bytes 1 and 2" width="70%">
-  </a>
-</p>
+<table>
+  <tr>
+    <td width="36%">
+      <a href="docs/images/gui-byte-inspector.png"><img src="docs/images/gui-byte-inspector.png" alt="Byte inspector with the bytes 1 and 2 of the PID 4097 (0x1001) selected"></a>
+    </td>
+    <td width="64%" rowspan="2">
+      <a href="docs/images/gui-wire-layout.png"><img src="docs/images/gui-wire-layout.png" alt="Detailed inspection of a PMT packet with its 13-bit PID selected: the PMT badge, the field list, the selected part's facts and every bit of the packet colored by role"></a>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <a href="docs/images/gui-bit-inspector.png"><img src="docs/images/gui-bit-inspector.png" alt="Bit inspector with the 13 bits of the PID 4097 (0x1001) marked across bytes 1 and 2"></a>
+    </td>
+  </tr>
+</table>
 
-**Detailed inspection** opens a packet's complete wire layout on a full-width
-page: reserved and marker bits, prefixes, stuffing and undecoded bytes are
-classified and checked against ISO/IEC 13818-1 alongside the decoded values.
+<p align="center"><em>Left: the Byte and Bit inspectors of the Packets view. Right: Detailed inspection of the same PMT packet with its PID selected.</em></p>
+
+Detailed inspection lays a packet out bit by bit, the way ISO/IEC 13818-1
+draws its syntax, so you can read a real packet against the specification:
+
+- **Every bit has a role.** Each bit of the packet belongs to one part,
+  shown in a colored grid: decoded values and flags, and also reserved bits,
+  marker bits, prefixes, stuffing and bytes the analyzer does not decode.
+- **Fixed bits are checked.** Bits whose value the specification fixes (sync
+  byte, start code, reserved and marker bits, the `'10'` and PTS/DTS
+  prefixes, stuffing bytes) are marked ✓ or flagged in red with the expected
+  value, and the rule is cited.
+- **Select a field, see its bits.** A field's exact bits are highlighted,
+  with its value in decimal and hexadecimal, its packet bit and byte/bit
+  position, and the structure it belongs to.
+- **188, 192 and 204-byte packets** straight from a `.ts`/`.m2ts` file: the
+  M2TS header and the 204-byte trailer are part of the layout. The GUI is
+  open source, for macOS, Linux and Windows.
 
 See the [GUI guide][docs-gui].
 
@@ -151,6 +179,9 @@ mpeg-ts-analyzer instead gives you:
   bitrate, PSI/PES and packet data rather than receiving only a verdict.
 - **Spec-level inspection** — Decode TS headers, adaptation fields, PSI tables
   and PES headers, then map a selected field to its exact bytes and bits.
+- **Every bit accounted for** — The GUI's Detailed inspection gives each bit
+  of a packet its role, including reserved, marker, prefix, stuffing and
+  undecoded bits, and checks the fixed ones against ISO/IEC 13818-1.
 
 ### Which tool should I use?
 

@@ -185,12 +185,27 @@ func decodeDocument(t *testing.T, path string, opts options.Options) map[string]
 	return doc
 }
 
+// sampleGlob matches pattern against the committed samples: the ordinary
+// streams in sample_data/ and the fault-injection ones in
+// sample_data/diagnostics/.
+func sampleGlob(pattern string) ([]string, error) {
+	var paths []string
+	for _, dir := range []string{"../sample_data/", "../sample_data/diagnostics/"} {
+		matches, err := filepath.Glob(dir + pattern)
+		if err != nil {
+			return nil, err
+		}
+		paths = append(paths, matches...)
+	}
+	return paths, nil
+}
+
 // The first 188 bytes of every 204-byte packet give the same results as the
 // 188-byte stream: every committed 188-byte sample whose packets are aligned,
 // followed by trailers, has the same analysis and summary documents, with
 // the offsets of the same packets and packet_size_bytes 204.
 func TestTrailerPacketsMatch188(t *testing.T) {
-	paths, err := filepath.Glob("../sample_data/sample_188byte_*.ts")
+	paths, err := sampleGlob("sample_188byte_*.ts")
 	if err != nil || len(paths) < 10 {
 		t.Fatalf("samples %v %v", paths, err)
 	}
@@ -284,7 +299,7 @@ func TestTrailerPacketsRange(t *testing.T) {
 // Packet pages and packet detail step by 204 bytes, keep the trailer out of
 // the decoded TS packet and list it as a final "trailer" layer.
 func TestTrailerPacketsPagesAndDetail(t *testing.T) {
-	const path = "../sample_data/sample_204byte_all_findings.ts"
+	const path = "../sample_data/diagnostics/sample_204byte_all_findings.ts"
 	for _, hint := range []int{0, trailerPacketSize} {
 		page, err := decodePacketsPage(t, path, options.Options{Offset: 10*trailerPacketSize + 60, Count: 3, PacketSize: hint})
 		if err != nil || page.Input.PacketSizeBytes != trailerPacketSize || page.TotalPackets != 120 || *page.FirstOffsetBytes != 11*trailerPacketSize ||
@@ -300,7 +315,7 @@ func TestTrailerPacketsPagesAndDetail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, err := decodePacketDetail(t, "../sample_data/sample_188byte_all_findings.ts", options.Options{Offset: slot * tsPayloadSize})
+	want, err := decodePacketDetail(t, "../sample_data/diagnostics/sample_188byte_all_findings.ts", options.Options{Offset: slot * tsPayloadSize})
 	if err != nil {
 		t.Fatal(err)
 	}
