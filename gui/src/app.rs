@@ -396,7 +396,7 @@ impl App {
             return;
         }
         ui.horizontal_wrapped(|ui| {
-            ui.strong("Scan range");
+            ui.label(crate::theme::emphasis("Scan range"));
             let controls_width = 470.0;
             let bar_width = (ui.available_width() - controls_width).max(160.0);
             self.range.bar(ui, bar_width, self.file_size, load);
@@ -699,10 +699,10 @@ fn empty_state(ui: &mut egui::Ui, title: &str, hint: &str) {
 /// other controls and from the blue scan-range bar next to it. Shown only
 /// while it can be pressed: a plain button says there is nothing to start.
 fn primary_button(label: &str) -> egui::Button<'static> {
-    let color = egui::Color32::WHITE;
+    let color = crate::theme::ON_FILL_TEXT;
     egui::Button::new((
         icons::text(icons::PLAY).color(color),
-        egui::RichText::new(label).color(color).strong(),
+        crate::theme::emphasis(label).color(color),
     ))
     .fill(crate::theme::START_COLOR)
 }
@@ -795,7 +795,7 @@ fn rail_tile(ui: &mut egui::Ui, glyph: &str, title: &str, selected: bool) -> egu
             card.center_bottom() - egui::vec2(0.0, 12.0),
             egui::Align2::CENTER_CENTER,
             title,
-            egui::FontId::proportional(12.5),
+            crate::theme::caption_font(),
             text_color,
         );
     }

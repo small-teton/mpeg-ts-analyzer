@@ -165,7 +165,7 @@ fn summary(
     health_table(ui, &rows(report, selected), state);
     ui.add_space(10.0);
 
-    ui.strong("Elementary streams");
+    ui.label(crate::theme::emphasis("Elementary streams"));
     // Scrolls on its own in a narrow window instead of widening the page.
     egui::ScrollArea::horizontal()
         .id_salt("overview_report_streams_scroll")
@@ -176,7 +176,7 @@ fn summary(
                 .spacing([24.0, 4.0])
                 .show(ui, |ui| {
                     for header in ["PID", "Type", "Avg bitrate", "Peak bitrate (1 s)"] {
-                        ui.strong(header);
+                        ui.label(crate::theme::table_header_text(header, ui.visuals()));
                     }
                     ui.end_row();
                     for stream in &selected.elementary_streams {
@@ -1251,7 +1251,8 @@ const MIN_CHECK_WIDTH: f32 = 64.0;
 impl Columns {
     fn of(ui: &egui::Ui, rows: &[Row], width: f32) -> Self {
         let pad = 2.0 * CELL_PADDING;
-        let header = |text: &str| text_width(ui, egui::RichText::new(text).strong());
+        let header =
+            |text: &str| text_width(ui, crate::theme::table_header_text(text, ui.visuals()));
         let value = rows
             .iter()
             .map(|r| text_width(ui, egui::RichText::new(&r.value)))
@@ -1965,7 +1966,7 @@ fn finding_row(ui: &mut egui::Ui, finding: &Finding, state: &mut OverviewState) 
         match finding.check {
             Some(check) => help_link(ui, &finding.label, check, state),
             None => {
-                ui.strong(&finding.label);
+                ui.label(crate::theme::emphasis(&finding.label));
             }
         }
         ui.weak(finding.scope.text());

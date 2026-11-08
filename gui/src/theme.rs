@@ -34,8 +34,72 @@ impl Verdict {
             Verdict::Warn => Color32::from_rgb(0x9a, 0x67, 0x00),
             Verdict::Neutral => Color32::from_rgb(0x59, 0x63, 0x6e),
         };
-        (Color32::WHITE, fill)
+        (ON_FILL_TEXT, fill)
     }
+}
+
+// Type scale and text roles. Every text of the GUI uses one of these; see
+// docs/gui/design.md, "Look and feel". Sizes are in points.
+
+/// Title of a full-page view (a check's detail page): 26 pt semibold.
+pub const PAGE_TITLE_SIZE: f32 = 26.0;
+/// Section headings (Overview sections, the Packets pane's packet, dialogs,
+/// empty states): 22 pt semibold, egui's Heading style (`ui.heading`).
+pub const SECTION_HEADING_SIZE: f32 = 22.0;
+/// Headings inside a page (a check's detail page): 18 pt semibold.
+pub const SUBHEADING_SIZE: f32 = 18.0;
+/// Body text and buttons: 15 pt; 13 pt in compact data areas (see
+/// [`compact`]).
+pub const BODY_SIZE: f32 = 15.0;
+pub const COMPACT_BODY_SIZE: f32 = 13.0;
+/// Values, offsets, PIDs and hex: JetBrains Mono 13.5 pt; 12.5 pt in
+/// compact data areas.
+pub const MONO_SIZE: f32 = 13.5;
+pub const COMPACT_MONO_SIZE: f32 = 12.5;
+/// Small text: labels painted under the rail's icons and inside the range
+/// bar, table category labels; egui's Small style.
+pub const CAPTION_SIZE: f32 = 12.5;
+
+/// Text on a saturated fill (status and packet-kind badges, the Start
+/// button): white, and every such fill keeps at least 4.5:1 against it.
+pub const ON_FILL_TEXT: Color32 = Color32::WHITE;
+
+/// A page title (see [`PAGE_TITLE_SIZE`]).
+pub fn page_title(text: &str) -> egui::RichText {
+    semibold(text, PAGE_TITLE_SIZE)
+}
+
+/// A heading inside a page (see [`SUBHEADING_SIZE`]).
+pub fn subheading(text: &str) -> egui::RichText {
+    semibold(text, SUBHEADING_SIZE)
+}
+
+/// Emphasized text: the titles of panels and groups (Fields, Bit inspector,
+/// Scan range …), layer titles, the names of selected fields and the
+/// breadcrumb's packet. Semibold at the size of the surrounding body text
+/// (15 pt, 13 pt in compact areas) in the strong text color; an explicit
+/// `.color()` (layer titles) replaces the color, not the weight.
+pub fn emphasis(text: impl Into<String>) -> egui::RichText {
+    egui::RichText::new(text)
+        .family(FontFamily::Name(HEADING_FAMILY.into()))
+        .strong()
+}
+
+/// The font of captions painted directly (see [`CAPTION_SIZE`]).
+pub fn caption_font() -> FontId {
+    FontId::proportional(CAPTION_SIZE)
+}
+
+/// The semibold face at `size`, for text painted directly (the packet
+/// list's column headers).
+pub fn semibold_font(size: f32) -> FontId {
+    FontId::new(size, FontFamily::Name(HEADING_FAMILY.into()))
+}
+
+fn semibold(text: &str, size: f32) -> egui::RichText {
+    egui::RichText::new(text)
+        .size(size)
+        .family(FontFamily::Name(HEADING_FAMILY.into()))
 }
 
 /// Fill of the Timeline's event markers (anomalies, continuity errors):
@@ -46,6 +110,22 @@ pub const VIDEO_COLOR: Color32 = Color32::from_rgb(0x4e, 0xa8, 0xff);
 pub const AUDIO_COLOR: Color32 = Color32::from_rgb(0x7f, 0xd6, 0x8a);
 pub const PSI_COLOR: Color32 = Color32::from_rgb(0xc7, 0x92, 0xea);
 pub const LIMIT_COLOR: Color32 = Color32::from_rgb(0xff, 0x7a, 0x7a);
+
+/// Colors of a packet's layers in the Packets pane's Byte inspector and the
+/// layer titles of both field lists; the adaptation field and PSI sections
+/// use [`PCR_COLOR`] and [`PSI_COLOR`].
+pub const LAYER_TS_HEADER: Color32 = Color32::from_rgb(0x7c, 0xc4, 0xff);
+pub const LAYER_PES_HEADER: Color32 = Color32::from_rgb(0x8f, 0xe3, 0x9f);
+pub const LAYER_PAYLOAD: Color32 = Color32::GRAY;
+pub const LAYER_TRAILER: Color32 = Color32::from_rgb(0xe0, 0x8a, 0xb4);
+
+/// Colors of the scan-range bar by load: blue for light ranges, shifting
+/// through teal, yellow and orange to red for ranges that need confirmation.
+pub const LOAD_LIGHT: Color32 = Color32::from_rgb(0x4e, 0xa8, 0xff);
+pub const LOAD_MODERATE: Color32 = Color32::from_rgb(0x4f, 0xc3, 0xb5);
+pub const LOAD_HEAVY: Color32 = Color32::from_rgb(0xe6, 0xc4, 0x4c);
+pub const LOAD_VERY_HEAVY: Color32 = Color32::from_rgb(0xf0, 0x8c, 0x3c);
+pub const LOAD_NEEDS_CONFIRMATION: Color32 = Color32::from_rgb(0xff, 0x6b, 0x6b);
 // Table colors (Codex proposal): Material 3 tonal surfaces with Carbon/
 // Primer-like values, fixed per light and dark theme.
 fn by_theme(visuals: &egui::Visuals, light: u32, dark: u32) -> Color32 {
@@ -53,12 +133,15 @@ fn by_theme(visuals: &egui::Visuals, light: u32, dark: u32) -> Color32 {
     Color32::from_rgb((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8)
 }
 
-/// Text of a table's column headers: 15 px semibold.
+/// Color of a table's column headers.
+pub fn table_header_color(visuals: &egui::Visuals) -> Color32 {
+    by_theme(visuals, 0x3C4043, 0xE0E0E0)
+}
+
+/// Text of a table's column headers, in every table and grid: semibold at the
+/// size of the surrounding body text, in the header color.
 pub fn table_header_text(text: &str, visuals: &egui::Visuals) -> egui::RichText {
-    egui::RichText::new(text)
-        .size(15.0)
-        .family(FontFamily::Name(HEADING_FAMILY.into()))
-        .color(by_theme(visuals, 0x3C4043, 0xE0E0E0))
+    emphasis(text).color(table_header_color(visuals))
 }
 
 /// Fill of a table's header row.
@@ -86,16 +169,14 @@ pub fn table_border(visuals: &egui::Visuals) -> egui::Stroke {
     egui::Stroke::new(1.0, by_theme(visuals, 0xB8BDC4, 0x4B4F56))
 }
 
-/// Text of a category subheader: 12 px semibold capitals in blue.
+/// Text of a category subheader: caption-sized semibold capitals in blue.
 pub fn table_category_text(text: &str, visuals: &egui::Visuals) -> egui::RichText {
-    egui::RichText::new(text.to_uppercase())
-        .size(12.0)
-        .family(FontFamily::Name(HEADING_FAMILY.into()))
-        .color(by_theme(visuals, 0x0969DA, 0x58A6FF))
+    semibold(&text.to_uppercase(), CAPTION_SIZE).color(by_theme(visuals, 0x0969DA, 0x58A6FF))
 }
 
-/// Size of the text in a status badge: close to body text, so a verdict
-/// reads at a glance.
+/// Size of the text in every badge (statuses and the packet kind): close to
+/// body text, so a verdict reads at a glance, and small enough that a badge
+/// sits in a table row or next to body text without growing it.
 pub const BADGE_TEXT_SIZE: f32 = 14.0;
 /// Space around the text of a status badge.
 pub const BADGE_MARGIN: egui::Vec2 = egui::vec2(10.0, 3.0);
@@ -104,11 +185,10 @@ pub const BADGE_MIN_WIDTH: f32 = 48.0;
 /// Corner radius of a status badge.
 pub const BADGE_RADIUS: u8 = 4;
 
-/// The text of a status badge: semibold (the heading face), near body size.
+/// The text of a badge: semibold (the heading face), near body size. The
+/// caller colors it [`ON_FILL_TEXT`].
 pub fn badge_text(text: &str) -> egui::RichText {
-    egui::RichText::new(text)
-        .size(BADGE_TEXT_SIZE)
-        .family(FontFamily::Name(HEADING_FAMILY.into()))
+    semibold(text, BADGE_TEXT_SIZE)
 }
 
 /// Space around the text of a button.
@@ -126,7 +206,7 @@ pub const KIND_PCR: Color32 = Color32::from_rgb(0x9a, 0x53, 0x00);
 pub const KIND_PES: Color32 = Color32::from_rgb(0x3d, 0x6a, 0x93);
 pub const KIND_OTHER: Color32 = Color32::from_rgb(0x59, 0x63, 0x6e);
 
-/// Fill of the buttons that start an analysis, with white text.
+/// Fill of the buttons that start an analysis, with [`ON_FILL_TEXT`].
 pub const START_COLOR: Color32 = Color32::from_rgb(0x2e, 0x8b, 0x4f);
 
 /// Larger than egui's defaults so menus, dialogs and controls are easy to read and hit.
@@ -163,14 +243,17 @@ fn apply_style(ctx: &egui::Context) {
             visuals.weak_text_color = Some(LIGHT_WEAK_TEXT);
         }
         style.text_styles = [
-            (TextStyle::Small, FontId::proportional(12.0)),
-            (TextStyle::Body, FontId::proportional(15.0)),
-            (TextStyle::Button, FontId::proportional(15.0)),
+            (TextStyle::Small, FontId::proportional(CAPTION_SIZE)),
+            (TextStyle::Body, FontId::proportional(BODY_SIZE)),
+            (TextStyle::Button, FontId::proportional(BODY_SIZE)),
             (
                 TextStyle::Heading,
-                FontId::new(22.0, FontFamily::Name(HEADING_FAMILY.into())),
+                FontId::new(
+                    SECTION_HEADING_SIZE,
+                    FontFamily::Name(HEADING_FAMILY.into()),
+                ),
             ),
-            (TextStyle::Monospace, FontId::monospace(13.5)),
+            (TextStyle::Monospace, FontId::monospace(MONO_SIZE)),
         ]
         .into();
         let spacing = &mut style.spacing;
@@ -311,10 +394,10 @@ pub fn compact(ui: &mut egui::Ui) {
     let style = ui.style_mut();
     style
         .text_styles
-        .insert(TextStyle::Body, FontId::proportional(13.0));
+        .insert(TextStyle::Body, FontId::proportional(COMPACT_BODY_SIZE));
     style
         .text_styles
-        .insert(TextStyle::Monospace, FontId::monospace(12.5));
+        .insert(TextStyle::Monospace, FontId::monospace(COMPACT_MONO_SIZE));
     style.spacing.item_spacing = egui::vec2(8.0, 3.0);
     style.spacing.interact_size.y = 20.0;
 }
@@ -346,7 +429,10 @@ mod tests {
         ctx.run_ui(Default::default(), |_| {})
             .textures_delta
             .clear();
-        for font in [FontId::proportional(15.0), FontId::monospace(13.5)] {
+        for font in [
+            FontId::proportional(BODY_SIZE),
+            FontId::monospace(MONO_SIZE),
+        ] {
             assert!(ctx.fonts_mut(|fonts| fonts.has_glyphs(&font, "録画_日本語ファイル名.ts")));
         }
     }

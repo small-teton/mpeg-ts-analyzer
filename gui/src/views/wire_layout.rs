@@ -663,7 +663,7 @@ pub fn selection_card(ui: &mut egui::Ui, model: &Model, state: &State) {
                 let part = &model.parts[*index];
                 ui.horizontal(|ui| {
                     swatch(ui, part.role());
-                    ui.strong(&part.label);
+                    ui.label(crate::theme::emphasis(&part.label));
                 });
                 facts(ui, "selected_part", &describe(part));
             }
@@ -678,7 +678,7 @@ pub fn selection_card(ui: &mut egui::Ui, model: &Model, state: &State) {
                     .filter(|&&i| model.parts[i].valid == Some(false))
                     .count();
                 let (label, value) = group_label(model, selection);
-                ui.strong(label);
+                ui.label(crate::theme::emphasis(label));
                 let mut rows = vec![
                     ("Value".to_owned(), value),
                     ("Position".to_owned(), position(&merge(ranges))),
@@ -742,21 +742,17 @@ pub fn field_list(ui: &mut egui::Ui, model: &Model, state: &mut State) {
     let spacing = ui.spacing_mut();
     spacing.button_padding = egui::vec2(8.0, 3.0);
     spacing.interact_size.y = 19.0;
-    spacing.item_spacing.y = 3.0;
+    spacing.item_spacing.y = 2.0;
     for (index, layer) in model.layers.iter().enumerate() {
         let color = layer_color(byte_layer(&layer.name));
-        egui::CollapsingHeader::new(
-            egui::RichText::new(layer_title(&layer.name))
-                .color(color)
-                .strong(),
-        )
-        .id_salt(("wire_layer", index))
-        .default_open(true)
-        .show(ui, |ui| {
-            for node in &layer.nodes {
-                node_line(ui, model, node, state);
-            }
-        });
+        egui::CollapsingHeader::new(crate::theme::emphasis(layer_title(&layer.name)).color(color))
+            .id_salt(("wire_layer", index))
+            .default_open(true)
+            .show(ui, |ui| {
+                for node in &layer.nodes {
+                    node_line(ui, model, node, state);
+                }
+            });
     }
 }
 
@@ -771,19 +767,35 @@ fn byte_layer(name: &str) -> ByteLayer {
     }
 }
 
-/// The text of a part's line: label, value, bits and the validity of fixed bits.
-pub fn part_line(part: &Part) -> String {
+/// The text of a part's line: label, value, bits and the validity of fixed
+/// bits, as (label, value, the rest).
+pub fn part_line(part: &Part) -> (String, String, String) {
     let mark = match (part.valid, &part.expected) {
         (Some(true), _) => " ✓".to_owned(),
         (Some(false), Some(expected)) => format!(" ✗ expected {expected}"),
         _ => String::new(),
     };
-    format!(
-        "{}  {}{mark}  · {}",
-        part.label,
-        part.value,
-        bits_text(&part.ranges)
+    (
+        part.label.clone(),
+        part.value.clone(),
+        format!("{mark}  · {}", bits_text(&part.ranges)),
     )
+}
+
+/// A line of the field list: the label, the value in the monospace data
+/// face (as in the Packets pane and the facts), then the rest. Its text, and
+/// so its accessible name, is `label  value rest`.
+fn line_text(ui: &egui::Ui, label: &str, value: &str, rest: &str) -> egui::text::LayoutJob {
+    let mut job = egui::text::LayoutJob::default();
+    let style = ui.style();
+    let font = egui::FontSelection::Default;
+    let valign = egui::Align::Center;
+    egui::RichText::new(format!("{label}  ")).append_to(&mut job, style, font.clone(), valign);
+    egui::RichText::new(value)
+        .monospace()
+        .append_to(&mut job, style, font.clone(), valign);
+    egui::RichText::new(rest).append_to(&mut job, style, font, valign);
+    job
 }
 
 /// Brings the selected line into view after ↑/↓ moved the selection to it.
@@ -802,8 +814,10 @@ fn node_line(ui: &mut egui::Ui, model: &Model, node: &Node, state: &mut State) {
             ui.horizontal(|ui| {
                 swatch(ui, part.role());
                 let on = state.selection.as_ref() == Some(&selection);
+                let (label, value, rest) = part_line(part);
+                let text = line_text(ui, &label, &value, &rest);
                 let response = ui
-                    .selectable_label(on, part_line(part))
+                    .selectable_label(on, text)
                     .on_hover_ui(|ui| facts(ui, &format!("hover_{}", part.id), &describe(part)));
                 scroll_if_stepped(state, on, &response);
                 state.lines.push(selection.clone());
@@ -864,11 +878,12 @@ fn node_line(ui: &mut egui::Ui, model: &Model, node: &Node, state: &mut State) {
                     .collect();
                 ranges.sort_by_key(|r| r.start);
                 let bad = parts.iter().any(|&i| model.parts[i].valid == Some(false));
-                let text = format!(
-                    "{label}  {value}{}  · {}",
+                let rest = format!(
+                    "{}  · {}",
                     if bad { " ✗" } else { "" },
                     bits_text(&merge(ranges))
                 );
+                let text = line_text(ui, label, value, &rest);
                 let response = ui.selectable_label(on, text);
                 scroll_if_stepped(state, on, &response);
                 state.lines.push(selection.clone());
@@ -1022,7 +1037,7 @@ pub fn bit_grid(ui: &mut egui::Ui, raw: &[u8], per_row: usize, model: &Model, st
             match model.owners[bit] {
                 Some(owner) => {
                     let part = &model.parts[owner];
-                    ui.strong(&part.label);
+                    ui.label(crate::theme::emphasis(&part.label));
                     facts(ui, "hover_bit", &describe(part));
                 }
                 None => {
@@ -1111,7 +1126,7 @@ pub fn header(ui: &mut egui::Ui, header: &Header) -> Option<Action> {
             action = Some(Action::Back);
         }
         ui.weak("Packets ›");
-        let title = ui.strong(&header.title);
+        let title = ui.label(crate::theme::emphasis(&header.title));
         title.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Heading, true, &header.title));
         if let Some(kind) = &header.kind {
             kind_badge(ui, kind);
@@ -1144,19 +1159,15 @@ pub fn header(ui: &mut egui::Ui, header: &Header) -> Option<Action> {
     action
 }
 
-/// The badge of the packet kind: white semibold text a little larger than a
-/// status badge, on a fill by kind (PSI, video, audio, PCR, other).
+/// The badge of the packet kind: a status badge's text on a fill by kind
+/// (PSI, video, audio, PCR, other).
 fn kind_badge(ui: &mut egui::Ui, kind: &str) {
     let response = egui::Frame::new()
         .fill(kind_color(kind))
         .corner_radius(crate::theme::BADGE_RADIUS)
         .inner_margin(crate::theme::BADGE_MARGIN)
         .show(ui, |ui| {
-            ui.label(
-                crate::theme::badge_text(kind)
-                    .size(16.0)
-                    .color(egui::Color32::WHITE),
-            )
+            ui.label(crate::theme::badge_text(kind).color(crate::theme::ON_FILL_TEXT))
         })
         .inner;
     response.widget_info(|| {

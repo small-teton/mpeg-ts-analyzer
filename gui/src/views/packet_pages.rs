@@ -768,7 +768,7 @@ impl PacketPages {
                     .show(ui, |ui| {
                         crate::theme::compact(ui);
                         ui.horizontal(|ui| {
-                            ui.strong("Fields");
+                            ui.label(crate::theme::emphasis("Fields"));
                             ui.weak("decoded values and their encoded parts");
                         });
                         egui::ScrollArea::both()
@@ -781,7 +781,7 @@ impl PacketPages {
                 egui::CentralPanel::default().show(ui, |ui| {
                     crate::theme::compact(ui);
                     ui.horizontal(|ui| {
-                        ui.strong("Bit inspector");
+                        ui.label(crate::theme::emphasis("Bit inspector"));
                         ui.weak("file order ↓ · each byte MSB → LSB");
                     });
                     if !model.complete {
@@ -880,7 +880,7 @@ impl PacketPages {
         }
 
         ui.horizontal(|ui| {
-            ui.strong("This packet");
+            ui.label(crate::theme::emphasis("This packet"));
             ui.weak("· click a field to inspect its bytes and bits");
         });
         for layer in &packet.layers {
@@ -941,7 +941,7 @@ fn byte_inspector(ui: &mut egui::Ui, packet: &DecodedPacket, highlight: Option<&
     let colors = byte_colors(raw.len(), &packet.layers);
     let bytes: Vec<(u8, egui::Color32)> = raw.iter().copied().zip(colors).collect();
     ui.horizontal(|ui| {
-        ui.strong("Byte inspector");
+        ui.label(crate::theme::emphasis("Byte inspector"));
         if let Some(selection) = highlight {
             ui.weak(format!("{} selected", byte_span_text(&selection.bytes)));
         }
@@ -1129,7 +1129,7 @@ fn unit_card(ui: &mut egui::Ui, unit: &PacketUnit) -> Option<u64> {
         };
         ui.horizontal(|ui| {
             ui.weak("Belongs to");
-            ui.strong(name);
+            ui.label(crate::theme::emphasis(name));
         });
         if unit.kind == "none" {
             return;

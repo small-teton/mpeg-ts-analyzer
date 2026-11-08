@@ -226,7 +226,7 @@ impl TimelineView {
         let mut any_click = false;
 
         ui.horizontal(|ui| {
-            ui.strong("PCR interval");
+            ui.label(crate::theme::emphasis("PCR interval"));
             ui.weak(format!(
                 "ms · PCR PID {pcr_label} · limit {:.0} ms",
                 limits.0
@@ -293,7 +293,7 @@ impl TimelineView {
 
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            ui.strong("PCR → PTS/DTS gap");
+            ui.label(crate::theme::emphasis("PCR → PTS/DTS gap"));
             ui.weak(format!(
                 "ms per PID · limit {:.0} ms · DTS used when present",
                 limits.1
@@ -355,7 +355,7 @@ impl TimelineView {
         if self.show_events {
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                ui.strong("Events");
+                ui.label(crate::theme::emphasis("Events"));
                 ui.weak(format!("{} in this program", data.events.len()));
             });
             let events_plot = Plot::new("events")
@@ -443,7 +443,7 @@ impl TimelineView {
         data: &Timeline,
     ) -> bool {
         ui.add_space(4.0);
-        ui.strong("Series");
+        ui.label(crate::theme::emphasis("Series"));
         ui.checkbox(
             &mut self.show_pcr,
             format!(
@@ -477,7 +477,7 @@ impl TimelineView {
         );
         if !data.markers.is_empty() {
             ui.add_space(8.0);
-            ui.strong("PAT/PMT changes");
+            ui.label(crate::theme::emphasis("PAT/PMT changes"));
             for marker in &data.markers {
                 let selected = self.selection.as_ref().is_some_and(|s| {
                     s.series == MARKER_SERIES && s.point.offset_bytes == marker.offset_bytes
@@ -500,7 +500,7 @@ impl TimelineView {
         }
 
         ui.add_space(12.0);
-        ui.strong("Selected point");
+        ui.label(crate::theme::emphasis("Selected point"));
         let mut open_packet = false;
         egui::Frame::group(ui.style()).show(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -581,9 +581,11 @@ fn timeline_plot<'a>(
     if reset { plot.reset() } else { plot }
 }
 
-/// Rings the selected point when it belongs to this plot.
+/// Rings the selected point when it belongs to this plot, in the strong text
+/// color so the ring shows on the light and the dark plot background alike.
 fn highlight(plot: &mut egui_plot::PlotUi, selection: Option<&Selection>, series: &str) {
     if let Some(selection) = selection.filter(|s| s.series == series) {
+        let ring = plot.ctx().global_style().visuals.strong_text_color();
         let y = if series == "Event" {
             0.0
         } else {
@@ -591,7 +593,7 @@ fn highlight(plot: &mut egui_plot::PlotUi, selection: Option<&Selection>, series
         };
         plot.points(
             Points::new("selected", vec![[selection.point.seconds, y]])
-                .color(egui::Color32::WHITE)
+                .color(ring)
                 .radius(9.0)
                 .filled(false),
         );
