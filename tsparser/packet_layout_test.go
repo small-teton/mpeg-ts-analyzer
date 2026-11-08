@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -211,8 +212,10 @@ func shifted(parts []part, bits int) []part {
 	out := make([]part, len(parts))
 	for i, p := range parts {
 		name, at, _ := strings.Cut(p.id, "@")
-		var offset int
-		fmt.Sscan(at, &offset)
+		offset, err := strconv.Atoi(at)
+		if err != nil {
+			panic(err)
+		}
 		p.id, p.offset = fmt.Sprintf("%s@%d", name, offset+bits), p.offset+bits
 		out[i] = p
 	}
