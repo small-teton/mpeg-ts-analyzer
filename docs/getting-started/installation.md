@@ -94,8 +94,7 @@ for the current System Settings workflow.
 The GUI checks for a newer GUI release once at startup (Settings → Updates
 turns this off). When it finds one, it opens the **Software update** window
 once per launch; you can keep working while it is open. The update button at
-the bottom of the left rail (above Settings) checks on demand, and so does
-About → **Check for Updates…**. Once an update is known, the rail button shows
+the bottom of the left rail (above Settings) checks on demand. Once an update is known, the rail button shows
 a colored dot and its tooltip names the version.
 
 The update window shows the new version and the CLI version it bundles.

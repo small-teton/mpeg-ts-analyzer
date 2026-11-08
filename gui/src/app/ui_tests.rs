@@ -370,16 +370,18 @@ fn rail_update_button_checks_and_announces_an_update() {
     assert_eq!(checks.load(Ordering::SeqCst), 2);
 }
 
+/// Updates have one entry point, the rail's button; About only describes
+/// the app.
 #[test]
-fn about_keeps_check_for_updates() {
+fn about_has_no_update_button() {
     let checks = Arc::new(AtomicUsize::new(0));
     let mut harness = harness(app_finding(None, Settings::default(), &checks));
     harness.get_by_role_and_label(Role::Button, "About").click();
     harness.run();
-    harness.get_by_label("Check for Updates…").click();
-    finish_update_check(&mut harness);
-    assert_eq!(checks.load(Ordering::SeqCst), 1);
-    assert!(update_window_is_open(&harness));
+    harness.get_by_role_and_label(Role::Window, "About");
+    assert!(harness.query_by_label("Check for Updates…").is_none());
+    assert_eq!(checks.load(Ordering::SeqCst), 0);
+    harness.get_by_role_and_label(Role::Button, "Check for Updates");
 }
 
 #[test]

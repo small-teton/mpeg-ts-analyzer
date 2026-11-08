@@ -723,7 +723,8 @@ names the GUI and its version).
   off, nothing is requested or shown.
 - **Manually**, from the update button in the navigation rail (an
   arrows-clockwise tile labeled "Updates" above Settings, named and
-  tooltipped "Check for Updates") or the "Check for Updates…" button in the About window. The result
+  tooltipped "Check for Updates"), its only entry point; the About window
+  has no update button. The result
   is shown in the update window: up to date, an update, or the error. A
   manual check ignores a skipped version.
 
