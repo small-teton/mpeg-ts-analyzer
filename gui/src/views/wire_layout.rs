@@ -717,9 +717,9 @@ fn facts(ui: &mut egui::Ui, id: &str, rows: &[(String, String)]) {
 /// are dense (small button padding and spacing) so a long table fits.
 pub fn field_list(ui: &mut egui::Ui, model: &Model, state: &mut State) {
     let spacing = ui.spacing_mut();
-    spacing.button_padding = egui::vec2(6.0, 1.0);
-    spacing.interact_size.y = 18.0;
-    spacing.item_spacing.y = 2.0;
+    spacing.button_padding = egui::vec2(8.0, 3.0);
+    spacing.interact_size.y = 19.0;
+    spacing.item_spacing.y = 2.5;
     for (index, layer) in model.layers.iter().enumerate() {
         let color = layer_color(byte_layer(&layer.name));
         egui::CollapsingHeader::new(
