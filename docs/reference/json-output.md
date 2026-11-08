@@ -2309,7 +2309,10 @@ packets), `ts_header`, `adaptation_field`, `payload`, and for a packet that
 starts a unit either `pes_header` or a section (`pat`, `pmt`, or `psi_section`
 for other tables), then `trailer` (204-byte packets). Table entries are in
 `rows`. A structure that continues in the next packet is marked `truncated`,
-and only fields inside this packet are listed.
+and only fields inside this packet are listed. Every layer also has a
+`bit_layout` that classifies each of its bits, including reserved and marker
+bits, prefixes, stuffing and bytes that are not decoded (see
+[Wire layout](#wire-layout)).
 
 For a 204-byte packet, `bytes` holds all 204 bytes: the TS packet at bytes
 0–187 and the 16-byte trailer at bytes 188–203. Only the TS packet is decoded:
@@ -2320,7 +2323,10 @@ the analyzer does not interpret, validate or correct it:
 
 ```json
 { "name": "trailer", "fields": [
-  { "name": "trailer_bytes", "value": "16 bytes", "byte_offset": 188, "byte_length": 16 } ] }
+  { "name": "trailer_bytes", "value": "16 bytes", "byte_offset": 188, "byte_length": 16 } ],
+  "bit_layout": [
+  { "id": "trailer.trailer_bytes@1504", "label": "trailer_bytes", "kind": "unknown",
+    "bits": [ { "bit_offset": 1504, "bit_length": 128 } ], "value": "16 bytes", "field": "trailer_bytes" } ] }
 ```
 
 ```sh
@@ -2345,7 +2351,18 @@ Abridged output:
           "bits": [ { "bit_offset": 11, "bit_length": 13 } ] }, ... ] },
       { "name": "adaptation_field", "fields": [
         { "name": "program_clock_reference", "value": "23220000 (0.860000 s)", "byte_offset": 6, "byte_length": 6,
-          "bits": [ { "bit_offset": 48, "bit_length": 33 }, { "bit_offset": 87, "bit_length": 9 } ] }, ... ] },
+          "bits": [ { "bit_offset": 48, "bit_length": 33 }, { "bit_offset": 87, "bit_length": 9 } ] }, ... ],
+        "bit_layout": [ ...,
+          { "id": "adaptation_field.program_clock_reference.base@48", "label": "program_clock_reference_base",
+            "kind": "value", "bits": [ { "bit_offset": 48, "bit_length": 33 } ], "value": "77400",
+            "field": "program_clock_reference" },
+          { "id": "adaptation_field.program_clock_reference.reserved@81", "label": "reserved", "kind": "reserved",
+            "bits": [ { "bit_offset": 81, "bit_length": 6 } ], "value": "111111", "expected": "111111", "valid": true,
+            "rule": "ISO/IEC 13818-1 2.1 (reserved): reserved bits are set to '1' unless otherwise specified; receivers ignore them",
+            "field": "program_clock_reference" },
+          { "id": "adaptation_field.program_clock_reference.extension@87", "label": "program_clock_reference_extension",
+            "kind": "value", "bits": [ { "bit_offset": 87, "bit_length": 9 } ], "value": "0",
+            "field": "program_clock_reference" } ] },
       { "name": "payload", "fields": [
         { "name": "payload", "value": "176 bytes", "byte_offset": 12, "byte_length": 176 } ] },
       { "name": "pes_header", "fields": [
@@ -2354,7 +2371,16 @@ Abridged output:
                     { "bit_offset": 192, "bit_length": 15 } ] },
         { "name": "DTS", "value": "140400 (1.560000 s)", "byte_offset": 26, "byte_length": 5,
           "bits": [ { "bit_offset": 212, "bit_length": 3 }, { "bit_offset": 216, "bit_length": 15 },
-                    { "bit_offset": 232, "bit_length": 15 } ] }, ... ] }
+                    { "bit_offset": 232, "bit_length": 15 } ] }, ... ],
+        "bit_layout": [ ...,
+          { "id": "pes_header.pts.prefix@168", "label": "prefix", "kind": "prefix",
+            "bits": [ { "bit_offset": 168, "bit_length": 4 } ], "value": "0011", "expected": "0011", "valid": true,
+            "rule": "ISO/IEC 13818-1 Table 2-21: with PTS_DTS_flags '11', the PTS starts with '0011'", "field": "PTS" },
+          { "id": "pes_header.pts.bits_32_30@172", "label": "PTS[32..30]", "kind": "value",
+            "bits": [ { "bit_offset": 172, "bit_length": 3 } ], "value": "000", "field": "PTS" },
+          { "id": "pes_header.pts.marker_bit@175", "label": "marker_bit", "kind": "marker",
+            "bits": [ { "bit_offset": 175, "bit_length": 1 } ], "value": "1", "expected": "1", "valid": true,
+            "rule": "ISO/IEC 13818-1 Table 2-21: marker_bit is '1'", "field": "PTS" }, ... ] }
     ]
   },
   "unit": {
@@ -2425,6 +2451,70 @@ the adaptation field flags and clock references; the PES
 `section_syntax_indicator`, `section_length`, `version_number`,
 `current_next_indicator`, PAT `network_PID` / `program_map_PID`, PMT `PCR_PID`,
 `program_info_length`, `elementary_PID` and `ES_info_length`.
+
+### Wire layout
+
+`bits` says which bits a decoded value is read from. `bit_layout` says what
+every bit of a layer is on the wire, so the packet can be read beside ISO/IEC
+13818-1 bit by bit. It is optional: a CLI that predates it omits it, and
+consumers that do not use it ignore it; `fields`, `rows` and `bits` are
+unchanged.
+
+The parts of a layer are in wire order, do not overlap and leave no gap: they
+cover the layer from its first bit to the end of the structure as its length
+fields give it, or to the end of the packet when it continues in the next one.
+The `m2ts_header`, `ts_header`, `adaptation_field`, `payload` and `trailer`
+layouts together cover every bit of the packet once; a `pes_header` or
+section layout starts where `payload` does and covers the bits of the payload
+it describes.
+
+| Member | Meaning |
+|---|---|
+| `id` | Unique within the packet and stable for the same bytes: layer, structure path and `@` the first bit, for example `pmt.stream[1].elementary_pid.reserved@184`. Several parts can share a `label`; the `id` tells them apart. |
+| `label` | The syntax element: `reserved`, `marker_bit`, `PTS[29..15]`, `program_clock_reference_base`, ... A part cut short ends with `(continues in the next packet)`, `(cut off by its length field)` or `(runs past the end of the packet)`. |
+| `kind` | `value`, `flag` (a 1-bit indicator), `reserved`, `marker` (marker bits and other fixed bits such as the `'0'` after a PAT/PMT `section_syntax_indicator`), `prefix` (`sync_byte`, `packet_start_code_prefix`, the `'10'` of the optional PES header, the PTS/DTS prefix), `stuffing`, `payload` (bits carried for another structure, such as the TS payload or the end of a previous section before `pointer_field` points to the next one) or `unknown` (present but not interpreted, such as descriptors, private data, ESCR or the trailer). New kinds may be added; treat an unrecognized kind as `unknown`. |
+| `bits` | Packet-relative ranges, as for field `bits`. |
+| `value` | The bits as read: the linked field's `value` when the part has exactly the field's bits; otherwise binary digits for fixed bits and short value runs, a number, or a byte count. Stuffing is `0xff × N`, or the bytes in hex where they are not `0xff`. |
+| `expected`, `valid`, `rule` | Only where the specification fixes the bits and the decoder checks them: the expected value in the notation of `value` (for stuffing, the value of each byte), whether the bits match, and the rule. |
+| `field`, `row` | The decoded field the part belongs to (in `rows[row]` when `row` is present), whose bytes hold the part. A field made of several parts lists them all: a PTS or DTS is its prefix, three value runs and three marker bits; a PCR or OPCR is its base, 6 reserved bits and extension. `row` without `field` places a reserved run or descriptors in a PAT program or PMT stream. |
+
+Fixed bits that are checked (`expected` present):
+
+| Bits | Expected | Rule |
+|---|---|---|
+| `sync_byte` | `0x47` | Table 2-2 |
+| `packet_start_code_prefix` | `0x000001` | Table 2-21 |
+| `'10'` before `PES_scrambling_control` | `10` | Table 2-21 |
+| PTS / DTS prefix | `0010` (PTS alone), `0011` (PTS with DTS), `0001` (DTS) | Table 2-21 |
+| `marker_bit` of a PTS/DTS | `1` | Table 2-21 |
+| Adaptation-field and PES-header `stuffing_byte` | `0xff` | Tables 2-6 and 2-21 |
+| PAT/PMT `section_syntax_indicator` and the bit after it | `1`, `0` | Program association / TS program map section |
+| `reserved` bits of the PCR/OPCR, PAT and PMT | all `1` | 2.1, definition of reserved; a receiver ignores them, so a mismatch is a conformance note, not a decoding error |
+
+Reserved bits of other sections, which may follow other specifications, are
+classified as `reserved` without an expected value. The layout is reported
+only by `--output packet`, for the one packet requested; no other output or
+check changes, and a mismatch does not affect any verdict or exit code.
+
+From the PMT packet at offset 564 of the two-program sample:
+
+```json
+{ "id": "pmt.pcr_pid.reserved@104", "label": "reserved", "kind": "reserved",
+  "bits": [ { "bit_offset": 104, "bit_length": 3 } ], "value": "111", "expected": "111", "valid": true,
+  "rule": "ISO/IEC 13818-1 2.1 (reserved): reserved bits are set to '1' unless otherwise specified; receivers ignore them" },
+{ "id": "pmt.pcr_pid@107", "label": "PCR_PID", "kind": "value",
+  "bits": [ { "bit_offset": 107, "bit_length": 13 } ], "value": "0x0102", "field": "PCR_PID" },
+...
+{ "id": "pmt.stream[1].elementary_pid.reserved@184", "label": "reserved", "kind": "reserved",
+  "bits": [ { "bit_offset": 184, "bit_length": 3 } ], "value": "111", "expected": "111", "valid": true,
+  "rule": "ISO/IEC 13818-1 2.1 (reserved): reserved bits are set to '1' unless otherwise specified; receivers ignore them",
+  "row": 1 },
+{ "id": "pmt.stream[1].elementary_pid@187", "label": "elementary_PID", "kind": "value",
+  "bits": [ { "bit_offset": 187, "bit_length": 13 } ], "value": "0x0103", "field": "elementary_PID", "row": 1 }
+```
+
+The layout is bounded by the packet: a typical packet detail is 25–30 KiB of
+indented JSON with it, and about 90 KiB for a packet full of PAT entries.
 
 ## Progress events
 

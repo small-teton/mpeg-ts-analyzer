@@ -37,6 +37,7 @@ go test ./tsparser -run '^$' -fuzz '^FuzzDVBText$' -fuzztime 5m
 go test ./tsparser -run '^$' -fuzz '^FuzzPesHeader$' -fuzztime 5m
 go test ./tsparser -run '^$' -fuzz '^FuzzPacketDiscovery$' -fuzztime 5m
 go test ./tsparser -run '^$' -fuzz '^FuzzSyncRecovery$' -fuzztime 5m
+go test ./tsparser -run '^$' -fuzz '^FuzzPacketLayout$' -fuzztime 5m
 ```
 
 Before opening a pull request, use a longer duration (for example, `-fuzztime

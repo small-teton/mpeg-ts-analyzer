@@ -722,6 +722,8 @@ func packetsSchemaCases() []schemaCase {
 			want: map[string]any{
 				"/status": "complete", "/output": "packet", "/warnings": []any{}, "/packet/offset_bytes": 0,
 				"/packet/layers/0": present{}, "/unit/kind": "psi",
+				"/packet/layers/0/bit_layout/0/id": "ts_header.sync_byte@0", "/packet/layers/0/bit_layout/0/valid": true,
+				"/packet/layers/2/bit_layout/4/kind": "reserved", "/packet/layers/2/bit_layout/4/expected": absent{},
 			},
 		},
 		{
@@ -733,6 +735,7 @@ func packetsSchemaCases() []schemaCase {
 			want: map[string]any{
 				"/status": "complete", "/input/packet_size_bytes": 204, "/packet/layers/4/name": "trailer",
 				"/packet/layers/4/fields/0/byte_offset": 188, "/packet/layers/4/fields/0/byte_length": 16, "/unit/kind": "pes",
+				"/packet/layers/4/bit_layout/0/kind": "unknown", "/packet/layers/4/bit_layout/0/field": "trailer_bytes",
 			},
 		},
 		{

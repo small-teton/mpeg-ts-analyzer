@@ -26,12 +26,14 @@ type DecodedPacket struct {
 
 // PacketLayer is one structure in the packet. Rows hold table entries (PAT
 // programs, PMT streams). Truncated means the structure continues in
-// following packets, so fields beyond this packet are not listed.
+// following packets, so fields beyond this packet are not listed. BitLayout
+// classifies every bit of the structure within the packet; see LayoutPart.
 type PacketLayer struct {
 	Name      string          `json:"name"`
 	Fields    []PacketField   `json:"fields"`
 	Rows      [][]PacketField `json:"rows,omitempty"`
 	Truncated bool            `json:"truncated,omitempty"`
+	BitLayout []LayoutPart    `json:"bit_layout,omitempty"`
 }
 
 // PacketField is a decoded value and the bytes of the packet it was read
@@ -185,7 +187,7 @@ func decodePacketLayers(raw []byte) []PacketLayer {
 	if len(raw) > end {
 		var fields []PacketField
 		(&fieldBuilder{raw: raw}).add(&fields, "trailer_bytes", end, len(raw)-end, "%d bytes", len(raw)-end)
-		layers = append(layers, PacketLayer{Name: "trailer", Fields: fields})
+		layers = append(layers, withLayout(PacketLayer{Name: "trailer", Fields: fields}, trailerLayout(raw, end)))
 	}
 	return layers
 }
@@ -199,7 +201,7 @@ func decodeTSLayers(raw []byte, t int) []PacketLayer {
 		var fields []PacketField
 		b.field(&fields, "copy_permission_indicator", "%d", bitsAt(0, 0, 2))
 		b.field(&fields, "arrival_time_stamp", "%d", bitsAt(0, 2, 30))
-		layers = append(layers, PacketLayer{Name: "m2ts_header", Fields: fields})
+		layers = append(layers, withLayout(PacketLayer{Name: "m2ts_header", Fields: fields}, m2tsHeaderLayout(raw)))
 	}
 
 	var header []PacketField
@@ -214,12 +216,12 @@ func decodeTSLayers(raw []byte, t int) []PacketLayer {
 	b.field(&header, "transport_scrambling_control", "%d", bitsAt(t+3, 0, 2))
 	b.field(&header, "adaptation_field_control", "%d (%s)", afcBits, adaptationFieldControlName(afc))
 	b.field(&header, "continuity_counter", "%d", bitsAt(t+3, 4, 4))
-	layers = append(layers, PacketLayer{Name: "ts_header", Fields: header})
+	layers = append(layers, withLayout(PacketLayer{Name: "ts_header", Fields: header}, tsHeaderLayout(raw, t, afc)))
 
 	payload := t + tsHeaderSize
 	if afc&0x2 != 0 {
 		length := int(raw[t+4])
-		layers = append(layers, decodeAdaptationField(b, t+4, length))
+		layers = append(layers, withLayout(decodeAdaptationField(b, t+4, length), adaptationFieldLayout(raw, t+4, length, afc&0x1 != 0)))
 		payload += 1 + length
 	}
 	if afc&0x1 == 0 || payload >= len(raw) {
@@ -227,14 +229,15 @@ func decodeTSLayers(raw []byte, t int) []PacketLayer {
 	}
 	var body []PacketField
 	b.add(&body, "payload", payload, len(raw)-payload, "%d bytes", len(raw)-payload)
-	layers = append(layers, PacketLayer{Name: "payload", Fields: body})
+	layers = append(layers, withLayout(PacketLayer{Name: "payload", Fields: body}, payloadLayout(raw, payload)))
 	if !pusi {
 		return layers
 	}
 	if payload+3 <= len(raw) && raw[payload] == 0 && raw[payload+1] == 0 && raw[payload+2] == 1 {
-		return append(layers, decodePesHeader(&fieldBuilder{raw: raw}, payload))
+		return append(layers, withLayout(decodePesHeader(&fieldBuilder{raw: raw}, payload), pesHeaderLayout(raw, payload)))
 	}
-	return append(layers, decodePsiSection(&fieldBuilder{raw: raw}, payload))
+	section := decodePsiSection(&fieldBuilder{raw: raw}, payload)
+	return append(layers, withLayout(section, psiSectionLayout(raw, section.Name, payload)))
 }
 
 func adaptationFieldControlName(afc uint8) string {
