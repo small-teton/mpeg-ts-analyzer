@@ -136,6 +136,7 @@ type RangeAnalysisReport struct {
 	Status                   string                  `json:"status"`
 	Reason                   string                  `json:"reason,omitempty"`
 	Error                    string                  `json:"error,omitempty"`
+	Acquisition              *ReportAcquisition      `json:"acquisition,omitempty"`
 	AnalysisStartOffsetBytes *int64                  `json:"analysis_start_offset_bytes,omitempty"`
 	AnalysisEndOffsetBytes   *int64                  `json:"analysis_end_offset_bytes,omitempty"`
 	Sync                     *ReportSync             `json:"sync,omitempty"`
@@ -253,6 +254,7 @@ func rangeAnalysisReport(report *AnalysisReport) *RangeAnalysisReport {
 		Status:           report.Status,
 		Reason:           report.Reason,
 		Error:            report.Error,
+		Acquisition:      report.Acquisition,
 		ContinuityEvents: []ReportContinuityEvent{},
 		Programs:         []RangeAnalysisProgram{},
 		Warnings:         report.Warnings,

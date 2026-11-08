@@ -35,6 +35,10 @@
       "type": "string",
       "description": "Human-readable error detail; not a stable matching interface."
     },
+    "acquisition": {
+      "$ref": "json-schema-v2.json#/$defs/acquisition",
+      "description": "Evidence of a failed initial acquisition, as in the summary report."
+    },
     "analysis_start_offset_bytes": {
       "$ref": "json-schema-v2.json#/$defs/nonNegativeInteger",
       "description": "Offset where the scan started: the earliest program's analysis start. Absent when no program was analyzed."

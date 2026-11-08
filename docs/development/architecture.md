@@ -65,6 +65,8 @@ observations it needs through focused methods.
 | Whether a packet is synchronized, which PID it belongs to, where its payload starts | `tsparser` |
 | Where synchronization was lost, how far to search and which alignment to accept | `tsparser` (`packetReader`), reported as `analysis.SyncLoss`, `analysis.Resync` and `analysis.SyncUnrecovered` |
 | How losses, skipped bytes and the first and worst offsets are aggregated, the sync status | `analysis` (`SyncCheck`) |
+| When initial acquisition failed, which layouts the detector found in the range, how many packets were aligned, and what PID 0 carried (with the `psi_health` section classification) | `tsparser` (`alignmentScan`, `observeAcquisition`), reported as `analysis.AcquisitionEvidence` |
+| Which prerequisite failed (`sync_not_acquired`, `insufficient_data_for_sync`, `pat_not_observed`, `pat_not_acquired`) and each layout's `found` / `not_found` / `insufficient_data` status | `analysis` (`ClassifyAcquisition`) |
 | Whether a packet is an exact duplicate that must not be appended to PES data twice, and how counters resynchronize after an error | `tsparser` (`continuityTracker`) |
 | Whether a continuity counter error occurred | `tsparser`, reported as `analysis.ContinuityError` |
 | How errors are counted per PID, how each PID is labeled, the check's status | `analysis` (`ContinuityCheck`) |

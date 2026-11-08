@@ -25,6 +25,13 @@ issues. This document records the requirements those issues have to meet.
   [design.md](design.md#overview)).
 - **Exit codes and `status` / `reason` values** follow the existing contract in
   [CLI usage](../cli/usage.md) and [Machine-readable output](../reference/json-output.md).
+  A failed range analysis is a document with `status: "failed"`; the GUI shows
+  its `error`, prefixed with an action for the reasons that mean the range
+  could not start program analysis (`insufficient_data_for_sync`,
+  `pat_not_observed`, `pat_not_acquired`; see
+  [Initial acquisition failures](../reference/json-output.md#initial-acquisition-failures)).
+  It does not read the `acquisition` object, whose evidence the `error` text
+  repeats.
 - **Byte offset** is the key shared by all outputs; every record that refers to
   a place in the file carries `offset_bytes`.
 - **The CLI reads only `[offset, offset + limit)`**, as today. (Detecting a

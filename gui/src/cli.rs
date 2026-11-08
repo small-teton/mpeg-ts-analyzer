@@ -725,6 +725,23 @@ mod tests {
         assert_eq!(report.reason.as_deref(), Some("input_open_failed"));
     }
 
+    #[test]
+    fn reports_why_a_range_cannot_be_analyzed() {
+        let Some(cli) = test_cli() else { return };
+        let sample = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts");
+        for (offset, limit, reason) in [
+            (0, 300, "insufficient_data_for_sync"),
+            (1128, 2256, "pat_not_observed"),
+        ] {
+            let mut job = AnalysisJob::start(&cli, &sample, offset, limit, || {}).expect("start");
+            let report = wait(&mut job).0.expect("a failure document");
+            assert_eq!(report.status, "failed");
+            assert_eq!(report.reason.as_deref(), Some(reason));
+            assert!(report.programs.is_empty());
+        }
+    }
+
     #[cfg(unix)]
     #[test]
     fn dropping_a_job_stops_the_process() {

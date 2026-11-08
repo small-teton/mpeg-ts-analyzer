@@ -1,0 +1,59 @@
+{
+  "schema_version": "2.0",
+  "output": "analysis",
+  "input": {
+    "path": "sample_data/sample_188byte_video_mpeg2_320x240_25fps_audio_mp2_48000Hz.ts",
+    "file_size_bytes": 311516,
+    "packet_size_bytes": 188,
+    "offset_bytes": 1128,
+    "limit_bytes": 2256
+  },
+  "status": "failed",
+  "reason": "pat_not_observed",
+  "error": "PAT not detected: no complete PAT after scanning 12 aligned 188-byte packets (2256 bytes) in the range from 0x00000468 to 0x00000d38; no packet is on PID 0x0000. The range may be a partial capture or a PSI/PES fragment, or may end before the next PAT repetition; a wider --offset/--limit range may include one; program analysis needs a PAT and stops here",
+  "acquisition": {
+    "range_start_offset_bytes": 1128,
+    "range_end_offset_bytes": 3384,
+    "scanned_bytes": 2256,
+    "alignment": {
+      "status": "acquired",
+      "packet_size_bytes": 188,
+      "first_aligned_offset_bytes": 1128,
+      "aligned_packet_count": 12,
+      "layouts": [
+        {
+          "packet_size_bytes": 188,
+          "required_sync_bytes": 3,
+          "required_bytes": 377,
+          "status": "found"
+        },
+        {
+          "packet_size_bytes": 192,
+          "required_sync_bytes": 3,
+          "required_bytes": 389,
+          "status": "not_found"
+        },
+        {
+          "packet_size_bytes": 204,
+          "required_sync_bytes": 5,
+          "required_bytes": 817,
+          "status": "not_found"
+        }
+      ]
+    },
+    "pat": {
+      "status": "not_observed",
+      "packet_count": 0,
+      "section_start_count": 0,
+      "complete_table_count": 0,
+      "crc_error_count": 0,
+      "malformed_section_count": 0,
+      "incomplete_count": 0,
+      "wrong_table_id_count": 0,
+      "unusable_packet_count": 0
+    }
+  },
+  "continuity_events": [],
+  "programs": [],
+  "warnings": []
+}
