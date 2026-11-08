@@ -26,10 +26,57 @@ thread_local! {
     static WATCHED_HITS: Cell<u64> = const { Cell::new(0) };
 }
 
-/// Heap bytes allocated and not yet freed, by every thread.
-static LIVE: AtomicUsize = AtomicUsize::new(0);
-/// The highest `LIVE` since the last [`reset_peak`].
-static PEAK: AtomicUsize = AtomicUsize::new(0);
+/// Live heap bytes and their peak.
+struct Heap {
+    /// Bytes allocated and not yet freed.
+    live: AtomicUsize,
+    /// The highest `live` since the last reset.
+    peak: AtomicUsize,
+}
+
+impl Heap {
+    const fn new() -> Self {
+        Heap {
+            live: AtomicUsize::new(0),
+            peak: AtomicUsize::new(0),
+        }
+    }
+
+    fn grow(&self, bytes: usize) {
+        let live = self.live.fetch_add(bytes, Ordering::Relaxed) + bytes;
+        self.peak.fetch_max(live, Ordering::Relaxed);
+    }
+
+    fn shrink(&self, bytes: usize) {
+        self.live.fetch_sub(bytes, Ordering::Relaxed);
+    }
+
+    /// A block resized from `old` to `new` bytes changes the live heap by
+    /// the difference only: counting the new size before taking off the old
+    /// one would record a peak of both that never existed.
+    fn resize(&self, old: usize, new: usize) {
+        if new >= old {
+            self.grow(new - old);
+        } else {
+            self.shrink(old - new);
+        }
+    }
+
+    fn live(&self) -> usize {
+        self.live.load(Ordering::Relaxed)
+    }
+
+    fn reset_peak(&self) {
+        self.peak.store(self.live(), Ordering::Relaxed);
+    }
+
+    fn peak(&self) -> usize {
+        self.peak.load(Ordering::Relaxed)
+    }
+}
+
+/// The heap of every thread of the process.
+static HEAP: Heap = Heap::new();
 
 fn record(bytes: usize) {
     // `try_with`: the thread-locals are gone while a thread shuts down.
@@ -44,15 +91,6 @@ fn record(bytes: usize) {
     }
 }
 
-fn grow(bytes: usize) {
-    let live = LIVE.fetch_add(bytes, Ordering::Relaxed) + bytes;
-    PEAK.fetch_max(live, Ordering::Relaxed);
-}
-
-fn shrink(bytes: usize) {
-    LIVE.fetch_sub(bytes, Ordering::Relaxed);
-}
-
 // SAFETY: every call is forwarded unchanged to `System`, which upholds the
 // `GlobalAlloc` contract; counting touches only const-initialized
 // thread-locals and atomics, which never allocate.
@@ -62,7 +100,7 @@ unsafe impl GlobalAlloc for Counting {
         // SAFETY: the caller's guarantees for `layout` are passed on.
         let ptr = unsafe { System.alloc(layout) };
         if !ptr.is_null() {
-            grow(layout.size());
+            HEAP.grow(layout.size());
         }
         ptr
     }
@@ -72,7 +110,7 @@ unsafe impl GlobalAlloc for Counting {
         // SAFETY: as for `alloc`.
         let ptr = unsafe { System.alloc_zeroed(layout) };
         if !ptr.is_null() {
-            grow(layout.size());
+            HEAP.grow(layout.size());
         }
         ptr
     }
@@ -82,14 +120,13 @@ unsafe impl GlobalAlloc for Counting {
         // SAFETY: `ptr` was allocated by this allocator, that is by `System`.
         let moved = unsafe { System.realloc(ptr, layout, new_size) };
         if !moved.is_null() {
-            grow(new_size);
-            shrink(layout.size());
+            HEAP.resize(layout.size(), new_size);
         }
         moved
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        shrink(layout.size());
+        HEAP.shrink(layout.size());
         // SAFETY: `ptr` was allocated by this allocator, that is by `System`.
         unsafe { System.dealloc(ptr, layout) }
     }
@@ -122,15 +159,39 @@ pub(super) fn watching(sizes: &[usize], f: impl FnOnce()) -> u64 {
 
 /// Heap bytes the whole process holds now.
 pub(super) fn live() -> usize {
-    LIVE.load(Ordering::Relaxed)
+    HEAP.live()
 }
 
 /// Starts a new peak at the bytes held now.
 pub(super) fn reset_peak() {
-    PEAK.store(live(), Ordering::Relaxed);
+    HEAP.reset_peak();
 }
 
 /// The most heap bytes the process held at once since [`reset_peak`].
 pub(super) fn peak() -> usize {
-    PEAK.load(Ordering::Relaxed)
+    HEAP.peak()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Heap;
+
+    /// A resize counts only the difference, so growing a block does not
+    /// record a peak of its old and new size together.
+    #[test]
+    fn resizing_counts_only_the_difference() {
+        let heap = Heap::new();
+        heap.grow(100);
+        heap.reset_peak();
+        heap.resize(100, 160);
+        assert_eq!((heap.live(), heap.peak()), (160, 160));
+        heap.resize(160, 40);
+        assert_eq!((heap.live(), heap.peak()), (40, 160));
+        heap.resize(40, 40);
+        heap.reset_peak();
+        assert_eq!((heap.live(), heap.peak()), (40, 40));
+        heap.grow(10);
+        heap.shrink(50);
+        assert_eq!((heap.live(), heap.peak()), (0, 50));
+    }
 }
