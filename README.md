@@ -148,6 +148,8 @@ GitHub.
 - [Machine-readable output][docs-json-output] and the [JSON schema][docs-json-schema]
 - [Development][docs-development], [release][docs-release] and
   [security policy](SECURITY.md)
+- [Directory structure](DIRECTORY_STRUCTURE.md): what each directory and
+  top-level file of the repository is for
 
 ## Why mpeg-ts-analyzer?
 

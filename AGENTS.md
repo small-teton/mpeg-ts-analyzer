@@ -133,6 +133,14 @@ The `bitbuffer`, `tsparser` and `internal/analysis` packages must each maintain
   `mkdocs.yml`, and link to files outside `docs/` with their GitHub URLs; the
   strict site build fails otherwise. See the documentation site section of
   `docs/development/index.md`.
+- `DIRECTORY_STRUCTURE.md` maps what each top-level directory and file is
+  for. When a change adds, removes, renames or moves a top-level file or
+  directory, or a directory the map describes (for example a new `tools/`
+  program, a `sample_data/` subdirectory, a `docs/` area, a workflow or a
+  configuration file), update `DIRECTORY_STRUCTURE.md` in the same pull
+  request, and state the update, or that none was needed, in the
+  documentation-impact audit. Keep each entry to one line and link to the
+  detailed documentation instead of repeating it.
 - When the JSON contract changes, update `docs/json-schema-v2.json`, the
   contract and the complete examples in `docs/reference/json-output.md`, and
   decoding/compatibility tests together. Preserve the documented additive-change policy within a
