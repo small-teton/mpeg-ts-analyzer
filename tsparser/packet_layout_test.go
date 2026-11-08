@@ -612,6 +612,40 @@ func TestPacketLayoutSectionVariants(t *testing.T) {
 		"psi_section.not_decoded@64":              {"unknown", "64+64", "8 bytes", ""},
 	})
 
+	// A short-form private section, such as a TDT: all section_length bytes
+	// are private data, with no CRC_32, whatever the last four bytes hold.
+	tdt := buildTsPacket(0x0014, true, 0, []byte{0x70, 0x70, 0x05, 0xE6, 0x40, 0x12, 0x34, 0x56})
+	parts = decodedParts(t, "TDT", tdt)
+	wantParts(t, "TDT", parts, map[string][4]string{
+		"psi_section.section_syntax_indicator@48": {"flag", "48+1", "0", ""},
+		"psi_section.not_decoded@64":              {"unknown", "64+40", "5 bytes", ""},
+	})
+	for id, p := range parts {
+		if p.Label == "CRC_32" || strings.HasPrefix(id, "psi_section.crc_32") {
+			t.Errorf("short-form section has a CRC part: %+v", p)
+		}
+	}
+	// A short-form section that continues in the next packet.
+	long := packetWithPayload(0x0014, true, 0, []byte{0x00, 0x70, 0x70, 0x20, 0xE6, 0x40})
+	if p := decodedParts(t, "long TDT", long)["psi_section.not_decoded@1488"]; p.Label != "not decoded (continues in the next packet)" {
+		t.Errorf("short-form section past the packet = %+v", p)
+	}
+	// A PAT with a zero section_syntax_indicator keeps the long form, and the
+	// zero bit is a mismatch.
+	zeroPAT := patSection([2]uint16{1, 0x1000})
+	zeroPAT[1] &^= 0x80
+	parts = decodedParts(t, "PAT with SSI 0", buildTsPacket(0x0000, true, 0, zeroPAT))
+	wantParts(t, "PAT with SSI 0", parts, map[string][4]string{
+		"pat.section_syntax_indicator@48": {"flag", "48+1", "0", "false"},
+	})
+	if p := parts["pat.crc_32@136"]; p.Kind != "value" {
+		t.Errorf("PAT with SSI 0 CRC_32 = %+v", p)
+	}
+	// A long-form private section keeps its CRC_32.
+	if p := decodedParts(t, "SDT CRC", sdt)["psi_section.crc_32@128"]; p.Kind != "value" || p.Field != "CRC_32" {
+		t.Errorf("long-form CRC_32 = %+v", p)
+	}
+
 	// Sections cut by the packet: a PAT with more programs than fit, a
 	// pointer_field past the packet, and a section_length that does not fit.
 	programs := [][2]uint16{{0, 0x0010}}

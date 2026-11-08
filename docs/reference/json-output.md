@@ -2624,7 +2624,13 @@ Fixed bits that are checked (`expected` present):
 | `reserved` bits of the PCR/OPCR, PAT and PMT | all `1` | 2.1, definition of reserved; a receiver ignores them, so a mismatch is a conformance note, not a decoding error |
 
 Reserved bits of other sections, which may follow other specifications, are
-classified as `reserved` without an expected value. The layout is reported
+classified as `reserved` without an expected value. The body of another
+section is one `unknown` part. A long-form section (`section_syntax_indicator`
+1) ends with its `CRC_32`; a short-form private section
+(`section_syntax_indicator` 0, such as a TDT) has no CRC, so all its
+`section_length` bytes are the `unknown` part. PAT and PMT are always laid out
+in the long form, so a zero `section_syntax_indicator` there is a mismatch.
+The layout is reported
 only by `--output packet`, for the one packet requested; no other output or
 check changes, and a mismatch does not affect any verdict or exit code.
 

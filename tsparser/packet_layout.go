@@ -546,6 +546,13 @@ func psiSectionLayout(raw []byte, layer string, p int) []LayoutPart {
 	}
 	sectionEnd := s + 3 + int(readBits(raw, bitsAt(s+1, 4, 12)))
 	l.end = sectionEnd * 8
+	// A short-form private section (section_syntax_indicator 0) is
+	// section_length bytes of private data with no CRC_32. PAT and PMT keep
+	// the long form, so a zero syntax bit there stays a visible mismatch.
+	if !known && raw[s+1]&0x80 == 0 {
+		l.add(partUnknown, notDecoded, l.end-l.pos)
+		return l.finish()
+	}
 	l.region((sectionEnd-4)*8, func() {
 		switch raw[s] {
 		case 0x00:
