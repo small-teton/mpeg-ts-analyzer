@@ -372,11 +372,14 @@ would report an advisory against unchanged dependencies.
 crates appear as warnings in the job log; most come in through egui and `rfd`
 and are resolved by updating those crates.
 
-The `License check` workflow runs only when `go.mod`, `go.sum`,
-`gui/Cargo.toml`, `gui/Cargo.lock`, the allowlist files or the check itself
-change (on pull requests, including Renovate's, and on pushes to `master`), or
-when dispatched manually; each of its Go and Rust jobs runs only when its own
-inputs changed. It is not a required check, so unrelated pull requests never
+The `License check` workflow runs only when `go.mod`, `go.sum`, Go sources,
+`.goreleaser.yaml`, `gui/Cargo.toml`, `gui/Cargo.lock`, the allowlist files or
+the check itself change (on pull requests, including Renovate's, and on pushes
+to `master`), or when dispatched manually; each of its Go and Rust jobs runs
+only when its own inputs changed. The Go job also follows Go sources and
+`.goreleaser.yaml` because the CLI's import graph, not `go.mod` alone, decides
+which modules ship: `go.mod` also lists test-only modules, so importing one of
+them from the CLI changes the release without touching `go.mod` or `go.sum`. It is not a required check, so unrelated pull requests never
 wait for it. The allowlist is `accepted` in `gui/about.toml`, which also gates
 the GUI's third-party notices:
 

@@ -5,14 +5,20 @@ name: License check
 # .github/scripts/license-allowlist.py). It runs only when the dependencies or
 # this check's configuration change, including Renovate pull requests, and is
 # not a required check, so unrelated pull requests do not wait for it. Each
-# side runs only when its own inputs changed.
+# side runs only when its own inputs changed. The Go side also runs on Go
+# source and .goreleaser.yaml changes: the CLI's import graph, not go.mod
+# alone, decides which modules ship (go.mod also lists test-only modules), so
+# a new import of an already-required module changes the release without
+# touching go.mod or go.sum.
 on:
   workflow_dispatch:
   push:
     branches: [master]
     paths:
+      - "**/*.go"
       - go.mod
       - go.sum
+      - .goreleaser.yaml
       - gui/Cargo.toml
       - gui/Cargo.lock
       - gui/about.toml
@@ -22,8 +28,10 @@ on:
   pull_request:
     # The same paths as for push.
     paths:
+      - "**/*.go"
       - go.mod
       - go.sum
+      - .goreleaser.yaml
       - gui/Cargo.toml
       - gui/Cargo.lock
       - gui/about.toml
@@ -80,7 +88,7 @@ jobs:
         # strings, not pipes: with pipefail, grep -q exiting at the first match
         # could fail the upstream printf with SIGPIPE.
         shared='gui/about\.toml|\.github/scripts/license-allowlist\.py|\.github/workflows/license-check\.yml'
-        if grep -Eq "^(go\.mod|go\.sum|$shared)\$" <<<"$files"; then
+        if grep -Eq "\.go\$|^(go\.mod|go\.sum|\.goreleaser\.yaml|$shared)\$" <<<"$files"; then
           echo "go=true" >> "$GITHUB_OUTPUT"
         else
           echo "go=false" >> "$GITHUB_OUTPUT"
