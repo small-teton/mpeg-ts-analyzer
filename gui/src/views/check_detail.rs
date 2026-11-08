@@ -141,7 +141,7 @@ fn page(ui: &mut egui::Ui, context: &Context<'_>, check: Check) -> Option<Overvi
     }
 
     section_heading(ui, "Verdicts");
-    verdict_table(ui, help.statuses, row.as_ref().map(|r| &r.status));
+    verdict_table(ui, check, row.as_ref().map(|r| &r.status));
     ui.add_space(12.0);
 
     for (heading, text) in [
@@ -428,8 +428,10 @@ fn icon_button(ui: &mut egui::Ui, glyph: &str, text: &str, name: &str) -> egui::
 /// Every status of the check with its condition. The current status is
 /// highlighted and marked selected for assistive technology; its meaning is
 /// the same as in any other row.
-fn verdict_table(ui: &mut egui::Ui, statuses: &[(&str, &str)], current: Option<&CheckStatus>) {
-    let statuses: Vec<(CheckStatus, &str)> = statuses
+fn verdict_table(ui: &mut egui::Ui, check: Check, current: Option<&CheckStatus>) {
+    let statuses: Vec<(CheckStatus, &str)> = check
+        .help()
+        .statuses
         .iter()
         .map(|(status, meaning)| (CheckStatus::parse(status), *meaning))
         .collect();
@@ -488,7 +490,7 @@ fn verdict_table(ui: &mut egui::Ui, statuses: &[(&str, &str)], current: Option<&
                     |ui, column| {
                         if column == 0 {
                             // The check's own statuses: always described.
-                            status_badge(ui, status, None);
+                            super::badge(ui, &status.label(), status.severity_for(Some(check)));
                         } else {
                             ui.add(egui::Label::new(*meaning).wrap());
                         }

@@ -1540,7 +1540,7 @@ fn help_link(ui: &mut egui::Ui, text: &str, check: Check, state: &mut OverviewSt
 }
 
 /// The CLI's status of `check` as a badge, verbatim, colored by its
-/// severity. A status this GUI does not describe for that check says so in
+/// severity for the check. A status this GUI does not describe for that check says so in
 /// its tooltip. Analyzer warnings (`check` is `None`) carry the GUI's own
 /// `warning`.
 pub(crate) fn status_badge(
@@ -1548,7 +1548,7 @@ pub(crate) fn status_badge(
     status: &CheckStatus,
     check: Option<Check>,
 ) -> egui::Response {
-    let response = badge(ui, &status.label(), status.severity());
+    let response = badge(ui, &status.label(), status.severity_for(check));
     if check.is_none_or(|check| status.is_known_for(check)) {
         response
     } else {

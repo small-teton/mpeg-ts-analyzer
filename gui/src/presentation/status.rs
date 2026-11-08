@@ -113,12 +113,10 @@ impl CheckStatus {
         self.as_str().replace('_', " ")
     }
 
-    /// The severity of the badge. Only statuses that report a problem are
-    /// colored as one; `info`, skipped or ungraded analysis and every status
-    /// this GUI does not know are neutral.
-    ///
-    /// `late`, `affected` and `data_excluded` are neutral as they were before
-    /// this type existed: changing their color is a visible change of its own.
+    /// The severity of the status without a check: only statuses that report
+    /// a problem are colored as one; `info`, skipped or ungraded analysis and
+    /// every status this GUI does not know are neutral. Badges use
+    /// [`CheckStatus::severity_for`], which knows the check.
     pub fn severity(&self) -> Verdict {
         match self {
             CheckStatus::Ok => Verdict::Ok,
@@ -129,15 +127,28 @@ impl CheckStatus {
             | CheckStatus::Anomalies
             | CheckStatus::Recovered
             | CheckStatus::Silent
-            | CheckStatus::Unreferenced => Verdict::Warn,
-            CheckStatus::Late
+            | CheckStatus::Unreferenced
+            | CheckStatus::Late
             | CheckStatus::Affected
-            | CheckStatus::DataExcluded
-            | CheckStatus::Info
+            | CheckStatus::DataExcluded => Verdict::Warn,
+            CheckStatus::Info
             | CheckStatus::Skipped
             | CheckStatus::NotAssessable
             | CheckStatus::InsufficientData
             | CheckStatus::Unknown(_) => Verdict::Neutral,
+        }
+    }
+
+    /// The severity of the status as a badge of `check` (`None` for an
+    /// analyzer warning). Packets with transport errors whose data the
+    /// analysis left out (`data_excluded`) are an error: damaged packets
+    /// removed data the analysis needed. The same status of Scrambled packets
+    /// stays a warning, since scrambling is not an error in itself. Every
+    /// other status has the same severity for every check.
+    pub fn severity_for(&self, check: Option<Check>) -> Verdict {
+        match (self, check) {
+            (CheckStatus::DataExcluded, Some(Check::TransportErrors)) => Verdict::Ng,
+            _ => self.severity(),
         }
     }
 
@@ -392,8 +403,8 @@ mod tests {
         assert_eq!(unknown.words(), "some future state");
     }
 
-    /// The badge colors the GUI used before statuses were typed, and a
-    /// neutral badge for a status from a newer CLI (never a warning).
+    /// The badge color of every status, and a neutral badge for a status
+    /// from a newer CLI (never a warning).
     #[test]
     fn severity_is_neutral_unless_the_status_reports_a_problem() {
         let expected = [
@@ -407,9 +418,9 @@ mod tests {
             ("recovered", Verdict::Warn),
             ("silent", Verdict::Warn),
             ("unreferenced", Verdict::Warn),
-            ("late", Verdict::Neutral),
-            ("affected", Verdict::Neutral),
-            ("data_excluded", Verdict::Neutral),
+            ("late", Verdict::Warn),
+            ("affected", Verdict::Warn),
+            ("data_excluded", Verdict::Warn),
             ("info", Verdict::Neutral),
             ("skipped", Verdict::Neutral),
             ("not_assessable", Verdict::Neutral),
@@ -427,6 +438,38 @@ mod tests {
                 expected.iter().any(|(v, _)| *v == status.as_str()),
                 "{status}"
             );
+        }
+    }
+
+    /// Only `data_excluded` of Transport errors differs from the status's
+    /// own severity.
+    #[test]
+    fn severity_depends_on_the_check_only_for_excluded_transport_errors() {
+        let transport = Some(Check::TransportErrors);
+        let scrambled = Some(Check::ScrambledPackets);
+        assert_eq!(CheckStatus::Affected.severity_for(transport), Verdict::Warn);
+        assert_eq!(
+            CheckStatus::DataExcluded.severity_for(transport),
+            Verdict::Ng
+        );
+        assert_eq!(CheckStatus::Affected.severity_for(scrambled), Verdict::Warn);
+        assert_eq!(
+            CheckStatus::DataExcluded.severity_for(scrambled),
+            Verdict::Warn
+        );
+        assert_eq!(CheckStatus::Warning.severity_for(None), Verdict::Warn);
+        for check in Check::ALL {
+            for (status, _) in KNOWN {
+                if !(status == CheckStatus::DataExcluded && check == Check::TransportErrors) {
+                    assert_eq!(
+                        status.severity_for(Some(check)),
+                        status.severity(),
+                        "{check:?} {status}"
+                    );
+                }
+            }
+            let future = CheckStatus::parse("indeterminate");
+            assert_eq!(future.severity_for(Some(check)), Verdict::Neutral);
         }
     }
 
