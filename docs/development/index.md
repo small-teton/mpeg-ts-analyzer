@@ -355,6 +355,7 @@ Release publication is kept out of ordinary CI:
 | `govulncheck` | `Go` workflow | Go advisories that reach the CLI's code, on Go changes and weekly |
 | `cargo-audit` | `GUI` workflow | RustSec advisories in `gui/Cargo.lock`, when it changes and weekly |
 | Dependency review | `Dependency review` workflow | A pull request that adds a dependency version with a known advisory |
+| License check | `License check` workflow | A Go module of the CLI (go-licenses) or a Rust crate of the GUI (cargo-deny) under a license outside the allowlist |
 | CodeQL | `CodeQL` workflow | Code-level issues in changed Go code (pull requests and `master`) and Rust code (`master`), with a weekly full scan |
 
 Renovate waits three days before proposing a newly published crate
@@ -371,8 +372,34 @@ would report an advisory against unchanged dependencies.
 crates appear as warnings in the job log; most come in through egui and `rfd`
 and are resolved by updating those crates.
 
+The `License check` workflow runs only when `go.mod`, `go.sum`,
+`gui/Cargo.toml`, `gui/Cargo.lock`, the allowlist files or the check itself
+change (on pull requests, including Renovate's, and on pushes to `master`), or
+when dispatched manually; each of its Go and Rust jobs runs only when its own
+inputs changed. It is not a required check, so unrelated pull requests never
+wait for it. The allowlist is `accepted` in `gui/about.toml`, which also gates
+the GUI's third-party notices:
+
+- The Go job runs `go-licenses check` on the CLI for linux, windows and darwin
+  (the module set differs by GOOS: cobra uses mousetrap only on Windows), with
+  `accepted` without MPL-2.0, as printed by
+  `.github/scripts/license-allowlist.py go`. The module itself is ignored.
+  An unknown license fails the check.
+- The Rust job runs `cargo deny check licenses` with `gui/deny.toml`, over the
+  three released GUI targets without dev-dependencies. Its `allow` list plus
+  its per-crate `exceptions` (MPL-2.0 for option-ext only) must equal
+  `accepted`; `.github/scripts/license-allowlist.py check` fails otherwise.
+  Only the `licenses` check is enabled.
+
+To accept a new license, review it first (it must permit binary distribution
+with the notices that `THIRD-PARTY-NOTICES.txt` provides), then add it to
+`accepted` in `gui/about.toml` and to `allow` in `gui/deny.toml`, or, for a
+license accepted for one crate only, to an `exceptions` entry of that crate
+with a comment that explains why.
+
 GitHub Actions are pinned to full commit SHAs and tools to exact versions
-(`cargo-audit` through a `# renovate:` comment), all updated by Renovate.
+(`cargo-audit`, `cargo-deny` and `go-licenses` through `# renovate:`
+comments), all updated by Renovate.
 Release-time measures for the GUI (checksums, SBOM and build provenance) and the
 remaining code-signing work are documented in
 [`docs/gui/release-security.md`](../gui/release-security.md).

@@ -1,0 +1,166 @@
+name: License check
+
+# Checks that every dependency shipped in the CLI and GUI releases is under a
+# license of the allowlist in gui/about.toml (see
+# .github/scripts/license-allowlist.py). It runs only when the dependencies or
+# this check's configuration change, including Renovate pull requests, and is
+# not a required check, so unrelated pull requests do not wait for it. Each
+# side runs only when its own inputs changed.
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - go.mod
+      - go.sum
+      - gui/Cargo.toml
+      - gui/Cargo.lock
+      - gui/about.toml
+      - gui/deny.toml
+      - .github/scripts/license-allowlist.py
+      - .github/workflows/license-check.yml
+  pull_request:
+    # The same paths as for push.
+    paths:
+      - go.mod
+      - go.sum
+      - gui/Cargo.toml
+      - gui/Cargo.lock
+      - gui/about.toml
+      - gui/deny.toml
+      - .github/scripts/license-allowlist.py
+      - .github/workflows/license-check.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: license-check-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # renovate: datasource=go depName=github.com/google/go-licenses/v2
+  GO_LICENSES_VERSION: v2.0.1
+  # renovate: datasource=crate depName=cargo-deny
+  CARGO_DENY_VERSION: 0.20.2
+
+jobs:
+
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.filter.outputs.go }}
+      rust: ${{ steps.filter.outputs.rust }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+        fetch-depth: 0
+
+    - name: Detect the changed side
+      id: filter
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        PUSH_BEFORE_SHA: ${{ github.event.before }}
+      run: |
+        case "$EVENT_NAME" in
+          pull_request) base="$PR_BASE_SHA" ;;
+          push) base="$PUSH_BEFORE_SHA" ;;
+          *) base= ;;
+        esac
+        # A manual run, a new branch or an unknown base: check both sides.
+        if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+          echo "go=true" >> "$GITHUB_OUTPUT"
+          echo "rust=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        files=$(git diff --name-only "$base" HEAD)
+        # The allowlist and this check's own files concern both sides. Here-
+        # strings, not pipes: with pipefail, grep -q exiting at the first match
+        # could fail the upstream printf with SIGPIPE.
+        shared='gui/about\.toml|\.github/scripts/license-allowlist\.py|\.github/workflows/license-check\.yml'
+        if grep -Eq "^(go\.mod|go\.sum|$shared)\$" <<<"$files"; then
+          echo "go=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "go=false" >> "$GITHUB_OUTPUT"
+        fi
+        if grep -Eq "^(gui/Cargo\.toml|gui/Cargo\.lock|gui/deny\.toml|$shared)\$" <<<"$files"; then
+          echo "rust=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "rust=false" >> "$GITHUB_OUTPUT"
+        fi
+
+  # The Go modules of the CLI, for each released GOOS: the module set differs
+  # by GOOS (cobra uses mousetrap only on Windows), not by GOARCH. The module
+  # itself is Apache-2.0 (LICENSE).
+  go:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Set up Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: './go.mod'
+
+    - name: Restore go-licenses
+      id: go-licenses
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/go-licenses/bin/go-licenses
+        key: go-licenses-${{ runner.os }}-${{ env.GO_LICENSES_VERSION }}-${{ hashFiles('go.mod') }}
+
+    - name: Install go-licenses
+      if: steps.go-licenses.outputs.cache-hit != 'true'
+      run: GOBIN="$HOME/go-licenses/bin" go install "github.com/google/go-licenses/v2@$GO_LICENSES_VERSION"
+
+    - name: Check the Go module licenses
+      run: |
+        allowed=$(.github/scripts/license-allowlist.py go)
+        echo "Allowed: $allowed"
+        for goos in linux windows darwin; do
+          echo "::group::$goos"
+          GOOS=$goos GOARCH=amd64 CGO_ENABLED=0 "$HOME/go-licenses/bin/go-licenses" report ./ \
+            --ignore github.com/small-teton/mpeg-ts-analyzer/v2
+          GOOS=$goos GOARCH=amd64 CGO_ENABLED=0 "$HOME/go-licenses/bin/go-licenses" check ./ \
+            --ignore github.com/small-teton/mpeg-ts-analyzer/v2 \
+            --allowed_licenses="$allowed"
+          echo "::endgroup::"
+        done
+
+  # The Rust crates of the GUI, with cargo-deny's license check only.
+  rust:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Compare gui/deny.toml with gui/about.toml
+      run: .github/scripts/license-allowlist.py check
+
+    - name: Install the toolchain from rust-toolchain.toml
+      working-directory: gui
+      run: rustup toolchain install
+
+    - name: Restore cargo-deny
+      id: cargo-deny
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cargo/bin/cargo-deny
+        key: cargo-deny-${{ runner.os }}-${{ env.CARGO_DENY_VERSION }}
+
+    - name: Install cargo-deny
+      if: steps.cargo-deny.outputs.cache-hit != 'true'
+      run: cargo install cargo-deny --version "$CARGO_DENY_VERSION" --locked
+
+    - name: cargo deny check licenses
+      # cargo-deny reads gui/deny.toml, next to the manifest.
+      run: cargo deny --manifest-path gui/Cargo.toml --locked check licenses

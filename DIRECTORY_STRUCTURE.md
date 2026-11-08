@@ -20,7 +20,7 @@ check belongs are in [Architecture](docs/development/architecture.md).
 
 | Path | What it is | Read more |
 | --- | --- | --- |
-| `gui/` | The eframe/egui desktop application. It runs the CLI as a subprocess and contains no analysis logic. `src/` the application, `tests/fixtures/` CLI outputs and signed update data for its tests, `assets/` fonts and icons, `scripts/` signing, notices and memory-profile scripts, `BUNDLED_CLI_VERSION` the CLI release it bundles, `updater.pub` the update signing key. | [GUI design](docs/gui/design.md), [GUI CLI interface](docs/gui/cli-interface.md), [Development](docs/development/index.md#desktop-gui) |
+| `gui/` | The eframe/egui desktop application. It runs the CLI as a subprocess and contains no analysis logic. `src/` the application, `tests/fixtures/` CLI outputs and signed update data for its tests, `assets/` fonts and icons, `scripts/` signing, notices and memory-profile scripts, `BUNDLED_CLI_VERSION` the CLI release it bundles, `updater.pub` the update signing key, `about.toml` and `deny.toml` the license allowlist of the notices and the license check. | [GUI design](docs/gui/design.md), [GUI CLI interface](docs/gui/cli-interface.md), [Development](docs/development/index.md#desktop-gui) |
 | `rust-toolchain.toml` | The pinned Rust toolchain for `gui/`. | [Development](docs/development/index.md#desktop-gui) |
 
 ## Test data and tools
@@ -58,7 +58,7 @@ check belongs are in [Architecture](docs/development/architecture.md).
 | `.githooks/` | The `pre-push` hook (`make setup` enables it): build, lint, tests, coverage, demo and GUI checks. | [Test and coverage](docs/development/index.md#test-and-coverage) |
 | `.golangci.yml` | golangci-lint configuration. | |
 | `.goreleaser.yaml` | GoReleaser configuration of the CLI release builds. | [Release](docs/development/release.md) |
-| `.github/workflows/` | CI (Go, GUI, CodeQL, dependency review, documentation policy and site) and the CLI and GUI release and version-bump workflows. | [Dependency and supply-chain checks](docs/development/index.md#dependency-and-supply-chain-checks), [Release](docs/development/release.md) |
+| `.github/workflows/` | CI (Go, GUI, CodeQL, dependency review, license check, documentation policy and site) and the CLI and GUI release and version-bump workflows. | [Dependency and supply-chain checks](docs/development/index.md#dependency-and-supply-chain-checks), [Release](docs/development/release.md) |
 | `.github/scripts/`, `.github/gui-release-notes.md` | Helper scripts and the release-notes template of the release workflows, including the Go third-party notices shared by the CLI and GUI releases. | [Release](docs/development/release.md) |
 | `.github/tools/` | A separate Go module that pins CI tools (golangci-lint, govulncheck), run with `go tool -modfile`. | |
 | `.github/docs-site/` | The hash-pinned MkDocs toolchain of the documentation site. | [Documentation site](docs/development/index.md#documentation-site) |
